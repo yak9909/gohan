@@ -5,6 +5,7 @@
 - 仕様: [gohan.txt](gohan.txt)。記載された全機能が実装済みという意味ではない。
 - 開発規則: [AGENTS.md](AGENTS.md)。再開時は `work/STATE.md` と `work/SESSION.md` を読む。
 - 現行ソース: `Sources/`・`Includes/`。生成ヘッダは手編集しない。
+- **実機未確認の変更は作業用ブランチへpush。mainは実機確認済みの版だけを反映する。** 現在のチャット統合開発は `work/chat-kanji`。
 - チャット漢字候補はPC検証済み、統合UIの実機確認は未完了。正常復元版F394・エンジン試験F407と区別する。
 
 解析用の `yak9909/acnl_disassemble` とは別Git。解析環境では `project_v2/src/CTRPluginFramework-BlankTemplate-0.8.0/` にcloneして使う。同じソースを解析リポジトリへ登録しない。
