@@ -34,7 +34,6 @@
 
 #include "GuiMenu.hpp"
 #include "GuiKeyboard.hpp"
-#include "ChatKanji.hpp"
 #include <CTRPluginFramework/System/Touch.hpp>
 #include "GuiV2.hpp"
 #include "csvc.h"   // svcInvalidateEntireInstructionCache
@@ -133,7 +132,7 @@ namespace CTRPluginFramework
                 ITEM_LIST, ITEM_VALUE, ITEM_SLIDER
             };
             enum Format { FMT_NONE = 0, FMT_DEC, FMT_HEX, FMT_FLOAT };
-            enum ActionId { ACT_NONE = 0, ACT_SAVE, ACT_TOP_LIST, ACT_BOTTOM_LIST, ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI };
+            enum ActionId { ACT_NONE = 0, ACT_SAVE, ACT_TOP_LIST, ACT_BOTTOM_LIST, ACT_TEXT, ACT_COMPACT_TEXT };
 
             const int   kMaxItems   = 96;
             const int   kLongList   = 30;
@@ -246,7 +245,7 @@ namespace CTRPluginFramework
 
             // ---- 画面リストボックス（ui-model.js の overlay[type=listbox]）----
             //   上下どちらか 1 つだけ開く。inlineList / dialog とは独立。
-            enum OverlayMode { OV_GENERIC = 0, OV_HOTKEY_ITEM, OV_CHAT_KANJI };
+            enum OverlayMode { OV_GENERIC = 0, OV_HOTKEY_ITEM };
             struct Overlay
             {
                 bool        active;
@@ -676,9 +675,6 @@ namespace CTRPluginFramework
                 g_items[i].childCount = (u8)scrollCount;
                 AddItem(ITEM_CHECKBOX, u8"しずえスキップ",
                         u8"しずえの会話を飛ばして村へ出ます。起動時の一括処理を先に実行します。");
-                i = AddItem(ITEM_ACTION, u8"チャット漢字候補",
-                            u8"チャットの入力から漢字候補を取得し下画面に表示します。");
-                g_items[i].action = ACT_CHAT_KANJI;
                 i = 0;
                 while (i < 12)
                 {
@@ -763,26 +759,24 @@ namespace CTRPluginFramework
             }
 
             // trimBitmapText の写し。収まらなければ "..." を付けて切る。
-            const char *Trim(const char *src, int maxWidth, char *buf, size_t cap,
-                             GuiV2::Font font = GuiV2::FONT_MAIN)
+            const char *Trim(const char *src, int maxWidth, char *buf, size_t cap)
             {
-                const int   dots = GuiV2::MeasureText("...", 1, font);
+                const int   dots = GuiV2::MeasureText("...");
                 int         i = 0;
                 int         w = 0;
                 size_t      out = 0;
                 size_t      fit = 0;
-                int         columns = 0;
 
                 buf[0] = '\0';
                 while (src[i] != '\0')
                 {
                     const int    start = i;
-                    const int    cw = GuiV2::NextCharWidth(src, i, 1, font);
+                    const int    cw = GuiV2::NextCharWidth(src, i);
                     const size_t len = (size_t)(i - start);
 
                     if (out + len + 4 >= cap)
                         break;
-                    if (w + cw > maxWidth || (font == GuiV2::FONT_GAME && columns >= 28))
+                    if (w + cw > maxWidth)
                     {
                         std::memcpy(buf, src, fit);
                         std::snprintf(buf + fit, cap - fit, "...");
@@ -790,10 +784,9 @@ namespace CTRPluginFramework
                     }
                     std::memcpy(buf + out, src + start, len);
                     out += len;
-                    columns++;
                     w += cw;
                     buf[out] = '\0';
-                    if (w + dots <= maxWidth && (font != GuiV2::FONT_GAME || columns <= 25))
+                    if (w + dots <= maxWidth)
                         fit = out;
                 }
                 return buf;
@@ -1146,8 +1139,6 @@ namespace CTRPluginFramework
                                           amount) + 0.5f);
                 const int   count = g_overlay.optionCount;
                 const int   rows = count < kScreenRows ? count : kScreenRows;
-                const GuiV2::Font rowFont = g_overlay.mode == OV_CHAT_KANJI
-                                            ? GuiV2::FONT_GAME : GuiV2::FONT_MAIN;
                 const int   h = 25 + rows * 20;
                 const int   y = (240 - h + 1) / 2;
                 const float scroll = OverlayScroll(now);
@@ -1179,10 +1170,10 @@ namespace CTRPluginFramework
                                             Fade(kColListSel, amount));
                         GuiV2::DrawText(sc, x + 12, rowY,
                                         Trim(g_overlay.options[i], width - 24,
-                                             g_buf, sizeof(g_buf), rowFont),
+                                             g_buf, sizeof(g_buf)),
                                         Fade(i == g_overlay.index ? kColWhite
                                                                   : kColText,
-                                             amount), 1, rowFont);
+                                             amount));
                     }
                     i++;
                 }
@@ -1535,7 +1526,6 @@ namespace CTRPluginFramework
             {
                 if (!g_overlay.active || g_overlay.closing)
                     return;
-                if (g_overlay.mode == OV_CHAT_KANJI) ChatKanji::Dismiss();
 
                 const float cur = OverlayAmount(now);
 
@@ -1564,7 +1554,6 @@ namespace CTRPluginFramework
             // ★通知の題は発火させたチート名（親項目の label）に統一する。
             void    ConfirmOverlay(u32 now)
             {
-                if (g_overlay.mode == OV_CHAT_KANJI) { CloseOverlay(now); return; }
                 const char *title = g_overlay.item >= 0
                                     ? g_items[g_overlay.item].label
                                     : g_overlay.title;
@@ -1823,26 +1812,6 @@ namespace CTRPluginFramework
                 else if (it.action == ACT_BOTTOM_LIST)
                     OpenOverlay(1, u8"下画面リスト", g_longOpts, kLongList,
                                 OV_GENERIC, self, 0, now);
-                else if (it.action == ACT_CHAT_KANJI)
-                {
-                    const ChatKanji::RequestResult result = ChatKanji::Request();
-                    if (result == ChatKanji::REQUEST_OK)
-                    {
-                        static const char *const loading[] = { u8"変換中です。Bで閉じる" };
-                        OpenOverlay(1, u8"漢字候補", loading, 1, OV_CHAT_KANJI, self, 0, now);
-                    }
-                    else
-                    {
-                        const char *message = result == ChatKanji::REQUEST_BUSY ? u8"変換処理中です。"
-                            : result == ChatKanji::REQUEST_EMPTY ? u8"チャットに文字を入力してください。"
-                            : result == ChatKanji::REQUEST_NO_CHAT ? u8"普通のチャットを開いてください。"
-                            : result == ChatKanji::REQUEST_BAD_INPUT ? u8"入力文字を確認してください。"
-                            : result == ChatKanji::REQUEST_NO_FONT ? u8"フォントを取得できません。"
-                            : result == ChatKanji::REQUEST_NO_THREAD ? u8"変換を開始できません。"
-                            : u8"対応していないゲームの版です。";
-                        AddNotice(it.label, message, now, true);
-                    }
-                }
             }
 
             void    OpenCapture(int item, u32 now)
@@ -2110,24 +2079,6 @@ namespace CTRPluginFramework
 
             void    Update(u32 now)
             {
-                if (ChatKanji::Poll() && g_overlay.active && !g_overlay.closing
-                    && g_overlay.mode == OV_CHAT_KANJI)
-                {
-                    if (ChatKanji::Error()[0])
-                    {
-                        AddNotice(u8"チャット漢字候補", ChatKanji::Error(), now, true);
-                        CloseOverlay(now);
-                    }
-                    else
-                        OpenOverlay(1, ChatKanji::Title(), ChatKanji::Rows(), ChatKanji::RowCount(),
-                                    OV_CHAT_KANJI, g_overlay.item, 0, now);
-                }
-                if (g_overlay.active && g_overlay.mode == OV_CHAT_KANJI && !ChatKanji::FontReady())
-                {
-                    CloseOverlay(now);
-                    g_overlay.active = false; // do not draw a closing frame with released font tables
-                    g_needFinal = true;
-                }
                 const bool keyboardWasActive = GuiKeyboard::Active();
                 GuiKeyboard::Update(now);
                 if (keyboardWasActive && !GuiKeyboard::Active()) g_needFinal = true;
@@ -2395,7 +2346,7 @@ namespace CTRPluginFramework
         {
             // ボタン遮断: 自前メニューを開いている間だけ。
             //   （スライドパッドは常に生きる。SELECT はケーブが常時落とす）
-            GuiV2::SetButtonBlock(g_visible || (g_overlay.active && g_overlay.mode == OV_CHAT_KANJI));
+            GuiV2::SetButtonBlock(g_visible);
 
             // 下画面ロック: 下画面に操作対象が出ている間。
             //   ★暗幕はこのロックが出す。各所で自前に描かない。
@@ -2482,7 +2433,6 @@ namespace CTRPluginFramework
             g_run = false;
             svcSleepThread(50000000LL);
             g_thread = nullptr;
-            ChatKanji::Dismiss();
             g_open = false;
             g_visible = false;
         }

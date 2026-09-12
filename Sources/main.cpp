@@ -5,7 +5,6 @@
 #include "OwnGui.hpp"
 #include "GuiMenu.hpp"
 #include "GuiV2.hpp"
-#include "ChatKanji.hpp"
 #include <CTRPluginFramework.hpp>
 
 #include <vector>
@@ -71,7 +70,6 @@ exit:
     void    OnProcessExit(void)
     {
         GuiMenu::Shutdown();
-        ChatKanji::Shutdown();
         OwnGuiShutdown();
         GuiNotification::Shutdown();
         ToggleTouchscreenForceOn();
@@ -148,7 +146,6 @@ exit:
 
         delete menu;
         GuiMenu::Shutdown();
-        ChatKanji::Shutdown();
         OwnGuiShutdown();
         GuiNotification::Shutdown();
 

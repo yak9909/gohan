@@ -38,8 +38,7 @@ namespace CTRPluginFramework
         enum Font
         {
             FONT_MAIN = 0,
-            FONT_NUM  = 1,
-            FONT_GAME = 2 // candidate rows: borrowed native Japanese font, private lookup cache
+            FONT_NUM  = 1
         };
 
         // ---- 組み込み / 取り外し（基準仕様 v2 §5）----
