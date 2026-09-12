@@ -1,0 +1,38 @@
+Author: yakuruto
+
+Version: # Plugin version
+    Major: 1
+    Minor: 0
+    Revision: 0
+
+Targets: # Low TitleId of games which are compatibles with this plugin (0 for all)
+    - 0x00086200 # とびだせ どうぶつの森 (JPN 無印)
+    # ★amiibo+ (0x00198D00) は**別ビルドで番地が対応しない**（F-54）。
+    #   本プラグインは番地を焼き込んでいるので、絶対に足さないこと。
+
+Title: gohan
+
+Summary: とびだせ どうぶつの森（日本語版 無印）用の自前 GUI プラグイン
+
+Description: |
+  ゲームの nw::lyt 経路へ自前の Layout ノードを差し込み、
+  上下画面に常時・最前面で描くチートメニューです。
+  OSD ではないので明滅せず、アルファブレンドも効き、開いている間もゲームは止まりません。
+
+  基準仕様 v2（BASELINE/gui_spec_v2）に従います:
+    - 矩形・パネルは nw::lyt::Picture
+    - 文字は自前フォント資源 + 標準の TextWriter/TextBatch 経路
+    - GPU コマンドを 1 語も自分で書かない
+    - 入れるフックは RenderTop / RenderBottom の 2 本だけ
+
+  操作:
+    Select          自前メニューの開閉
+    Select + 十字上  従来の CTRPF メニュー
+
+# ★取りうる値は Console / Citra / Any の 3 つだけ。
+#   実機の番地を焼き込んでいるので Console。
+Compatibility: Console
+
+MemorySize: 10MiB
+
+UsePrivateMemory: false

@@ -1,0 +1,7 @@
+/Build
+*.3gx
+*.elf
+__pycache__/
+/reference/
+/_v1_retired/
+/.github/templates/
