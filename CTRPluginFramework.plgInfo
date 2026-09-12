@@ -33,6 +33,6 @@ Description: |
 #   実機の番地を焼き込んでいるので Console。
 Compatibility: Console
 
-MemorySize: 5MiB
+MemorySize: 10MiB
 
 UsePrivateMemory: false

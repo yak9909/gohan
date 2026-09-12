@@ -29,6 +29,7 @@
 #include "GuiV2.hpp"
 #include "GuiCavesV2.h"
 #include "GuiFontUi.h"
+#include "ChatKanji.hpp"
 
 namespace CTRPluginFramework
 {
@@ -96,8 +97,10 @@ namespace CTRPluginFramework
                 28, 28, 28, 28, 28
             };
             const u8    kBotSlotCaps[] = {
-                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 28
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 28,
+                28, 28, 28, 28, 28, 28, 28, 28
             };
+            const int   kNativeSlots = 8; // dedicated multi-sheet game font rows
 
             const int   kTopSlots    = (int)(sizeof(kTopSlotCaps));
             const int   kBotSlots    = (int)(sizeof(kBotSlotCaps));
@@ -212,7 +215,7 @@ namespace CTRPluginFramework
             // ★プラグイン側の置き場。ここに Picture / フォント資源 / 文字スロットが入る。
             //   大きさは Layout() が検査する（足りなければ Install が失敗する）。
             //   0x80 境界に置いておく（中で 0x20 / 0x80 の整列を仮定しているため）。
-            const u32   kPlugBytes = 0x70000;   // 262,144 B
+            const u32   kPlugBytes = 0x90000;   // plugin-private; game atlas borrow unchanged
             u8          g_mem[kPlugBytes] __attribute__((aligned(0x80)));
 
             // 配置（Install() で決める。アトラスだけ g_gpuBase 起点）
@@ -272,6 +275,9 @@ namespace CTRPluginFramework
                                      : (int)kBotSlotCaps[i - kTopSlots];
             }
 
+            bool NativeSlot(int i) { return i >= kSlots - kNativeSlots; }
+            bool FontFitsSlot(int i, int font) { return NativeSlot(i) == (font == FONT_GAME); }
+
             // ★コマンド語の器（F-342）。**ゲーム流の `(78n+57)&~3` 語は取りすぎ。**
             //   ゲームは 1 字 312 B 取るが、実際に積まれるのは 1 字 48 B しかない。
             //   実際の語数（F-341。実機 23 点で誤差 0。正本 PATCHES/batch_cost_exact.py）
@@ -293,11 +299,19 @@ namespace CTRPluginFramework
 
             // 標準 TextBatch に要るバイト数（基準仕様 v2 §4.3。器だけ F-342 で詰めた）。
             //   align16(44n + 0x28 + align4(ceil(n/8))) + 4 * BatchCmdWords(n)
-            u32     BatchSize(u32 n)
+            u32     SlotCmdWords(int i)
             {
+                const u32 n = (u32)SlotChars(i);
+                // ACNL 0x4D76A8: stock worst case for texture switches per glyph.
+                return NativeSlot(i) ? ((78 * n + 57) & ~3u) : BatchCmdWords(n);
+            }
+
+            u32     BatchSize(int i)
+            {
+                const u32 n = (u32)SlotChars(i);
                 u32 bitmap = AlignUp((n + 7) >> 3, 4);
                 u32 head   = AlignUp(44 * n + 0x28 + bitmap, 16);
-                u32 cmd    = 4 * BatchCmdWords(n);
+                u32 cmd    = 4 * SlotCmdWords(i);
 
                 return head + cmd;
             }
@@ -308,7 +322,7 @@ namespace CTRPluginFramework
                 const u32   n = (u32)SlotChars(i);
 
                 return AlignUp(kTextBoxLen, 0x20) + AlignUp(kMaterialLen, 0x20)
-                     + AlignUp(2 * (n + 1), 0x20) + AlignUp(BatchSize(n), 0x20);
+                     + AlignUp(2 * (n + 1), 0x20) + AlignUp(BatchSize(i), 0x20);
             }
 
             // ------------------------------------------------------------------
@@ -319,6 +333,7 @@ namespace CTRPluginFramework
             //     ペインの寸法が文字の寸法と合わなくなり半画素ずれる（F-311）。
             int     GlyphIndex(u32 code, int font)
             {
+                if (font == FONT_GAME) return ChatKanji::Glyph(code);
                 const unsigned short   *p = font ? kUiCmapNumeric : kUiCmapMisaki;
                 int                     lo = 0;
                 int                     hi = (int)(font ? kUiCmapNumericCount
@@ -343,8 +358,9 @@ namespace CTRPluginFramework
                 return -1;
             }
 
-            int     GlyphAdvance(int gi)
+            int     GlyphAdvance(int gi, int font = FONT_MAIN)
             {
+                if (font == FONT_GAME) return ChatKanji::GlyphAdvance(gi);
                 return gi < 0 ? 0 : (int)kUiCwdh[gi * 3 + 2];
             }
 
@@ -444,6 +460,7 @@ namespace CTRPluginFramework
 
             u32     FontResFontAddr(int font)
             {
+                if (font == FONT_GAME) return ChatKanji::FontAddress();
                 return g_base + g_offFont + (u32)font * kFontFontStep;
             }
 
@@ -777,9 +794,10 @@ namespace CTRPluginFramework
             }
 
             // 空のバッチ（文字数 n ぶん）を初期化する。基準仕様 v2 §4.3 の配置。
-            void    WriteBatch(u32 bt, u32 n)
+            void    WriteBatch(u32 bt, int i)
             {
-                const u32   sz = BatchSize(n);
+                const u32   n = (u32)SlotChars(i);
+                const u32   sz = BatchSize(i);
                 const u32   bits = bt + 44 * n + 0x28;
                 const u32   cmd = AlignUp(bits + ((n + 7) >> 3), 16);
 
@@ -794,7 +812,7 @@ namespace CTRPluginFramework
                 W32(bt + 0x10, cmd);
                 W32(bt + 0x14, cmd);
                 W32(bt + 0x1C, 0);
-                W32(bt + 0x20, BatchCmdWords(n));   // ★器の大きさ（誰も読まないが真値を書く）
+                W32(bt + 0x20, SlotCmdWords(i));   // capacity includes native texture switches
             }
 
             // 文字スロットを「見えない」状態で組む。Commit() が中身を入れる。
@@ -817,7 +835,7 @@ namespace CTRPluginFramework
                 W32(mat + 0x14, 0xFFFFFFFF);
 
                 std::memset((void *)str, 0, 2 * (n + 1));
-                WriteBatch(batch, n);
+                WriteBatch(batch, i);
 
                 W32(tb + 0xD4, str);
                 W32(tb + 0xD8, 0xFFFFFFFF);     // 上の色
@@ -867,7 +885,7 @@ namespace CTRPluginFramework
                     if (gi < 0)
                         continue;
                     W16(str + (u32)n * 2, (u16)cp);
-                    wpx += GlyphAdvance(gi);
+                    wpx += GlyphAdvance(gi, (int)t.font);
                     n++;
                 }
                 W16(str + (u32)n * 2, 0);
@@ -1013,10 +1031,10 @@ namespace CTRPluginFramework
             // 記録コマンドリストの安全弁（§4.7。溢れは無検査なので自前で持つ）
             // ------------------------------------------------------------------
             // 記録量 = 552 B x 文字列の本数 + 48 B x 字数 + 204 B x Picture（F-315）
-            u32     EstimateRecorded(int rects, int strs, int chars)
+            u32     EstimateRecorded(int rects, int strs, int chars, int nativeChars)
             {
                 return (u32)rects * kRecPerRect + (u32)strs * kRecPerStr
-                     + (u32)chars * kRecPerChar;
+                     + (u32)chars * kRecPerChar + (u32)nativeChars * (312 - kRecPerChar);
             }
 
             // ★リストの大きさは画面ごとに違う（OwnGui::WriteCaves が焼き直す）
@@ -1077,7 +1095,7 @@ namespace CTRPluginFramework
         {
             const u32   cp = NextCodepoint(text, index);
 
-            return GlyphAdvance(GlyphIndex(cp, (int)font)) * (scale < 1 ? 1 : scale);
+            return GlyphAdvance(GlyphIndex(cp, (int)font), (int)font) * (scale < 1 ? 1 : scale);
         }
 
         int     TextHeight(int scale)
@@ -1095,7 +1113,7 @@ namespace CTRPluginFramework
                 return 0;
             // ★可変幅なので「文字数 x 送り」では測れない。1 文字ずつ CWDH を引く。
             while (text[i] != '\0')
-                w += GlyphAdvance(GlyphIndex(NextCodepoint(text, i), (int)font));
+                w += GlyphAdvance(GlyphIndex(NextCodepoint(text, i), (int)font), (int)font);
             return w * (scale < 1 ? 1 : scale);
         }
 
@@ -1260,6 +1278,7 @@ namespace CTRPluginFramework
                 u32             objs[kMaxRect + kMaxSlots];
                 int             n = 0;
                 int             chars = 0;
+                int             nativeChars = 0;
                 int             i;
 
                 // ---- 安全弁: 記録リストに収まるところまでで打ち切る ----
@@ -1271,16 +1290,20 @@ namespace CTRPluginFramework
                 while (i < texts)
                 {
                     chars += CountChars(st.texts[i], kMaxChars);
+                    if (st.texts[i].font == FONT_GAME)
+                        nativeChars += CountChars(st.texts[i], kMaxChars);
                     i++;
                 }
                 while (rects > 0
-                       && EstimateRecorded(rects, texts, chars) > limit)
+                       && EstimateRecorded(rects, texts, chars, nativeChars) > limit)
                     rects--;
                 while (texts > 0
-                       && EstimateRecorded(rects, texts, chars) > limit)
+                       && EstimateRecorded(rects, texts, chars, nativeChars) > limit)
                 {
                     texts--;
                     chars -= CountChars(st.texts[texts], kMaxChars);
+                    if (st.texts[texts].font == FONT_GAME)
+                        nativeChars -= CountChars(st.texts[texts], kMaxChars);
                 }
                 if (rects != st.rectCount || texts != st.textCount)
                     Log("[!] 記録リストの安全弁: 矩形 %d->%d / 文字 %d->%d (上限 %u B)",
@@ -1338,7 +1361,8 @@ namespace CTRPluginFramework
                         // 容量表は昇順なので、最初に見つかる空きが最小の枠
                         while (j < slotCount)
                         {
-                            if (!taken[j] && SlotChars(slotBase + j) >= need[t])
+                            if (!taken[j] && FontFitsSlot(slotBase + j, st.texts[t].font)
+                                && SlotChars(slotBase + j) >= need[t])
                             {
                                 pick = j;
                                 break;
@@ -1351,7 +1375,7 @@ namespace CTRPluginFramework
                             j = slotCount - 1;
                             while (j >= 0)
                             {
-                                if (!taken[j])
+                                if (!taken[j] && FontFitsSlot(slotBase + j, st.texts[t].font))
                                 {
                                     pick = j;
                                     break;
