@@ -2,7 +2,8 @@
 
 とびだせ どうぶつの森・日本語版無印向けのCTRPFプラグイン。開発用ソースと仕様書はこのリポジトリで管理する。
 
-- 仕様: [gohan.txt](gohan.txt)。記載された全機能が実装済みという意味ではない。
+- 仕様: [gohan.md](gohan.md)（機能の一覧）と [gohan-menu.md](gohan-menu.md)（項目の挙動）。
+  記載された全機能が実装済みという意味ではない。旧 `gohan.txt` は gohan.md へ移行した。
 - 開発規則: [AGENTS.md](AGENTS.md)。再開時は `work/STATE.md` と `work/SESSION.md` を読む。
 - 現行ソース: `Sources/`・`Includes/`。生成ヘッダは手編集しない。
 - **実機未確認の変更は作業用ブランチへpush。mainは実機確認済みの版だけを反映する。** 新しい変更はmainから `work/<内容>` を作成する。
