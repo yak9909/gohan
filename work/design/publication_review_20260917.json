@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "date": "2026-09-17",
+  "scope": "Publication of existing specification and unadopted architecture review; no implementation/build/hardware test",
+  "branch": "work/spec-md",
+  "source_hashes_unchanged": {
+    "Sources\\GuiMenu.cpp": true,
+    "Includes\\GuiMenu.hpp": true,
+    "Sources\\ShizueSkip.cpp": true,
+    "Includes\\ChatKanji.hpp": true,
+    "Makefile": true
+  },
+  "specification_sha256": {
+    "gohan.md": "cf41d0ed6cb2ab5e83f9a042f0874bfa8e1b22adde201bf6ac1d38c80f4fbe95",
+    "gohan-menu.md": "80576b6f21820dfb9fc274ef0d142f70c719958c0adc946ad338c32762d3347a"
+  },
+  "note": "gohan.md also contains later cheat-reference additions; preserved as documentation, not newly validated patches. clarifications_20260914.json remains historical evidence."
+}

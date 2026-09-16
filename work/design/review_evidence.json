@@ -1,0 +1,19 @@
+{
+  "build_tree_textual_AddItem_calls": 23,
+  "constant_loop_counts_with_one_AddItem_each": [
+    24,
+    12
+  ],
+  "actual_item_count": 57,
+  "kMaxItems": 96,
+  "method": "Count branch-free BuildTree AddItem sites, expand the two constant loops; kLongList loop has no AddItem",
+  "hashes": {
+    "gohan.md": "d2dc52b7b7279eb9e994ea8f6569cf4480a5dc60887adea5d30bd59b6c979a90",
+    "gohan-menu.md": "1de126022689056e5553461fff7bc61b385748101c715a3f822e4c176156ad4b",
+    "Sources\\GuiMenu.cpp": "7cf3c2feef1398fada742dff4e04b85f4783dfc8653acaac1974139564c9b9e2",
+    "Includes\\GuiMenu.hpp": "1cd8a4de27c18b7fd9a7982fad9c16d9197acc4876c3a939a66338b63f3b753b",
+    "Sources\\ShizueSkip.cpp": "6ba4035e8d7b2691441c196871a029ff03e3687fdeb44a80d8aefe29a74f4e37",
+    "Includes\\ChatKanji.hpp": "fe3325be8c84e3711b3d11fd9a91a9f7b61905773644d2150c2d074404dcd7bf",
+    "Makefile": "d6f6984253685df7edbc1c9c4f0c8cfc3d47b43ff793e927e6d44fc33a5f257a"
+  }
+}

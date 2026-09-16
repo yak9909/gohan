@@ -1,0 +1,17 @@
+{
+  "status": "PASS",
+  "date": "2026-09-14",
+  "scope": "Final toggle action semantics; docs only, no implementation/build/hardware/Git publishing",
+  "source_hashes_unchanged": {
+    "Sources\\GuiMenu.cpp": true,
+    "Includes\\GuiMenu.hpp": true,
+    "Sources\\ShizueSkip.cpp": true,
+    "Includes\\ChatKanji.hpp": true,
+    "Makefile": true
+  },
+  "current_specification_sha256": {
+    "gohan.md": "6235221292830a9c02630dc9fe884d190452672cd80a3f7be1a0e9c1ff0ed516",
+    "gohan-menu.md": "80576b6f21820dfb9fc274ef0d142f70c719958c0adc946ad338c32762d3347a"
+  },
+  "resolved_question": true
+}
