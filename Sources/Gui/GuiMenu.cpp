@@ -78,23 +78,24 @@ namespace CTRPluginFramework
                 return in;
             }
 
-            // ★入力ロックは毎フレーム条件から決める（F-350）。
-            void    SyncInputLock(void)
+            bool    g_touchLatch = false;
+
+            // ★入力遮断は毎フレーム条件から決める（F-350）。描画の有無に縛らない。
+            void    SyncInputLock(const Input &in)
             {
                 // ボタン遮断: 操作可能な UI が出ている間（gameInputCaptureState）
                 GuiRenderer::SetButtonBlock(ButtonBlock());
-                // 下画面ロック（タッチ遮断＋暗幕）: 下画面に操作対象が出ている間
-                if (GuiKeyboard::Active())
-                    GuiRenderer::SetBottomLock(true, GuiKeyboard::DimColor(), GuiKeyboard::DimFadeMs());
-                else if (BottomLocked())
-                    GuiRenderer::SetBottomLock(true, kColDim, kBottomAnimMs);
-                else
-                    GuiRenderer::SetBottomLock(false);
+                // タッチ遮断: 下画面 UI がある間（退場中も）。消えた後も指が離れるまで続ける。
+                //   ホットキー入力待ちを「無効」「取消」のタッチで閉じた瞬間に遮断を外すと、
+                //   触れたままの指がゲームへ新しいタッチとして届いていた。
+                const bool present = BottomUiPresent();
+
+                g_touchLatch = present || (g_touchLatch && in.touch);
+                GuiRenderer::SetTouchBlock(g_touchLatch);
             }
 
             void    Draw(u32 now)
             {
-                SyncInputLock();
                 BuildTop(now);
                 BuildBottom(now);
                 GuiRenderer::Commit();
@@ -125,6 +126,7 @@ namespace CTRPluginFramework
                             g_pendHave = false;
                         }
                         Step(now, in);
+                        SyncInputLock(in);
                         if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal)
                         {
                             Draw(now);

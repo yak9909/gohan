@@ -1121,35 +1121,12 @@ namespace CTRPluginFramework
         }
 
         // ==================================================================
-        // ★下画面の操作ロックと暗幕（F-350）
+        // ★下画面のタッチ遮断と暗幕（F-350）
+        //   タッチ遮断と暗幕は別々に決める。暗幕は下画面 UI の出現量に合わせて描き、
+        //   タッチ遮断は UI が退場し終わり、さらに指が離れるまで続ける（GuiMenu が決める）。
         // ==================================================================
         namespace
         {
-            bool    g_lockOn    = false;
-            u32     g_lockColor = kBottomDimDefault;
-            int     g_lockMs    = kBottomDimFadeMs;
-            u32     g_lockStart = 0;
-            float   g_lockFrom  = 0.0f;
-
-            float   LockAmount(u32 now)
-            {
-                const float to = g_lockOn ? 1.0f : 0.0f;
-
-                if (g_lockMs <= 0)
-                    return to;
-
-                const u32   d = now - g_lockStart;
-
-                if ((s32)d < 0 || d >= (u32)g_lockMs)
-                    return to;
-
-                // ui-model.js と同じ easeOutCubic
-                const float t = (float)d / (float)g_lockMs;
-                const float e = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
-
-                return g_lockFrom + (to - g_lockFrom) * e;
-            }
-
             // 入力遮断ケーブの制御ブロック（+0 ボタン / +1 タッチ）
             void    WriteInputFlag(u32 off, bool on)
             {
@@ -1157,43 +1134,20 @@ namespace CTRPluginFramework
             }
         }
 
-        void    SetBottomLock(bool on, u32 color, int fadeMs)
-        {
-            const u32   now = (u32)(svcGetSystemTick()
-                                    / (u64)(SYSCLOCK_ARM11 / 1000));
-
-            if (g_lockOn != on)
-            {
-                g_lockFrom = LockAmount(now);
-                g_lockStart = now;
-                g_lockOn = on;
-                // ★ゲーム側のタッチ遮断は「要求と同時」に切り替える。
-                //   暗幕のフェードを待つと、暗くなる前に触れてしまう。
-                WriteInputFlag(1, on);
-            }
-            if (on)
-            {
-                g_lockColor = color;
-                g_lockMs = fadeMs;
-            }
-        }
-
-        bool    BottomLocked(void)  { return g_lockOn; }
+        void    SetTouchBlock(bool on)  { WriteInputFlag(1, on); }
 
         void    SetButtonBlock(bool on) { WriteInputFlag(0, on); }
 
-        void    DrawBottomDim(u32 now)
+        void    DrawBottomDim(u32 color, float amount)
         {
-            const float a = LockAmount(now);
+            const float a = amount < 0.0f ? 0.0f : (amount > 1.0f ? 1.0f : amount);
 
             if (a <= 0.0f)
                 return;
 
-            const u32   base = g_lockColor;
-            const u32   al = (u32)((float)((base >> 24) & 0xFF) * a + 0.5f);
+            const u32   al = (u32)((float)((color >> 24) & 0xFF) * a + 0.5f);
 
-            FillRect(SCREEN_BOTTOM, 0, 0, 320, 240,
-                     (base & 0x00FFFFFF) | (al << 24));
+            FillRect(SCREEN_BOTTOM, 0, 0, 320, 240, (color & 0x00FFFFFF) | (al << 24));
         }
 
         void    Begin(Screen screen)

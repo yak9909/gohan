@@ -1,9 +1,9 @@
-# 現在地 — Simulator 移植とソース整理（2026-09-17）
+# 現在地 — 実機確認後の修正（2026-09-17）
 
-利用者指示: gohan-gui-simulator（pull 済み 0cabaed）と gohan-menu.md の仕様・見た目を gohan.3gx へ全移植し、GuiV2 等の版表記ファイル名をやめて標準的な範囲でフォルダ分け。
+work/simulator-port の Simulator 移植（060fa1d）は利用者が**実機で動作確認**。続けて修正依頼を実装した（**この修正は実機未確認**）。
 
-- ブランチ `work/simulator-port`（work/spec-md から）。**実機未確認なので main へ入れない。**
-- 完了: フォルダ分け（Gui/Fonts/ChatKanji/Cheats/Debug）、GuiV2→GuiRenderer、GuiMenu を Internal/Model/Draw/Items/本体へ分割し Simulator の全機能を移植、検証器追従、clean build、PC 検証一式 PASS（詳細 SESSION）。
-- 成果物: gohan.3gx 874750B SHA 7ad9fc3d…（src/gohan/ のビルド出力。Git 管理外）。実機で確認済みの 3gx は project_v2/artifacts/plugins/chat_kanji/（201af7e9…）。
-- Simulator に合わせて変えた既存挙動: 通知の題（SELECTED/ACTION/CHEAT ENABLED・DISABLED）、ホットキー反転時のエンジン通知なし、ホットキー入力で A/B/X も記録（無効/取消はタッチ）。
-- 次: 利用者の実機確認。確認結果と成果物 SHA を記録してから main へ反映を判断する。
+- 入力待ち中にゲーム側の下画面が反応する → タッチ遮断を「下画面 UI がある間＋指が離れるまで」に変更（原因は推定）。
+- トグル式チートの通知 → 効果（関数内定義）の ON/OFF 変化で出す。
+- gohan issues #1〜#5 を実装（退場中の入力、暗幕が戻らない、暗幕のずれ、゛゜表記、START 単押し）。issue はまだ閉じていない。
+- 成果物 gohan.3gx 874787B SHA 72b3c9d3…。PC 検証一式 PASS（詳細 SESSION）。
+- 次: 利用者の実機確認（特に START 単押し・入力待ち中のタッチ・暗幕）。確認後に issue を閉じるか、main への反映を判断する。

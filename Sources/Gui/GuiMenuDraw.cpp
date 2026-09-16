@@ -651,8 +651,14 @@ namespace CTRPluginFramework
             void    BuildBottom(u32 now)
             {
                 GuiRenderer::Begin(BOT);
-                // 暗幕は GuiRenderer の下画面ロックが出す（F-350）。ここで自前に描かない。
-                GuiRenderer::DrawBottomDim(now);
+                // 暗幕は下画面 UI の出現量に合わせて 1 か所だけで描く（F-350 / gohan issue #2 #3）
+                {
+                    u32     dimColor;
+                    float   dimAmount;
+
+                    if (BottomDim(now, dimColor, dimAmount))
+                        GuiRenderer::DrawBottomDim(dimColor, dimAmount);
+                }
                 if (g_overlay.active && g_overlay.screen == 1)
                     DrawScreenListbox(BOT, 52, 216, 320, now);
                 else if (g_capture.active)

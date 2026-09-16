@@ -80,6 +80,7 @@ namespace CTRPluginFramework
                 bool    g_toggleState[kMaxItems];
 
                 char    g_msg[128];
+                u32     g_noticeNow = 0;        // SetCheckboxEffect の通知時刻（HandleKey / Update が入れる）
                 bool    g_kbHandled = false;    // このフレームで GuiKeyboard::Handle を呼んだか
 
                 bool    IsDir(int bit)
@@ -593,6 +594,8 @@ namespace CTRPluginFramework
                 if (EffectActive(idx) == active)
                     return false;
                 g_behavior[idx].SetActive(idx, active);
+                // 通知は関数内定義（効果）の ON/OFF が実際に変わったときに出す（項目の適用ではない）
+                AddNotice(active ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, g_noticeNow);
                 return true;
             }
 
@@ -655,7 +658,8 @@ namespace CTRPluginFramework
                     // OFF 適用: 必ず効果 OFF（gohan-menu.md §4.3）。
                     if (HasEffect(ItemIndex(it)))
                         SetCheckboxEffect(it, it.applied != 0 && it.appliedHotkey == 0);
-                    AddNotice(it.applied ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, now);
+                    else
+                        AddNotice(it.applied ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, now);
                 }
                 else if (valueChanged
                          && (it.type == ITEM_VALUE || it.type == ITEM_SLIDER
@@ -1133,6 +1137,10 @@ namespace CTRPluginFramework
             // ================================================================
             static void HandleKey(int bit, u32 now, bool pressed, bool repeated, const Input &in)
             {
+                // 退場アニメーション中のメニューは閉じたものとして扱う（gohan issue #1）
+                const bool  menuOpen = g_visible && g_openTarget != 0.0f;
+
+                g_noticeNow = now;
                 if (g_capture.active)
                 {
                     HandleHotkeyCapture(bit, pressed, repeated, now);
@@ -1153,7 +1161,7 @@ namespace CTRPluginFramework
                         ChooseDialog(false, now);
                     return;
                 }
-                if (!g_visible && !OverlayActive() && !g_inline.active && pressed && !repeated
+                if (!menuOpen && !OverlayActive() && !g_inline.active && pressed && !repeated
                     && TriggerAppliedHotkeys(now))
                     return;
                 if (!pressed)
@@ -1171,7 +1179,7 @@ namespace CTRPluginFramework
                     HandleOverlay(bit, now, repeated, in);
                     return;
                 }
-                if (!g_visible)
+                if (!menuOpen)
                     return;
                 if (g_inline.active)
                 {
@@ -1313,6 +1321,7 @@ namespace CTRPluginFramework
             // ================================================================
             static void Update(u32 now)
             {
+                g_noticeNow = now;
                 UpdateHoldAction(now);
                 if (g_openTarget == 0.0f && OpenAmount(now) <= 0.001f && g_visible)
                 {
@@ -1506,12 +1515,39 @@ namespace CTRPluginFramework
                 return g_visible || g_dialog.type != DLG_NONE || OverlayActive() || g_inline.active;
             }
 
-            bool    BottomLocked(void)
+            // gameInputCaptureState の blockGameTouch（下画面の overlay。退場中も含む）
+            bool    BottomUiPresent(void)
             {
-                return (g_overlay.active && g_overlay.screen == 1 && !g_overlay.anim.closing)
-                       || (g_capture.active && !g_capture.anim.closing)
-                       || (g_slider.active && !g_slider.anim.closing)
-                       || GuiKeyboard::Active();
+                return (g_overlay.active && g_overlay.screen == 1)
+                       || g_capture.active || g_slider.active || GuiKeyboard::Active();
+            }
+
+            // app.js drawBottomOverlay の暗幕（色 x 出現量）
+            bool    BottomDim(u32 now, u32 &color, float &amount)
+            {
+                if (g_overlay.active && g_overlay.screen == 1)
+                {
+                    color = kColDim;
+                    amount = AnimAmount(g_overlay.anim, now);
+                }
+                else if (g_capture.active)
+                {
+                    color = kColDim;
+                    amount = AnimAmount(g_capture.anim, now);
+                }
+                else if (g_slider.active)
+                {
+                    color = kColDim;
+                    amount = AnimAmount(g_slider.anim, now);
+                }
+                else if (GuiKeyboard::Active())
+                {
+                    color = GuiKeyboard::DimColor();
+                    amount = GuiKeyboard::VisibleAmount(now);
+                }
+                else
+                    return false;
+                return amount > 0.0f;
             }
 
             void    ResetState(void)

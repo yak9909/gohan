@@ -1,3 +1,25 @@
+# 実機確認後の修正（2026-09-17 開始・最新）
+
+利用者: work/simulator-port（060fa1d, 3gx 7ad9fc3d…）が**実機で動作**。修正依頼:
+1. ホットキー入力待ちの間、下画面を操作不能にする。
+2. トグル式チート（PatchList/ToggleEffect）の通知を、メニュー項目のON/OFF適用ではなく関数内定義（効果）のON/OFFの変化で出す。
+3. yak9909/gohan の open issues を解決: #1 退場アニメ中も操作を受け付ける / #2 ホットキーで開いた文字・数値入力を閉じても暗幕が戻らない / #3 文字キーボード退場時の暗幕フェードがずれる / #4 濁点・半濁点キーを「゛」「゜」表記に / #5 STARTは単押し（押して離す）で初めて押下扱い（START+十字上等のホットキーでゲームにSTARTを渡さない）。
+制約: 引き続き作業用ブランチ（work/simulator-port）。実機未確認の変更はmainへ入れない。
+利用者の回答/訂正:
+- 1 は「ゲーム側の下画面が反応する」。推定原因: 入力待ちを無効/取消タッチで閉じた瞬間にタッチ遮断を外し、指が残っているとゲームへ新規タッチが届く。対策: タッチ遮断は下画面UIが存在する間（退場中も）＋離すまで維持。暗幕はUIの出現量に連動（#2/#3も同根: 暗幕を独自タイマーで描き再描画が止まる／キーボード退場と別タイミング）。
+- #5 START/SELECT の経路は F-355（reference/old_project/RE/FINDINGS.md）で特定済み。**IDAの追加解析は不要**と指摘された（idalibで開いたが未保存で閉じた）。既存のケーブB（0x003534E0、読み替え前 bit2=SELECT/bit3=START）を生成する tools/patches/input_block_cave.py を書き換え、GuiCaves.h 再生成＋OwnGui の制御ブロック初期化で実装する。
+  設計: 制御ブロック 0x009B7010 +3=START単押しモード(導入時1) +4=判定中 +5=押下合成の残り。ケーブ内でフレーム単位に判定（STARTを押した時に他ボタン無し→離した時に1フレーム hold+trig、次フレーム release を合成。押している間に他ボタンが入れば取り消し）。STARTの生ビットは常に削る。ケーブBは語数が増えるので置き場を 0x00838200（原本で0、未使用）へ移す。
+- #4 「゛」(U+309B)「゜」(U+309C) は美咲BDFにあるがアトラスに無い。simulatorリポジトリは触らず、make_font_ui.py が BDF から追加字形を読む形で足す案。
+実装・検証（2026-09-17、ビルドとPC検証まで。実機未確認）:
+- 入力待ち等: GuiRenderer の SetBottomLock を廃止し SetTouchBlock と DrawBottomDim(色,出現量) に分離。GuiMenu が毎フレーム SyncInputLock（下画面UIがある間＋指が離れるまでタッチ遮断）。暗幕は BottomDim（Simulator の backdrop×amount）。
+- 通知: SetCheckboxEffect で効果が変わった時に CHEAT ENABLED/DISABLED。効果未登録の項目は従来どおり適用で通知。
+- #1: HandleKey で g_visible && g_openTarget!=0 のときだけメニュー操作（退場中はホットキーも閉じた扱い）。
+- #4: make_font_ui.py が simulator の BDF から ゛゜ を追加（美咲387字）。GuiKeyboard の表記を変更。
+- #5: input_block_cave.build_cave_b に START 単押し（68語、0x00838200）。export_gui_v2 で再生成、OwnGui が +3=1/+4=0/+5=0 を初期化・取り外しで 0。objdump で命令確認、tools/patches/verify_start_tap.py（Unicorn ARM11 で 7 シナリオ＋乱数8000フレームを参照モデルと照合、判定を壊すと検出）。
+- 検証: verify_menu_port（シナリオ3388＋乱数6系列一致、#1 の手順追加、修正を外すと検出。キーボード表示中のタッチはキーボード検証側で照合するため送らない）、verify_plugin_port_v2 異常0（ケーブBの位置と BIC #8 の検査を追加）、verify_keyboard_port PASS、shizue --artifact PASS、リンク済みELF監査 PASS（命令9579/分岐1688/リテラル767）。暗幕がキーボードの出現量に比例し閉じ切ると消えることを捕獲描画で確認。
+- 成果物: gohan.3gx 874787B SHA 72b3c9d38465b2925a11853737c82683d48221dbe7c27f69e3d8f588e9584c8b。
+- 注意: タッチの原因は推定（実機で未観測）。START はケーブBの呼び出し条件 byte_9778D8==0 の間だけ効く（SELECT 遮断と同じ条件）。
+
 # Simulator移植とソース整理（2026-09-17開始）
 
 ## 最新指示（利用者）

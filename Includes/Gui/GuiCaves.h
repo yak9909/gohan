@@ -93,20 +93,30 @@ static const unsigned long kGuiInputHookAddr  = 0x0053CDF4;
 static const unsigned long kGuiInputHookOrig  = 0xEB001823;
 static const unsigned long kGuiInputHookBl    = 0xEB0BEC89;
 
-// ★ケーブ B — SELECT を「START への読み替え」の手前で消す（F-355）
+// ★ケーブ B — SELECT を「START への読み替え」の手前で消し、START を単押しだけにする（F-355 / gohan issue #5）
+//   制御ブロック +2 SELECT 遮断 / +3 START 単押し / +4 判定中 / +5 押下合成の残り（+4 と +5 はケーブが使う）
 //   ゲームは `sub_483020` で **SELECT(bit2) を START(bit3) に読み替えて
 //   bit2 を消す**（SELECT は START の別名）。だから sead 層では区別できない。
 //   読み替えの直前で bit2 だけ落とせば、SELECT だけが消えて START は残る。
 static const unsigned long kGuiInputCaveB[] = {
-    0xE59F3030, 0xE5D3C002, 0xE35C0000, 0x0A000008, 0xE590C000, 0xE3CCC004,
-    0xE580C000, 0xE590C004, 0xE3CCC004, 0xE580C004, 0xE590C008, 0xE3CCC004,
-    0xE580C008, 0xEAF12BD1, 0x009B7010,
+    0xE59F3100, 0xE5D3C003, 0xE35C0000, 0x0A000030, 0xE92D0030, 0xE5901000,
+    0xE5902004, 0xE59F40E8, 0xE5D35004, 0xE3120008, 0x0A000003, 0xE3A05001,
+    0xE1110004, 0x13A05000, 0xEA000003, 0xE3110008, 0x0A000001, 0xE1110004,
+    0x13A05000, 0xE5902008, 0xE3120008, 0x0A000003, 0xE3550000, 0x13A0C002,
+    0x15C3C005, 0xE3A05000, 0xE5C35004, 0xE3C11008, 0xE5902004, 0xE3C22008,
+    0xE5802004, 0xE5902008, 0xE3C22008, 0xE5802008, 0xE5D3C005, 0xE35C0002,
+    0x1A000006, 0xE3811008, 0xE5902004, 0xE3822008, 0xE5802004, 0xE3A0C001,
+    0xE5C3C005, 0xEA000006, 0xE35C0001, 0x1A000004, 0xE5902008, 0xE3822008,
+    0xE5802008, 0xE3A0C000, 0xE5C3C005, 0xE5801000, 0xE8BD0030, 0xE5D3C002,
+    0xE35C0000, 0x0A000008, 0xE590C000, 0xE3CCC004, 0xE580C000, 0xE590C004,
+    0xE3CCC004, 0xE580C004, 0xE590C008, 0xE3CCC004, 0xE580C008, 0xEAF12B45,
+    0x009B7010, 0x0000FFF7,
 };
-static const unsigned long kGuiInputCaveBCount = 15;
-static const unsigned long kGuiInputCaveBBase  = 0x008380A0;
+static const unsigned long kGuiInputCaveBCount = 68;
+static const unsigned long kGuiInputCaveBBase  = 0x00838200;
 static const unsigned long kGuiInputHookBAddr  = 0x003534E0;
 static const unsigned long kGuiInputHookBOrig  = 0x0B04BECE;
-static const unsigned long kGuiInputHookBBl    = 0x0B1392EE;   // ★条件は EQ のまま
+static const unsigned long kGuiInputHookBBl    = 0x0B139346;   // ★条件は EQ のまま
 
 // CAVE_N が吐き出すキャッシュの範囲。借りたヒープの番地に差し替える。
 static const unsigned long kGuiCaveNTexVaIndex  = 9;

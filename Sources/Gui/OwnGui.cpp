@@ -431,9 +431,13 @@ namespace CTRPluginFramework
 
             // 制御ブロックを初期化してからケーブを書く
             //   +0 ボタン遮断 / +1 タッチ遮断 / +2 SELECT 遮断（★常に 1）
+            //   +3 START 単押し（★常に 1。gohan issue #5）/ +4 判定中・+5 押下合成（ケーブが使う）
             *(volatile u8 *)(kGuiInputCtl + 0) = 0;
             *(volatile u8 *)(kGuiInputCtl + 1) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 4) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 5) = 0;
             *(volatile u8 *)(kGuiInputCtl + 2) = 1;
+            *(volatile u8 *)(kGuiInputCtl + 3) = 1;
             i = 0;
             while (i < kGuiInputCaveCount)
             {
@@ -493,6 +497,9 @@ namespace CTRPluginFramework
             *(volatile u8 *)(kGuiInputCtl + 0) = 0;
             *(volatile u8 *)(kGuiInputCtl + 1) = 0;
             *(volatile u8 *)(kGuiInputCtl + 2) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 3) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 4) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 5) = 0;
             while (i < kGuiInputCaveCount)
             {
                 Process::Patch(kGuiInputCaveBase + i * 4, 0);

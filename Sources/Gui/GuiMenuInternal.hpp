@@ -324,7 +324,8 @@ namespace CTRPluginFramework
             void    PrimeInput(u16 held);
             bool    HoldProgress(u32 now, float &progress, const char *&label);
             bool    ButtonBlock(void);
-            bool    BottomLocked(void);
+            bool    BottomUiPresent(void);         // 下画面に操作 UI がある（退場中も含む）
+            bool    BottomDim(u32 now, u32 &color, float &amount);
 
             // ---- 描画（GuiMenuDraw.cpp）----
             void    BuildTop(u32 now);

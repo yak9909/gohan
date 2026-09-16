@@ -75,20 +75,12 @@ namespace CTRPluginFramework
         int         MaxRects(Screen screen);
 
         // ================================================================
-        // ★下画面の操作ロック（F-350）
-        //   `SetBottomLock(true, ...)` で
-        //     (1) ゲーム側のタッチを遮断（入力遮断ケーブの旗 +1）
-        //     (2) 下画面全体に半透明の暗幕を出す（登場・退場フェードつき）
-        //   キーボードや下画面リストボックスは**自前で暗幕を描かず**これを呼ぶ。
-        //   色とフェード時間は引数で変えられる。
+        // ★下画面のタッチ遮断と暗幕（F-350）
+        //   暗幕は下画面 UI の出現量（0..1）を掛けて描く（Simulator の backdrop と同じ）。
+        //   キーボードや下画面リストボックスは**自前で暗幕を描かず** DrawBottomDim を使う。
         // ================================================================
-        const u32   kBottomDimDefault = 0xB8111410;   // rgba(16,20,17,.72)
-        const int   kBottomDimFadeMs  = 180;
-
-        void        SetBottomLock(bool on, u32 color = kBottomDimDefault,
-                                  int fadeMs = kBottomDimFadeMs);
-        bool        BottomLocked(void);          // 要求されている状態
-        void        DrawBottomDim(u32 now);      // ★BuildBottom の先頭で呼ぶ
+        void        SetTouchBlock(bool on);      // ゲーム側のタッチ遮断（入力遮断ケーブの旗 +1）
+        void        DrawBottomDim(u32 color, float amount);   // ★BuildBottom の先頭で 1 回だけ
         void        SetButtonBlock(bool on);     // ゲーム側のボタン遮断（スライドパッドは残る）
         int         MaxTexts(Screen screen);
         int         MaxChars(Screen screen);

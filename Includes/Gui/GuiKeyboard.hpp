@@ -22,9 +22,9 @@ namespace CTRPluginFramework { namespace GuiKeyboard {
     void OpenNumber(int item, int32_t value, int32_t minimum, int32_t maximum,
                     Format format, bool apply, uint32_t now);
     bool Active();
-    // ★下画面ロックの暗幕（F-350）。自前では描かず、この 2 つを GuiMenu へ渡す。
+    // ★下画面の暗幕（F-350）。自前では描かず、色と出現量を GuiMenu へ渡す。
     uint32_t DimColor();
-    int      DimFadeMs();
+    float    VisibleAmount(uint32_t now);   // 登場・退場アニメーションの量（0..1）
     void Cancel(uint32_t now);
     void Update(uint32_t now);
     // Touch is a sampled level; the module computes its own rising edge.

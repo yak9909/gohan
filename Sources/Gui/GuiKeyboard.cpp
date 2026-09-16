@@ -105,9 +105,10 @@ namespace {
         Rect(x,y+1,1,h-2,line,a); Rect(x+w-1,y+1,1,h-2,line,a);
         Rect(x+1,y+1,w-2,h-2,fill,a);
     }
+    // 濁点・半濁点キーはソフトウェアキーボードと同じく「゛」「゜」と書く（issue #4）。
     const char *Display(const char *key,char *buf) {
         static const char *const labels[][2] = {
-            {"DAKUTEN",u8"濁点"},{"HANDAKUTEN",u8"半濁点"},{"SMALL",u8"小字"},
+            {"DAKUTEN",u8"゛"},{"HANDAKUTEN",u8"゜"},{"SMALL",u8"小字"},
             {"HIRAGANA",u8"かな"},{"KATAKANA",u8"カナ"},{"BS",u8"消去"},{"ENTER",u8"改行"},
             {"LONG",u8"ー"},{"SPACE",u8"空白"},{"CONFIRM",u8"けってい"},{"BLANK",""},
             {"CAPS","Caps"},{"SHIFT","Shift"},{"AIU",u8"あいう"},{"SYMBOL",u8"記号"},
@@ -304,18 +305,18 @@ void Handle(int dx,int dy,bool accept,bool cancel,bool touch,int tx,int ty,uint3
         }
     }
 }
-// ★下画面ロックの暗幕の色と時間（F-350）。GuiMenu::SyncInputLock が読む。
+// ★下画面の暗幕の色（F-350）。GuiMenu が出現量を掛けて描く。
 //   文字入力は薄め（Simulator の TEXT_KEYBOARD.backdropAlpha = 0.38）、
-//   数値入力はリストボックスと同じ濃さ。
+//   数値入力はリストボックスと同じ濃さ（BOTTOM_OVERLAY.backdropAlpha = 0.72）。
 uint32_t DimColor(void) { return s.kind==TEXT ? 0x61000000u : 0xB8111410u; }
-int      DimFadeMs(void) { return 180; }
+float    VisibleAmount(uint32_t now) { return Active() ? Amount(now) : 0.0f; }
 
 void Draw(uint32_t now) {
     if(!Active()) return;
     const float a=Amount(now);
     if(a<=0) return;
     // ★暗幕は GuiRenderer の「下画面ロック」が出す（F-350）。ここでは描かない。
-    //   色と時間は DimColor() / DimFadeMs() で外へ渡している。
+    //   色と出現量は DimColor() / VisibleAmount() で外へ渡している。
     if(s.kind==NUMBER) {
         Label(12,10,s.hex?u8"数値入力 HEX":u8"数値入力 DEC",0xFFA4E463,a);
         Frame(12,25,296,30,0xFF47513F,0xBF090A08,a);
