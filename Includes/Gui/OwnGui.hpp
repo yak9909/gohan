@@ -14,7 +14,7 @@ namespace CTRPluginFramework
     //   4. フック 2 本                  … RenderTop / RenderBottom
     //   ★描画のためのフックは 1 本も入れない（基準仕様 v2 §1）。
     //
-    // 借りたヒープの中身（Picture / フォント資源 / TextBox）は GuiV2 が組む。
+    // 借りたヒープの中身（Picture / フォント資源 / TextBox）は GuiRenderer が組む。
     void    OwnGuiToggle(MenuEntry *entry);
 
     // プラグイン終了時に必ず素へ戻すため main から呼ぶ。

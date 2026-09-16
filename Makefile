@@ -16,8 +16,8 @@ TARGET		:= 	gohan
 PLGINFO 	:= 	CTRPluginFramework.plgInfo
 
 BUILD		:= 	Build
-INCLUDES	:= 	Includes
-SOURCES 	:= 	Sources
+INCLUDES	:= 	Includes Includes/Gui Includes/Fonts Includes/ChatKanji Includes/Cheats Includes/Debug
+SOURCES 	:= 	Sources Sources/Gui Sources/Fonts Sources/ChatKanji Sources/Cheats Sources/Debug
 
 #---------------------------------------------------------------------------------
 # options for code generation

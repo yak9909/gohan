@@ -1,6 +1,6 @@
 // ★自動生成。手で編集しないこと。
-// 生成元: PATCHES/make_font_ui.py
-//   字形は Plugin/.../Sources/MisakiGothic2nd8.cpp と
+// 生成元: tools/patches/make_font_ui.py
+//   字形は src/.../Sources/Fonts/MisakiGothic2nd8.cpp と
 //   PixelMplus10Numeric8.cpp（Simulator の公式 BDF 抽出）からそのまま取る。
 //
 // 1 枚のシートに 2 フォントを同居させ、ResFont を 2 つ作る。

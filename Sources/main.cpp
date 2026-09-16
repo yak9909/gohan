@@ -4,7 +4,7 @@
 #include "LinearAllocTest.hpp"
 #include "OwnGui.hpp"
 #include "GuiMenu.hpp"
-#include "GuiV2.hpp"
+#include "GuiRenderer.hpp"
 #include "ChatKanji.hpp"
 #include <CTRPluginFramework.hpp>
 

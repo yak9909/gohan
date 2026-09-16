@@ -6,7 +6,7 @@
 namespace CTRPluginFramework
 {
     // 自前チートメニュー（CTRPF-GUI-Simulator の MENU を最小構成で移植）。
-    // 描画は GuiV2（基準仕様 v2）。開いている間もゲームは止まらない。
+    // 描画は GuiRenderer（基準仕様 v2）。開いている間もゲームは止まらない。
     namespace GuiMenu
     {
         bool    Initialize(void);

@@ -1,8 +1,8 @@
 // ★自動生成。手で編集しないこと。
-// 生成元: PATCHES/export_gui_v2.py
-//         （ケーブの実体は PATCHES/cave_node_record.py の builder）
+// 生成元: tools/patches/export_gui_v2.py
+//         （ケーブの実体は tools/patches/cave_node_record.py の builder）
 //
-// 基準仕様 v2（BASELINE/gui_spec_v2/README.md）に対応する。
+// 基準仕様 v2（reference/old_project/BASELINE/gui_spec_v2/README.md）に対応する。
 //   描画はゲームの Layout_RecordPaneTree がやるので、
 //   ケーブは **A1 / A2（ノード登録）と N（安全スタブ）の 3 本だけ**、
 //   フックは **RenderTop / RenderBottom の 2 本だけ**。
@@ -181,7 +181,7 @@ static const unsigned long kShared     = 0x100;
 static const unsigned long kBasePosCenter = 0x14;
 static const unsigned long kFmtLA4     = 2;
 
-// ---- 確保 / 解放ケーブ（PATCHES/alloc_lyt_heap.py の builder）----
+// ---- 確保 / 解放ケーブ（tools/patches/alloc_lyt_heap.py の builder）----
 //   ★アロケータは **ゲームのスレッド（フック内）から呼ぶ**こと。
 //     プラグインのスレッドから直接呼んではいけない（DOCS/ctrpf_plugin.md 3 節）。
 //   使い方: ケーブを書く -> Render_FrameEnd をフック -> スロットが埋まるまで待つ
@@ -205,7 +205,7 @@ static const unsigned long kFreeCave[] = {
 };
 static const unsigned long kFreeCaveCount = 17;
 
-// ---- コマンドリストの削除ケーブ（F-317。PATCHES/free_cmdlists.py）----
+// ---- コマンドリストの削除ケーブ（F-317。tools/patches/free_cmdlists.py）----
 //   ★A1/A2 のフックを**外してから**使うこと。
 //     外す前に削除すると、次のフレームで A1/A2 がまた作り直す。
 //   ★束縛中のリストは消さない守りが入っている

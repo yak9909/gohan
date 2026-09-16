@@ -1,3 +1,31 @@
+# Simulator移植とソース整理（2026-09-17開始）
+
+## 最新指示（利用者）
+gohan-gui-simulatorをpull（済: 4083d70→0cabaed）。simulatorとgohan-menu.mdの仕様・見た目を把握し、gohan.3gxへ全て移植。GuiV2等バージョン表記のソース名をやめ、標準的な範囲でフォルダ/ファイル分け（やりすぎない）。必要ならファイル名変更も可。
+
+## 制約
+- 実機未確認 → branch work/simulator-port（work/spec-mdから作成）。mainへ入れない。
+- 実機確認済み3gx SHA=201af7e9…は project_v2/artifacts/plugins/chat_kanji/gohan.3gx に保存済み。src/gohan/gohan.3gxはビルドで上書きされうる。
+- 描画・しずえフックを無関係に変えない。生成ヘッダは手編集しない（生成器側を直す）。
+- ビルド前/後の検証必須。実機操作はしない（依頼外）。
+- project_v2側の検証器(tools/patches/verify_plugin_port_v2等)はソース名を正規表現で読むので改名時は追従が必要。
+
+## 基準確認（2026-09-17）
+- 変更前の検証: verify_plugin_port_v2 異常0 / verify_shizue_hook_registers PASS / verify_keyboard_port は**pull後のSimulatorで失敗**（数値キーボードのOKが即閉じ→新Simulatorは退場アニメ。oracle側の追従が必要）。ログ project_v2/work/logs/simport/baseline_*.log
+- 未変更ソースのclean build: 863890B SHA b8e76e05…。確認済み201af7e9…と13755B差だが nm の全3093シンボル名・サイズ一致＝リンク順のみの差。
+- フォント: Simulatorが描く文字は全てアトラス(美咲385+数字27)に既存。アトラス再生成不要。
+- 上画面文字スロット: [X]分割/SYNC/長押しバー/実行確認ダイアログで追加が要る（GuiV2 kTopSlotCaps）。
+
+## 進捗
+- [ ] simulator(ui-model.js/app.js/README)とgohan-menu.md読了、差分表作成
+- [ ] 移植実装
+- [x] Phase A ソース改名/フォルダ分け（Sources|Includes/{Gui,Fonts,ChatKanji,Cheats,Debug}）。GuiV2→GuiRenderer（名前空間も）、GuiCavesV2.h→GuiCaves.h。未使用のテンプレート残骸 Helpers/cheats/Unicode.h/GuiFontNw.h を削除。Makefile の SOURCES/INCLUDES を追従。
+  生成器(export_gui_v2/make_font_ui/export_keyboard_layout)の出力先を更新し再生成→差分はコメント行のみ。clean build 864325B、名前の置換を正規化すると全シンボル名・サイズが基準と一致。
+  検証器パス更新: verify_plugin_port_v2 異常0、shizue --artifact PASS、keyboard は基準と同じ段で失敗（pull起因）。
+  tools/chat_kanji/verify.py --source-only は「GuiKeyboard.cpp等がchat_kanji基準から不変」を要求する歴史的ゲートのため改名で失敗（意図した変更。緩めない）。
+- [ ] 検証器追従・ビルド・成果物検証
+- [ ] commit/push (work/simulator-port)
+
 # 設計レビュー・仕様訂正（2026-09-14）
 
 ## 最新: Git保存（2026-09-17）
