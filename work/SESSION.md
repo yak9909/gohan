@@ -1,3 +1,10 @@
+# main 反映（2026-09-17・最新）
+- 利用者が work/simulator-port 先端 5062f72 の成果物を**実機で確認**し、main へのマージを指示。
+- 成果物: gohan.3gx 875060B SHA 4fdc1cfd7805fa17a0bb02cb95927f1294ea79f1d5562e143d31825a74f0824d / gohan.elf SHA 185224c49de8c85c44aea439a708858872507f97d00c2e9cfd1287b5fcc794ed。
+  project_v2/artifacts/plugins/simulator_port/（manifest.json）へ保存。以前の確認済み 201af7e9… は artifacts/plugins/chat_kanji/ に残す。
+- 内容: Simulator 0cabaed の移植、ソースのフォルダ分け、実機フィードバック修正（入力待ち中のタッチ、issues #1〜#5）、効果の ON/OFF からの通知。
+- 操作: main を work/simulator-port へ fast-forward して push。今後の未確認変更は再び作業用ブランチ。
+
 # issue 解決確認と通知の整理（2026-09-17・最新）
 利用者: issues #1〜#5 は全て解決（実機確認）。タグ（ラベル）を付けてから解決済み（close）にする。
 通知: しずえスキップやテストチート等、メニューで項目を有効/無効にした時の通知をやめる。通知は基本的に関数内定義（効果）のON/OFFから発生させる。効果のON/OFFはホットキーの設定状態でも変わる（gohan-menu.md §4.3: 束縛ありのON適用はアームのみ、OFF適用は必ず解除、ホットキーで反転）ので考慮する。

@@ -1,6 +1,5 @@
-# 現在地 — 通知を効果の ON/OFF から出す（2026-09-17）
+# 現在地 — main 反映済み（2026-09-17）
 
-- 利用者が issues #1〜#5 の修正（4fd21d4）を実機で確認 → ラベル付けして close 済み。
-- 今回: メニューで項目を有効/無効にしただけの通知を廃止し、通知は効果（関数内定義）の ON/OFF の変化からだけ出す（適用・ホットキー・関数側のどれで変わっても出る。アームのみでは出ない）。**実機未確認**。
-- ブランチ work/simulator-port。main へは入れていない。成果物 gohan.3gx 875060B SHA 4fdc1cfd…。PC 検証一式 PASS（詳細 SESSION）。
-- 次: 利用者の実機確認。main への反映は利用者の指示を待つ。
+- main = 実機確認済みの Simulator 移植版（5062f72 の成果物を利用者が実機確認）。gohan.3gx 875060B SHA 4fdc1cfd…、保存先 project_v2/artifacts/plugins/simulator_port/。
+- 含むもの: gohan-gui-simulator 0cabaed のメニュー移植、Sources/Includes のフォルダ分け（GuiV2→GuiRenderer）、入力待ち中のタッチ遮断、issues #1〜#5（close 済み）、効果の ON/OFF からの通知。
+- 未完了の操作なし。以後の実機未確認の変更は work/<内容> ブランチへ。
