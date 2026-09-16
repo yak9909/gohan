@@ -18,12 +18,22 @@ gohan-gui-simulatorをpull（済: 4083d70→0cabaed）。simulatorとgohan-menu.
 
 ## 進捗
 - [ ] simulator(ui-model.js/app.js/README)とgohan-menu.md読了、差分表作成
-- [ ] 移植実装
+- [x] Phase B 移植実装（2026-09-17 完了。ビルド・PC検証まで。実機未確認）
+  方針: Simulator(0cabaed)のCheatMenuModel.handle/update/commitItem等を1対1で写す。入力はフレーム毎の水準→離し/押し/連打(JSのControlRepeater: nextAt+=60)のイベント列へ変換し handle(key) と同順。handle→update の順（JSのframe順）。
+  分割: Sources/Gui/GuiMenuInternal.hpp(定数/状態) GuiMenuModel.cpp(状態遷移) GuiMenuDraw.cpp(描画) GuiMenuItems.cpp(項目木/見本) GuiMenu.cpp(スレッド/CTRPF入力/公開API)。Model/Draw/ItemsはCTRPF非依存→ホストでJSと差分試験(menu_host.cpp/menu_oracle.js)。
+  追加: 連動型数値/リスト(開いた時に読む・失敗で選択不可)、トグル型アクション(適用で実行→OFF、OK 800ms、ホットキーは確認ダイアログ、閉じても残る)、X/L 600ms長押しの全適用/全戻し確認、L短押し=選択項目戻し、スライダー下画面UI、数値/入力待ちの退場アニメ、上画面リストはメニューを閉じても残る、checkbox効果: ON適用で束縛なし→効果ON/束縛あり→アームのみ/OFF適用→必ず効果OFF、適用時CHEAT ENABLED/DISABLED通知、[X]のXは#ff6b6b、S+水色/SYNC、説明6行、通知7件、ホットキー入力はA/B/Xも記録（無効/取消はタッチ）。
+  Simulatorに合わせて変える既存差: 通知題（SELECTED/ACTION）、ホットキー反転時のエンジン通知を廃止（効果関数側で出す）、SetEffectMenuJudgment廃止（§4.3が既定）。
+  予算: 上スロット69→93本(最悪125136B<=131072B)、上矩形74→86。フォントは追加不要。スペースとXの送りが同じ4pxなので[X]は"[ ]"+赤X重ね描き（画素同一）。
 - [x] Phase A ソース改名/フォルダ分け（Sources|Includes/{Gui,Fonts,ChatKanji,Cheats,Debug}）。GuiV2→GuiRenderer（名前空間も）、GuiCavesV2.h→GuiCaves.h。未使用のテンプレート残骸 Helpers/cheats/Unicode.h/GuiFontNw.h を削除。Makefile の SOURCES/INCLUDES を追従。
   生成器(export_gui_v2/make_font_ui/export_keyboard_layout)の出力先を更新し再生成→差分はコメント行のみ。clean build 864325B、名前の置換を正規化すると全シンボル名・サイズが基準と一致。
   検証器パス更新: verify_plugin_port_v2 異常0、shizue --artifact PASS、keyboard は基準と同じ段で失敗（pull起因）。
   tools/chat_kanji/verify.py --source-only は「GuiKeyboard.cpp等がchat_kanji基準から不変」を要求する歴史的ゲートのため改名で失敗（意図した変更。緩めない）。
-- [ ] 検証器追従・ビルド・成果物検証
+- [x] 検証器追従・ビルド・成果物検証
+  - 新規 tools/patches/verify_menu_port.py（menu_host.cpp＋menu_oracle.js）: C++実ソースをホストでビルドしSimulatorのCheatMenuModelと全状態を毎コマンド比較。シナリオ3309＋乱数6系列約38000コマンド一致、必須21状態到達、意図的バグ5種を全検出（work/cache/menu_port_qa/mutation.py）。描画捕獲で上下の文字スロット・矩形・字形も検査。
+  - verify_plugin_port_v2 異常0（寸法時間28/色41/文字列133、上スロット最大85<=93、記録 上95%/下84%）、verify_keyboard_port PASS（数値キーボードの退場アニメにoracle追従）、verify_shizue_hook_registers --artifact PASS。
+  - リンク済みELF監査（tools/chat_kanji/artifact.py audit を work/evidence/simport へ出力先変更して実行）PASS: 命令9567/直接分岐1685/PCリテラル759。prebuild.json は検証通過時の全ソースSHA。
+  - clean build gohan.3gx 874750B SHA 7ad9fc3d1fccabdf7c61c02b4e32a01fcfa105dc10c3ff975ee2ddef2b402c89 / elf 8740e3f5…。実機適用はしていない。
+  - 仕様反映: gohan-menu.md §5.5注記・§6(API)・§7.1注記・§8(実装項目)・§9-1、README のフォルダ説明。
 - [ ] commit/push (work/simulator-port)
 
 # 設計レビュー・仕様訂正（2026-09-14）

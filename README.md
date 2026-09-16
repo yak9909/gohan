@@ -6,6 +6,10 @@
   記載された全機能が実装済みという意味ではない。旧 `gohan.txt` は gohan.md へ移行した。
 - 開発規則: [AGENTS.md](AGENTS.md)。再開時は `work/STATE.md` と `work/SESSION.md` を読む。
 - 現行ソース: `Sources/`・`Includes/`。生成ヘッダは手編集しない。
+  - `Gui/` 自前 GUI（`GuiRenderer` 描画基盤・`OwnGui` 組み込み・`GuiMenu*` チートメニュー・`GuiKeyboard`・`GuiNotification`）
+  - `Cheats/` ゲームへ作用する機能（しずえスキップ）／`ChatKanji/` チャット漢字候補とゲーム内蔵エンジン呼び出し
+  - `Fonts/` 字形表（フォントアトラスの生成元）／`Debug/` 開発用の検証項目
+  - メニュー項目の木は `Sources/Gui/GuiMenuItems.cpp`、挙動の仕様は `gohan-menu.md`
 - **実機未確認の変更は作業用ブランチへpush。mainは実機確認済みの版だけを反映する。** 新しい変更はmainから `work/<内容>` を作成する。
 - 漢字変換・リストボックス表示・ACNL内蔵フォントによる変換結果描画は利用者が実機確認済み（2026-09-13）。現行統合ソースのmain反映を承認済み。
 

@@ -87,8 +87,9 @@ namespace {
         if(dx) s.column=(s.column+dx+columns)%columns;
         s.column=std::min(s.column,columns-1);
     }
+    // Both keyboards enter and leave in 180ms (createTextKeyboardAnimation / createBottomOverlayAnimation).
     float Amount(uint32_t now) {
-        if(s.kind!=TEXT) return 1;
+        if(s.kind==NONE) return 0;
         float p=s.duration<=0?1:std::min(1.0f,(now-s.started)/s.duration);
         p=1-(1-p)*(1-p)*(1-p);
         return s.from+((s.closing?0.0f:1.0f)-s.from)*p;
@@ -178,7 +179,7 @@ void OpenText(bool compact,uint32_t now) {
 void OpenNumber(int item,int32_t value,int32_t minimum,int32_t maximum,Format format,bool apply,uint32_t now) {
     s=State{}; pending=false; touched=true; s.kind=NUMBER; s.item=item;
     s.minimum=minimum; s.maximum=maximum; s.format=format; s.apply=apply;
-    s.started=now; s.hex=format==HEXADECIMAL;
+    s.started=now; s.duration=180; s.hex=format==HEXADECIMAL;
     if(s.hex) {
         const int64_t v=value;
         std::snprintf(s.buffer,sizeof(s.buffer),v<0?"-%llX":"%llX",(unsigned long long)(v<0?-v:v));
@@ -190,8 +191,7 @@ void OpenNumber(int item,int32_t value,int32_t minimum,int32_t maximum,Format fo
     else std::snprintf(s.buffer,sizeof(s.buffer),"%ld",(long)value);
 }
 void Cancel(uint32_t now) {
-    if(s.kind==TEXT && !s.closing) { s.from=Amount(now); s.duration=180*s.from; s.started=now; s.closing=true; }
-    else if(s.kind==NUMBER) s.kind=NONE;
+    if(s.kind!=NONE && !s.closing) { s.from=Amount(now); s.duration=180*s.from; s.started=now; s.closing=true; }
 }
 void Update(uint32_t now) { if(s.closing && now-s.started>=s.duration) s.kind=NONE; }
 bool TakeResult(Result &out) { if(!pending) return false; out=result; pending=false; return true; }
@@ -237,7 +237,7 @@ bool Activate(const char *key,uint32_t now) {
             double v=std::max((double)s.minimum,std::min(Parse()*scale,(double)s.maximum));
             result=Result{}; result.kind=NUMBER; result.item=s.item;
             result.value=(int32_t)std::floor(v+0.5); result.apply=s.apply;
-            pending=true; s.kind=NONE;
+            pending=true; Cancel(now);
         }
         return true;
     }
@@ -317,17 +317,17 @@ void Draw(uint32_t now) {
     // ★暗幕は GuiRenderer の「下画面ロック」が出す（F-350）。ここでは描かない。
     //   色と時間は DimColor() / DimFadeMs() で外へ渡している。
     if(s.kind==NUMBER) {
-        Label(12,10,s.hex?u8"数値入力 HEX":u8"数値入力 DEC",0xFFA4E463,1);
-        Frame(12,25,296,30,0xFF47513F,0xBF090A08,1);
+        Label(12,10,s.hex?u8"数値入力 HEX":u8"数値入力 DEC",0xFFA4E463,a);
+        Frame(12,25,296,30,0xFF47513F,0xBF090A08,a);
         char buf[32]; std::snprintf(buf,sizeof(buf),s.hex?"0x%s":"%s",s.buffer);
-        Label(20,36,buf,0xFFFFFFFF,1,true);
-        Label(12,61,"MIN:",0xFF81897D,1);
+        Label(20,36,buf,0xFFFFFFFF,a,true);
+        Label(12,61,"MIN:",0xFF81897D,a);
         int x=12+GuiRenderer::MeasureText("MIN:");
-        NumberFormat(buf,sizeof(buf),s.minimum); Label(x,61,buf,0xFF81897D,1,true);
+        NumberFormat(buf,sizeof(buf),s.minimum); Label(x,61,buf,0xFF81897D,a,true);
         x+=GuiRenderer::MeasureText(buf,1,GuiRenderer::FONT_NUM);
-        Label(x,61,"  MAX:",0xFF81897D,1); x+=GuiRenderer::MeasureText("  MAX:");
-        NumberFormat(buf,sizeof(buf),s.maximum); Label(x,61,buf,0xFF81897D,1,true);
-        for(int r=0;r<6;++r) for(int c=0;c<(r==5?2:4);++c) DrawKey(NumberRect(r,c),1);
+        Label(x,61,"  MAX:",0xFF81897D,a); x+=GuiRenderer::MeasureText("  MAX:");
+        NumberFormat(buf,sizeof(buf),s.maximum); Label(x,61,buf,0xFF81897D,a,true);
+        for(int r=0;r<6;++r) for(int c=0;c<(r==5?2:4);++c) DrawKey(NumberRect(r,c),a);
     } else {
         char title[64]; std::snprintf(title,sizeof(title),u8"%s文字入力 %s",s.compact?u8"小型":"",s.abc?"QWERTY":s.katakana?u8"カナ":u8"かな");
         Label(s.compact?39:8,s.compact?23:8,title,0xFFA4E463,a);
