@@ -1,3 +1,12 @@
+# gohan.md の詰め — PatchList 表（2026-09-17 開始・最新）
+利用者指示: PatchList（複数アドレスの貼る/剥がす）だけで実現できそうなチートについて、ON/OFF のアドレス・値表を gohan.md に記載。アドレスは文書から探して最適なものを選ぶ。reference/old_project の CTRPF ソース群も確認する。
+制約: 対象は JPN 無印＋更新（code.bin = project_v2/artifacts/update/exefs/code.bin、VA=off+0x100000）。USA 等の番地を流用しない（変換表で JPN に直し、OFF 値は code.bin の実バイトで照合）。暗算しない。実機・ビルド・IDB 変更なし。
+結果（2026-09-17）:
+- 候補の収集・照合: project_v2/tools/patches/patchlist_candidates.py（gohan.md・REFERENCES/CHEATS・Vapecord USA→JPN（Addresses.hpp の JPN 列）・JOKER/ROTATION/Adios/AnimalBytes/FOXXY）。全候補で code.bin の元命令と資料の OFF 値が一致、USA→JPN 変換も JPN 実装と一致（壁抜け・穴・速度）。結果 work/evidence/patchlist/candidates.json、比較 patchlist_context.py。
+- gohan.md に「0.5 PatchList 表について」と各項目の表を追加: 壁抜け8語（Vapecord/JOKER/ROTATION/Adios、旧3patchesは別候補）、花散らせない 0x596890（BL→MOV R0,#29 で既存 BEQ から抜ける。Vapecord 0x59689C は別候補）、穴に落下しない2語、寝癖付かない1語、どこでも掘れる8語、空を見上げない 0x64C594（CHEATS camera 4語は別候補）、店24時間オープン9語、メッセージ即表示 0x5F8278（sub_5F8238 の呼出し元は1件。CHEATS/Vapecord 案は別候補）、フレームレート制限解除 0x54C6E8（F-356。Vapecord はセーブ中に外す注記）。
+- PatchList だけでは不足: アイテムが消えない（フック併用）、キーボード制限解除（毎フレーム書込み）、歩いた場所のアイテムを消し去る、タッチワープ等。
+- 効果は未解析（R2）。IDA は途中で使わず、code.bin の逆アセンブルと BL 走査のみ。
+
 # main 反映（2026-09-17・最新）
 - 利用者が work/simulator-port 先端 5062f72 の成果物を**実機で確認**し、main へのマージを指示。
 - 成果物: gohan.3gx 875060B SHA 4fdc1cfd7805fa17a0bb02cb95927f1294ea79f1d5562e143d31825a74f0824d / gohan.elf SHA 185224c49de8c85c44aea439a708858872507f97d00c2e9cfd1287b5fcc794ed。
