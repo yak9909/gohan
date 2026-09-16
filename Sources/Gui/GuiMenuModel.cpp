@@ -80,7 +80,8 @@ namespace CTRPluginFramework
                 bool    g_toggleState[kMaxItems];
 
                 char    g_msg[128];
-                u32     g_noticeNow = 0;        // SetCheckboxEffect の通知時刻（HandleKey / Update が入れる）
+                // 最後に観測した効果（関数内定義）の ON/OFF。変化したときだけ通知する。
+                bool    g_effectSeen[kMaxItems];
                 bool    g_kbHandled = false;    // このフレームで GuiKeyboard::Handle を呼んだか
 
                 bool    IsDir(int bit)
@@ -594,8 +595,6 @@ namespace CTRPluginFramework
                 if (EffectActive(idx) == active)
                     return false;
                 g_behavior[idx].SetActive(idx, active);
-                // 通知は関数内定義（効果）の ON/OFF が実際に変わったときに出す（項目の適用ではない）
-                AddNotice(active ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, g_noticeNow);
                 return true;
             }
 
@@ -656,10 +655,9 @@ namespace CTRPluginFramework
                 {
                     // ON 適用: 束縛なしなら効果 ON、束縛ありならアームのみ。
                     // OFF 適用: 必ず効果 OFF（gohan-menu.md §4.3）。
+                    // ★項目の ON/OFF の適用では通知しない。通知は効果の変化から出す（PollEffects）。
                     if (HasEffect(ItemIndex(it)))
                         SetCheckboxEffect(it, it.applied != 0 && it.appliedHotkey == 0);
-                    else
-                        AddNotice(it.applied ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, now);
                 }
                 else if (valueChanged
                          && (it.type == ITEM_VALUE || it.type == ITEM_SLIDER
@@ -1140,7 +1138,6 @@ namespace CTRPluginFramework
                 // 退場アニメーション中のメニューは閉じたものとして扱う（gohan issue #1）
                 const bool  menuOpen = g_visible && g_openTarget != 0.0f;
 
-                g_noticeNow = now;
                 if (g_capture.active)
                 {
                     HandleHotkeyCapture(bit, pressed, repeated, now);
@@ -1321,7 +1318,6 @@ namespace CTRPluginFramework
             // ================================================================
             static void Update(u32 now)
             {
-                g_noticeNow = now;
                 UpdateHoldAction(now);
                 if (g_openTarget == 0.0f && OpenAmount(now) <= 0.001f && g_visible)
                 {
@@ -1401,6 +1397,44 @@ namespace CTRPluginFramework
                         g_needFinal = true;
                     g_noticesAlive = alive;
                 }
+            }
+
+            // ================================================================
+            // ★通知は関数内定義（効果）の ON/OFF から出す（2026-09-17 利用者指示）
+            //   効果は項目 ON の適用（束縛なし）、OFF の適用（必ず解除）、ホットキーの反転、
+            //   関数側の書き込みのどれでも変わる。どこで変わったかを問わず、観測した状態が
+            //   前回と違うときだけ通知する。束縛ありの ON 適用（アームのみ）は効果が変わらないので出ない。
+            //   並びは walkItems の順（Simulator の適用順と同じ）。
+            // ================================================================
+            static void PollEffects(u32 now)
+            {
+                struct Fn
+                {
+                    u32 now;
+                    void operator()(Item &it)
+                    {
+                        const int idx = ItemIndex(it);
+
+                        if (it.type != ITEM_CHECKBOX || !HasEffect(idx))
+                            return;
+
+                        const bool active = EffectActive(idx);
+
+                        if (active == g_effectSeen[idx])
+                            return;
+                        g_effectSeen[idx] = active;
+                        AddNotice(active ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, now);
+                    }
+                } fn = { now };
+
+                WalkItems(fn);
+            }
+
+            // 登録した時点の状態を「観測済み」にする（登録しただけで通知しない）
+            void    PrimeEffect(int index)
+            {
+                if (index >= 0 && index < kMaxItems)
+                    g_effectSeen[index] = EffectActive(index);
             }
 
             // ToggleHandlers の駆動（プラグイン側の拡張。Simulator の executeActiveCheckboxes）
@@ -1507,6 +1541,7 @@ namespace CTRPluginFramework
 
                 Update(now);
                 DriveToggleHandlers();
+                PollEffects(now);
             }
 
             // gameInputCaptureState
@@ -1562,6 +1597,8 @@ namespace CTRPluginFramework
                 std::memset(g_hotActive, 0, sizeof(g_hotActive));
                 std::memset(g_repAt, 0, sizeof(g_repAt));
                 std::memset(&g_toggleHdl, 0, sizeof(g_toggleHdl));
+                for (int i = 0; i < kMaxItems; i++)
+                    g_effectSeen[i] = EffectActive(i);
                 g_noticeNextId = 1;
                 g_noticeEver = false;
                 g_noticeLastAt = 0;

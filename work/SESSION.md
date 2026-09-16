@@ -1,3 +1,13 @@
+# issue 解決確認と通知の整理（2026-09-17・最新）
+利用者: issues #1〜#5 は全て解決（実機確認）。タグ（ラベル）を付けてから解決済み（close）にする。
+通知: しずえスキップやテストチート等、メニューで項目を有効/無効にした時の通知をやめる。通知は基本的に関数内定義（効果）のON/OFFから発生させる。効果のON/OFFはホットキーの設定状態でも変わる（gohan-menu.md §4.3: 束縛ありのON適用はアームのみ、OFF適用は必ず解除、ホットキーで反転）ので考慮する。
+方針: 効果の状態（IsActive）をフレームごとに観測し、変化した時だけ CHEAT ENABLED/DISABLED を出す（変化の原因＝適用・ホットキー・関数側を問わない）。項目の適用自体では通知しない。
+結果:
+- issues #1〜#5: 既存ラベルから #1〜#3 に bug、#4・#5 に enhancement を付け、「4fd21d4 で修正・実機確認済み」とコメントして close。
+- 実装: GuiMenuModel の PollEffects（Step の最後、walkItems 順で IsActive を観測し変化時だけ通知）。SetCheckboxEffect と CommitItem の通知を削除（効果なし項目の適用通知も廃止）。RegisterToggleEffect/Unregister で PrimeEffect（登録しただけで通知しない）。menu_oracle.js も同じ規則（フレーム終わりに効果の変化を通知）。gohan-menu.md §6(a)・§8.4 更新。
+- 検証: verify_menu_port / plugin_port_v2 / keyboard_port / start_tap / shizue --artifact / リンク済みELF監査 すべて PASS。シナリオ2で通知は「束縛なしON適用・ホットキー反転x2・OFF適用・束縛ありON適用後のホットキー」でのみ発生、アームのみでは無し。シナリオ3（効果なし項目）は通知0。PollEffects を外すと差分試験が検出。
+- 成果物: gohan.3gx 875060B SHA 4fdc1cfd7805fa17a0bb02cb95927f1294ea79f1d5562e143d31825a74f0824d。実機未確認。
+
 # 実機確認後の修正（2026-09-17 開始・最新）
 
 利用者: work/simulator-port（060fa1d, 3gx 7ad9fc3d…）が**実機で動作**。修正依頼:

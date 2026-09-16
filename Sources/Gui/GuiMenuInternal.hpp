@@ -322,6 +322,7 @@ namespace CTRPluginFramework
             void    CloseMenu(u32 now);
             void    Step(u32 now, const Input &in);
             void    PrimeInput(u16 held);
+            void    PrimeEffect(int index);
             bool    HoldProgress(u32 now, float &progress, const char *&label);
             bool    ButtonBlock(void);
             bool    BottomUiPresent(void);         // 下画面に操作 UI がある（退場中も含む）

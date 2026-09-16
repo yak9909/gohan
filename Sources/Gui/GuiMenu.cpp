@@ -240,6 +240,7 @@ namespace CTRPluginFramework
                 return false;
             g_behavior[index].IsActive = funcs->IsActive;
             g_behavior[index].SetActive = funcs->SetActive;
+            PrimeEffect(index);
             return true;
         }
 
@@ -249,6 +250,7 @@ namespace CTRPluginFramework
                 return;
             g_behavior[index].IsActive = nullptr;
             g_behavior[index].SetActive = nullptr;
+            PrimeEffect(index);
         }
 
         bool    ToggleEffectActive(int index)
