@@ -20,7 +20,7 @@ namespace CTRPluginFramework
 
         void Show(void)
         {
-            GuiMenu::Notify("CHEAT ENABLED", u8"歩行速度アップを有効にしました");
+            GuiMenu::Notify(u8"歩行速度アップ", u8"歩行速度アップを有効にしました");
         }
 
         void Notify(const char *title, const char *message)

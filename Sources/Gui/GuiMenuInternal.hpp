@@ -231,7 +231,7 @@ namespace CTRPluginFramework
             {
                 bool    active;
                 int     id;
-                char    title[32];
+                char    title[96];      // ★題はチート名（UTF-8 で 45 B を超える名前がある）
                 char    msg[96];
                 bool    red;
                 u32     createdAt;

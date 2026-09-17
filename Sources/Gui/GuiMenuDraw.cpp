@@ -534,10 +534,7 @@ namespace CTRPluginFramework
                         Frame1px(TOP, x, y, kNoticeW, kNoticeH, nt.red ? kColDangerEdge : kColPanelEdge,
                                  kColNoticeBg);
                         GuiRenderer::FillRect(TOP, x + 1, y + 1, 2, kNoticeH - 2, nt.red ? kColDanger : kColAccent);
-                        if (std::strcmp(nt.title, "CHEAT ENABLED") == 0)
-                            std::snprintf(g_buf2, sizeof(g_buf2), "%s %d", nt.title, nt.id);   // `${item.title} ${item.id}`
-                        else
-                            std::snprintf(g_buf2, sizeof(g_buf2), "%s", nt.title);
+                        std::snprintf(g_buf2, sizeof(g_buf2), "%s", nt.title);
                         GuiRenderer::DrawText(TOP, x + 7, y + 4, Trim(g_buf2, kNoticeW - 20, g_buf, sizeof(g_buf)),
                                               kColWhite);
                         GuiRenderer::DrawText(TOP, x + 7, y + 14, Trim(nt.msg, kNoticeW - 14, g_buf, sizeof(g_buf)),

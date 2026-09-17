@@ -79,31 +79,31 @@ namespace CTRPluginFramework
                 for (i = 0; i < kLongList; i++)
                     g_longOpts[i] = "";
 
-                // ---- root/Player/PlayerResources（§4）----
+                // ---- root/プレイヤー/資産（§4）----
                 const int resFirst = g_itemCount;
-                i = AddItem(ITEM_VALUE, u8"所持金（未設計）", u8"所持金を変更します。");
+                i = AddItem(ITEM_LINKED_VALUE, kWallet, u8"所持金を変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 99999, 1);
-                i = AddItem(ITEM_VALUE, u8"貯金（未設計）", u8"ATMの貯金を変更します。");
+                i = AddItem(ITEM_LINKED_VALUE, kBank, u8"ATMの貯金を変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 999999999, 1);
-                i = AddItem(ITEM_VALUE, u8"ふるさとチケット（未設計）", u8"ふるさとチケットを変更します。");
+                i = AddItem(ITEM_LINKED_VALUE, kCoupons, u8"ふるさとチケットを変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 9999, 1);
-                i = AddItem(ITEM_VALUE, u8"メダル（未設計）", u8"オン島のメダルを変更します。");
+                i = AddItem(ITEM_LINKED_VALUE, kMedals, u8"オン島のメダルを変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 9999, 1);
-                i = AddItem(ITEM_VALUE, u8"カブ（未設計）", u8"カブを変更します。");
+                i = AddItem(ITEM_LINKED_VALUE, kTurnips, u8"カブを変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 99999, 1);
                 const int resCount = g_itemCount - resFirst;
 
-                // ---- root/Player/PlayerStyles（§5）----
+                // ---- root/プレイヤー/スタイル（§5）----
                 const int styleFirst = g_itemCount;
                 AddItem(ITEM_ACTION, u8"スタイルを変更（未設計）", kUndecided);
                 AddItem(ITEM_CHECKBOX, kNoBedHead, u8"日にちを空けてログインしても寝癖が付かなくなります。");
                 const int styleCount = g_itemCount - styleFirst;
 
-                // ---- root/Player（§3）----
+                // ---- root/プレイヤー（§3）----
                 const int playerFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"PlayerResources", u8"所持金などの数値を変更します。");
+                i = AddItem(ITEM_FOLDER, u8"資産", u8"所持金などの数値を変更します。");
                 SetFolder(i, resFirst, resCount);
-                i = AddItem(ITEM_FOLDER, u8"PlayerStyles", u8"プレイヤーの見た目に関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"スタイル", u8"プレイヤーの見た目に関するチートです。");
                 SetFolder(i, styleFirst, styleCount);
                 i = AddItem(ITEM_CHECKBOX, kCoordMove, u8"移動キーで高速移動できます。");
                 SetHotkey(i, Bit(HB_A));
@@ -130,15 +130,15 @@ namespace CTRPluginFramework
                         u8"もうわざわざタイトル画面へ戻る必要はありません。地図上で選択したプレイヤーのデータへ切り替えます。");
                 const int playerCount = g_itemCount - playerFirst;
 
-                // ---- root/Item/Drop/Fun（§8）----
+                // ---- root/アイテム/ドロップ/お遊び（§8）----
                 const int funFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, kFellTree, u8"木や竹にぶつかると切り倒されます。");
                 AddItem(ITEM_CHECKBOX, kDig3x3, u8"[穴に落下しない] [どこでも掘れる] と併せて使うと面白いかもしれません。");
                 const int funCount = g_itemCount - funFirst;
 
-                // ---- root/Item/Drop（§7）----
+                // ---- root/アイテム/ドロップ（§7）----
                 const int dropFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"Fun", u8"遊び向けのチートです。");
+                i = AddItem(ITEM_FOLDER, u8"お遊び", u8"遊び向けのチートです。");
                 SetFolder(i, funFirst, funCount);
                 AddItem(ITEM_CHECKBOX, u8"アイテムセレクター（未設計）", kUndecided);
                 i = AddItem(ITEM_VALUE, kDropItem, u8"ドロップ系チートが参照するアイテムIDを指定します。");
@@ -149,15 +149,15 @@ namespace CTRPluginFramework
                         u8"木/岩やアイテムから、川/崖越し/建造物まで、ありとあらゆる状況で掘れるようになります。");
                 const int dropCount = g_itemCount - dropFirst;
 
-                // ---- root/Item（§6）----
+                // ---- root/アイテム（§6）----
                 const int itemFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"Drop", u8"アイテムを置く・消す・掘るチートです。");
+                i = AddItem(ITEM_FOLDER, u8"ドロップ", u8"アイテムを置く・消す・掘るチートです。");
                 SetFolder(i, dropFirst, dropCount);
                 AddItem(ITEM_ACTION, u8"ポケットアイテム（未設計）",
                         u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 const int itemCount = g_itemCount - itemFirst;
 
-                // ---- root/Town（§9）----
+                // ---- root/村（§9）----
                 const int townFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, u8"アイテムが消えない（未設計）", u8"無効な位置にあるアイテムが翌日に消えないようにします。");
                 i = AddItem(ITEM_LINKED_LIST, kWeather, u8"天気を変更します。");
@@ -170,12 +170,7 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 
-                // ---- root/Shop（§10）----
-                const int shopFirst = g_itemCount;
-                AddItem(ITEM_CHECKBOX, kShopsOpen, u8"全てのお店は常にあなたのために回り続けます。");
-                const int shopCount = g_itemCount - shopFirst;
-
-                // ---- root/Game/Keyboard（§12）----
+                // ---- root/ゲーム/キーボード（§12）----
                 const int keyboardFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, u8"キーボード制限解除（未設計）",
                         u8"文字数制限、改行、無効化されたキーの有効化など、キーボードに関する制限を撤去します。");
@@ -184,12 +179,13 @@ namespace CTRPluginFramework
                 g_items[i].action = ACT_CHAT_KANJI;
                 const int keyboardCount = g_itemCount - keyboardFirst;
 
-                // ---- root/Game（§11）----
+                // ---- root/ゲーム（§11）----
                 const int gameFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"Keyboard", u8"キーボードとチャットに関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"キーボード", u8"キーボードとチャットに関するチートです。");
                 SetFolder(i, keyboardFirst, keyboardCount);
                 AddItem(ITEM_CHECKBOX, kInstantText,
                         u8"メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。");
+                AddItem(ITEM_CHECKBOX, kShopsOpen, u8"全てのお店は常にあなたのために回り続けます。");
                 AddItem(ITEM_CHECKBOX, kShizueSkip, u8"タイトル遷移後のしずえの会話をスキップします。ドパガキなあなたへ。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
@@ -198,15 +194,13 @@ namespace CTRPluginFramework
 
                 // ---- root（§2）----
                 g_rootFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"Player", u8"プレイヤーに関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"プレイヤー", u8"プレイヤーに関するチートです。");
                 SetFolder(i, playerFirst, playerCount);
-                i = AddItem(ITEM_FOLDER, u8"Item", u8"アイテムに関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"アイテム", u8"アイテムに関するチートです。");
                 SetFolder(i, itemFirst, itemCount);
-                i = AddItem(ITEM_FOLDER, u8"Town", u8"村に関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"村", u8"村に関するチートです。");
                 SetFolder(i, townFirst, townCount);
-                i = AddItem(ITEM_FOLDER, u8"Shop", u8"お店に関するチートです。");
-                SetFolder(i, shopFirst, shopCount);
-                i = AddItem(ITEM_FOLDER, u8"Game", u8"ゲーム全体に関するチートです。");
+                i = AddItem(ITEM_FOLDER, u8"ゲーム", u8"ゲーム全体に関するチートです。");
                 SetFolder(i, gameFirst, gameCount);
                 i = AddItem(ITEM_CHECKBOX, u8"チャットコマンド（未設計）",
                             u8"チャットにコマンドを打つ事で様々なチートを素早く実行できます。コマンドリストは list で確認できます。");

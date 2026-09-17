@@ -436,8 +436,7 @@ namespace CTRPluginFramework
                     nt.id = g_noticeNextId++;
                     std::snprintf(nt.title, sizeof(nt.title), "%s", title);
                     std::snprintf(nt.msg, sizeof(nt.msg), "%s", msg);
-                    // drawNotice: 題が "CHEAT DISABLED" で始まると赤
-                    nt.red = red || std::strncmp(title, "CHEAT DISABLED", 14) == 0;
+                    nt.red = red;
                     nt.createdAt = at;
                     nt.moveFromY = (float)(240 - kNoticeMargin - kNoticeH);
                     nt.targetY = nt.moveFromY;
@@ -1423,7 +1422,10 @@ namespace CTRPluginFramework
                         if (active == g_effectSeen[idx])
                             return;
                         g_effectSeen[idx] = active;
-                        AddNotice(active ? "CHEAT ENABLED" : "CHEAT DISABLED", it.label, now);
+                        // 題 = チート名、本文 = 〈チート名〉を有効／無効にしました（無効は赤）
+                        std::snprintf(g_msg, sizeof(g_msg), active ? u8"%sを有効にしました" : u8"%sを無効にしました",
+                                      it.label);
+                        AddNotice(it.label, g_msg, now, !active);
                     }
                 } fn = { now };
 

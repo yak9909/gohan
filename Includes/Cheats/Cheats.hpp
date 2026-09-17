@@ -8,7 +8,13 @@ namespace CTRPluginFramework
 {
     namespace Cheats
     {
-        // ---- root/Player ----
+        // ---- root/プレイヤー/資産 ----
+        static const char kWallet[]         = u8"所持金";
+        static const char kBank[]           = u8"貯金";
+        static const char kCoupons[]        = u8"ふるさとチケット";
+        static const char kMedals[]         = u8"メダル";
+        static const char kTurnips[]        = u8"カブ";
+        // ---- root/プレイヤー ----
         static const char kCoordMove[]      = u8"座標移動";
         static const char kCoordMoveKey[]   = u8"座標移動 -> 移動キー";
         static const char kCoordMoveSpeed[] = u8"座標移動 -> 移動量";
@@ -17,25 +23,24 @@ namespace CTRPluginFramework
         static const char kWalkThroughWalls[] = u8"壁抜け";
         static const char kNoBreakFlower[]  = u8"花散らせない";
         static const char kNoTrap[]         = u8"穴に落下しない";
-        // ---- root/Player/PlayerStyles ----
+        // ---- root/プレイヤー/スタイル ----
         static const char kNoBedHead[]      = u8"寝癖付かない";
-        // ---- root/Item/Drop ----
+        // ---- root/アイテム/ドロップ ----
         static const char kDropItem[]       = u8"ドロップアイテム";
         static const char kTrampler[]       = u8"歩いた場所のアイテムを消し去る";
         static const char kDigAnywhere[]    = u8"どこでも掘れる";
-        // ---- root/Item/Drop/Fun ----
+        // ---- root/アイテム/ドロップ/お遊び ----
         static const char kFellTree[]       = u8"木にぶつかって切り倒す";
         static const char kDig3x3[]         = u8"スコップ3x3マス掘り";
-        // ---- root/Town ----
+        // ---- root/村 ----
         static const char kWeather[]        = u8"天気";
         static const char kNoLookUp[]       = u8"空を見上げない";
-        // ---- root/Shop ----
+        // ---- root/ゲーム ----
         static const char kShopsOpen[]      = u8"店24時間オープン";
-        // ---- root/Game ----
         static const char kInstantText[]    = u8"メッセージ即表示";
         static const char kShizueSkip[]     = u8"しずえスキップ";
         static const char kUnlockFps[]      = u8"フレームレート制限解除";
-        // ---- root/Game/Keyboard ----
+        // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
 
         // 天気の選択肢（gohan.md §17.8。0 番がゲームに任せる、以降が値 0..6）
@@ -54,6 +59,8 @@ namespace CTRPluginFramework
 
         // PlayerMove.cpp（座標移動・タッチワープ）。Wire から呼ぶ。
         void    WirePlayerMove(void);
+        // PlayerResources.cpp（所持金・貯金・ふるさとチケット・メダル・カブ）。Wire から呼ぶ。
+        void    WirePlayerResources(void);
     }
 }
 

@@ -227,6 +227,7 @@ namespace CTRPluginFramework
             if (weather >= 0)
                 GuiMenu::RegisterLinked(weather, WeatherRead, WeatherWrite);
             WirePlayerMove();
+            WirePlayerResources();
         }
     }
 }
