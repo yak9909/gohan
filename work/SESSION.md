@@ -1,3 +1,10 @@
+# しずえ画面「準備中」未解明部分の解析（2026-09-17 開始・最新）
+利用者指示: 「しずえ画面の『準備中』未解明部分の解析・調査を進めて」。利用者の推測: 「寝癖付かない」（0x0020C6D8 STRB R1,[R4,#4] を NOP）はこの準備中部分を書き換えている。
+既存の到達点（旧 F-361/F-362、reference/old_project/HANDOFF_MESSAGE.md）: 要求元 ModulePlSelect.cro case 0、ワーカー this+632（sub_27EB34 が組む。callback sub_5254C0 等＝受信ボックス取り込みと推定 MEDIUM）、一括処理 sub_30C994→sub_30C9C4（boot 1 回、中身未解析: sub_10D980/110CFC/10FF58/10DBA0/10CCB8/110668）、case 2〜12 未読。
+方針: 静的のみ（idalib 主IDB）。寝癖パッチの関数と sub_30C9C4 系からの到達を先に確認→一括処理の中身→ワーカーの callback の確定。判明事項は IDB（命名/コメント）と work/FINDINGS（V2-F013〜）に記録。
+結果（一区切り）: V2-F013。準備中の仕事＝SvProc Thread 上の種別4 SvProcType4_Prepare→日替わり処理→Player_ApplyAbsenceBedHead（寝癖 0x20C6D8）。利用者の推測を静的に裏付け。旧「this+632 を叩く」を訂正（叩くのは this+0x168 TalkSaveTask_Step）。IDB 13 関数＋表を命名・保存・閉じた。記録: work/FINDINGS.md・FUNCTIONS.md・work/evidence/prepare_screen/README.md・gohan.md（寝癖付かない・しずえスキップ注記）。
+残り: sub_30C9C4 各段の中身、g_SvProcTypeTable 11 種別の使い手、PlSelect case 2〜12、しずえスキップで日替わりが補われるか（要実機）。acnl_disassemble 側は未 commit（XML 手順が必要）。
+
 # 店の営業時間判定 3 関数の正体調査＋記録（2026-09-17 開始・最新）
 利用者指示: 「判明したことは記録するように。IDBも含めて」「調査中に見つかった三つの判定（sub_3093F8 / sub_7123E8 / sub_716860）がなんの判定なのか調査」。
 方針: 静的のみ。(1) 営業時間判定の関数を Unicorn で時刻×条例ごとに実行し表にする（逆コンパイルと独立な裏付け）、(2) CRO の呼び出し箇所の文脈で用途を特定、(3) work/FINDINGS.md に V2-F012 として記録、IDB へ HIGH/MEDIUM は命名・LOW はコメント（idalib で保存）、acnl_disassemble の XML 手順は commit 時に。
