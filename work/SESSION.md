@@ -1,3 +1,8 @@
+# 店24時間オープンのパッチ数削減の静的調査（2026-09-17 開始・最新）
+利用者指示: 「店24時間オープンについて、もっと少ないパッチ数で実現できるのでは。静的に解析して調査」。現行は Vapecord ShopsAlwaysOpen の 9 語（MOV R0,#0→#1）。
+方針: 実機・書き込みなし。主IDB ida/db/acnl_jpn_v15_annotated.i64（idalib）と code.bin の逆アセンブルで、9 か所の関数・呼び出し元・共通の判定関数を調べる。結果は work/evidence/shop_open/ と gohan.md に記録予定。
+結果（完了）: 減らせない。判定は関数ごとに複製（共通の入口なし）、9 語は 9 関数の閉店出口で関数ごと 1 語が下限。Vapecord が触らない同種の判定（ModuleShop の sub_3093F8、ModuleIndoor の sub_716860、看板/BGM 番号の選択など）を発見。別案は Date_GetRaw の LR 絞りフック（未設計）。根拠 work/evidence/shop_open/、gohan.md の店24時間オープン節に注記。IDB は保存せず閉じた。
+
 # gohan.md の内容でメニューを実装（2026-09-17 開始・最新）
 利用者指示: 「一旦これで実装」。未設計チートはラベル末尾に（未設計）を付け、空のチートとして実装。既存のテストチート項目群は全て削除。
 方針（決定・2026-09-17）: ブランチ work/cheat-impl（work/patchlist-spec fa29186 から）。
