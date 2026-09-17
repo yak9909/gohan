@@ -133,8 +133,6 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kNoBreakFlower,
                         u8"もう友達の村の移動に気を遣う必要はなくなりました。花の上を走っても散らなくなります。");
                 AddItem(ITEM_CHECKBOX, kNoTrap, u8"穴にハマらなくなります。残念でしたね。");
-                AddItem(ITEM_CHECKBOX, u8"選択したプレイヤーのデータに切り替える（未設計）",
-                        u8"もうわざわざタイトル画面へ戻る必要はありません。地図上で選択したプレイヤーのデータへ切り替えます。");
                 const int playerCount = g_itemCount - playerFirst;
 
                 // ---- root/アイテム/ドロップ/お遊び（§8）----
@@ -164,15 +162,23 @@ namespace CTRPluginFramework
                         u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 const int itemCount = g_itemCount - itemFirst;
 
-                // ---- root/村（§9）----
-                const int townFirst = g_itemCount;
-                AddItem(ITEM_CHECKBOX, u8"アイテムが消えない（未設計）", u8"無効な位置にあるアイテムが翌日に消えないようにします。");
-                i = AddItem(ITEM_LINKED_LIST, kWeather, u8"天気を変更します。");
-                SetOptions(i, kWeatherOptions, kWeatherOptionCount);
-                AddItem(ITEM_ACTION, u8"選択したマップアイコンのroomに移動（未設計）",
+                // ---- root/村/マップ（§9.5）----
+                const int mapFirst = g_itemCount;
+                AddItem(ITEM_ACTION, u8"選択中アイコンに部屋移動（未設計）",
                         u8"地図上で選択したアイコンのroomへワープします。");
                 AddItem(ITEM_ACTION, u8"選択した住民への操作（未設計）",
                         u8"地図上で選択した家主の住民に対して様々な操作をします。");
+                AddItem(ITEM_TOGGLE_ACTION, u8"選択中プレイヤーに切り替え（未設計）",
+                        u8"もうわざわざタイトル画面へ戻る必要はありません。地図上で選択したプレイヤーのデータへ切り替えます。");
+                const int mapCount = g_itemCount - mapFirst;
+
+                // ---- root/村（§9）----
+                const int townFirst = g_itemCount;
+                i = AddItem(ITEM_FOLDER, u8"マップ", u8"地図で選んだものに対する操作です。");
+                SetFolder(i, mapFirst, mapCount);
+                AddItem(ITEM_CHECKBOX, u8"アイテムが消えない（未設計）", u8"無効な位置にあるアイテムが翌日に消えないようにします。");
+                i = AddItem(ITEM_LINKED_LIST, kWeather, u8"天気を変更します。");
+                SetOptions(i, kWeatherOptions, kWeatherOptionCount);
                 AddItem(ITEM_ACTION, u8"公共事業エディター（未設計）", u8"好きな場所に建造物を建てましょう。");
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;

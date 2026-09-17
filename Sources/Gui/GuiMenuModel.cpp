@@ -1482,6 +1482,14 @@ namespace CTRPluginFramework
             // ================================================================
             // 1 フレーム。app.js の frame と同じく「入力 → update」の順。
             // ================================================================
+            // 関数側が「今は無効」と言う項目（RegisterDisabled。例: 移動方法がグリッド単位の間の移動量）
+            static void SyncDisabledItems(void)
+            {
+                for (int i = 0; i < g_itemCount; i++)
+                    if (g_behavior[i].IsDisabled != nullptr)
+                        g_items[i].disabled = g_behavior[i].IsDisabled(i);
+            }
+
             void    Step(u32 now, const Input &in)
             {
                 const u16   released = (u16)(g_prevHeld & ~in.held);
@@ -1489,6 +1497,7 @@ namespace CTRPluginFramework
                 const bool  touchDown = in.touch && !g_prevTouch;
 
                 g_kbHandled = false;
+                SyncDisabledItems();
                 PollChatKanji(now);
                 for (int bit = 0; bit < HB_COUNT; bit++)
                 {
@@ -1530,6 +1539,8 @@ namespace CTRPluginFramework
                     HandleTouchDown(in, now);
                 g_prevTouch = in.touch;
 
+                // 操作で値が変わったフレームのうちに無効状態も追従させる（描画が 1 フレーム遅れないように）
+                SyncDisabledItems();
                 Update(now);
                 DriveToggleHandlers();
                 PollEffects(now);

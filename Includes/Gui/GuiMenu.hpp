@@ -76,6 +76,11 @@ namespace CTRPluginFramework
         typedef void (*ApplyFunc)(int index, s32 value);
         bool    RegisterApply(int index, ApplyFunc apply);
 
+        // (f) 無効状態。登録した項目は毎フレーム（メニュースレッド）この関数で disabled を決める。
+        //   無効な項目はカーソルを置けるが、値の変更・決定・ホットキー設定はできない。
+        typedef bool (*DisabledFunc)(int index);
+        bool    RegisterDisabled(int index, DisabledFunc isDisabled);
+
         // 書換後のキャッシュ処理（データ＋命令）。
         void    FlushMemory(u32 address, u32 size);
 

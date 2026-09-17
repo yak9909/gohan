@@ -212,6 +212,13 @@ namespace CTRPluginFramework
                 return tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h;
             }
 
+            // 移動方法がグリッド単位の間は移動量を使わないので無効にする（編集中の値で判定）
+            bool    SpeedDisabled(int index)
+            {
+                (void)index;
+                return g_modeIndex >= 0 && GuiMenu::ItemValue(g_modeIndex) == MODE_GRID;
+            }
+
             void    WarpTick(int index, u16 held)
             {
                 static const WarpRect kTownClosed = {  70, 32, 180, 175,  30.0f,   5.0f, 14.2f };
@@ -220,8 +227,11 @@ namespace CTRPluginFramework
                 static const WarpRect kMainStreet = {   4, 43, 312, 159, -16.0f,  55.0f,  6.2f };
                 static const WarpRect kTour       = {  65, 34, 190, 170,  24.0f,  -7.0f, 13.5f };
 
-                (void)index;
-                (void)held;
+                const u16 hotkey = GuiMenu::ItemAppliedHotkey(index);
+
+                // ホットキーを設定していれば、押している間だけワープする
+                if (hotkey != 0 && (held & hotkey) != hotkey)
+                    return;
                 if (GuiMenu::IsVisible() || *(u8 *)kMapOpen == 0 || !Touch::IsDown())
                     return;
 
@@ -286,6 +296,8 @@ namespace CTRPluginFramework
             if (g_keyIndex < 0 || g_speedIndex < 0 || g_modeIndex < 0)
                 g_moveIndex = -1;
             ResetGrid();
+            if (g_speedIndex >= 0)
+                GuiMenu::RegisterDisabled(g_speedIndex, SpeedDisabled);
             GuiMenu::SetToggleHandlers(&kHandlers);
         }
     }

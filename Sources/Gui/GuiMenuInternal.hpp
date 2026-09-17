@@ -248,6 +248,7 @@ namespace CTRPluginFramework
                 void    (*LinkedWrite)(int index, s32 value);
                 void    (*Execute)(int index);
                 void    (*Apply)(int index, s32 value);
+                bool    (*IsDisabled)(int index);   // 登録した項目だけ毎フレーム disabled を決める
             };
 
             // 1 フレームぶんの入力（水準）。GuiMenu.cpp が CTRPF から読んで渡す。

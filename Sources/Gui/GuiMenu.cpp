@@ -287,6 +287,14 @@ namespace CTRPluginFramework
             return true;
         }
 
+        bool    RegisterDisabled(int index, DisabledFunc isDisabled)
+        {
+            if (!SlotOk(index))
+                return false;
+            g_behavior[index].IsDisabled = isDisabled;
+            return true;
+        }
+
         void    FlushMemory(u32 address, u32 size)
         {
             if (address == 0 || size == 0)
