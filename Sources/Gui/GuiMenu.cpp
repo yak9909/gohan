@@ -79,12 +79,15 @@ namespace CTRPluginFramework
             }
 
             bool    g_touchLatch = false;
+            bool    g_dpadBlockReq = false;     // このフレームだけゲームの十字キーを遮断（BlockGameDpad）
 
             // ★入力遮断は毎フレーム条件から決める（F-350）。描画の有無に縛らない。
             void    SyncInputLock(const Input &in)
             {
                 // ボタン遮断: 操作可能な UI が出ている間（gameInputCaptureState）
-                GuiRenderer::SetButtonBlock(ButtonBlock());
+                //   操作可能な UI が無い間は、関数側の要求（Step 中の OnTick）があれば十字キーだけ遮断する
+                GuiRenderer::SetButtonBlock(ButtonBlock(), g_dpadBlockReq);
+                g_dpadBlockReq = false;
                 // タッチ遮断: 下画面 UI がある間（退場中も）。消えた後も指が離れるまで続ける。
                 //   ホットキー入力待ちを「無効」「取消」のタッチで閉じた瞬間に遮断を外すと、
                 //   触れたままの指がゲームへ新しいタッチとして届いていた。
@@ -351,6 +354,11 @@ namespace CTRPluginFramework
                 PatchWrite(p->address, (int)p->size, active ? p->onValue : p->offValue);
                 FlushMemory(p->address, (u32)p->size);
             }
+        }
+
+        void    BlockGameDpad(void)
+        {
+            g_dpadBlockReq = true;
         }
 
         bool    IsVisible(void)

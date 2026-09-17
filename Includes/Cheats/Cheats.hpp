@@ -20,6 +20,7 @@ namespace CTRPluginFramework
         static const char kCoordMoveKey[]   = u8"移動キー";
         static const char kCoordMoveSpeed[] = u8"移動量";
         static const char kCoordMoveMode[]  = u8"移動方法";
+        static const char kCoordMoveDpad[]  = u8"十字キーの無効化";
         // ---- root/プレイヤー ----
         static const char kTouchWarp[]      = u8"タッチワープ";
         static const char kWalkThroughWalls[] = u8"壁抜け";
@@ -57,6 +58,8 @@ namespace CTRPluginFramework
         static const int kMoveKeyOptionCount = (int)(sizeof(kMoveKeyOptions) / sizeof(kMoveKeyOptions[0]));
         static const char *const kMoveModeOptions[] = { u8"通常", u8"グリッド単位" };
         static const int kMoveModeOptionCount = (int)(sizeof(kMoveModeOptions) / sizeof(kMoveModeOptions[0]));
+        static const char *const kMoveDpadOptions[] = { u8"なし", u8"座標移動中" };
+        static const int kMoveDpadOptionCount = (int)(sizeof(kMoveDpadOptions) / sizeof(kMoveDpadOptions[0]));
 
         // メニューの木を組んだ直後に 1 回呼ぶ。項目名で引いて振る舞いを登録する。
         void    Wire(void);

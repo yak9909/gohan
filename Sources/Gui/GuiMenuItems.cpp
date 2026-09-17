@@ -109,6 +109,9 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_LIST, kCoordMoveMode,
                             u8"座標移動の移動方法を変更できます。グリッド単位の時、スライドパッドによる向きは8方向に限定されます。");
                 SetOptions(i, kMoveModeOptions, kMoveModeOptionCount);
+                i = AddItem(ITEM_LIST, kCoordMoveDpad,
+                            u8"座標移動中にすると、移動キーが十字キーの時、ホットキーを押している間はゲームの十字キーを無効にします。");
+                SetOptions(i, kMoveDpadOptions, kMoveDpadOptionCount);
                 const int moveCount = g_itemCount - moveFirst;
 
                 // ---- root/プレイヤー（§3）----

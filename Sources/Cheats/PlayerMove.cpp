@@ -36,6 +36,7 @@ namespace CTRPluginFramework
 
             enum MoveKey  { KEY_DPAD = 0, KEY_CIRCLE, KEY_CSTICK };
             enum MoveMode { MODE_FREE = 0, MODE_GRID };
+            enum MoveDpad { DPAD_KEEP = 0, DPAD_BLOCK_WHILE_MOVING };
 
             // ★スライドパッド／C スティックの読み値の最大（正規化用）と不感帯
             const float kCircleMax  = 156.0f;
@@ -49,6 +50,7 @@ namespace CTRPluginFramework
             int     g_keyIndex = -1;
             int     g_speedIndex = -1;
             int     g_modeIndex = -1;
+            int     g_dpadIndex = -1;
             int     g_warpIndex = -1;
 
             int     g_gridDx = 0;
@@ -146,6 +148,12 @@ namespace CTRPluginFramework
                     ResetGrid();
                     return;
                 }
+
+                // 十字キーの無効化: 移動キーが十字キーで「座標移動中」なら、ホットキーを押している間
+                //   ゲーム側の十字キーを止める（入力遮断ケーブの値 2。CTRPF の held は影響を受けない）
+                if (g_dpadIndex >= 0 && GuiMenu::ItemApplied(g_dpadIndex) == DPAD_BLOCK_WHILE_MOVING
+                    && GuiMenu::ItemApplied(g_keyIndex) == KEY_DPAD)
+                    GuiMenu::BlockGameDpad();
 
                 u8        pIndex;
                 const u32 player = OwnPlayer(&pIndex);
@@ -272,6 +280,7 @@ namespace CTRPluginFramework
             g_keyIndex = GuiMenu::FindItem(kCoordMoveKey);
             g_speedIndex = GuiMenu::FindItem(kCoordMoveSpeed);
             g_modeIndex = GuiMenu::FindItem(kCoordMoveMode);
+            g_dpadIndex = GuiMenu::FindItem(kCoordMoveDpad);
             g_warpIndex = GuiMenu::FindItem(kTouchWarp);
             // 子設定が欠けていたら座標移動は動かさない
             if (g_keyIndex < 0 || g_speedIndex < 0 || g_modeIndex < 0)

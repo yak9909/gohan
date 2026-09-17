@@ -1130,16 +1130,20 @@ namespace CTRPluginFramework
         // ==================================================================
         namespace
         {
-            // 入力遮断ケーブの制御ブロック（+0 ボタン / +1 タッチ）
-            void    WriteInputFlag(u32 off, bool on)
+            // 入力遮断ケーブの制御ブロック（+0 ボタン: 0 なし / 1 全部 / 2 十字キーだけ、+1 タッチ）
+            void    WriteInputFlag(u32 off, u8 value)
             {
-                *(volatile u8 *)(kGuiInputCtl + off) = on ? 1 : 0;
+                *(volatile u8 *)(kGuiInputCtl + off) = value;
             }
         }
 
-        void    SetTouchBlock(bool on)  { WriteInputFlag(1, on); }
+        void    SetTouchBlock(bool on)  { WriteInputFlag(1, on ? 1 : 0); }
 
-        void    SetButtonBlock(bool on) { WriteInputFlag(0, on); }
+        // ★1 回の書き込みで決める（2 回に分けるとゲームが途中の 0 を読むことがある）
+        void    SetButtonBlock(bool buttons, bool dpadOnly)
+        {
+            WriteInputFlag(0, buttons ? 1 : dpadOnly ? 2 : 0);
+        }
 
         void    DrawBottomDim(u32 color, float amount)
         {
