@@ -657,7 +657,11 @@ Trampler とも呼ばれる。FOXXY `trampleSeeder`（USA）も同じ系統の 6
 
 > **パッチ数を減らせるかの静的調査（2026-09-17）**: 減らせない。営業時間の判定は店ごと・用途ごとの関数に複製されていて共通の入口が無く、9 語はそれぞれ別の関数の「閉店（0）を返す出口」なので関数ごとに 1 語が下限。
 > 時刻は全体の日時（`Date_GetRaw` `0x002FB3A4` → `0x00ACF6B0`、466 か所から参照）、条例は `sub_7585A0` / `sub_7585C4` で、どれも 24 時間に固定できる形ではない。
-> ★この 9 語が触らない同種の判定がある（`sub_3093F8`〈ModuleShop〉・`sub_7123E8`・`sub_716860`〈ModuleIndoor〉・看板や BGM 用と推定される番号の選択 `sub_70FDD8` / `sub_71BC24` / `sub_71DBCC` / `sub_717088` など）。実機で不整合（店内で閉店扱い・閉店の BGM など）が出るなら、ここを追加するか、`Date_GetRaw` を呼び出し元で絞って 12 時を返すフック（1 か所・語数は増える）を検討する。
+> ★この 9 語が触らない同種の判定がある（V2-F012。IDB 名で記す）:
+> `ShopHours_ReTail_InHours` `0x003093F8`（Re-Tail の営業時間だけ。住民が Re-Tail へ出かけられるかの判定と ModuleShop の条件分岐が使う）、
+> `ShopHours_Ables_IsOpen2` `0x007123E8`（エイブルの判定と挙動が同一。住民がエイブルへ出かけられるかの判定だけが使う）、
+> `ShopHours_Redd_InHours` `0x00716860`（つねきちの店の営業時間だけ。ModuleIndoor が使う。用途未解明）、
+> 看板や BGM 用と推定される番号の選択 `sub_70FDD8` / `sub_71BC24` / `sub_71DBCC` / `sub_717088` など。実機で不整合（店内で閉店扱い・閉店の BGM など）が出るなら、ここを追加するか、`Date_GetRaw` を呼び出し元で絞って 12 時を返すフック（1 か所・語数は増える）を検討する。
 > 根拠と一覧: `work/evidence/shop_open/README.md`・`callers.json`（`tools/patches/shop_open_callers.py`）。
 
 ### カブ価

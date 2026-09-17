@@ -1,3 +1,10 @@
+# 店の営業時間判定 3 関数の正体調査＋記録（2026-09-17 開始・最新）
+利用者指示: 「判明したことは記録するように。IDBも含めて」「調査中に見つかった三つの判定（sub_3093F8 / sub_7123E8 / sub_716860）がなんの判定なのか調査」。
+方針: 静的のみ。(1) 営業時間判定の関数を Unicorn で時刻×条例ごとに実行し表にする（逆コンパイルと独立な裏付け）、(2) CRO の呼び出し箇所の文脈で用途を特定、(3) work/FINDINGS.md に V2-F012 として記録、IDB へ HIGH/MEDIUM は命名・LOW はコメント（idalib で保存）、acnl_disassemble の XML 手順は commit 時に。
+結果（完了）: V2-F012 として work/FINDINGS.md・work/FUNCTIONS.md・work/evidence/shop_open/README.md（時間帯表と 3 判定）に記録。主IDBへ ShopHours_* 13 関数を改名、sub_112104/sub_1120B8/sub_69D848/0x7103A0 にコメントし保存して閉じた。
+- 0x3093F8 = Re-Tail の営業時間だけ（住民の外出先 5 の可否 sub_112104 と ModuleShop の条件分岐）。0x7123E8 = エイブル判定と挙動同一（住民の外出先 21 の可否 sub_1120B8 のみ、存在理由 LOW）。0x716860 = つねきちの店の営業時間だけ（ModuleIndoor、用途 LOW）。
+- 新ツール: tools/patches/shop_hours.py（Unicorn）/ cro_call_context.py / shop_open_callers.py。acnl_disassemble 側（tools・work・IDB）は未 commit。commit 時は XML 書き出し（docs/xml_exchange.md）が必要。
+
 # 店24時間オープンのパッチ数削減の静的調査（2026-09-17 開始・最新）
 利用者指示: 「店24時間オープンについて、もっと少ないパッチ数で実現できるのでは。静的に解析して調査」。現行は Vapecord ShopsAlwaysOpen の 9 語（MOV R0,#0→#1）。
 方針: 実機・書き込みなし。主IDB ida/db/acnl_jpn_v15_annotated.i64（idalib）と code.bin の逆アセンブルで、9 か所の関数・呼び出し元・共通の判定関数を調べる。結果は work/evidence/shop_open/ と gohan.md に記録予定。
