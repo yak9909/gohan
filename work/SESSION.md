@@ -1,3 +1,18 @@
+# gohan.md 詰め（続き）— 2026-09-17・最新
+利用者:
+1. 壁抜けは `[壁抜け 3patches]`（0064F03C E3A07000 / 0064F19C E1A00000 / 0064F1B4 E1A00000）が**実機で動作確認済み**なので採用（8語版は別候補へ）。
+2. 「歩いた場所のアイテムを消し去る」（Trampler と呼ばれることがある）「アイテムが消えない」「キーボード制限解除」も PatchList で実装できるはず。キーボード制限解除は Vapecord のキーボード制限を取り払う系チートを全部パッチする。
+3. 次に PatchList 以外を詰める: 座標移動関連・タッチワープ・アクション解除・気絶・ポケットアイテム・木にぶつかって切り倒す（旧資料）・スコップ3x3マス掘り（旧資料）・天気 の設計を gohan.md に記載。
+ブランチ work/patchlist-spec（仕様書のみ）。IDA は使わず資料＋code.bin 照合で進める（必要なら利用者に確認）。
+結果（2026-09-17）:
+- 壁抜け: 3語（実機確認済み）を採用、8語を別候補へ。
+- 歩いた場所のアイテムを消し去る: AnimalBytes Trampler の JPN 6語 NOP（元命令と全一致、FOXXY の変換可能3語と一致）。Vapecord Walkseeder 1語は別候補。花散らせないと同じ関数（同時ONは未解析）。
+- アイテムが消えない: Vapecord の2語＋フックの代わりに NEVER_WILT_CALLER_1..5（Thumb の BLX 0x2FC950 そのもの）を NOP 2個 0xBF00BF00 にする案。OFF は code.bin の4バイト。フックと等価かは未解析。
+- キーボード制限解除: .bss 1バイト×3（KEYENTER 0xAD0253=1 / KEYAT 0xAD05C0=1 / MORE_NUMBERS 0xAD0158=2）。OFF 未確定、key_limit の動的データと CustomKeyboard は固定番地にならない、キーボードを開くたびの再初期化は要解析。
+- どこでも掘れる: 旧 patches.md の9件目 0x5982C4（副作用あり）を注記。
+- §17 設計: 共通（GetPlayer 0x5C27D8 / 番号 0x305F6C / WorldCoords 0x5BFCE4 / 座標 +0x14..+0x1C / 状態 +0x1A9 / GetAnimInst 0x6561F0 / Actor_SetState 0x64C688）、座標移動、タッチワープ（Vapecord の地図変換表）、アクション解除（状態6）、気絶（状態0x9D）、ポケットアイテム（sub_2FB900()+27600、ReloadIcons 未変換）、木の伐採（F-42 フック1語）、3x3（F-34 フック4か所、置き場の依存）、天気（0x62E728 MOV R0,#n）。変換番地は design_addresses.py で code.bin 照合。
+- 根拠: project_v2/tools/patches/patchlist_candidates2.py・design_addresses.py、work/evidence/patchlist/*.json。
+
 # gohan.md の詰め — PatchList 表（2026-09-17 開始・最新）
 利用者指示: PatchList（複数アドレスの貼る/剥がす）だけで実現できそうなチートについて、ON/OFF のアドレス・値表を gohan.md に記載。アドレスは文書から探して最適なものを選ぶ。reference/old_project の CTRPF ソース群も確認する。
 制約: 対象は JPN 無印＋更新（code.bin = project_v2/artifacts/update/exefs/code.bin、VA=off+0x100000）。USA 等の番地を流用しない（変換表で JPN に直し、OFF 値は code.bin の実バイトで照合）。暗算しない。実機・ビルド・IDB 変更なし。
