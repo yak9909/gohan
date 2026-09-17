@@ -89,8 +89,6 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 0, 0, 9999, 1);
                 i = AddItem(ITEM_LINKED_VALUE, kMedals, u8"オン島のメダルを変更します。");
                 SetValue(i, FMT_DEC, 0, 0, 9999, 1);
-                i = AddItem(ITEM_LINKED_VALUE, kTurnips, u8"カブを変更します。");
-                SetValue(i, FMT_DEC, 0, 0, 99999, 1);
                 const int resCount = g_itemCount - resFirst;
 
                 // ---- root/プレイヤー/スタイル（§5）----
@@ -105,9 +103,9 @@ namespace CTRPluginFramework
                 SetHotkey(i, Bit(HB_A));
                 i = AddItem(ITEM_LIST, kCoordMoveKey, u8"座標移動に使うキーを指定できます。");
                 SetOptions(i, kMoveKeyOptions, kMoveKeyOptionCount);
-                // ★float は 1/10 単位（2.0 / 0.1..99.9 / 0.1 刻み）
+                // ★float は 1/10 単位（既定 2.0 / 範囲 0.1..99.9 / 十字キーで 0.5 ずつ）
                 i = AddItem(ITEM_VALUE, kCoordMoveSpeed, u8"座標移動の移動量を設定できます。");
-                SetValue(i, FMT_FLOAT, 20, 1, 999, 1);
+                SetValue(i, FMT_FLOAT, 20, 1, 999, 5);
                 i = AddItem(ITEM_LIST, kCoordMoveMode,
                             u8"座標移動の移動方法を変更できます。グリッド単位の時、スライドパッドによる向きは8方向に限定されます。");
                 SetOptions(i, kMoveModeOptions, kMoveModeOptionCount);
@@ -185,13 +183,21 @@ namespace CTRPluginFramework
                 g_items[i].action = ACT_CHAT_KANJI;
                 const int keyboardCount = g_itemCount - keyboardFirst;
 
+                // ---- root/ゲーム/店（§12.5）----
+                const int shopFirst = g_itemCount;
+                AddItem(ITEM_CHECKBOX, kShopsOpen, u8"全てのお店は常にあなたのために回り続けます。");
+                i = AddItem(ITEM_LINKED_VALUE, kTurnips, u8"カブ価を変更します。");
+                SetValue(i, FMT_DEC, 0, 0, 99999, 1);
+                const int shopCount = g_itemCount - shopFirst;
+
                 // ---- root/ゲーム（§11）----
                 const int gameFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"キーボード", u8"キーボードとチャットに関するチートです。");
                 SetFolder(i, keyboardFirst, keyboardCount);
+                i = AddItem(ITEM_FOLDER, u8"店", u8"お店に関するチートです。");
+                SetFolder(i, shopFirst, shopCount);
                 AddItem(ITEM_CHECKBOX, kInstantText,
                         u8"メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。");
-                AddItem(ITEM_CHECKBOX, kShopsOpen, u8"全てのお店は常にあなたのために回り続けます。");
                 AddItem(ITEM_CHECKBOX, kShizueSkip, u8"タイトル遷移後のしずえの会話をスキップします。ドパガキなあなたへ。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");

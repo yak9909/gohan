@@ -13,7 +13,6 @@ namespace CTRPluginFramework
         static const char kBank[]           = u8"貯金";
         static const char kCoupons[]        = u8"ふるさとチケット";
         static const char kMedals[]         = u8"メダル";
-        static const char kTurnips[]        = u8"カブ";
         // ---- root/プレイヤー/座標移動 ----
         static const char kCoordMove[]      = u8"座標移動";
         // ★座標移動フォルダの中。フォルダ名も「座標移動」だが、平たい配列では子（トグル）が
@@ -38,8 +37,10 @@ namespace CTRPluginFramework
         // ---- root/村 ----
         static const char kWeather[]        = u8"天気";
         static const char kNoLookUp[]       = u8"空を見上げない";
-        // ---- root/ゲーム ----
+        // ---- root/ゲーム/店 ----
         static const char kShopsOpen[]      = u8"店24時間オープン";
+        static const char kTurnips[]        = u8"カブ価";          // 店のカブの値段（プレイヤーの資産ではない）
+        // ---- root/ゲーム ----
         static const char kInstantText[]    = u8"メッセージ即表示";
         static const char kShizueSkip[]     = u8"しずえスキップ";
         static const char kUnlockFps[]      = u8"フレームレート制限解除";
@@ -62,7 +63,7 @@ namespace CTRPluginFramework
 
         // PlayerMove.cpp（座標移動・タッチワープ）。Wire から呼ぶ。
         void    WirePlayerMove(void);
-        // PlayerResources.cpp（所持金・貯金・ふるさとチケット・メダル・カブ）。Wire から呼ぶ。
+        // PlayerResources.cpp（所持金・貯金・ふるさとチケット・メダル、店のカブ価）。Wire から呼ぶ。
         void    WirePlayerResources(void);
     }
 }
