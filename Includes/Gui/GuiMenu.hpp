@@ -60,7 +60,7 @@ namespace CTRPluginFramework
         bool    ToggleEffectActive(int index);       // 未登録は false
 
         // (b) 連動型（数値／リスト）。メニューを開いた瞬間に Read を 1 回呼ぶ。
-        //   false を返すとその項目は選択不可になる。適用で値が変わったら Write を呼ぶ。
+        //   false を返すとその項目は編集不可になる（カーソルは置ける）。適用で値が変わったら Write を呼ぶ。
         //   書込み後に再構築が要るものは Write の中で面倒を見る。
         typedef bool (*LinkedRead)(int index, s32 *value);
         typedef void (*LinkedWrite)(int index, s32 value);

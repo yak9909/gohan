@@ -137,7 +137,7 @@ namespace CTRPluginFramework
                 u8          childFirst;     // 子の先頭（ITEM_FOLDER のみ）
                 u8          childCount;
                 u8          optionCount;
-                bool        disabled;       // 連動型の読取失敗（normalizeSelection が飛ばす）
+                bool        disabled;       // 連動型の読取失敗（カーソルは置けるが編集できない）
                 const char *label;
                 const char *desc;
                 const char *const *options;

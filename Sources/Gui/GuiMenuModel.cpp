@@ -450,20 +450,10 @@ namespace CTRPluginFramework
             // ================================================================
             // 選択（moveSelection / normalizeSelection / resetSelectionAnimation）
             // ================================================================
+            // ★gohan の意図した差（2026-09-17 利用者指示）: 読み取りに失敗した連動型（disabled）にも
+            //   カーソルを置ける。選択は飛ばさない。値の変更・決定・ホットキー設定は各所の disabled 判定で止める。
             static void NormalizeSelection(void)
             {
-                Frame &fr = Cur();
-
-                if (!g_items[fr.first + fr.selection].disabled)
-                    return;
-                for (int i = 0; i < fr.count; i++)
-                {
-                    if (!g_items[fr.first + i].disabled)
-                    {
-                        fr.selection = i;
-                        return;
-                    }
-                }
             }
 
             static void ResetSelectionAnimation(u32 now)
@@ -504,10 +494,9 @@ namespace CTRPluginFramework
                     }
                     candidate = (candidate + fr.count) % fr.count;
                     next = candidate;
-                    if (!g_items[fr.first + next].disabled)
-                        break;
+                    break;
                 }
-                if (next == previous || g_items[fr.first + next].disabled)
+                if (next == previous)
                     return false;
                 g_edgeBlocked = 0;
                 g_viewFrom = ViewportStart(now);

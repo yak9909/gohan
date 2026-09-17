@@ -99,12 +99,8 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kNoBedHead, u8"日にちを空けてログインしても寝癖が付かなくなります。");
                 const int styleCount = g_itemCount - styleFirst;
 
-                // ---- root/プレイヤー（§3）----
-                const int playerFirst = g_itemCount;
-                i = AddItem(ITEM_FOLDER, u8"資産", u8"所持金などの数値を変更します。");
-                SetFolder(i, resFirst, resCount);
-                i = AddItem(ITEM_FOLDER, u8"スタイル", u8"プレイヤーの見た目に関するチートです。");
-                SetFolder(i, styleFirst, styleCount);
+                // ---- root/プレイヤー/座標移動（§3）----
+                const int moveFirst = g_itemCount;
                 i = AddItem(ITEM_CHECKBOX, kCoordMove, u8"移動キーで高速移動できます。");
                 SetHotkey(i, Bit(HB_A));
                 i = AddItem(ITEM_LIST, kCoordMoveKey, u8"座標移動に使うキーを指定できます。");
@@ -115,6 +111,16 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_LIST, kCoordMoveMode,
                             u8"座標移動の移動方法を変更できます。グリッド単位の時、スライドパッドによる向きは8方向に限定されます。");
                 SetOptions(i, kMoveModeOptions, kMoveModeOptionCount);
+                const int moveCount = g_itemCount - moveFirst;
+
+                // ---- root/プレイヤー（§3）----
+                const int playerFirst = g_itemCount;
+                i = AddItem(ITEM_FOLDER, u8"資産", u8"所持金などの数値を変更します。");
+                SetFolder(i, resFirst, resCount);
+                i = AddItem(ITEM_FOLDER, u8"スタイル", u8"プレイヤーの見た目に関するチートです。");
+                SetFolder(i, styleFirst, styleCount);
+                i = AddItem(ITEM_FOLDER, u8"座標移動", u8"座標移動とその設定です。");
+                SetFolder(i, moveFirst, moveCount);
                 AddItem(ITEM_CHECKBOX, kTouchWarp, u8"地図をタッチした場所にワープします。");
                 i = AddItem(ITEM_CHECKBOX, kWalkThroughWalls,
                             u8"どこでも歩けるようになります。あなたの歩みを阻むものは何一つとして存在しません。");

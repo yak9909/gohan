@@ -14,11 +14,14 @@ namespace CTRPluginFramework
         static const char kCoupons[]        = u8"ふるさとチケット";
         static const char kMedals[]         = u8"メダル";
         static const char kTurnips[]        = u8"カブ";
-        // ---- root/プレイヤー ----
+        // ---- root/プレイヤー/座標移動 ----
         static const char kCoordMove[]      = u8"座標移動";
-        static const char kCoordMoveKey[]   = u8"座標移動 -> 移動キー";
-        static const char kCoordMoveSpeed[] = u8"座標移動 -> 移動量";
-        static const char kCoordMoveMode[]  = u8"座標移動 -> 移動方法";
+        // ★座標移動フォルダの中。フォルダ名も「座標移動」だが、平たい配列では子（トグル）が
+        //   フォルダより前に並ぶので FindItem(kCoordMove) はトグルを返す。
+        static const char kCoordMoveKey[]   = u8"移動キー";
+        static const char kCoordMoveSpeed[] = u8"移動量";
+        static const char kCoordMoveMode[]  = u8"移動方法";
+        // ---- root/プレイヤー ----
         static const char kTouchWarp[]      = u8"タッチワープ";
         static const char kWalkThroughWalls[] = u8"壁抜け";
         static const char kNoBreakFlower[]  = u8"花散らせない";
