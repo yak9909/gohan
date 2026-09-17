@@ -13,7 +13,7 @@
 //   ・ケーブと番地      … Includes/GuiCaves.h（PATCHES/export_gui_v2.py が生成）
 //   ・フォント          … Includes/GuiFontUi.h（PATCHES/make_font_ui.py が生成）
 //     美咲ゴシック第2 362 字（日本語 275）+ PixelMplus 数字 27 字を
-//     **1 枚の 256x128 シートに同居**させ、ResFont を 2 つ作る（F-312 / F-315）
+//     **1 枚の 256x256 シートに同居**させ、ResFont を 2 つ作る（F-312 / F-315）
 //   ・フォント資源の欄  … PATCHES/own_font_data.py が正本。
 //     ここの組み立てと 1 バイトずつ突き合わせるのが
 //     PATCHES/verify_plugin_port_v2.py。**片方だけ直すと落ちる。**
@@ -121,7 +121,10 @@ namespace CTRPluginFramework
             //   300KB の目安をわずかに割るので、場面転換の soak で見ること。
             //   ★この値は OwnGui::Enable() が GuiRenderer::BorrowBytes() で読む。
             //     以前は OwnGui 側に 0x30000 が直書きされていて食い違っていた。
-            const u32   kBorrowBytes = 0x9000;  // 36,864 B（★アトラスぶんだけ）
+            const u32   kBorrowBytes = 0x11000; // 69,632 B（★アトラスぶんだけ）
+            // ★2026-09-17: アトラスを 256x128 -> 256x256（65,536 B）に広げたので 0x9000 から増やした。
+            //   手紙の場面の空きは 0x9000 のとき約 457,000 B なので、増分 32,768 B を引いても約 424,000 B 残る。
+            //   ★実機では未確認（手紙を開いて落ちないかを確かめること）。
             // ★F-345: **アトラスぶんだけ**借りる（32,768 B + 0x80 整列の余白）。
             //   ほかは全部 GuiRenderer の g_mem（プラグインの .bss）に置く。
             //   手紙は資源 131,456 B + テクスチャ 131,072 B = 262,528 B を

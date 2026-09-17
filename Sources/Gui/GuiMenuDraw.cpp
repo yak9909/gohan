@@ -104,8 +104,11 @@ namespace CTRPluginFramework
                 // wrapBitmapText の写し。行数を返す。
                 int     Wrap(const char *src, int maxWidth, int maxLines, char lines[][kWrapBytes])
                 {
-                    int         i = 0, n = 0, w = 0;
+                    int         i = 0, n = 0, w = 0, chars = 0;
                     unsigned    out = 0;
+                    // ★幅で折り返すだけだと、ASCII 混じりの行が文字スロットの最大字数を超えて末尾が切れる
+                    //   （gohan.md の説明「[穴に落下しない] [どこでも掘れる] …」が 29 字）。字数でも折り返す。
+                    const int   maxChars = GuiRenderer::MaxChars(GuiRenderer::SCREEN_TOP);
 
                     if (maxLines <= 0)
                         return 0;
@@ -116,7 +119,7 @@ namespace CTRPluginFramework
                         const int       cw = GuiRenderer::NextCharWidth(src, i);
                         const unsigned  len = (unsigned)(i - start);
 
-                        if (out > 0 && w + cw > maxWidth)
+                        if (out > 0 && (w + cw > maxWidth || chars >= maxChars))
                         {
                             lines[n][out] = '\0';
                             n++;
@@ -124,6 +127,7 @@ namespace CTRPluginFramework
                                 return n;
                             out = 0;
                             w = 0;
+                            chars = 0;
                             lines[n][0] = '\0';
                         }
                         if (out + len + 1 >= (unsigned)kWrapBytes)
@@ -131,6 +135,7 @@ namespace CTRPluginFramework
                         std::memcpy(lines[n] + out, src + start, len);
                         out += len;
                         w += cw;
+                        chars++;
                         lines[n][out] = '\0';
                     }
                     return out > 0 ? n + 1 : n;

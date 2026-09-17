@@ -336,9 +336,10 @@ namespace CTRPluginFramework
             int     SliderTrackW(void);
             void    CaptureButtonRect(int which, int &x, int &y, int &w, int &h);
 
-            // ---- 項目の木と見本（GuiMenuItems.cpp）----
+            // ---- 項目の木（GuiMenuItems.cpp）----
             void    BuildTree(void);
-            void    WireSamples(void);
+            void    WireBehaviors(void);            // 項目名で振る舞いを登録する
+            // ---- 差分試験の見本の観測口（tools/patches/menu_sample_items.cpp だけが定義する）----
             bool    SampleEffectState(int which);       // 0=無敵モード / 1=壁抜け
             s32     SampleLinkedValue(int which);       // 0=連動型数値 / 1=連動型リスト
             void    SetSampleLinkedAvailable(bool ok);  // 連動型の読取失敗を再現する

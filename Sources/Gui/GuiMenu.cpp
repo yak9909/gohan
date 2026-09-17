@@ -171,9 +171,10 @@ namespace CTRPluginFramework
             if (g_thread != nullptr)
                 return true;
             BuildTree();
-            WireSamples();
             GuiKeyboard::Reset();
             ResetState();
+            // ★ResetState が ToggleHandlers を消すので、振る舞いの登録はその後
+            WireBehaviors();
             // ★開いた瞬間に押されているボタン（Select など）を立ち上がりとして拾わない
             PrimeInput(SampleInput().held);
             g_reqOpen = false;
