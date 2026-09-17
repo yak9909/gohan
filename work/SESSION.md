@@ -1,3 +1,9 @@
+# 準備中の残件＋掲示板/雑草/引っ越しの所在調査（2026-09-17 開始・最新）
+利用者指示: 「残っているもの（sub_30C9C4 各段・g_SvProcTypeTable 11 種別・PlSelect case 2〜12）の解析を進めつつ、『掲示板の更新』『雑草が生える』『住民の引っ越し関連』を調べて。これらも準備中にある気がする」。
+方針: 静的のみ（idalib 主IDB）。日替わり処理（SvProcType4_Prepare 以下）と sub_30C9C4 以下の呼び出し木を洗い、雑草のアイテムID・掲示板/引っ越しの文字列やRTTIから入口を特定し、準備中の経路に含まれるかを判定。判明事項は IDB と work/FINDINGS（V2-F014〜）、evidence へ記録。
+結果（一区切り）: V2-F014。掲示板（Bbs_OnDayChangePworks/Events→Bbs_AddPost）・雑草（Field_GrowUp→Field_GrowUpSpawnWeed、0x7C〜0x7F）・住民の引っ越し（Villager_OnDayChange→Villager_DayChangeMoveInOut）はすべて準備中の日替わり処理の中。旧 sub_30C9C4 は Villager_DailyUpdateOnce（日替わり後段から先に走る）。IDB 22 関数命名・保存・閉じた。記録: FINDINGS/FUNCTIONS/evidence prepare_screen/README.md/gohan.md（しずえスキップ注記）。
+残り: g_SvProcTypeTable 11 種別の使い手、PlSelect case 2〜12、sub_110CFC の抽選の正体。acnl_disassemble 未 commit（XML 手順が必要）。
+
 # しずえ画面「準備中」未解明部分の解析（2026-09-17 開始・最新）
 利用者指示: 「しずえ画面の『準備中』未解明部分の解析・調査を進めて」。利用者の推測: 「寝癖付かない」（0x0020C6D8 STRB R1,[R4,#4] を NOP）はこの準備中部分を書き換えている。
 既存の到達点（旧 F-361/F-362、reference/old_project/HANDOFF_MESSAGE.md）: 要求元 ModulePlSelect.cro case 0、ワーカー this+632（sub_27EB34 が組む。callback sub_5254C0 等＝受信ボックス取り込みと推定 MEDIUM）、一括処理 sub_30C994→sub_30C9C4（boot 1 回、中身未解析: sub_10D980/110CFC/10FF58/10DBA0/10CCB8/110668）、case 2〜12 未読。
