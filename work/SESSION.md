@@ -2,6 +2,7 @@
 利用者指示: 「これらの記録をコミットして」。利用者の実機確認: しずえスキップでは少なくとも寝癖・郵便ポストのメールも一緒にスキップされる。ほかの日替わり処理も同様と思われるが断定せず確度は高めに。
 方針: FINDINGS V2-F013/F014・evidence・gohan.md・IDB コメントへ反映→主IDBの XML を書き出し検証→acnl_disassemble（ブランチ IDA）へ commit（push はしない）。loose IDB ファイル・pycache・work/cache は含めない。
 記録済み: V2-F013 を HIGH、V2-F014 に実機傍証、evidence・gohan.md・IDB（0x20C688 / 0x114D18 コメント追記・保存）へ反映。
+完了: XML 書き出し（PASS、関数 44192・シンボル 32117、新しい名前とコメントの反映を確認）→ acnl_disassemble ブランチ IDA に commit 9831e3d8（push していない）。含めなかったもの: IDB の loose ファイル（.id0/.id1/.nam/.til）、__pycache__、work/cache の試験出力。
 
 # 準備中の残件＋掲示板/雑草/引っ越しの所在調査（2026-09-17 開始・最新）
 利用者指示: 「残っているもの（sub_30C9C4 各段・g_SvProcTypeTable 11 種別・PlSelect case 2〜12）の解析を進めつつ、『掲示板の更新』『雑草が生える』『住民の引っ越し関連』を調べて。これらも準備中にある気がする」。
