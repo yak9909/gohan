@@ -1,3 +1,64 @@
+# 残る未解明の解析と整合性確認（2026-09-18 開始・最新）
+利用者指示(/goal): 実機でしか分からないもの以外の未解明を全て解析。AGENTS.md のルールで結果・前提の誤りと矛盾を確認。「描画順」は静的に確認できるはずなので調査。作業後に push。
+対象: (1) 描画順（Scene_DrawLayers のレイヤー、UnitCursor のマテリアル設定、Zファイト・半透明の静的な判断材料）(2) アニメAPI 0x4EBC14/0x4F0300/0x4EDBD0/0x4EDC98/0x4EDC74 (3) 必要ヒープ量（sub_736158 の問い合わせモード）(4) 非同期読み込みのスレッド制約 (5) 既存記録との矛盾点（特に Frame_DrawPass1040 が「下画面」か「上画面右目」か、V2-F019〜F023 の前提）。
+方針: 静的のみ。独立2経路で照合し、暗算しない。
+結果（完了）: V2-F024。(1) 描画順は静的に確定 — Scene_DrawLayers 0x4EB840 の i=0..3 がレイヤーで、判定は material→(+8 ResMaterial)+32。romfs 2,577 マテリアルの分布 0:2160/1:401/2:4/3:12、不透明率は層0=85%・層1=7%・層2/3=0。m_UnitCursor はレイヤー1。同層内は submit 順で並べ替え無し。(2) 描画状態はコードに無く MTOB の PICA コマンド列（sub_48D26C 末尾が mesh+0x68/+0x6C を丸ごと転送）。UnitCursor は blend_mode=1・0x0101=0x01160000＝加算合成・アルファテスト無効・ステンシル無効・0x0107=0x41＝深度LESS（byte mask=1 で深度書き込みは不変）。→ 埋まる部分は隠れる／明るく光る／影は落ちない（番号2に積まないため）まで静的に確定。(3) 矛盾を1件訂正 — Frame_DrawPass1025 0x1B7090（0x401=下画面）は Render_DrawScene0/1 を呼ばない。1040 は上画面右目。設計書 §3.1 の「両方に出る」を「上画面の左右両目に出る」へ修正。(4) アニメAPI 5本の役割と呼ぶ順（0x4EBC14→0x4F0300→0x4EDC74→0x4EDBD0→0x4EDC98）。0x4EDC74 は VFP s0 渡し。アニメ3本は全部 MaterialAnimation で "MaterialAnim::build" と整合。(5) ヒープ量 3,064 B（木の 932/1664 を再現して検算）。(6) 非同期読み込みはロック付きキューでスレッドを選ばない。ツール: tools/models3d/dump_material_state.py 新規、tools/bcres_anim_dump.py のオフセット修正（+0x10 は対象グループ名で loop ではない。group=MaterialAnimation が読めることで自己検証）。IDB: コメント9件・保存・閉じた。記録: FINDINGS・FUNCTIONS・evidence/material_state.txt・outdoor_plan.md・設計書 §3.1/§6/§8/§10・STATE。XML→commit→push まで実施。
+
+# UnitCursor 屋外表示の未解明部分（2026-09-18 開始・最新）
+利用者指示: (1) commit は毎回続ける、**push は指示があるまでしない**（記憶更新済み）。(2) 未解明部分の解析を進める。
+対象: 設計書 docs/topics/unit_cursor_outdoor.md §7 の 1.フック位置 2.資源ホルダの型 3.ModelInstance_Create の引数 4.マス→ワールド換算 5.アニメAPI 6.ヒープ量。方針: 静的のみ。
+結果（完了）: V2-F023。解決 4 件 — ホルダ=HeapAllocator(+0x418,8B)＋G3D資源ホルダ(+0x420,264B、ctor 0x4ED860)、ModelInstance_Create の a5=マテリアルコピーマスク/a6=フラグ/a7=SceneNode+72（実装は (0x834,1,3) をそのまま）、マス→ワールドは 32*tile+16 と Field_GetGroundHeight、フック候補は BaseObj_RunDrawPhase のリスト（F-113 推奨）か Frame_DrawPass1024 の 0x1B7218 直後。残り: アニメAPI・ヒープ量・描画スレッドから読み込みを回してよいか・実機項目。IDB 6関数命名＋4コメント・保存・閉じた。設計書 §7/§8/§9 を更新。commit のみ（push は指示待ち）。
+
+# シーン番号の解析と UnitCursor 屋外表示の設計書（2026-09-18 開始・最新）
+利用者指示: V2-F021 の不足リスト 1 番（Scene_SubmitNode のシーン番号の意味）から解析。設計書が無ければ作る。
+方針: 静的のみ。Render_InitGlobal 0x4E97CC の 3 本の SceneContext/Traverser、Scene_DrawLayers 0x4EB840 の呼び出し元 2 つ、Render_DrawSceneIndexed を読み、index と画面（上左/上右/下）の対応を確定。docs/topics に設計書を作る。
+結果（完了）: V2-F022。シーン番号 0=通常描画（byte_94CA2C==0）、1=別モード（同==1、カタログ等のプレビューと推定 LOW）、2=影マップ。上画面パス 1024 と 1040 の両方が 2→0→1 の順で同じ SceneContext を使うので番号は画面ではない。屋外は 0 を使う（旧 F-111/F-112 の実機実例と一致）。設計書 docs/topics/unit_cursor_outdoor.md を新規作成（手順・状態機械・実行文脈・未解明7点・検証順）。IDB 4コメント・保存・閉じた。
+
+# UnitCursor を屋外で出すための解析（2026-09-18 開始・最新）
+利用者指示: UnitCursor 表示へ向けた解析調査と、現在足りないもの・次に解析すべきものの提示。
+方針: 静的のみ。(1) 資源読み込みAPIの引数 (2) 資源ホルダ→モデル検索 (3) ModelInstance_Create の実引数（CRO の実例と V2-F007 の照合）(4) シーン登録 Scene_SubmitNode と屋外シーンの取得 (5) 毎フレーム更新をどこから回すか (6) アニメAPI。未解明点を一覧化して記録する。
+結果（完了）: V2-F021。資源読み込みは非同期（FileRes_RequestLoadAsync、+232 状態、完了まで毎フレーム呼ぶ）＋Setup 必須と確定。モデル取得・インスタンス生成・行列設定・Scene_SubmitNode（実機確認済みAPI、最小実例 sub_1F9BC4 が index 0）まで道筋が揃い、屋外でも BsFtrMgr が動く分だけ見込みは高い。不足は (1)シーン番号の意味 (2)毎フレームのフック位置 (3)資源ホルダの型/サイズ (4)ModelInstance_Create の 0x834/1/3 (5)アニメAPI引数 (6)マス→ワールド換算 (7)実機の描画順・Zファイト・影。IDB 5関数命名＋4コメント・保存・閉じた。記録: evidence/unit_cursor/outdoor_plan.md、FINDINGS、FUNCTIONS、models3d.md。
+
+# オートキャンプでの家具モデル表示（2026-09-18 開始・最新）
+利用者指摘: 「資源が屋内でしか読まれない」としたが、オートキャンプでは屋外の判定を持ちながら家具モデルを表示している。これを調べる。
+方針: 静的のみ。オートキャンプ関連の部屋IDと g_RoomFlagTable のフラグ、ModuleAutoCamp.cro が読む資源、家具モデルの読み込み経路（ScStage_LoadIndoorRes 以外）、UnitCursor.bcres が読まれるかを確認し、V2-F019 の結論を訂正する。
+結果（完了）: V2-F020。指摘は正しい。g_RoomFurnitureCapacity 0x8835BC は屋外でも非0（村38・Downtown2・オートキャンプ場10・カー内部36・家1F48）で、BsFtrMgr_CreateResources がその数だけ家具枠を作る＝家具モデルは code.bin 側で屋外でも動く。ItemIndoor.bin は bit8|bit28(キャンプ場)|bit29(カー内部)で読み、bit28/29 では ScStage_LoadCampingCarInfo が NpcCampingCarInfo/*.bin を読む。UnitCursor.bcres は bit8 のみ、Room_SelectModules も bit8 のときだけ Indoor/Ftr を積む（Ftr 参照は1か所）。V2-F019 の表現を訂正。IDB 命名3件＋コメント3件・保存・閉じた。記録: evidence §6・FINDINGS・FUNCTIONS・models3d.md。
+
+# UnitCursor の未確認部分を詰める（2026-09-18 開始・最新）
+利用者指示: (1) 今後は結果報告のたびに XML 書き出し→commit→IDA ブランチへ push まで行う（恒久）。(2) V2-F019 の未確認部分を詰める。
+対象: 部屋フラグ8=屋内の断定、枠+120 の種類とアニメ3本の対応、家具の大きさ 0x690B68 とフレーム/倍率の具体値、UnitCursorLine の用途。方針: 静的のみ（主IDB＋CRO ツール）。
+結果（完了）: 部屋フラグ8=屋内を g_RoomFlagTable で確認（200中118件が室内のみ、RoomID.txt と照合）。UnitCursor.bcres はモデル1つ＋アニメ3本で、UnitCursorLine はノード名、UnitCursorRotate は 3F の形選択（家具の大きさ 0x690B68 = (v+2)>>2 の 0〜3 をフレームに固定、速度0）。明滅は UnitCursor/NG の 150F アニメ。カーソル追加・削除の呼び出し元は ARM/Thumb・ポインタ走査とも 0 件で未特定（LOW のまま）。IDB: g_RoomFlagTable 命名＋3か所コメント・保存・閉じた。ツール tools/bcres_anim_dump.py 追加。記録更新後に XML 書き出し→commit→IDA へ push（今後は毎回）。
+
+# 模様替えモードの家具の下の範囲表示（2026-09-18 開始・最新）
+利用者指示: 自分の家の模様替えモードで家具を掴んで動かしているとき家具の下に出る影／パーティクルのような範囲表示を、屋外でも好きに出したい。その表示の解析。思考は日本語で。
+方針: 静的のみ（idalib 主IDB）。既存記録（BsMenuRoomMgr、模様替え、Ftr、影、パーティクル）を検索→描画しているクラス・リソース（romfs）・生成関数・座標の渡し方を特定。実装は依頼されていないので解析と記録まで。IDB・FINDINGS（V2-F019）・evidence へ。
+結果（完了）: V2-F019。範囲表示＝Ftr/Chip/UnitCursor.bcres の 3D モデル。ScStage_LoadIndoorRes 0x611928 が部屋フラグ8のときだけ読み、表示は ModuleIndoor.cro の AcObjUnitCursor（64枠、アニメ3本 UnitCursor/NG/Rotate、位置は ModuleFtr の家具配列依存）。屋外は資源もクラスも無いので不可、道筋は models3d.md の自前モデル表示。IDB 3 関数命名＋コメント・保存・閉じた。ツール: tools/patches/cro_rtti.py 追加、cro_call_context.py の匿名インポートをモジュール別・セグメント別に修正。記録: evidence/unit_cursor/README.md、FINDINGS、FUNCTIONS、docs/topics/models3d.md。未 commit。
+
+# 模様替えで家具を掴んだときの床の範囲表示（2026-09-18 開始・最新）
+利用者指示: 自分の家の模様替えモードで家具を掴んで動かすとき、家具の下に出る影／パーティクルのような範囲表示を、屋外でも好きに出せるようにしたい。その解析。
+方針: 静的のみ（idalib 主IDB）。既存記録（FINDINGS/reference の模様替え・BsMenuRoom・パーティクル・models3d）を先に検索。RTTI（BsMenuRoomMgr 等）と文字列（layout/particle/bcres 名）から表示物の正体（モデル/パーティクル/ポリゴン）と生成・更新関数を特定し、屋外で呼ぶための条件（部屋・資源のロード・所有者）を洗う。実機操作はしない。IDB・FINDINGS(V2-F019)・evidence へ。
+
+# 手紙の ID 種別 3・4・6 の意味（2026-09-18 開始・最新）
+利用者指示: 「種別3・4・6 の意味を調査してください」（V2-F017 の LOW 残件。PersonalID ブロック +0x30 / 手紙 +0x30・+0x64 の種別バイト）。
+方針: 静的のみ（idalib 主IDB）。種別バイトを書く箇所（STRB #0x30/#0x64 と MOV #3/#4/#6、Thumb 含む）と読む箇所（1/3/6・2/4 判定の呼び出し元）を列挙し、どの経路でどの値になるかを確定。IDB・FINDINGS・evidence/mail_sender へ。
+結果（完了）: V2-F018。3=名前差し込み無しのプレイヤー、4=同住民（テンプレートで名前位置が負のとき LetterId_DropNameTag）、5=IDなし、6=自分自身（未来の自分への手紙）、7=自由な名前（書く箇所未発見）。romfs SYS_2D_Mail の見出しで独立確認（tools/msbt_dump.py）。判定条件は変わらず。IDB 14 関数命名・コメント・保存・閉じた。記録: evidence/mail_sender 追記＋SYS_2D_Mail.txt・sender_kind_table.txt、FINDINGS、FUNCTIONS。未 commit。
+
+# sub_6070CC / sub_606964 と「通信相手からの手紙」判定（2026-09-18 開始・最新）
+利用者指示: sub_6070CC / sub_606964 の解析。郵便ポストで受け取る手紙に「通信したプレイヤーから送られたか」を判定できるかを調査。目的: 将来、通信プレイヤーからの手紙以外を届かないようにするチートを作りたい（実装はまだ依頼されていない）。
+方針: 静的のみ（idalib 主IDB）。Mail_Deliver 0x2FF184 の行き先 sub_1BB1F8 / sub_1BB484、手紙構造体（差出人欄・種別）、通信で手紙を受け取る経路（BsMailSaveMgr 等）を確認し、判定に使える欄・フック候補を記録。IDB・FINDINGS（V2-F017）・evidence へ。
+結果（完了）: V2-F017。sub_6070CC/sub_606964 はセーブ入出力中を返すデバッグ判定（戻り値未使用）。手紙 640B の差出人 PersonalID は +0x34、種別 +0x64（プレイヤー=1）、町ID は PersonalID+22。ゲストの手紙はパケット74でホストの預かりへそのまま入り Mail_DeliverFromPool → Mailbox_WriteLetter 0x6F4454。判定「差出人種別プレイヤー かつ 差出人の町≠自分の町」は可能、フック候補 0x6F4454（未来の手紙は 0x6F4264 が別）。IDB 22 関数命名・コメント・保存・閉じた。記録: evidence/mail_sender/README.md・FINDINGS・FUNCTIONS・growup.md 修正。未 commit。
+
+# sub_5C9C24 の調査（2026-09-18 開始・最新）
+利用者指示: 「sub_5C9C24 の調査をしてください」。V2-F015 で Structure_StampAll(1,1) を呼ぶ日替わり外の呼び出し元として残件だったもの。
+方針: 静的のみ（idalib 主IDB）。呼び出し元（sub_6E205C←sub_6E2D04）を遡り、いつ走るか・中身を確定。IDB・FINDINGS・evidence growup.md へ記録。
+結果（完了）: V2-F016。sub_5C9C24 = Dream_RebuildDownloadedTown。呼び出し元は DreamNet_ApplyDownloadedTown（受信 0x71880 B を TownBase へ複写）だけで、そこへ入る状態は ModuleDream.cro からしか設定されない＝夢見の館で町を落とした直後。日替わり・成長は呼ばない。IDB 7 関数命名・コメント・保存・閉じた。記録: FINDINGS/FUNCTIONS/growup.md 追記/gohan.md。cro_call_context.py に CRO_CONTEXT を追加。未 commit。
+
+# 日替わり処理の残り（郵便・岩・木/竹/低木の成長・花の増殖/枯れ・埋没アイテム・竹の増殖・アイテム消えない）（2026-09-18 開始・最新）
+利用者指示: 残りの解析（g_SvProcTypeTable 11 種別・PlSelect case 2〜12・sub_110CFC）を進めつつ、「郵便ポストのメールの更新」「岩の増殖」「木／竹／低木などの成長」「花の増殖・枯れ」「埋没アイテムの発生」「竹の増殖」を調査。利用者の推測: Vapecord「アイテム消えない」（無効な位置のアイテムが消えない）も日替わり処理に含まれる。
+方針: 静的のみ。Field_GrowUp（0x104B54）の各コールバックをアイテムID（IDS一覧）と突き合わせて特定、Vapecord ItemsDontDissappear の 2 パッチ（0x6FA8A8/0x52734C）とフック先 0x2FC950 の位置づけを確認。判明事項は IDB・FINDINGS（V2-F015〜）・evidence へ。
+結果（一区切り）: V2-F015。romfs Fg/Param/Fg.bin を定義表と確定（tools/fg_param_dump.py、実測7件一致）。成長処理の岩・竹・苗の成長/枯れ・花の枯れ/交配/自然発生・化石/落とし穴の埋設・キノコ等を特定。郵便は Mail_Deliver、準備中は日替わり後に Mail_SP_First/Housing/Gardening、日替わり内で季節NPC・住民の手紙。Vapecord アイテム消えない の 3 部品はすべて日替わり内の処理を止める（パッチ関数は日替わり外からも使用）。IDB 43 関数命名・コメント・保存・閉じた。記録: FINDINGS/FUNCTIONS/evidence growup.md/README 追記/gohan.md。
+残り: g_SvProcTypeTable 11 種別、PlSelect case 2〜12、sub_110CFC、LOW 項目（byte_A0EAFC・雨フラグ・岩フラグ・フック5か所の対応）。acnl_disassemble 未 commit（XML 手順が必要）。
+
 # タッチワープのホットキー・移動量の無効化・村/マップフォルダ（2026-09-18 開始・最新）
 利用者指示: (1) タッチワープにホットキーが設定されていれば、押している間だけワープ可。(2) 移動方法がグリッド単位なら移動量を無効状態に。(3) 名称変更「選択したマップアイコンのroomに移動」→「選択中アイコンに部屋移動」、「選択したプレイヤーのデータに切り替える」→「選択中プレイヤーに切り替え」。(4) 選択中アイコンに部屋移動・選択した住民への操作・選択中プレイヤーに切り替え を root/村/マップ フォルダへ。(5) 選択中プレイヤーに切り替え は通信中でなく村にいる時に発動、トグル型アクション式（未解析なので仕様として記載、実装は空のまま）。
 方針: 無効化は Behavior に「無効判定」コールバックを足し、メニューが毎フレーム評価（登録した項目だけ）。移動方法の編集値で判定。gohan.md（§1/§3/§9/§17.2）と gohan-menu.md §6 を更新。検証・クリーンビルド・監査の後 work/cheat-impl へ push（実機未確認）。
