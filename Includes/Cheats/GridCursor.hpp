@@ -80,6 +80,7 @@ namespace GridCursor
         static const u32 kSharedMeshArray = 14; // 破棄が資源側へ書いてしまう形
         static const u32 kCaveOccupied = 15;    // 置き場が空いていない。何も書いていない
         static const u32 kHookNotNop = 16;      // フック先が期待の NOP ではない
+        static const u32 kHeapExhausted = 17;   // instance ヒープの残りが 1 体分に満たない
     }
 
     // ---- メニュースレッドから呼ぶ ----
@@ -103,6 +104,9 @@ namespace GridCursor
     // 基点をマスの格子へ丸めるか。切ればプレイヤーの足元そのままになる。
     void            SetSnap(bool on);
     bool            Snap(void);
+    // 縞模様を 45 度傾ける。切り替えると組み直す（数フレーム消える）。
+    void            SetDiagonalStripes(bool on);
+    bool            DiagonalStripes(void);
     Status          Read(void);
     const char *    StageName(Stage stage);
     const char *    FailName(u32 reason);

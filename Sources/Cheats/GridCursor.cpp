@@ -34,6 +34,7 @@ static u8 s_resourceAllocator[16] GC_ALIGNED;
 static u8 s_instanceAllocator[16] GC_ALIGNED;
 static u8 s_holders[kMaxCursors][kNodeHolderBytes] GC_ALIGNED;
 static u8 s_anims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
+static u8 s_rotAnims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -54,7 +55,13 @@ static const float kCanmFrames = 150.0f;
 static const u32 kResourceHeapBytes = 0x8000;
 // instance ヒープは体数から決める。1 体 5,090 B の実測（IDA-opus-5-F023）に 25% ほど足した。
 // ★以前の固定 0x10000 は 12 体分しかなく、「16 体入る」と書いてあったのは誤り。
-static const u32 kInstanceBytesPerCursor = 6400;
+// 向きを決める 4 キーのアニメ。frame 0 = 45度 / 1 = 135 / 2 = 225 / 3 = 315
+// （`UnitCursor.bcres` 0x161C、メンバは Materials["m_UnitCursor"].TextureCoordinators[1].Rotate の 1 つだけ）。
+static const u32 kRotateCanmOffset = 0x161C;
+static const float kRotateFrame45 = 0.0f;
+// 1 体あたりの予約量。実測 5,090 B（IDA-opus-5-F023）に、向きアニメをもう一つ
+// 組む分と余裕を乗せてある。★足りないまま建てるとゲーム側が落ちる（F034）ので多めに取る。
+static const u32 kInstanceBytesPerCursor = 8192;
 static const u32 kInstanceHeapSlack = 0x4000;
 // 1 フレームに作る上限。これはゲームの描画パスの中なので、
 // 64 体を一気に作るとそのフレームだけ長く止まる。
@@ -71,6 +78,7 @@ static const u32 kLoadAttempts = 120;   // the load lands in one or two frames i
 static float s_spacing = 32.0f;     // マスの間隔＝1 回の移動量。world 単位
 static float s_scale = 1.0f;        // カーソル自身の倍率。100% = 1.0
 static bool s_snap = true;          // 基点を間隔の格子へ丸めるか
+static bool s_diagonal;             // 縞模様を 45 度傾けるか
 
 static volatile Stage s_stage = Stage::Off;
 static volatile Request s_request = Request::None;
@@ -82,6 +90,7 @@ static void* s_resource;
 static void* s_model;
 static void* s_nodes[kMaxCursors];
 static u32 s_cursorCount;
+static bool s_rotBuilt[kMaxCursors];   // 向きアニメを組んだ体だけ解放する
 static u32 s_loadAttempts;
 static u32 s_frames;
 static u32 s_submits;
@@ -101,6 +110,7 @@ static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
 static bool s_hookInstalled;
+static bool s_wantShown;   // 利用者が「出す」と言っている間だけ真。組み直しの可否はこれで決める
 static bool s_sceneOk;
 static u32 s_quietFrames;     // frames since we stopped submitting, before we free
 static u32 s_resourceFree;    // sampled on the draw thread; the plugin thread only reads
@@ -117,6 +127,18 @@ static inline u32* Word(void* base, u32 offset) {
 static inline bool IsHeapPointer(const void* p) {
     const u32 v = reinterpret_cast<u32>(p);
     return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u;
+}
+
+// 大きさや見た目を変える要求。**必ず解放を挾む**。
+// instance ヒープは体数ぴったりで作っているので、数が変われば作り直す以外にない。
+// ★以前は Ready のときだけ見ていたので、**組み立て中に数を変えると**新しい数で
+// 古いヒープへ建て続けて落ちていた（IDA-opus-5-F034）。
+static void RequestRebuild() {
+    // 止めると言われたあとに勝手に出し直さないための関門。
+    if (!s_wantShown || s_stage == Stage::Off || s_stage == Stage::Failed)
+        return;                       // 次に出すとき新しい値で建つ
+    s_rebuild = true;
+    s_request = Request::Teardown;
 }
 
 // Named Stop, not Fail: Fail is the namespace the reason codes live in.
@@ -186,12 +208,15 @@ static void PoseAll() {
     const float ox = s_originX;
     const float oz = s_originZ;
     u32 index = 0;
-    for (u32 r = 0; r < s_footprintH; ++r) {          // 画面の縦
-        for (u32 c = 0; c < s_footprintW; ++c) {      // 画面の横
+    // ★実機で見ると 2 つの枚数が逆だった（利用者報告、2026-09-22）。
+    //   軸の写像自体は移動で合っているので、**どちらの数がどちらの辺か**だけを入れ替える。
+    //   位置のずれ（s_row / s_col）はそれぞれの軸に残してあるので、十字キーは変わらない。
+    for (u32 j = 0; j < s_footprintH; ++j) {          // 縦の枚数 = -Z 方向
+        for (u32 i = 0; i < s_footprintW; ++i) {      // 横の枚数 = +X 方向
             if (index >= s_cursorCount)
                 return;
-            const float x = ox + (float)(s_row + (s16)r) * s_spacing;
-            const float z = oz - (float)(s_col + (s16)c) * s_spacing;
+            const float x = ox + (float)(s_row + (s16)i) * s_spacing;
+            const float z = oz - (float)(s_col + (s16)j) * s_spacing;
             PoseCursor(index, x, s_playerY, z);
             ++index;
         }
@@ -203,6 +228,14 @@ static void PoseAll() {
 // ---------------------------------------------------------------------------------------
 
 static bool BuildOneCursor(u32 index) {
+    // ★これを戻り値で済ませてはいけない。instance ヒープが尽きると
+    //   `nwgfx_SkeletalModel_Create 0x0049693C` は失敗した確保の null をそのまま辿り、
+    //   `ldr r0,[r5]` で落ちる（IDA-opus-5-F034、クラッシュダンプ）。呼ぶ前に残りを見る。
+    void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor) {
+        Stop(Fail::kHeapExhausted);
+        return false;
+    }
     void* holder = s_holders[index];
     NodeHolderCtor(holder);
     // (bufferOption, isAnimationEnabled, maxAnimObjectsPerGroup). The last two matter: with
@@ -245,6 +278,27 @@ static bool BuildOneCursor(u32 index) {
     }
     // Slot 0 is where the game keeps the always-on animation.
     BindAnimSlot(holder, anim, 0);
+
+    // 向きのアニメ。ゲーム自身と同じ slot 2（IDA-opus-5-F029）。
+    // slot 0 の 150 フレームは Translate と MaterialColor しか書かないので、Rotate は衝突しない。
+    s_rotBuilt[index] = false;
+    if (s_diagonal) {
+        void* rot = s_rotAnims[index];
+        void* rotCanm = reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset;
+        if (std::memcmp(rotCanm, "CANM", 4) != 0) {
+            Stop(Fail::kAnimBuildFailed);
+            return false;
+        }
+        MaterialAnimCtor(rot);
+        if (MaterialAnimBuildFromRes(rot, holder, rotCanm, s_instanceAllocator, 0) != 1) {
+            Stop(Fail::kAnimBuildFailed);
+            return false;
+        }
+        s_rotBuilt[index] = true;
+        BindAnimSlot(holder, rot, 2);
+        // 1 フレームで止める。キーは 4 つで 45/135/225/315 度。
+        AnimSetFrame(rot, kRotateFrame45);
+    }
     return true;
 }
 
@@ -255,7 +309,10 @@ static void DestroyCursors() {
             // vtable slot 5, not the destructor: the destructor would leave the animation
             // object and its child heap allocated (IDA-opus-5-F023).
             MaterialAnimReleaseBuilt(s_anims[i]);
+            if (s_rotBuilt[i])
+                MaterialAnimReleaseBuilt(s_rotAnims[i]);
         }
+        s_rotBuilt[i] = false;
         s_nodes[i] = nullptr;
     }
     s_cursorCount = 0;
@@ -387,7 +444,10 @@ static void StepBuild() {
             ComputeOrigin();
         }
 
-        const u32 want = (u32)s_footprintW * (u32)s_footprintH;
+        // ★生の footprint ではなく、**ヒープを作ったときの体数**で建てる。
+        //   途中で数を変えられてもここが増えないので、ヒープを超えようがない。
+        //   数の変更は SetFootprint が組み直しを頼む形で反映される。
+        const u32 want = s_heapCursors;
         u32 made = 0;
         while (s_cursorCount < want && made < kBuildPerFrame) {
             if (!BuildOneCursor(s_cursorCount))
@@ -408,31 +468,6 @@ static void StepBuild() {
 }
 
 // Grow or shrink to the requested footprint without rebuilding what is already there.
-static void ApplyResize() {
-    const u32 want = (u32)s_footprintW * (u32)s_footprintH;
-    while (s_cursorCount > want) {
-        const u32 i = s_cursorCount - 1;
-        if (*Word(s_holders[i], 4) != 0u) {
-            ModelInstanceDestroy(s_holders[i]);
-            MaterialAnimReleaseBuilt(s_anims[i]);
-        }
-        s_nodes[i] = nullptr;
-        s_cursorCount = i;
-    }
-    u32 made = 0;
-    while (s_cursorCount < want && made < kBuildPerFrame) {
-        if (!BuildOneCursor(s_cursorCount))
-            return;
-        ++s_cursorCount;
-        ++made;
-    }
-    if (s_cursorCount < want) {
-        s_request = Request::Resize;   // 残りは次のフレームで
-        return;
-    }
-    PoseAll();
-}
-
 // ---------------------------------------------------------------------------------------
 // The frame callback. Runs on the game's draw thread, once per frame, from the stub.
 // ---------------------------------------------------------------------------------------
@@ -444,10 +479,11 @@ extern "C" void FrameCallback(void) {
     if (s_request == Request::Teardown) {
         if (s_stage == Stage::Off) {
             // 既に止まっているなら解放するものは無い。組み直しだけ頼まれているなら通す。
-            s_request = s_rebuild ? Request::Setup : Request::None;
+            s_request = (s_rebuild && s_wantShown) ? Request::Setup : Request::None;
             s_rebuild = false;
             return;
         }
+        // ★組み立ての途中でもその場で折り返す。TeardownAll は半端な状態を片付ける。
         // Stop submitting first and let a few frames pass. F025 showed freeing a drawn
         // instance is harmless, but the picture is only right if nothing is mid-flight.
         if (s_stage != Stage::Teardown) {
@@ -458,8 +494,8 @@ extern "C" void FrameCallback(void) {
         if (++s_quietFrames < 4)
             return;
         TeardownAll();
-        // 大きさが変わって instance ヒープを作り直す必要があったときは、そのまま組み直す。
-        s_request = s_rebuild ? Request::Setup : Request::None;
+        // 大きさや見た目が変わって作り直す必要があったときは、そのまま組み直す。
+        s_request = (s_rebuild && s_wantShown) ? Request::Setup : Request::None;
         s_rebuild = false;
         return;
     }
@@ -505,9 +541,6 @@ extern "C" void FrameCallback(void) {
     if (s_request == Request::Reposition) {
         s_request = Request::None;
         PoseAll();
-    } else if (s_request == Request::Resize) {
-        s_request = Request::None;
-        ApplyResize();
     }
 
     for (u32 i = 0; i < s_cursorCount; ++i) {
@@ -585,11 +618,13 @@ bool Show(void) {
     s_failReason = Fail::kNone;
     if (!InstallHook())
         return false;
+    s_wantShown = true;
     s_request = Request::Setup;
     return true;
 }
 
 void Hide(void) {
+    s_wantShown = false;
     s_haveOrigin = false;   // 次に出すときはプレイヤーの足元から
     s_rebuild = false;
     if (s_stage == Stage::Off)
@@ -598,7 +633,9 @@ void Hide(void) {
 }
 
 bool IsShown(void) {
-    return s_stage != Stage::Off && s_stage != Stage::Failed;
+    // 組み直しの間は一瞬 Off を通るので、段ではなく利用者の意思を返す。
+    // そうしないと大きさを変えるたびにチェックが外れる。
+    return s_wantShown && s_stage != Stage::Failed;
 }
 
 void Shutdown(void) {
@@ -606,6 +643,7 @@ void Shutdown(void) {
         return;
     // Make the callback do nothing, take the branch out, and only then clear the stub --
     // the draw thread could be inside it at this moment.
+    s_wantShown = false;
     s_stage = Stage::Off;
     s_request = Request::None;
     *reinterpret_cast<u32*>(Stub::kAddress + Stub::kCallbackOffset) = 0;
@@ -636,16 +674,7 @@ void SetFootprint(u32 width, u32 height) {
         return;
     s_footprintW = (u8)width;
     s_footprintH = (u8)height;
-    if (s_stage != Stage::Ready)
-        return;
-    if (width * height > s_heapCursors) {
-        // ヒープはいまの体数ぶんしか無い。足りないまま建てると activator が null のまま
-        // 半分だけできて、描いた瞬間に落ちる（V2-F025）。作り直す。
-        s_rebuild = true;
-        s_request = Request::Teardown;
-    } else {
-        s_request = Request::Resize;
-    }
+    RequestRebuild();
 }
 
 void SetSpacing(s32 worldUnits) {
@@ -681,6 +710,16 @@ void SetSnap(bool on) {
 }
 
 bool Snap(void) { return s_snap; }
+
+void SetDiagonalStripes(bool on) {
+    if (s_diagonal == on)
+        return;
+    s_diagonal = on;
+    // 外しても Rotate は最後に書かれた値のまま残るので、組み直す。
+    RequestRebuild();
+}
+
+bool DiagonalStripes(void) { return s_diagonal; }
 
 Status Read(void) {
     Status out;
@@ -828,6 +867,20 @@ namespace CTRPluginFramework
 
             const GuiMenu::ToggleEffectFuncs kSnapFuncs = { SnapIsActive, SnapSetActive };
 
+            bool    DiagIsActive(int index)
+            {
+                (void)index;
+                return GridCursor::DiagonalStripes();
+            }
+
+            void    DiagSetActive(int index, bool active)
+            {
+                (void)index;
+                GridCursor::SetDiagonalStripes(active);
+            }
+
+            const GuiMenu::ToggleEffectFuncs kDiagFuncs = { DiagIsActive, DiagSetActive };
+
             // 「十字キーで動かす」が有効な間だけ。ゲーム側の十字キーを毎フレーム塞ぐので、
             // カーソルを動かしてもプレイヤーは歩かない。held はメニュー表示中は 0 になる。
             void    GridCursorMoveTick(u16 held)
@@ -896,6 +949,7 @@ namespace CTRPluginFramework
 
             const int statIndex = GuiMenu::FindItem(kGridCursorStat);
             const int snapIndex = GuiMenu::FindItem(kGridCursorSnap);
+            const int diagIndex = GuiMenu::FindItem(kGridCursorDiag);
 
             if (statIndex >= 0)
                 GuiMenu::RegisterExecute(statIndex, StatusExecute);
@@ -907,6 +961,11 @@ namespace CTRPluginFramework
                 //   チェックボックスは、ここで揃えないと**表示だけ OFF のまま ON の振る舞い**になる
                 //   （利用者報告、2026-09-22）。
                 GuiMenu::SetItemApplied(snapIndex, GridCursor::Snap() ? 1 : 0);
+            }
+            if (diagIndex >= 0)
+            {
+                GuiMenu::RegisterToggleEffect(diagIndex, &kDiagFuncs);
+                GuiMenu::SetItemApplied(diagIndex, GridCursor::DiagonalStripes() ? 1 : 0);
             }
 
             if (g_showIndex >= 0)

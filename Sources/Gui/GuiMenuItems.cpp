@@ -233,6 +233,8 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 100, 5, 1000, 5);
                 AddItem(ITEM_CHECKBOX, kGridCursorSnap,
                         u8"基点を間隔のマス目へ丸めます。切るとプレイヤーの足元そのままになります。");
+                AddItem(ITEM_CHECKBOX, kGridCursorDiag,
+                        u8"縞模様を斜め 45 度にします。家の模様替えで出る向きと同じものです。大きさは変わりません。");
                 AddItem(ITEM_CHECKBOX, kGridCursorMove,
                         u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
                 AddItem(ITEM_ACTION, kGridCursorStat,

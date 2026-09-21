@@ -973,6 +973,7 @@ Trampler とも呼ばれる。FOXXY `trampleSeeder`（USA）も同じ系統の 6
 | 1マスの間隔 | 数値 | マスの間隔＝十字キー 1 回の移動量。world 単位。1〜400、既定 12 |
 | カーソルの拡大率 | 数値 | カーソル自身の大きさ。百分率。5〜1000、既定 100 |
 | マス目に合わせる | チェック | 出した瞬間に基点をマスの中心へ丸める。既定 ON（表示も ON。[gohan-menu.md §6(a)](gohan-menu.md#a-registertoggleeffect--チェック項目の効果の-onoff)）|
+| 縞模様を 45 度傾ける | チェック | 縞を斜めにする。大きさは変わらない。切り替えると組み直す |
 | 十字キーで動かす | チェック | 有効な間、十字キーで 1 マスずつ動かす。ゲーム側の十字キーは塞ぐ |
 | 状態を見る | 実行 | いまどの段で止まっているかを通知で出す |
 
@@ -1053,6 +1054,32 @@ Anim_SetFrame(anim, frame)                  0x004EDC98
 ModelInstance_EvaluateAndApplyAnims(holder) 0x004F0560   ゲーム自身の適用（vtable[5]＋phase 0/1）
 TransformNodeHolder_Submit(holder, 0)       0x004ED630
 ```
+
+### 18.3.1 縞模様の向き（IDA-opus-5-F034）
+
+`UnitCursor.bcres` の **`UnitCursorRotate`（0x161C、3 フレーム）** を **slot 2** へ結んで 1 フレームで止める。
+
+| frame | 角度 |
+|---|---|
+| 0 | **45度** |
+| 1 | 135度 |
+| 2 | 225度 |
+| 3 | 315度 |
+
+メンバは `Materials["m_UnitCursor"].TextureCoordinators[1].Rotate` の 1 つだけなので、
+**形も大きさも変わらない**（家の模様替えで見えるものと同じ）。
+slot 0 の 150 フレームは `Translate` と `MaterialColor` しか書かないので衝突しない。
+
+**★ OFF に戻すには組み直しが要る。** 枠を空にしても `Rotate` は最後の値のまま残る。
+
+### 18.3.2 大きさを変えるときは必ず解放を挾む（IDA-opus-5-F034）
+
+**`nwgfx_SkeletalModel_Create 0x0049693C` は確保の失敗を検査しない。**
+instance ヒープが尽きるとゲーム自身が null を辿って落ちるので、戻り値や `node+0x1EC` の検査は手遅れ。
+
+- 建てる前に `HeapGetFreeSize` で 1 体分（8,192 B）あるか見る
+- 建てる数は **ヒープを作ったときの体数**。生の footprint を使わない
+- 数の変更は **どの段からでも解放→組み直し**。Ready のときだけ見ていたのがクラッシュの原因
 
 ### 18.4 ゲーム関数を C++ から呼ぶときの落とし穴（実際に踏んだ）
 
