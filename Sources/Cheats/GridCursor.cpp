@@ -8,6 +8,7 @@
 
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
+#include <cstdio>
 #include <cstring>
 
 namespace GridCursor {
@@ -277,13 +278,13 @@ static void StepBuild() {
         HeapAllocatorCtor(s_resourceAllocator);
         HeapAllocatorCtor(s_instanceAllocator);
         if (HeapCreateNamed(s_resourceAllocator, kResourceHeapBytes, parent, &s_heapName,
-                            1, 0.0f) != 1 ||
+                            1, 0u) != 1 ||
             !IsHeapPointer(*reinterpret_cast<void**>(Word(s_resourceAllocator, 4)))) {
             Stop(Fail::kResourceHeap);
             return;
         }
         if (HeapCreateNamed(s_instanceAllocator, kInstanceHeapBytes, parent, &s_heapName,
-                            1, 0.0f) != 1 ||
+                            1, 0u) != 1 ||
             !IsHeapPointer(*reinterpret_cast<void**>(Word(s_instanceAllocator, 4)))) {
             Stop(Fail::kInstanceHeap);
             return;
@@ -419,6 +420,18 @@ extern "C" void FrameCallback(void) {
     // The scene-owner check. At a room change the owner goes null and then comes back at a
     // different address, so this stops drawing by itself and stays stopped -- which is what
     // the game's own cursor does (IDA-opus-5-F024). Our objects survive untouched.
+    //
+    // ★この検査は「控えた所有者と同じか」なので、控える前にかけてはいけない。
+    //   控えるのは AllocHeaps の中なので、そこへ行く前にここで弾くと stage が
+    //   AllocHeaps のまま一生進まない（失敗にもならないので通知も出ない）。
+    //   AllocHeaps は自分で room と所有者を検査するから、素通しでよい。
+    if (s_sceneOwner == nullptr) {
+        s_sceneOk = false;
+        if (s_stage == Stage::AllocHeaps)
+            StepBuild();
+        return;
+    }
+
     void* owner = *kSceneOwner;
     s_sceneOk = IsHeapPointer(owner) && owner == s_sceneOwner &&
                 *reinterpret_cast<void**>(Word(owner, kSceneOwnerResourceOffset)) ==
@@ -714,6 +727,28 @@ namespace CTRPluginFramework
                 if (pressed & (u32)Key::DPadUp)    GridCursor::Move(0, -1);
                 if (pressed & (u32)Key::DPadDown)  GridCursor::Move(0, +1);
             }
+
+            // 止まっている理由を利用者が見られるようにする。失敗でない停止（段が進まない、
+            // シーン所有者が合わない）は通知を出さないので、これが無いと外からは何も分からない。
+            void    StatusExecute(int index)
+            {
+                (void)index;
+                const GridCursor::Status s = GridCursor::Read();
+                static char message[96];
+
+                // 通知は 1 行で幅 130px までしか出ないので、いちばん効く 2 つ
+                // （どの段で止まっているか／止めた理由）を先に置く。
+                if (s.failReason != GridCursor::Fail::kNone)
+                    std::snprintf(message, sizeof(message), u8"%s",
+                                  GridCursor::FailName(s.failReason));
+                else
+                    std::snprintf(message, sizeof(message), u8"%s %u体 提%lu F%lu",
+                                  GridCursor::StageName(s.stage),
+                                  (unsigned)s.cursors,
+                                  (unsigned long)s.submits,
+                                  (unsigned long)s.frames);
+                GuiNotification::Notify(kGridCursor, message);
+            }
         }
 
         bool    GridCursorTick(int index, u16 held)
@@ -738,6 +773,11 @@ namespace CTRPluginFramework
             g_sizeIndex = GuiMenu::FindItem(kGridCursorSize);
             g_tileIndex = GuiMenu::FindItem(kGridCursorTile);
             g_moveIndex = GuiMenu::FindItem(kGridCursorMove);
+
+            const int statIndex = GuiMenu::FindItem(kGridCursorStat);
+
+            if (statIndex >= 0)
+                GuiMenu::RegisterExecute(statIndex, StatusExecute);
 
             if (g_showIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_showIndex, &kShowFuncs);

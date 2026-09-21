@@ -50,6 +50,7 @@ namespace CTRPluginFramework
         static const char kGridCursorSize[] = u8"大きさ";
         static const char kGridCursorTile[] = u8"1マスの大きさ";
         static const char kGridCursorMove[] = u8"十字キーで動かす";
+        static const char kGridCursorStat[] = u8"状態を見る";
         // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
 

@@ -227,6 +227,8 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 12, 1, 200, 1);
                 AddItem(ITEM_CHECKBOX, kGridCursorMove,
                         u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
+                AddItem(ITEM_ACTION, kGridCursorStat,
+                        u8"グリッドカーソルがいまどこで止まっているかを通知で出します。");
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----

@@ -69,8 +69,12 @@ static const u32 kNodeMaterialActivator = 0x1EC;  // zero means the build ran ou
 
 // Heaps and allocators.
 typedef void (*HeapAllocatorCtorFn)(void* allocator);
+// ★第 6 引数を float で宣言してはいけない。-mfloat-abi=hard では s0 に載るが、
+//   ゲームは `vldr s16, [sp, #44]`（呼び出し元 SP+4）から読む（0x00317878-0x0031787C）。
+//   float のままだとスタックの語が書かれず、ゴミが fill として渡る。
+//   語として渡す。0 は 0.0f のビット表現で、ハーネスが実機で通した値（IDA-opus-5-F026）。
 typedef int (*HeapCreateNamedFn)(void* allocator, u32 size, void* parent,
-                                 const SafeString* name, int flag, float fill);
+                                 const SafeString* name, int flag, u32 fillBits);
 typedef void (*HeapAllocatorDestroyHeapFn)(void* allocator);
 typedef u32 (*HeapGetFreeSizeFn)(void* heap);
 
