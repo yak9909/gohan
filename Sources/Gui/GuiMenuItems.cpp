@@ -219,12 +219,20 @@ namespace CTRPluginFramework
                 const int testFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, kGridCursor,
                         u8"村の地面にグリッドカーソルを出します。プレイヤーの足元が基点です。");
-                i = AddItem(ITEM_LIST, kGridCursorSize,
-                            u8"カーソルの大きさです。1 マスにつき 1 体作ります。");
-                SetOptions(i, kGridCursorSizeOptions, kGridCursorSizeOptionCount);
+                i = AddItem(ITEM_VALUE, kGridCursorCols,
+                            u8"横に並べるマスの数です。1 マスにつき 1 体作ります。");
+                SetValue(i, FMT_DEC, 1, 1, 8, 1);
+                i = AddItem(ITEM_VALUE, kGridCursorRows,
+                            u8"縦に並べるマスの数です。横×縦が 64 を超えない範囲で選べます。");
+                SetValue(i, FMT_DEC, 1, 1, 8, 1);
                 i = AddItem(ITEM_VALUE, kGridCursorTile,
-                            u8"1 マスが world 座標で何単位かです。小道のタイルに合うまで調整します。");
-                SetValue(i, FMT_DEC, 12, 1, 200, 1);
+                            u8"マスの間隔です。十字キー 1 回で動く量でもあります。world 座標の単位。");
+                SetValue(i, FMT_DEC, 12, 1, 400, 1);
+                i = AddItem(ITEM_VALUE, kGridCursorScale,
+                            u8"カーソル自身の拡大率です。間隔とは別に決められます。百分率。");
+                SetValue(i, FMT_DEC, 100, 5, 1000, 5);
+                AddItem(ITEM_CHECKBOX, kGridCursorSnap,
+                        u8"基点を間隔のマス目へ丸めます。切るとプレイヤーの足元そのままになります。");
                 AddItem(ITEM_CHECKBOX, kGridCursorMove,
                         u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
                 AddItem(ITEM_ACTION, kGridCursorStat,

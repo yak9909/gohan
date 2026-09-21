@@ -8,6 +8,7 @@
 
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -51,19 +52,23 @@ static const float kCanmFrames = 150.0f;
 // byte file; 32 KiB is the same shape with room to spare. Instances measured 5,090 bytes
 // each including their animation (IDA-opus-5-F023), so 64 KiB covers all sixteen.
 static const u32 kResourceHeapBytes = 0x8000;
-static const u32 kInstanceHeapBytes = 0x10000;
+// instance ヒープは体数から決める。1 体 5,090 B の実測（IDA-opus-5-F023）に 25% ほど足した。
+// ★以前の固定 0x10000 は 12 体分しかなく、「16 体入る」と書いてあったのは誤り。
+static const u32 kInstanceBytesPerCursor = 6400;
+static const u32 kInstanceHeapSlack = 0x4000;
+// 1 フレームに作る上限。これはゲームの描画パスの中なので、
+// 64 体を一気に作るとそのフレームだけ長く止まる。
+static const u32 kBuildPerFrame = 8;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
 
-// How far apart tiles are, and how big one quad is, in world units. Both are estimates
-// until they are calibrated against the village's own path tiles: the model carries no
-// size in its header, and the game never scales this model, so nothing in the data says
-// what one tile is. Nudge them on hardware until a 3x3 sits exactly on nine path tiles.
-// The quad is authored at some size the file does not state, so the scale that makes one
-// quad one tile is tileSize / that. Both numbers are estimates until they are calibrated
-// on hardware against the village path, which is laid out one tile per square.
-static const float kModelUnitAtScaleOne = 12.0f;
-static float s_tileSize = 12.0f;
-static float s_scale = 1.0f;
+// 間隔と拡大率は**別々に持つ**。以前は scale = spacing / 12 と連動させていたので、
+// 片方だけ動かせず実機で合わせ込めなかった（利用者報告、2026-09-22）。モデルは寸法を
+// 持たず、ゲームもこのモデルを拡大しないので、1 マスが world で何単位かはデータに無い。
+// 実機で 1x1 の見た目を小道のタイルに合わせ（拡大率）、1 マス移動が隣にぴったり乗る
+// ところまで詰める（間隔）。合った 2 つの値からモデルの素寸が決まる。
+static float s_spacing = 12.0f;     // マスの間隔＝1 回の移動量。world 単位
+static float s_scale = 1.0f;        // カーソル自身の倍率。100% = 1.0
+static bool s_snap = true;          // 基点を間隔の格子へ丸めるか
 
 static volatile Stage s_stage = Stage::Off;
 static volatile Request s_request = Request::None;
@@ -82,11 +87,14 @@ static float s_animFrame;
 
 static u8 s_footprintW = 1;
 static u8 s_footprintH = 1;
-static s16 s_tileX;
-static s16 s_tileZ;
-static float s_originX;   // world position of tile (0,0), captured when the cursor is made
-static float s_originY;
-static float s_originZ;
+static s16 s_col;         // 画面の右が +
+static s16 s_row;         // 画面の下が +
+static float s_playerX;   // カーソルを出したときのプレイヤーの足元。丸める前の生の値
+static float s_playerY;
+static float s_playerZ;
+static bool s_haveOrigin; // 一度掴んだら大きさを変えても掴み直さない
+static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
+static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
 static bool s_hookInstalled;
 static bool s_sceneOk;
@@ -149,15 +157,30 @@ static void PoseCursor(u32 index, float x, float y, float z) {
     UpdateWorldAndSkeleton(s_holders[index]);
 }
 
+// 画面と world の対応。**実機で観測した向き**（IDA-opus-5-F032）:
+//   十字右を押す（それまでの +X）と画面では下へ、十字上（それまでの -Z）で右へ動いた。
+//   つまり world +X が画面の下、world -Z が画面の右。並べる向きも同じ回転をしていた。
+// 丸めは基点を掴み直さずに済むよう、保存した生の位置からその都度かける。
+// こうしておくと間隔を変えたときに格子も一緒に付いてくる。
+static float OriginX() {
+    return s_snap ? std::floor(s_playerX / s_spacing) * s_spacing : s_playerX;
+}
+
+static float OriginZ() {
+    return s_snap ? std::floor(s_playerZ / s_spacing) * s_spacing : s_playerZ;
+}
+
 static void PoseAll() {
+    const float ox = OriginX();
+    const float oz = OriginZ();
     u32 index = 0;
-    for (u32 j = 0; j < s_footprintH; ++j) {
-        for (u32 i = 0; i < s_footprintW; ++i) {
+    for (u32 r = 0; r < s_footprintH; ++r) {          // 画面の縦
+        for (u32 c = 0; c < s_footprintW; ++c) {      // 画面の横
             if (index >= s_cursorCount)
                 return;
-            const float x = s_originX + (float)(s_tileX + (s16)i) * s_tileSize;
-            const float z = s_originZ + (float)(s_tileZ + (s16)j) * s_tileSize;
-            PoseCursor(index, x, s_originY, z);
+            const float x = ox + (float)(s_row + (s16)r) * s_spacing;
+            const float z = oz - (float)(s_col + (s16)c) * s_spacing;
+            PoseCursor(index, x, s_playerY, z);
             ++index;
         }
     }
@@ -283,7 +306,11 @@ static void StepBuild() {
             Stop(Fail::kResourceHeap);
             return;
         }
-        if (HeapCreateNamed(s_instanceAllocator, kInstanceHeapBytes, parent, &s_heapName,
+        // 体数ぶんだけ取る。大きさを増やして入り切らなくなったときは SetFootprint が
+        // 組み直しを頼むので、ここは「いま要る量」でよい。
+        s_heapCursors = (u32)s_footprintW * (u32)s_footprintH;
+        const u32 instanceBytes = s_heapCursors * kInstanceBytesPerCursor + kInstanceHeapSlack;
+        if (HeapCreateNamed(s_instanceAllocator, instanceBytes, parent, &s_heapName,
                             1, 0u) != 1 ||
             !IsHeapPointer(*reinterpret_cast<void**>(Word(s_instanceAllocator, 4)))) {
             Stop(Fail::kInstanceHeap);
@@ -335,20 +362,28 @@ static void StepBuild() {
             Stop(Fail::kNoPlayer);
             return;
         }
-        const float* p = reinterpret_cast<const float*>(
-            reinterpret_cast<u8*>(player) + kPlayerPositionOffset);
-        s_originX = p[0];
-        s_originY = p[1];
-        s_originZ = p[2];
-        s_tileX = 0;
-        s_tileZ = 0;
+        // 大きさを変えて組み直したときにカーソルが足元へ戻らないよう、基点は一度だけ掴む。
+        if (!s_haveOrigin) {
+            const float* p = reinterpret_cast<const float*>(
+                reinterpret_cast<u8*>(player) + kPlayerPositionOffset);
+            s_playerX = p[0];
+            s_playerY = p[1];
+            s_playerZ = p[2];
+            s_col = 0;
+            s_row = 0;
+            s_haveOrigin = true;
+        }
 
         const u32 want = (u32)s_footprintW * (u32)s_footprintH;
-        for (u32 i = 0; i < want; ++i) {
-            if (!BuildOneCursor(i))
+        u32 made = 0;
+        while (s_cursorCount < want && made < kBuildPerFrame) {
+            if (!BuildOneCursor(s_cursorCount))
                 return;
-            s_cursorCount = i + 1;
+            ++s_cursorCount;
+            ++made;
         }
+        if (s_cursorCount < want)
+            return;                    // この段に居たまま次のフレームへ
         PoseAll();
         s_animFrame = 0.0f;
         s_stage = Stage::Ready;
@@ -371,10 +406,16 @@ static void ApplyResize() {
         s_nodes[i] = nullptr;
         s_cursorCount = i;
     }
-    while (s_cursorCount < want) {
+    u32 made = 0;
+    while (s_cursorCount < want && made < kBuildPerFrame) {
         if (!BuildOneCursor(s_cursorCount))
             return;
         ++s_cursorCount;
+        ++made;
+    }
+    if (s_cursorCount < want) {
+        s_request = Request::Resize;   // 残りは次のフレームで
+        return;
     }
     PoseAll();
 }
@@ -389,7 +430,9 @@ extern "C" void FrameCallback(void) {
     // Teardown is allowed whatever the scene is doing: nothing it calls needs one.
     if (s_request == Request::Teardown) {
         if (s_stage == Stage::Off) {
-            s_request = Request::None;
+            // 既に止まっているなら解放するものは無い。組み直しだけ頼まれているなら通す。
+            s_request = s_rebuild ? Request::Setup : Request::None;
+            s_rebuild = false;
             return;
         }
         // Stop submitting first and let a few frames pass. F025 showed freeing a drawn
@@ -402,7 +445,9 @@ extern "C" void FrameCallback(void) {
         if (++s_quietFrames < 4)
             return;
         TeardownAll();
-        s_request = Request::None;
+        // 大きさが変わって instance ヒープを作り直す必要があったときは、そのまま組み直す。
+        s_request = s_rebuild ? Request::Setup : Request::None;
+        s_rebuild = false;
         return;
     }
 
@@ -532,6 +577,8 @@ bool Show(void) {
 }
 
 void Hide(void) {
+    s_haveOrigin = false;   // 次に出すときはプレイヤーの足元から
+    s_rebuild = false;
     if (s_stage == Stage::Off)
         return;
     s_request = Request::Teardown;
@@ -558,9 +605,9 @@ void Shutdown(void) {
     s_hookInstalled = false;
 }
 
-void Move(int tilesX, int tilesZ) {
-    s_tileX = (s16)(s_tileX + tilesX);
-    s_tileZ = (s16)(s_tileZ + tilesZ);
+void Move(int dCol, int dRow) {
+    s_col = (s16)(s_col + dCol);
+    s_row = (s16)(s_row + dRow);
     if (s_stage == Stage::Ready)
         s_request = Request::Reposition;
 }
@@ -572,22 +619,50 @@ void SetFootprint(u32 width, u32 height) {
     if (height > kMaxSide) height = kMaxSide;
     if (width * height > kMaxCursors)
         return;
+    if (width == s_footprintW && height == s_footprintH)
+        return;
     s_footprintW = (u8)width;
     s_footprintH = (u8)height;
-    if (s_stage == Stage::Ready)
+    if (s_stage != Stage::Ready)
+        return;
+    if (width * height > s_heapCursors) {
+        // ヒープはいまの体数ぶんしか無い。足りないまま建てると activator が null のまま
+        // 半分だけできて、描いた瞬間に落ちる（V2-F025）。作り直す。
+        s_rebuild = true;
+        s_request = Request::Teardown;
+    } else {
         s_request = Request::Resize;
+    }
 }
 
-void SetTileSize(s32 worldUnits) {
+void SetSpacing(s32 worldUnits) {
     if (worldUnits < 1) worldUnits = 1;
-    if (worldUnits > 200) worldUnits = 200;
-    s_tileSize = (float)worldUnits;
-    s_scale = (float)worldUnits / kModelUnitAtScaleOne;
+    if (worldUnits > 400) worldUnits = 400;
+    s_spacing = (float)worldUnits;
     if (s_stage == Stage::Ready)
         s_request = Request::Reposition;
 }
 
-s32 TileSize(void) { return (s32)s_tileSize; }
+s32 Spacing(void) { return (s32)s_spacing; }
+
+void SetScalePercent(s32 percent) {
+    if (percent < 5) percent = 5;
+    if (percent > 1000) percent = 1000;
+    s_scale = (float)percent / 100.0f;
+    // 倍率は行列の中なので、姿勢を付け直さないと反映されない。
+    if (s_stage == Stage::Ready)
+        s_request = Request::Reposition;
+}
+
+s32 ScalePercent(void) { return (s32)(s_scale * 100.0f + 0.5f); }
+
+void SetSnap(bool on) {
+    s_snap = on;
+    if (s_stage == Stage::Ready)
+        s_request = Request::Reposition;
+}
+
+bool Snap(void) { return s_snap; }
 
 Status Read(void) {
     Status out;
@@ -598,8 +673,8 @@ Status Read(void) {
     out.cursors = s_cursorCount;
     out.footprintW = s_footprintW;
     out.footprintH = s_footprintH;
-    out.tileX = s_tileX;
-    out.tileZ = s_tileZ;
+    out.col = s_col;
+    out.row = s_row;
     out.resourceFree = s_resourceFree;
     out.instanceFree = s_instanceFree;
     return out;
@@ -656,14 +731,21 @@ namespace CTRPluginFramework
         namespace
         {
             int     g_showIndex = -1;
-            int     g_sizeIndex = -1;
+            int     g_colsIndex = -1;
+            int     g_rowsIndex = -1;
             int     g_tileIndex = -1;
+            int     g_scaleIndex = -1;
             int     g_moveIndex = -1;
             u32     g_gcPreviousKeys = 0;
 
-            // 選択肢の並びは kGridCursorSizeOptions と同じ。{幅, 高さ}。
-            const u8 kFootprints[][2] = { { 1, 1 }, { 2, 1 }, { 1, 2 }, { 2, 2 }, { 3, 3 } };
-            const int kFootprintCount = (int)(sizeof(kFootprints) / sizeof(kFootprints[0]));
+            void    ApplyFootprint(void)
+            {
+                const int w = g_colsIndex >= 0 ? GuiMenu::ItemApplied(g_colsIndex) : 1;
+                const int h = g_rowsIndex >= 0 ? GuiMenu::ItemApplied(g_rowsIndex) : 1;
+
+                if (w >= 1 && h >= 1)
+                    GridCursor::SetFootprint((u32)w, (u32)h);
+            }
 
             bool    ShowIsActive(int index)
             {
@@ -679,16 +761,12 @@ namespace CTRPluginFramework
                     GridCursor::Hide();
                     return;
                 }
-                // 大きさと 1 マスは項目の適用値が正本。出す前に反映しておく。
-                if (g_sizeIndex >= 0)
-                {
-                    const int k = GuiMenu::ItemApplied(g_sizeIndex);
-
-                    if (k >= 0 && k < kFootprintCount)
-                        GridCursor::SetFootprint(kFootprints[k][0], kFootprints[k][1]);
-                }
+                // 数値項目の適用値が正本。出す前に反映しておく。
+                ApplyFootprint();
                 if (g_tileIndex >= 0)
-                    GridCursor::SetTileSize(GuiMenu::ItemApplied(g_tileIndex));
+                    GridCursor::SetSpacing(GuiMenu::ItemApplied(g_tileIndex));
+                if (g_scaleIndex >= 0)
+                    GridCursor::SetScalePercent(GuiMenu::ItemApplied(g_scaleIndex));
                 if (!GridCursor::Show())
                 {
                     const GridCursor::Status s = GridCursor::Read();
@@ -699,18 +777,38 @@ namespace CTRPluginFramework
 
             const GuiMenu::ToggleEffectFuncs kShowFuncs = { ShowIsActive, ShowSetActive };
 
-            void    SizeApplied(int index, s32 value)
+            void    FootprintApplied(int index, s32 value)
             {
                 (void)index;
-                if (value >= 0 && value < kFootprintCount)
-                    GridCursor::SetFootprint(kFootprints[value][0], kFootprints[value][1]);
+                (void)value;
+                ApplyFootprint();
             }
 
             void    TileApplied(int index, s32 value)
             {
                 (void)index;
-                GridCursor::SetTileSize(value);
+                GridCursor::SetSpacing(value);
             }
+
+            void    ScaleApplied(int index, s32 value)
+            {
+                (void)index;
+                GridCursor::SetScalePercent(value);
+            }
+
+            bool    SnapIsActive(int index)
+            {
+                (void)index;
+                return GridCursor::Snap();
+            }
+
+            void    SnapSetActive(int index, bool active)
+            {
+                (void)index;
+                GridCursor::SetSnap(active);
+            }
+
+            const GuiMenu::ToggleEffectFuncs kSnapFuncs = { SnapIsActive, SnapSetActive };
 
             // 「十字キーで動かす」が有効な間だけ。ゲーム側の十字キーを毎フレーム塞ぐので、
             // カーソルを動かしてもプレイヤーは歩かない。held はメニュー表示中は 0 になる。
@@ -722,6 +820,7 @@ namespace CTRPluginFramework
                 const u32 pressed = keys & ~g_gcPreviousKeys;
 
                 g_gcPreviousKeys = keys;
+                // 画面基準。world への写像は GridCursor 側が持つ（IDA-opus-5-F032）。
                 if (pressed & (u32)Key::DPadLeft)  GridCursor::Move(-1, 0);
                 if (pressed & (u32)Key::DPadRight) GridCursor::Move(+1, 0);
                 if (pressed & (u32)Key::DPadUp)    GridCursor::Move(0, -1);
@@ -742,10 +841,11 @@ namespace CTRPluginFramework
                     std::snprintf(message, sizeof(message), u8"%s",
                                   GridCursor::FailName(s.failReason));
                 else
-                    std::snprintf(message, sizeof(message), u8"%s %u体 提%lu F%lu",
+                    std::snprintf(message, sizeof(message), u8"%s %ux%u=%u体 (%d,%d) F%lu",
                                   GridCursor::StageName(s.stage),
+                                  (unsigned)s.footprintW, (unsigned)s.footprintH,
                                   (unsigned)s.cursors,
-                                  (unsigned long)s.submits,
+                                  (int)s.col, (int)s.row,
                                   (unsigned long)s.frames);
                 GuiNotification::Notify(kGridCursor, message);
             }
@@ -770,23 +870,36 @@ namespace CTRPluginFramework
         void    WireGridCursor(void)
         {
             g_showIndex = GuiMenu::FindItem(kGridCursor);
-            g_sizeIndex = GuiMenu::FindItem(kGridCursorSize);
+            g_colsIndex = GuiMenu::FindItem(kGridCursorCols);
+            g_rowsIndex = GuiMenu::FindItem(kGridCursorRows);
             g_tileIndex = GuiMenu::FindItem(kGridCursorTile);
+            g_scaleIndex = GuiMenu::FindItem(kGridCursorScale);
             g_moveIndex = GuiMenu::FindItem(kGridCursorMove);
 
             const int statIndex = GuiMenu::FindItem(kGridCursorStat);
+            const int snapIndex = GuiMenu::FindItem(kGridCursorSnap);
 
             if (statIndex >= 0)
                 GuiMenu::RegisterExecute(statIndex, StatusExecute);
+            if (snapIndex >= 0)
+                GuiMenu::RegisterToggleEffect(snapIndex, &kSnapFuncs);
 
             if (g_showIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_showIndex, &kShowFuncs);
-            if (g_sizeIndex >= 0)
-                GuiMenu::RegisterApply(g_sizeIndex, SizeApplied);
+            if (g_colsIndex >= 0)
+                GuiMenu::RegisterApply(g_colsIndex, FootprintApplied);
+            if (g_rowsIndex >= 0)
+                GuiMenu::RegisterApply(g_rowsIndex, FootprintApplied);
+            ApplyFootprint();
             if (g_tileIndex >= 0)
             {
                 GuiMenu::RegisterApply(g_tileIndex, TileApplied);
-                GridCursor::SetTileSize(GuiMenu::ItemApplied(g_tileIndex));
+                GridCursor::SetSpacing(GuiMenu::ItemApplied(g_tileIndex));
+            }
+            if (g_scaleIndex >= 0)
+            {
+                GuiMenu::RegisterApply(g_scaleIndex, ScaleApplied);
+                GridCursor::SetScalePercent(GuiMenu::ItemApplied(g_scaleIndex));
             }
         }
     }

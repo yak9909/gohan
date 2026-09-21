@@ -46,11 +46,14 @@ namespace CTRPluginFramework
         static const char kShizueSkip[]     = u8"しずえスキップ";
         static const char kUnlockFps[]      = u8"フレームレート制限解除";
         // ---- root/テスト ----
-        static const char kGridCursor[]     = u8"グリッドカーソル";
-        static const char kGridCursorSize[] = u8"大きさ";
-        static const char kGridCursorTile[] = u8"1マスの大きさ";
-        static const char kGridCursorMove[] = u8"十字キーで動かす";
-        static const char kGridCursorStat[] = u8"状態を見る";
+        static const char kGridCursor[]      = u8"グリッドカーソル";
+        static const char kGridCursorCols[]  = u8"横のマス数";
+        static const char kGridCursorRows[]  = u8"縦のマス数";
+        static const char kGridCursorTile[]  = u8"1マスの間隔";
+        static const char kGridCursorScale[] = u8"カーソルの拡大率";
+        static const char kGridCursorSnap[]  = u8"マス目に合わせる";
+        static const char kGridCursorMove[]  = u8"十字キーで動かす";
+        static const char kGridCursorStat[]  = u8"状態を見る";
         // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
 
@@ -66,13 +69,6 @@ namespace CTRPluginFramework
         static const int kMoveModeOptionCount = (int)(sizeof(kMoveModeOptions) / sizeof(kMoveModeOptions[0]));
         static const char *const kMoveDpadOptions[] = { u8"なし", u8"座標移動中" };
         static const int kMoveDpadOptionCount = (int)(sizeof(kMoveDpadOptions) / sizeof(kMoveDpadOptions[0]));
-
-        // グリッドカーソルの大きさ（GridCursor.cpp の kFootprints と同じ並び）
-        static const char *const kGridCursorSizeOptions[] = {
-            u8"1x1", u8"2x1", u8"1x2", u8"2x2", u8"3x3"
-        };
-        static const int kGridCursorSizeOptionCount =
-            (int)(sizeof(kGridCursorSizeOptions) / sizeof(kGridCursorSizeOptions[0]));
 
         // メニューの木を組んだ直後に 1 回呼ぶ。項目名で引いて振る舞いを登録する。
         void    Wire(void);

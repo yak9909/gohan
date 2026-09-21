@@ -27,8 +27,8 @@
 namespace GridCursor
 {
     // 3x3 が今の最大。16 あれば作り直さずにもう少し大きいものも試せる。
-    static const u32 kMaxCursors = 16;
-    static const u32 kMaxSide = 4;
+    static const u32 kMaxCursors = 64;
+    static const u32 kMaxSide = 8;
 
     enum class Stage : u32
     {
@@ -54,8 +54,8 @@ namespace GridCursor
         u32     cursors;        // いま建っている体数
         u8      footprintW;
         u8      footprintH;
-        s16     tileX;          // 出したときの位置からの相対（マス）
-        s16     tileZ;
+        s16     col;            // 出したときの位置からの相対（マス）。画面の右が +
+        s16     row;            // 画面の下が +
         u32     resourceFree;   // 描画スレッドで拾った資源ヒープの空き
         u32     instanceFree;
     };
@@ -91,10 +91,18 @@ namespace GridCursor
     bool            IsShown(void);          // 出ている（または出そうとしている）
     // プロセス終了時に 1 回。フック語を元の NOP へ戻し、置き場を消す。
     void            Shutdown(void);
-    void            Move(int tilesX, int tilesZ);
+    // 画面基準。右が +dCol、下が +dRow（IDA-opus-5-F032 の実機観測に合わせてある）。
+    void            Move(int dCol, int dRow);
     void            SetFootprint(u32 width, u32 height);
-    void            SetTileSize(s32 worldUnits);
-    s32             TileSize(void);
+    // マスの間隔（＝1 回の移動量、＝カーソルを並べる間隔）。world 単位。
+    void            SetSpacing(s32 worldUnits);
+    s32             Spacing(void);
+    // カーソル自身の拡大率（百分率）。間隔とは独立。両方を実機で合わせ込むための分離。
+    void            SetScalePercent(s32 percent);
+    s32             ScalePercent(void);
+    // 基点をマスの格子へ丸めるか。切ればプレイヤーの足元そのままになる。
+    void            SetSnap(bool on);
+    bool            Snap(void);
     Status          Read(void);
     const char *    StageName(Stage stage);
     const char *    FailName(u32 reason);
