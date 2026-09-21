@@ -45,6 +45,11 @@ namespace CTRPluginFramework
         static const char kInstantText[]    = u8"メッセージ即表示";
         static const char kShizueSkip[]     = u8"しずえスキップ";
         static const char kUnlockFps[]      = u8"フレームレート制限解除";
+        // ---- root/テスト ----
+        static const char kGridCursor[]     = u8"グリッドカーソル";
+        static const char kGridCursorSize[] = u8"大きさ";
+        static const char kGridCursorTile[] = u8"1マスの大きさ";
+        static const char kGridCursorMove[] = u8"十字キーで動かす";
         // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
 
@@ -61,6 +66,13 @@ namespace CTRPluginFramework
         static const char *const kMoveDpadOptions[] = { u8"なし", u8"座標移動中" };
         static const int kMoveDpadOptionCount = (int)(sizeof(kMoveDpadOptions) / sizeof(kMoveDpadOptions[0]));
 
+        // グリッドカーソルの大きさ（GridCursor.cpp の kFootprints と同じ並び）
+        static const char *const kGridCursorSizeOptions[] = {
+            u8"1x1", u8"2x1", u8"1x2", u8"2x2", u8"3x3"
+        };
+        static const int kGridCursorSizeOptionCount =
+            (int)(sizeof(kGridCursorSizeOptions) / sizeof(kGridCursorSizeOptions[0]));
+
         // メニューの木を組んだ直後に 1 回呼ぶ。項目名で引いて振る舞いを登録する。
         void    Wire(void);
 
@@ -68,6 +80,12 @@ namespace CTRPluginFramework
         void    WirePlayerMove(void);
         // PlayerResources.cpp（所持金・貯金・ふるさとチケット・メダル、店のカブ価）。Wire から呼ぶ。
         void    WirePlayerResources(void);
+
+        // ---- 毎フレームの配り手（Cheats.cpp）----
+        // GuiMenu::SetToggleHandlers は大域に 1 組しか持てないので、登録は Cheats.cpp が
+        // 1 回だけ行い、各チートの Tick / Disable をここから回す。自分の項目でなければ偽を返す。
+        bool    PlayerMoveTick(int index, u16 held);
+        bool    PlayerMoveDisable(int index);
     }
 }
 

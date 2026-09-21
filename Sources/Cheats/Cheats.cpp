@@ -11,6 +11,7 @@
 
 #include "Cheats.hpp"
 #include "FieldHookCaves.h"
+#include "GridCursor.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -207,6 +208,27 @@ namespace CTRPluginFramework
             }
         }
 
+        namespace
+        {
+            // ToggleHandlers は大域に 1 組だけ。ここで受けて各チートへ回す。
+            // 自分の項目でなければ偽を返す取り決めなので、並び順は結果に影響しない。
+            void    DispatchTick(int index, u16 held)
+            {
+                if (PlayerMoveTick(index, held))
+                    return;
+                GridCursorTick(index, held);
+            }
+
+            void    DispatchDisable(int index)
+            {
+                if (PlayerMoveDisable(index))
+                    return;
+                GridCursorDisable(index);
+            }
+
+            const GuiMenu::ToggleHandlers kDispatch = { nullptr, DispatchTick, DispatchDisable };
+        }
+
         void    Wire(void)
         {
             for (int i = 0; i < COUNT(g_patchCheats); i++)
@@ -228,6 +250,9 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterLinked(weather, WeatherRead, WeatherWrite);
             WirePlayerMove();
             WirePlayerResources();
+            WireGridCursor();
+            // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
+            GuiMenu::SetToggleHandlers(&kDispatch);
         }
     }
 }

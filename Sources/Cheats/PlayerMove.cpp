@@ -267,21 +267,31 @@ namespace CTRPluginFramework
                 *(float *)(player + kOffZ) = ((float)pos.y - r->offY) * r->scale;
             }
 
-            void    OnTick(int index, u16 held)
-            {
-                if (index == g_moveIndex)
-                    MoveTick(index, held);
-                else if (index == g_warpIndex)
-                    WarpTick(index, held);
-            }
+        }
 
-            void    OnDisable(int index)
+        // ★配り手は Cheats.cpp が 1 組だけ登録する（GuiMenu::SetToggleHandlers は大域に
+        //   1 組しか持てず、あとから登録したものが前のものを黙って潰すため）。
+        bool    PlayerMoveTick(int index, u16 held)
+        {
+            if (index == g_moveIndex)
             {
-                if (index == g_moveIndex)
-                    ResetGrid();
+                MoveTick(index, held);
+                return true;
             }
+            if (index == g_warpIndex)
+            {
+                WarpTick(index, held);
+                return true;
+            }
+            return false;
+        }
 
-            const GuiMenu::ToggleHandlers kHandlers = { nullptr, OnTick, OnDisable };
+        bool    PlayerMoveDisable(int index)
+        {
+            if (index != g_moveIndex)
+                return false;
+            ResetGrid();
+            return true;
         }
 
         void    WirePlayerMove(void)
@@ -298,7 +308,6 @@ namespace CTRPluginFramework
             ResetGrid();
             if (g_speedIndex >= 0)
                 GuiMenu::RegisterDisabled(g_speedIndex, SpeedDisabled);
-            GuiMenu::SetToggleHandlers(&kHandlers);
         }
     }
 }

@@ -213,6 +213,22 @@ namespace CTRPluginFramework
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));
                 const int gameCount = g_itemCount - gameFirst;
 
+                // ---- root/テスト（§18）----
+                // 解析で確かめたモデル描画を実機で試すための場所。確かめ終わったものから
+                // 本来のフォルダへ移す。
+                const int testFirst = g_itemCount;
+                AddItem(ITEM_CHECKBOX, kGridCursor,
+                        u8"村の地面にグリッドカーソルを出します。プレイヤーの足元が基点です。");
+                i = AddItem(ITEM_LIST, kGridCursorSize,
+                            u8"カーソルの大きさです。1 マスにつき 1 体作ります。");
+                SetOptions(i, kGridCursorSizeOptions, kGridCursorSizeOptionCount);
+                i = AddItem(ITEM_VALUE, kGridCursorTile,
+                            u8"1 マスが world 座標で何単位かです。小道のタイルに合うまで調整します。");
+                SetValue(i, FMT_DEC, 12, 1, 200, 1);
+                AddItem(ITEM_CHECKBOX, kGridCursorMove,
+                        u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
+                const int testCount = g_itemCount - testFirst;
+
                 // ---- root（§2）----
                 g_rootFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"プレイヤー", u8"プレイヤーに関するチートです。");
@@ -223,6 +239,8 @@ namespace CTRPluginFramework
                 SetFolder(i, townFirst, townCount);
                 i = AddItem(ITEM_FOLDER, u8"ゲーム", u8"ゲーム全体に関するチートです。");
                 SetFolder(i, gameFirst, gameCount);
+                i = AddItem(ITEM_FOLDER, u8"テスト", u8"解析の試験用です。確かめ終わったら本来の場所へ移します。");
+                SetFolder(i, testFirst, testCount);
                 i = AddItem(ITEM_CHECKBOX, u8"チャットコマンド（未設計）",
                             u8"チャットにコマンドを打つ事で様々なチートを素早く実行できます。コマンドリストは list で確認できます。");
                 SetHotkey(i, Bit(HB_R) | Bit(HB_B));
