@@ -55,6 +55,21 @@ namespace CTRPluginFramework
         static const char kGridCursorDiag[]  = u8"縞模様を 45 度傾ける";
         static const char kGridCursorMove[]  = u8"十字キーで動かす";
         static const char kGridCursorStat[]  = u8"状態を見る";
+
+        // ---- root/テスト／モデルビューア ----
+        static const char kMvBuild[]  = u8"一覧を作る";
+        static const char kMvScroll[] = u8"一覧の位置";
+        static const char kMvPick[]   = u8"モデル";
+        static const char kMvShow[]   = u8"モデルを出す";
+        static const char kMvIndex[]  = u8"ファイル内の番号";
+        static const char kMvScale[]  = u8"モデルの大きさ";
+        static const char kMvX[]      = u8"X ずらし";
+        static const char kMvY[]      = u8"Y ずらし";
+        static const char kMvZ[]      = u8"Z ずらし";
+        static const char kMvStat[]   = u8"モデルの状態";
+
+        // 一覧を作るまでの仮の中身。ITEM_LIST は空の options を許さない。
+        static const char *const kMvEmptyOptions[] = { u8"（一覧を作ってください）" };
         // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
 

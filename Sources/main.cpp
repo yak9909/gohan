@@ -1,6 +1,7 @@
 #include <3ds.h>
 #include "csvc.h"
 #include "GridCursor.hpp"
+#include "ModelViewer.hpp"
 #include "GuiNotification.hpp"
 #include "LinearAllocTest.hpp"
 #include "OwnGui.hpp"
@@ -73,6 +74,7 @@ exit:
     {
         // ゲームの .text へ入れたフックが一番先。ここを最後に回すと、あとの後始末が
         // 走っている間も描画スレッドがこちらのコードを呼び続ける。
+        ModelViewer::Shutdown();
         GridCursor::Shutdown();
         GuiMenu::Shutdown();
         ChatKanji::Shutdown();

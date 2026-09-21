@@ -92,6 +92,13 @@ namespace GridCursor
     bool            IsShown(void);          // 出ている（または出そうとしている）
     // プロセス終了時に 1 回。フック語を元の NOP へ戻し、置き場を消す。
     void            Shutdown(void);
+
+    // ---- フックの相乗り ----
+    // スタブは `.text` の空き 1 か所にしか置けないので、毎フレーム走りたい
+    // チートはここへ相乗る。フック自体はプロセス終了まで入れたまま。
+    bool            InstallFrameHook(void);              // 入っていなければ入れる
+    void            SetExtraFrameStep(void (*fn)(void)); // 描画スレッドで毎フレーム呼ばれる
+    u32             LastFailReason(void);                // フック入れに失敗した理由
     // 画面基準。右が +dCol、下が +dRow（IDA-opus-5-F032 の実機観測に合わせてある）。
     void            Move(int dCol, int dRow);
     void            SetFootprint(u32 width, u32 height);

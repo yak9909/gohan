@@ -110,6 +110,9 @@ namespace CTRPluginFramework
         int     ItemApplied(int index);
         // 値と適用値をまとめて反映する（通知なし。黄色表示も付かない）。非推奨。
         void    SetItemApplied(int index, int value);
+        // リスト項目の選択肢を実行時に入れ替える。options の寿命は呼び側が持つ。
+        // count は 255 まで（項目の optionCount が u8）。
+        void    SetItemOptions(int index, const char *const *options, int count);
         u16     ItemHotkey(int index);
         u16     ItemAppliedHotkey(int index);
         // 束縛の表示（"L+UP" / "なし"。buf へ書く）。

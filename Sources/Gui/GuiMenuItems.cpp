@@ -239,6 +239,30 @@ namespace CTRPluginFramework
                         u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
                 AddItem(ITEM_ACTION, kGridCursorStat,
                         u8"グリッドカーソルがいまどこで止まっているかを通知で出します。");
+                AddItem(ITEM_ACTION, kMvBuild,
+                        u8"ゲームの RomFS を歩いて .bcres の一覧を作ります。最初に 1 回だけ。");
+                i = AddItem(ITEM_VALUE, kMvScroll,
+                            u8"一覧のどこを見るかです。項目は 200 件ずつしか持てないので窓をずらします。");
+                SetValue(i, FMT_DEC, 0, 0, 20000, 200);
+                i = AddItem(ITEM_LIST, kMvPick,
+                            u8"出す .bcres です。選ぶとそのファイルに合わせて資源ヒープを取り直します。");
+                SetOptions(i, kMvEmptyOptions, 1);
+                AddItem(ITEM_CHECKBOX, kMvShow,
+                        u8"選んだモデルをプレイヤーの足元へ 1 体出します。");
+                i = AddItem(ITEM_VALUE, kMvIndex,
+                            u8"1 つの .bcres にモデルが複数入っているときの番号です。");
+                SetValue(i, FMT_DEC, 0, 0, 63, 1);
+                i = AddItem(ITEM_VALUE, kMvScale,
+                            u8"モデルの拡大率です。百分率。");
+                SetValue(i, FMT_DEC, 100, 1, 2000, 5);
+                i = AddItem(ITEM_VALUE, kMvX, u8"プレイヤーからの X ずらしです。world 単位。");
+                SetValue(i, FMT_DEC, 0, -500, 500, 1);
+                i = AddItem(ITEM_VALUE, kMvY, u8"プレイヤーからの Y ずらしです。上が正です。");
+                SetValue(i, FMT_DEC, 0, -500, 500, 1);
+                i = AddItem(ITEM_VALUE, kMvZ, u8"プレイヤーからの Z ずらしです。");
+                SetValue(i, FMT_DEC, 0, -500, 500, 1);
+                AddItem(ITEM_ACTION, kMvStat,
+                        u8"モデルビューアがどこで止まっているかを通知で出します。");
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----

@@ -110,6 +110,8 @@ static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
 static bool s_hookInstalled;
+// スタブから毎フレーム呼ぶ相乗り先。フックを 2 つは置けないのでここで配る。
+static void (*volatile s_extraStep)(void);
 static bool s_wantShown;   // 利用者が「出す」と言っている間だけ真。組み直しの可否はこれで決める
 static bool s_sceneOk;
 static u32 s_quietFrames;     // frames since we stopped submitting, before we free
@@ -475,6 +477,10 @@ static void StepBuild() {
 extern "C" void FrameCallback(void) {
     ++s_frames;
 
+    // 相乗り先が先。こちらが何をしていても、あちらは毎フレーム走る。
+    if (s_extraStep != nullptr)
+        s_extraStep();
+
     // Teardown is allowed whatever the scene is doing: nothing it calls needs one.
     if (s_request == Request::Teardown) {
         if (s_stage == Stage::Off) {
@@ -641,6 +647,7 @@ bool IsShown(void) {
 void Shutdown(void) {
     if (!s_hookInstalled)
         return;
+    s_extraStep = nullptr;
     // Make the callback do nothing, take the branch out, and only then clear the stub --
     // the draw thread could be inside it at this moment.
     s_wantShown = false;
@@ -654,6 +661,18 @@ void Shutdown(void) {
     std::memset(reinterpret_cast<void*>(Stub::kAddress), 0, Stub::kSize);
     Flush(Stub::kAddress, Stub::kSize);
     s_hookInstalled = false;
+}
+
+bool InstallFrameHook(void) {
+    return InstallHook();
+}
+
+void SetExtraFrameStep(void (*fn)(void)) {
+    s_extraStep = fn;
+}
+
+u32 LastFailReason(void) {
+    return s_failReason;
 }
 
 void Move(int dCol, int dRow) {

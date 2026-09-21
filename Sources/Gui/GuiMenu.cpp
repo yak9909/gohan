@@ -397,6 +397,20 @@ namespace CTRPluginFramework
             g_items[index].applied = value;
         }
 
+        void    SetItemOptions(int index, const char *const *options, int count)
+        {
+            if (!ItemOk(index) || options == nullptr || count <= 0)
+                return;
+            if (count > 255)
+                count = 255;
+            g_items[index].options = options;
+            g_items[index].optionCount = (u8)count;
+            if (g_items[index].value >= count)
+                g_items[index].value = 0;
+            if (g_items[index].applied >= count)
+                g_items[index].applied = 0;
+        }
+
         const char *FormatItemHotkey(int index, char *buf, unsigned int cap)
         {
             if (buf == nullptr || cap == 0)
