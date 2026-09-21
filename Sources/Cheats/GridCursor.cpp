@@ -900,7 +900,14 @@ namespace CTRPluginFramework
             if (statIndex >= 0)
                 GuiMenu::RegisterExecute(statIndex, StatusExecute);
             if (snapIndex >= 0)
+            {
                 GuiMenu::RegisterToggleEffect(snapIndex, &kSnapFuncs);
+                // ★チェックの表示は項目の value が持っていて、RegisterToggleEffect が呼ぶ
+                //   PrimeEffect は通知用の g_effectSeen しか更新しない。効果が既定 ON の
+                //   チェックボックスは、ここで揃えないと**表示だけ OFF のまま ON の振る舞い**になる
+                //   （利用者報告、2026-09-22）。
+                GuiMenu::SetItemApplied(snapIndex, GridCursor::Snap() ? 1 : 0);
+            }
 
             if (g_showIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_showIndex, &kShowFuncs);
