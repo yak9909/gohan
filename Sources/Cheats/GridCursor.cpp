@@ -66,7 +66,9 @@ static const u32 kLoadAttempts = 120;   // the load lands in one or two frames i
 // 持たず、ゲームもこのモデルを拡大しないので、1 マスが world で何単位かはデータに無い。
 // 実機で 1x1 の見た目を小道のタイルに合わせ（拡大率）、1 マス移動が隣にぴったり乗る
 // ところまで詰める（間隔）。合った 2 つの値からモデルの素寸が決まる。
-static float s_spacing = 12.0f;     // マスの間隔＝1 回の移動量。world 単位
+// 実測済みの既定値。利用者が実機で 32 を出し、`UnitCursor.bcres` の
+// ボックスが size (32, 32, 0) で独立に一致した（IDA-opus-5-F033）。
+static float s_spacing = 32.0f;     // マスの間隔＝1 回の移動量。world 単位
 static float s_scale = 1.0f;        // カーソル自身の倍率。100% = 1.0
 static bool s_snap = true;          // 基点を間隔の格子へ丸めるか
 
@@ -92,6 +94,8 @@ static s16 s_row;         // 画面の下が +
 static float s_playerX;   // カーソルを出したときのプレイヤーの足元。丸める前の生の値
 static float s_playerY;
 static float s_playerZ;
+static float s_originX;   // 実際に使う基点。出したときに 1 度だけ決める
+static float s_originZ;
 static bool s_haveOrigin; // 一度掴んだら大きさを変えても掴み直さない
 static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
@@ -160,19 +164,27 @@ static void PoseCursor(u32 index, float x, float y, float z) {
 // 画面と world の対応。**実機で観測した向き**（IDA-opus-5-F032）:
 //   十字右を押す（それまでの +X）と画面では下へ、十字上（それまでの -Z）で右へ動いた。
 //   つまり world +X が画面の下、world -Z が画面の右。並べる向きも同じ回転をしていた。
-// 丸めは基点を掴み直さずに済むよう、保存した生の位置からその都度かける。
-// こうしておくと間隔を変えたときに格子も一緒に付いてくる。
-static float OriginX() {
-    return s_snap ? std::floor(s_playerX / s_spacing) * s_spacing : s_playerX;
-}
 
-static float OriginZ() {
-    return s_snap ? std::floor(s_playerZ / s_spacing) * s_spacing : s_playerZ;
+// 基点を決める。**出したときと、丸めを切り替えたときだけ**呼ぶ。
+// 間隔を変えるたびに丸め直していた頃は floor の落ち先がその都度変わるので、
+// カーソルが飛んで見えていた（利用者報告、2026-09-22）。
+//
+// ★丸め先はマスの**中心**。`UnitCursor.bcres` の SOBJ 0xDB0 のボックスは
+//   centre (0,0,0) / size (32,32,0)。**モデルの原点が quad の中心**なので、
+//   マスの角へ乗せると必ず半マスずれる（IDA-opus-5-F033）。
+static void ComputeOrigin() {
+    if (s_snap) {
+        s_originX = std::floor(s_playerX / s_spacing) * s_spacing + s_spacing * 0.5f;
+        s_originZ = std::floor(s_playerZ / s_spacing) * s_spacing + s_spacing * 0.5f;
+    } else {
+        s_originX = s_playerX;
+        s_originZ = s_playerZ;
+    }
 }
 
 static void PoseAll() {
-    const float ox = OriginX();
-    const float oz = OriginZ();
+    const float ox = s_originX;
+    const float oz = s_originZ;
     u32 index = 0;
     for (u32 r = 0; r < s_footprintH; ++r) {          // 画面の縦
         for (u32 c = 0; c < s_footprintW; ++c) {      // 画面の横
@@ -372,6 +384,7 @@ static void StepBuild() {
             s_col = 0;
             s_row = 0;
             s_haveOrigin = true;
+            ComputeOrigin();
         }
 
         const u32 want = (u32)s_footprintW * (u32)s_footprintH;
@@ -657,7 +670,12 @@ void SetScalePercent(s32 percent) {
 s32 ScalePercent(void) { return (s32)(s_scale * 100.0f + 0.5f); }
 
 void SetSnap(bool on) {
+    if (s_snap == on)
+        return;
     s_snap = on;
+    // 切り替えたときだけ、握んだ生の位置から基点を作り直す。
+    if (s_haveOrigin)
+        ComputeOrigin();
     if (s_stage == Stage::Ready)
         s_request = Request::Reposition;
 }

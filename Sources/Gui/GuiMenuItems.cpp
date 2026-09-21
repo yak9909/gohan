@@ -226,8 +226,8 @@ namespace CTRPluginFramework
                             u8"縦に並べるマスの数です。横×縦が 64 を超えない範囲で選べます。");
                 SetValue(i, FMT_DEC, 1, 1, 8, 1);
                 i = AddItem(ITEM_VALUE, kGridCursorTile,
-                            u8"マスの間隔です。十字キー 1 回で動く量でもあります。world 座標の単位。");
-                SetValue(i, FMT_DEC, 12, 1, 400, 1);
+                            u8"マスの間隔です。十字キー 1 回で動く量でもあります。村の 1 マスは 32 です。");
+                SetValue(i, FMT_DEC, 32, 1, 400, 1);
                 i = AddItem(ITEM_VALUE, kGridCursorScale,
                             u8"カーソル自身の拡大率です。間隔とは別に決められます。百分率。");
                 SetValue(i, FMT_DEC, 100, 5, 1000, 5);
