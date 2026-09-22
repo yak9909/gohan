@@ -21,7 +21,6 @@ namespace RomfsIndex
     {
         None,
         OpenFailed,      // RomFS アーカイブが開けない
-        NotIvfc,         // 先頭が IVFC ではない
         BadHeader,       // level 3 の 40 バイトヘッダが読めない
         ReadFailed,      // 表の読み出しが途中で切れた
         OutOfMemory,     // 表やパス列を置く場所が取れない

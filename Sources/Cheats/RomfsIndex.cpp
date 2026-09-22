@@ -226,31 +226,38 @@ bool Build(void) {
     s_reason = Fail::None;
     s_errorCode = 0;
 
-    // romfsInit と同じ開き方。プラグインはゲームのプロセスの中に居るので、これが
-    // そのままゲームの RomFS になる。
+    // libctru の romfsMountFromCurrentProcess と**完全に同じ引数**で開く
+    // （`libctru/source/romfs_dev.c`）。ここを自分で考えて `{PATH_EMPTY, 0, nullptr}` を
+    // 両方へ渡したところ、FS が 0xE0E046BE（module 17 = FS / summary 7 = invalid argument）
+    // を返した（IDA-opus-5-F036）。
+    //   * アーカイブ側は PATH_EMPTY だが **長さ 1 の空文字列**。長さ 0 や null ではない
+    //   * ファイル側は PATH_EMPTY ではなく **PATH_BINARY の 12 バイトのゼロ**
     Handle file = 0;
-    const FS_Path empty = { PATH_EMPTY, 0, nullptr };
+    static const char kEmptyText[] = "";
+    static const u8 kZeros[0xC] = { 0 };
+    const FS_Path archivePath = { PATH_EMPTY, 1, kEmptyText };
+    const FS_Path filePath = { PATH_BINARY, sizeof(kZeros), kZeros };
     const Result opened = FSUSER_OpenFileDirectly(&file, (FS_ArchiveID)kArchiveRomfs,
-                                                  empty, empty, FS_OPEN_READ, 0);
+                                                  archivePath, filePath, FS_OPEN_READ, 0);
     if (R_FAILED(opened) || file == 0)
         return Stop(Fail::OpenFailed, (u32)opened);
 
     u32 got = 0;
-    u8 ivfc[0x60];
+    u8 front[0x60];
     u32 header[10];
     bool bad = false;
     u32 badCode = 0;
     Fail badWhy = Fail::None;
 
-    if (R_FAILED(FSFILE_Read(file, &got, 0, ivfc, sizeof(ivfc))) || got != sizeof(ivfc)) {
+    if (R_FAILED(FSFILE_Read(file, &got, 0, front, sizeof(front))) || got != sizeof(front)) {
         bad = true; badWhy = Fail::ReadFailed; badCode = got;
-    } else if (std::memcmp(ivfc, "IVFC", 4) != 0) {
-        bad = true; badWhy = Fail::NotIvfc; badCode = Word(ivfc);
     }
+    // ★この開き方だと FS は**既に level 3 を剥いて渡してくる**ので、
+    //   40 バイトのヘッダがそのまま先頭にある（libctru も offset 0 から読んでいる）。
+    //   IVFC が付いた生のイメージを渡されたときのために、そちらも受ける。
     u64 level3 = 0;
-    if (!bad) {
-        // level 3 は 0x60 の次のブロック境界から。ブロックの大きさは 2^[0x4C]。
-        const u32 shift = Word(ivfc + 0x4C);
+    if (!bad && std::memcmp(front, "IVFC", 4) == 0) {
+        const u32 shift = Word(front + 0x4C);
         if (shift > 24) {
             bad = true; badWhy = Fail::BadHeader; badCode = shift;
         } else {
@@ -259,9 +266,14 @@ bool Build(void) {
         }
     }
     if (!bad) {
-        if (R_FAILED(FSFILE_Read(file, &got, level3, header, sizeof(header))) ||
-            got != sizeof(header) || header[0] != 0x28) {
-            bad = true; badWhy = Fail::BadHeader; badCode = got;
+        if (level3 == 0) {
+            std::memcpy(header, front, sizeof(header));   // さっき読んだ先頭に入っている
+        } else if (R_FAILED(FSFILE_Read(file, &got, level3, header, sizeof(header))) ||
+                   got != sizeof(header)) {
+            bad = true; badWhy = Fail::ReadFailed; badCode = got;
+        }
+        if (!bad && header[0] != 0x28) {
+            bad = true; badWhy = Fail::BadHeader; badCode = header[0];
         }
     }
     if (!bad) {
@@ -338,7 +350,6 @@ const char *ReasonName(Fail reason) {
     switch (reason) {
     case Fail::None: return u8"-";
     case Fail::OpenFailed: return u8"RomFS が開けません";
-    case Fail::NotIvfc: return u8"RomFS の先頭が IVFC ではありません";
     case Fail::BadHeader: return u8"RomFS のヘッダが読めません";
     case Fail::ReadFailed: return u8"RomFS の読み出しが切れました";
     case Fail::OutOfMemory: return u8"索引を置く場所が取れません";
