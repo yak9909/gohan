@@ -12,9 +12,10 @@
 // 索引は頼まれたときに 1 回だけ作る。歩き終わったらディレクトリ表とファイル表は返し、
 // 残すのはパスの列だけ（実測: base で 336,906 B、歩行中のピークが 1,354,786 B）。
 //
-// ★どの RomFS が見えるかは実機で数えるまで分からない。update だけなら 1,907 本、
-//   base だけなら 8,629 本、FS が重ねていれば 10,430 本。Count() をそのまま出すので、
-//   一度動かせば決まる。
+// ★実機で数えた結果、`ARCHIVE_ROMFS` は **base だけ**を返す（8,629 本。IDA-opus-5-F037）。
+//   更新タイトルにしか無いパスが 1,801 本、うち 741 本は描画できるモデルを持つので
+//   （Item/Model 540、住民 128）、**更新タイトルの RomFS も続けて読む**。
+//   両方にある 106 本は一覧に 2 行出るが、ゲーム側がパスを解決するので害は無い。
 namespace RomfsIndex
 {
     enum class Fail : u32
@@ -33,6 +34,8 @@ namespace RomfsIndex
     u32             ErrorCode(void);        // 失敗した FS 呼び出しの Result など
 
     u32             Count(void);            // 見つかった .bcres の本数
+    u32             UpdateCount(void);      // そのうち更新タイトルから来た分
+    u32             UpdateOpenResult(void); // 更新タイトルを開いたときの Result
     const char *    PathAt(u32 index);      // 見つからなければ ""
     u32             SizeAt(u32 index);      // その .bcres のバイト数。
                                             // 資源ヒープの大きさをこれから決める

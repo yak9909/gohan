@@ -584,8 +584,12 @@ namespace CTRPluginFramework
                     return;
                 }
                 RefillWindow();
-                std::snprintf(message, sizeof(message), u8".bcres %lu 件",
-                              (unsigned long)RomfsIndex::Count());
+                // 本体と更新を分けて出す。更新側が 0 なら開けていないということ。
+                const unsigned long total = (unsigned long)RomfsIndex::Count();
+                const unsigned long fromUpdate = (unsigned long)RomfsIndex::UpdateCount();
+
+                std::snprintf(message, sizeof(message), u8".bcres %lu 件 (本体%lu+更新%lu)",
+                              total, total - fromUpdate, fromUpdate);
                 GuiNotification::Notify(kMvBuild, message);
             }
 

@@ -1,6 +1,7 @@
 #include "RomfsIndex.hpp"
 
 #include <3ds.h>
+#include <CTRPluginFramework.hpp>
 #include <cstdlib>
 #include <cstring>
 
@@ -15,6 +16,12 @@ const u32 kDirEntry = 24;
 const u32 kFileEntry = 32;
 const u32 kEnd = 0xFFFFFFFFu;
 const u32 kArchiveRomfs = 3;        // ARCHIVE_ROMFS。自分自身の RomFS なので ID も種別も要らない
+const u32 kArchiveContent = 0x2345678A;   // ARCHIVE_SAVEDATA_AND_CONTENT。他のタイトルを開く
+// ★実機で数えたところ ARCHIVE_ROMFS は **8,629 本**、つまり base だけを返した
+//   （update だけなら 1,907、重ねていれば 10,430。IDA-opus-5-F037）。
+//   update にしか無いパスが 1,801 本あり、うち 741 本は描画できるモデルを持つ
+//   （Item/Model 540、住民 128）ので、update 側も読む。
+const u32 kUpdateTitleHigh = 0x0004000E;  // 同じ低位 ID の更新タイトル
 const u32 kMaxPath = 192;           // 実測の最長は 75
 const u32 kMaxDepth = 32;
 const u32 kTableLimit = 0x400000;   // 実測は dir 42,648 B / file 940,716 B
@@ -27,7 +34,11 @@ u32 *s_sizes;                       // .bcres のバイト数（ファイル表�
 u32 s_dirsSize;
 u32 s_filesSize;
 u32 s_count;
+u32 s_updateCount;                  // そのうち更新タイトルから来た分
 u32 s_arenaUsed;
+u32 s_writeArenaAt;                 // Walk が詰め始める位置。追記のため
+u32 s_writeIndexAt;
+u32 s_updateOpenResult;             // 更新タイトルを開けなかったときの Result
 bool s_ready;
 Fail s_reason = Fail::None;
 u32 s_errorCode;
@@ -125,13 +136,13 @@ bool Walk(bool measure, u32 *countOut, u32 *bytesOut) {
                 const u32 sep = pathLength ? 1u : 0u;
                 if (EndsWithBcres(name, n) && pathLength + sep + n + 1 <= kMaxPath) {
                     if (!measure) {
-                        char *at = s_arena + bytes;
+                        char *at = s_arena + s_writeArenaAt + bytes;
                         std::memcpy(at, path, pathLength);
                         if (sep)
                             at[pathLength] = '/';
                         std::memcpy(at + pathLength + sep, name, n + 1);
-                        s_offsets[count] = bytes;
-                        s_sizes[count] = Word(entry + 16);   // 64 bit の下位。.bcres に 4 GB は無い
+                        s_offsets[s_writeIndexAt + count] = s_writeArenaAt + bytes;
+                        s_sizes[s_writeIndexAt + count] = Word(entry + 16);  // 64 bit の下位
                     }
                     bytes += pathLength + sep + n + 1;
                     ++count;
@@ -191,6 +202,99 @@ void ReleaseTables(void) {
     s_files = nullptr;
 }
 
+// 開いている 1 本の RomFS を歩いて、見つかった分を末尾へ足す。
+// 表はこの中で取ってこの中で返すので、ピークは「一番大きい表 + パスの列」。
+// 重複は取り除かない。両方にあるパスは 106 本だけで、一覧に 2 行出る以上の害は無い。
+bool Ingest(Handle file, Fail *why, u32 *code) {
+    u32 got = 0;
+    u8 front[0x60];
+    u32 header[10];
+
+    if (R_FAILED(FSFILE_Read(file, &got, 0, front, sizeof(front))) || got != sizeof(front)) {
+        *why = Fail::ReadFailed; *code = got;
+        return false;
+    }
+    u64 level3 = 0;
+    if (std::memcmp(front, "IVFC", 4) == 0) {
+        const u32 shift = Word(front + 0x4C);
+        if (shift > 24) {
+            *why = Fail::BadHeader; *code = shift;
+            return false;
+        }
+        const u64 block = (u64)1 << shift;
+        level3 = ((u64)0x60 + block - 1) & ~(block - 1);
+    }
+    if (level3 == 0) {
+        std::memcpy(header, front, sizeof(header));
+    } else if (R_FAILED(FSFILE_Read(file, &got, level3, header, sizeof(header))) ||
+               got != sizeof(header)) {
+        *why = Fail::ReadFailed; *code = got;
+        return false;
+    }
+    if (header[0] != 0x28) {
+        *why = Fail::BadHeader; *code = header[0];
+        return false;
+    }
+    s_dirsSize = header[4];
+    s_filesSize = header[8];
+    if (s_dirsSize < kDirEntry || s_filesSize < kFileEntry ||
+        s_dirsSize > kTableLimit || s_filesSize > kTableLimit) {
+        *why = Fail::BadHeader; *code = s_filesSize;
+        return false;
+    }
+
+    s_dirs = (u8 *)std::malloc(s_dirsSize);
+    s_files = (u8 *)std::malloc(s_filesSize);
+    if (s_dirs == nullptr || s_files == nullptr) {
+        ReleaseTables();
+        *why = Fail::OutOfMemory; *code = s_dirsSize + s_filesSize;
+        return false;
+    }
+    if (R_FAILED(FSFILE_Read(file, &got, level3 + header[3], s_dirs, s_dirsSize)) ||
+        got != s_dirsSize ||
+        R_FAILED(FSFILE_Read(file, &got, level3 + header[7], s_files, s_filesSize)) ||
+        got != s_filesSize) {
+        ReleaseTables();
+        *why = Fail::ReadFailed; *code = got;
+        return false;
+    }
+
+    u32 count = 0, bytes = 0;
+    if (!Walk(true, &count, &bytes) || count == 0) {
+        ReleaseTables();
+        *why = Fail::WalkFailed; *code = count;
+        return false;
+    }
+
+    char *arena = (char *)std::realloc(s_arena, s_arenaUsed + bytes);
+    u32 *offsets = (u32 *)std::realloc(s_offsets, (s_count + count) * sizeof(u32));
+    u32 *sizes = (u32 *)std::realloc(s_sizes, (s_count + count) * sizeof(u32));
+    if (arena != nullptr) s_arena = arena;
+    if (offsets != nullptr) s_offsets = offsets;
+    if (sizes != nullptr) s_sizes = sizes;
+    if (arena == nullptr || offsets == nullptr || sizes == nullptr) {
+        ReleaseTables();
+        *why = Fail::OutOfMemory; *code = bytes;
+        return false;
+    }
+
+    // 第 2 周目は末尾から。Walk は 0 起点で書くので、ずらした位置を渡す。
+    s_writeArenaAt = s_arenaUsed;
+    s_writeIndexAt = s_count;
+    u32 again = 0, usedBytes = 0;
+    const bool filled = Walk(false, &again, &usedBytes) && again == count && usedBytes == bytes;
+    s_writeArenaAt = 0;
+    s_writeIndexAt = 0;
+    ReleaseTables();
+    if (!filled) {
+        *why = Fail::WalkFailed; *code = 2;
+        return false;
+    }
+    s_arenaUsed += bytes;
+    s_count += count;
+    return true;
+}
+
 bool Stop(Fail reason, u32 code) {
     s_reason = reason;
     s_errorCode = code;
@@ -211,6 +315,8 @@ bool Ready(void) { return s_ready; }
 Fail Reason(void) { return s_reason; }
 u32 ErrorCode(void) { return s_errorCode; }
 u32 Count(void) { return s_count; }
+u32 UpdateCount(void) { return s_updateCount; }
+u32 UpdateOpenResult(void) { return s_updateOpenResult; }
 
 const char *PathAt(u32 index) {
     return (s_ready && index < s_count) ? s_arena + s_offsets[index] : "";
@@ -225,105 +331,61 @@ bool Build(void) {
         return true;
     s_reason = Fail::None;
     s_errorCode = 0;
+    s_updateOpenResult = 0;
+    s_count = 0;
+    s_updateCount = 0;
+    s_arenaUsed = 0;
 
     // libctru の romfsMountFromCurrentProcess と**完全に同じ引数**で開く
-    // （`libctru/source/romfs_dev.c`）。ここを自分で考えて `{PATH_EMPTY, 0, nullptr}` を
-    // 両方へ渡したところ、FS が 0xE0E046BE（module 17 = FS / summary 7 = invalid argument）
-    // を返した（IDA-opus-5-F036）。
-    //   * アーカイブ側は PATH_EMPTY だが **長さ 1 の空文字列**。長さ 0 や null ではない
-    //   * ファイル側は PATH_EMPTY ではなく **PATH_BINARY の 12 バイトのゼロ**
-    Handle file = 0;
+    // （`libctru/source/romfs_dev.c`）。自分で考えた `{PATH_EMPTY, 0, nullptr}` だと
+    // FS が 0xE0E046BE（module 17 = FS / summary 7 = invalid argument）を返す（F036）。
     static const char kEmptyText[] = "";
     static const u8 kZeros[0xC] = { 0 };
     const FS_Path archivePath = { PATH_EMPTY, 1, kEmptyText };
     const FS_Path filePath = { PATH_BINARY, sizeof(kZeros), kZeros };
+
+    Handle file = 0;
     const Result opened = FSUSER_OpenFileDirectly(&file, (FS_ArchiveID)kArchiveRomfs,
                                                   archivePath, filePath, FS_OPEN_READ, 0);
     if (R_FAILED(opened) || file == 0)
         return Stop(Fail::OpenFailed, (u32)opened);
 
-    u32 got = 0;
-    u8 front[0x60];
-    u32 header[10];
-    bool bad = false;
-    u32 badCode = 0;
-    Fail badWhy = Fail::None;
-
-    if (R_FAILED(FSFILE_Read(file, &got, 0, front, sizeof(front))) || got != sizeof(front)) {
-        bad = true; badWhy = Fail::ReadFailed; badCode = got;
-    }
-    // ★この開き方だと FS は**既に level 3 を剥いて渡してくる**ので、
-    //   40 バイトのヘッダがそのまま先頭にある（libctru も offset 0 から読んでいる）。
-    //   IVFC が付いた生のイメージを渡されたときのために、そちらも受ける。
-    u64 level3 = 0;
-    if (!bad && std::memcmp(front, "IVFC", 4) == 0) {
-        const u32 shift = Word(front + 0x4C);
-        if (shift > 24) {
-            bad = true; badWhy = Fail::BadHeader; badCode = shift;
-        } else {
-            const u64 block = (u64)1 << shift;
-            level3 = ((u64)0x60 + block - 1) & ~(block - 1);
-        }
-    }
-    if (!bad) {
-        if (level3 == 0) {
-            std::memcpy(header, front, sizeof(header));   // さっき読んだ先頭に入っている
-        } else if (R_FAILED(FSFILE_Read(file, &got, level3, header, sizeof(header))) ||
-                   got != sizeof(header)) {
-            bad = true; badWhy = Fail::ReadFailed; badCode = got;
-        }
-        if (!bad && header[0] != 0x28) {
-            bad = true; badWhy = Fail::BadHeader; badCode = header[0];
-        }
-    }
-    if (!bad) {
-        s_dirsSize = header[4];
-        s_filesSize = header[8];
-        if (s_dirsSize < kDirEntry || s_filesSize < kFileEntry ||
-            s_dirsSize > kTableLimit || s_filesSize > kTableLimit) {
-            bad = true; badWhy = Fail::BadHeader; badCode = s_filesSize;
-        }
-    }
-    if (!bad) {
-        s_dirs = (u8 *)std::malloc(s_dirsSize);
-        s_files = (u8 *)std::malloc(s_filesSize);
-        if (s_dirs == nullptr || s_files == nullptr) {
-            bad = true; badWhy = Fail::OutOfMemory; badCode = s_dirsSize + s_filesSize;
-        }
-    }
-    if (!bad) {
-        if (R_FAILED(FSFILE_Read(file, &got, level3 + header[3], s_dirs, s_dirsSize)) ||
-            got != s_dirsSize ||
-            R_FAILED(FSFILE_Read(file, &got, level3 + header[7], s_files, s_filesSize)) ||
-            got != s_filesSize) {
-            bad = true; badWhy = Fail::ReadFailed; badCode = got;
-        }
-    }
+    Fail why = Fail::None;
+    u32 code = 0;
+    const bool got = Ingest(file, &why, &code);
     FSFILE_Close(file);
     svcCloseHandle(file);
-    if (bad)
-        return Stop(badWhy, badCode);
+    if (!got)
+        return Stop(why, code);
 
-    u32 count = 0, bytes = 0;
-    if (!Walk(true, &count, &bytes))
-        return Stop(Fail::WalkFailed, 0);
-    if (count == 0)
-        return Stop(Fail::WalkFailed, 1);
+    // 更新タイトルも読む。こちらは **失敗しても致命ではない**：
+    // base だけで 8,629 本あり、更新側にしか無いのは 1,801 本。
+    // タイトル ID は走っているプロセスから取るので、地域を焦き込まない。
+    const u64 running = CTRPluginFramework::Process::GetTitleID();
+    const u64 updateTid = ((u64)kUpdateTitleHigh << 32) | (u32)running;
+    // 入れてある場所は事前には分からないので SD → カード → NAND の順に試す。
+    static const u8 kMediaTypes[] = { 1, 2, 0 };
+    for (u32 i = 0; i < sizeof(kMediaTypes); ++i) {
+        u32 archiveData[4] = { (u32)updateTid, (u32)(updateTid >> 32), kMediaTypes[i], 0 };
+        u32 fileData[5] = { 0, 0, 0, 0, 0 };
+        const FS_Path titlePath = { PATH_BINARY, sizeof(archiveData), archiveData };
+        const FS_Path titleFile = { PATH_BINARY, sizeof(fileData), fileData };
+        Handle update = 0;
+        const Result r = FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent,
+                                                 titlePath, titleFile, FS_OPEN_READ, 0);
+        s_updateOpenResult = (u32)r;
+        if (R_FAILED(r) || update == 0)
+            continue;
+        const u32 before = s_count;
+        Fail ignoredWhy = Fail::None;
+        u32 ignoredCode = 0;
+        if (Ingest(update, &ignoredWhy, &ignoredCode))
+            s_updateCount = s_count - before;
+        FSFILE_Close(update);
+        svcCloseHandle(update);
+        break;
+    }
 
-    s_arena = (char *)std::malloc(bytes);
-    s_offsets = (u32 *)std::malloc(count * sizeof(u32));
-    s_sizes = (u32 *)std::malloc(count * sizeof(u32));
-    if (s_arena == nullptr || s_offsets == nullptr || s_sizes == nullptr)
-        return Stop(Fail::OutOfMemory, bytes);
-
-    u32 again = 0, usedBytes = 0;
-    if (!Walk(false, &again, &usedBytes) || again != count || usedBytes != bytes)
-        return Stop(Fail::WalkFailed, 2);
-
-    // 表はもう要らない。残すのはパスの列だけ。
-    ReleaseTables();
-    s_count = count;
-    s_arenaUsed = bytes;
     s_ready = true;
     return true;
 }
