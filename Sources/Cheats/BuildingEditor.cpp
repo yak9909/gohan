@@ -61,6 +61,7 @@ volatile bool s_patched;        // 描画: カメラを止めている
 volatile bool s_lost;           // 描画: 場面が変わった／カメラが取れない
 volatile s32 s_cx, s_cy;        // カーソルのマス
 volatile u32 s_lostReason;
+volatile bool s_snapCamera;     // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
 
 // ---- 描画スレッドだけ ---------------------------------------------------------------------------
 u32 s_camera;
@@ -143,6 +144,13 @@ void FrameStep(void) {
         for (u32 i = 0; i < 3; ++i) {
             s_offset[i] = base[i] - pos[i];
             s_current[i] = base[i];
+        }
+        if (s_snapCamera) {
+            float at[3] = { (float)(32 * s_cx + 16), 0.0f, (float)(32 * s_cy + 16) };
+            at[1] = GroundHeight(at, 0);
+            for (u32 i = 0; i < 3; ++i)
+                s_current[i] = at[i] + s_offset[i];
+            s_snapCamera = false;
         }
         s_camera = camera;
         WriteCode(kCameraPatch, kCameraPatchPop);
@@ -290,7 +298,7 @@ bool Covers(const PublicWorks::Slot &slot, s32 x, s32 y) {
     return false;
 }
 
-// カーソルの下の建物。**衝突判定のマスがカーソルに重なる建物**のうち、建物の基点が一番近いもの。
+// カーソルの下の建物。**衝突判定のマスがカーソルに重なる建物**のうち、建物の基点がマンハッタン距離で一番近いもの。
 // 重なる建物が無ければ、ゲームの占有マップ（足元の全マス）で引く。
 s32 Hovered(void) {
     s32 best = -1;
@@ -299,10 +307,12 @@ s32 Hovered(void) {
         PublicWorks::Slot slot;
         if (!PublicWorks::ReadSlot(i, slot) || slot.id >= PublicWorks::kEmptyId || !Covers(slot, s_cx, s_cy))
             continue;
+        // 近さはマンハッタン距離（利用者指示）
         const s32 dx = (s32)slot.x - s_cx;
         const s32 dy = (s32)slot.y - s_cy;
-        if (dx * dx + dy * dy < bestDistance) {
-            bestDistance = dx * dx + dy * dy;
+        const s32 distance = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+        if (distance < bestDistance) {
+            bestDistance = distance;
             best = (s32)i;
         }
     }
@@ -455,9 +465,14 @@ bool Start(bool quiet) {
         if (PublicWorks::ReadSlot(i, slot) && slot.id < PublicWorks::kEmptyId)
             ShapeOf(slot.id);
     }
-    s_cx = (s32)x;
-    s_cy = (s32)y;
-    s_mode = Mode::Place;
+    // 部屋の読み直し・画面遷移のあとの再開では、読み込み前のカーソル・モード・種類をそのまま使う（利用者指示:
+    // 特殊建物を置いたあとにカメラがプレイヤーへ戻らないように）。最初の開始だけプレイヤーの足元から。
+    if (!quiet) {
+        s_cx = (s32)x;
+        s_cy = (s32)y;
+        s_mode = Mode::Place;
+    }
+    s_snapCamera = quiet;
     s_selected = -1;
     s_prevKeys = 0xFFFFFFFFu;                       // 押しっぱなしのボタンを最初の押下にしない
     std::memset(s_hold, 0, sizeof(s_hold));

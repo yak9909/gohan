@@ -22,6 +22,22 @@ const u32 kArchiveContent = 0x2345678A;   // ARCHIVE_SAVEDATA_AND_CONTENT。他�
 //   update にしか無いパスが 1,801 本あり、うち 741 本は描画できるモデルを持つ
 //   （Item/Model 540、住民 128）ので、update 側も読む。
 const u32 kUpdateTitleHigh = 0x0004000E;  // 同じ低位 ID の更新タイトル
+// ★更新データの RomFS は **ARCHIVE_ROMFS をファイルパス {5, 0, 0} で開く**（ゲーム自身の開き方。
+//   sub_11D184 → sub_129410 が {5,0,0}、base は sub_1363A0 が {0,0,0}。どちらも archive 3・パスは空。
+//   IDA-opus-5.5-F022）。以前の「更新タイトルを ARCHIVE_SAVEDATA_AND_CONTENT で開く」は実機で 3 媒体とも失敗していた（T025）。
+const u32 kSelfNcchUpdateRomfs = 5;
+
+// ARCHIVE_ROMFS をファイルの種類 type で開く（0 = base の RomFS、5 = 更新データの RomFS）
+Handle OpenSelfRomfs(u32 type) {
+    static const char kEmptyText[] = "";
+    u32 fileData[3] = { type, 0, 0 };
+    const FS_Path archivePath = { PATH_EMPTY, 1, kEmptyText };
+    const FS_Path filePath = { PATH_BINARY, sizeof(fileData), fileData };
+    Handle file = 0;
+    if (R_FAILED(FSUSER_OpenFileDirectly(&file, (FS_ArchiveID)kArchiveRomfs, archivePath, filePath, FS_OPEN_READ, 0)))
+        return 0;
+    return file;
+}
 const u32 kMaxPath = 192;           // 実測の最長は 75
 const u32 kMaxDepth = 32;
 const u32 kTableLimit = 0x400000;   // 実測は dir 42,648 B / file 940,716 B
@@ -363,16 +379,21 @@ bool Build(void) {
     // タイトル ID は走っているプロセスから取るので、地域を焦き込まない。
     const u64 running = CTRPluginFramework::Process::GetTitleID();
     const u64 updateTid = ((u64)kUpdateTitleHigh << 32) | (u32)running;
-    // 入れてある場所は事前には分からないので SD → カード → NAND の順に試す。
-    static const u8 kMediaTypes[] = { 1, 2, 0 };
+    // まずゲームと同じ開き方（ARCHIVE_ROMFS + {5,0,0}）。だめなら以前の方法（SD → カード → NAND）。
+    static const u8 kMediaTypes[] = { 0xFF, 1, 2, 0 };
     for (u32 i = 0; i < sizeof(kMediaTypes); ++i) {
-        u32 archiveData[4] = { (u32)updateTid, (u32)(updateTid >> 32), kMediaTypes[i], 0 };
-        u32 fileData[5] = { 0, 0, 0, 0, 0 };
-        const FS_Path titlePath = { PATH_BINARY, sizeof(archiveData), archiveData };
-        const FS_Path titleFile = { PATH_BINARY, sizeof(fileData), fileData };
         Handle update = 0;
-        const Result r = FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent,
-                                                 titlePath, titleFile, FS_OPEN_READ, 0);
+        Result r = 0;
+        if (kMediaTypes[i] == 0xFF) {
+            update = OpenSelfRomfs(kSelfNcchUpdateRomfs);
+            r = update != 0 ? 0 : (Result)0xFFFFFFFF;
+        } else {
+            u32 archiveData[4] = { (u32)updateTid, (u32)(updateTid >> 32), kMediaTypes[i], 0 };
+            u32 fileData[5] = { 0, 0, 0, 0, 0 };
+            const FS_Path titlePath = { PATH_BINARY, sizeof(archiveData), archiveData };
+            const FS_Path titleFile = { PATH_BINARY, sizeof(fileData), fileData };
+            r = FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent, titlePath, titleFile, FS_OPEN_READ, 0);
+        }
         s_updateOpenResult = (u32)r;
         if (R_FAILED(r) || update == 0)
             continue;
@@ -536,6 +557,9 @@ Handle UpdateHandle(void) {
     if (s_updateTried)
         return s_updateHandle;
     s_updateTried = true;
+    s_updateHandle = OpenSelfRomfs(kSelfNcchUpdateRomfs);     // ゲームと同じ開き方
+    if (s_updateHandle != 0)
+        return s_updateHandle;
     const u64 running = CTRPluginFramework::Process::GetTitleID();
     const u64 updateTid = ((u64)kUpdateTitleHigh << 32) | (u32)running;
     static const u8 kMediaTypes[] = { 1, 2, 0 };

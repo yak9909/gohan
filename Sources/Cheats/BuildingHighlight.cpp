@@ -352,6 +352,8 @@ Plan PlanBlock(u8 *b, u32 colour) {
 
 // 合成度合いの上書き（建物エディターの移動モードの「カーソルを合わせた建物」= 白 50）。負ならメニューの値。
 volatile s16 s_tintOverride = -1;
+const u32 kRetryFrames = 90;        // 30fps で 3 秒
+u32 s_retryFrames;
 
 u32 TintNow(void) {
     const s16 o = s_tintOverride;
@@ -563,14 +565,21 @@ void FrameStep(void) {
     if (req != Req::None) {
         s_req = Req::None;
         ClearNow();
-        if (req == Req::Select) {
+        s_retryFrames = req == Req::Select ? kRetryFrames : 0;
+    }
+    // ★建てた・動かした直後は、実体がまだ一覧に無いかモデルを組み立て中で、材質が 1 つも取れない。
+    //   以前はそこで失敗のままになり、カーソルを外して合わせ直すまで光らなかった（利用者報告、移動モード）。
+    //   頼まれてから kRetryFrames の間は 4 フレームごとにやり直す。
+    if (s_retryFrames > 0 && s_state != State::Active) {
+        --s_retryFrames;
+        if ((s_retryFrames & 3u) == 0 || s_retryFrames + 1 == kRetryFrames) {
             const u32 actor = FindActor(s_reqId, s_reqX, s_reqY);
-            if (actor == 0) {
-                s_state = State::Failed;
-            } else if (ApplyTo(actor)) {
+            if (actor != 0 && ApplyTo(actor)) {
                 s_state = State::Active;
+                s_retryFrames = 0;
             } else {
-                RollBack();
+                if (actor != 0)
+                    RollBack();
                 s_state = State::Failed;
             }
         }
