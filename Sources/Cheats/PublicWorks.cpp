@@ -132,17 +132,24 @@ const u32 kMapVillageVtable = 0x008EBA24;   // vtbl_BsMenuMapVillage
 const u32 kMapInProcess = 0xA7C;            // proc + 2684 = 地図本体（作成段 9 の引数）
 const u32 kMapCreateStep = 0x578;           // proc + 1400: 作成が済むと 0 に戻る
 const u32 kMapIconStride = 0x314;           // MapIcon 1 個 = 788 B
-const u32 kMapCountA = 0xB3AC;              // map + 45996: プール +0x49E4 の使用数
-const u32 kMapCountB = 0xB3B0;              // map + 46000: プール +0x2B1C の使用数
+const u32 kMapCount49E4 = 0xB3AC;              // map + 45996: プール +0x49E4 の使用数
+const u32 kMapCount2B1C = 0xB3B0;              // map + 46000: プール +0x2B1C の使用数
 struct IconPool { u32 offset; u32 count; };
 // ゲームの割り当て関数 0x222434 は枠の数を見ない。溢れると隣の枠や配列の外を「アイコン」として
 // 書き（星アイコン、線路の柵アイコンの消滅、0x4B4338 の data abort。IDA-opus-5.5-F006）、ゲーム自身が
-// 部屋を読み直したときも同じことが起きる。なので呼ぶ前に建物表から使用数を数えて止める。
+// 部屋を読み直したときも同じことが起きる。唯一の呼び出し元 0x2212B8 の BL を、枠が一杯なら 0 を返す
+// 関数へ付け替える（0 なら sub_221190 はそのアイコンを飛ばす）。建物は置けて、地図は枠の分だけ出る。
 const u32 kMapPoolA = 10;                   // 'A' = プール +0x2B1C
 const u32 kMapPoolB = 8;                    // 'B' = プール +0x49E4
-// 工事中の公共事業は B を 1 つ使う（sub_221190 の別枝。そこだけは < 8 を見ている）。
-// 工事中かどうかは数えないので、いつも 1 つ空けておく。
-const u32 kMapPendingReserve = 1;
+
+typedef u32 (*MapAllocFn)(u32 map, u32 id);                        // 0x00222434
+const MapAllocFn MapAllocBuildingIcon = reinterpret_cast<MapAllocFn>(0x00222434);
+const u32 kMapAllocCallSite = 0x002212B8;   // sub_221190 の BL MapBase_AllocBuildingIcon（唯一の呼び出し）
+const u32 kMapAllocCallOriginal = 0xEB00045Du;  // BL 0x00222434
+const u32 kMapAllocVeneer = 0x00838900;     // .text 末尾の空き [0x838740, 0x838950)。8 B
+const u32 kMapAllocCallGuarded = 0xEB185D90u;   // BL 0x00838900
+const u32 kVeneerLdrPc = 0xE51FF004u;       // LDR PC, [PC, #-4]
+bool s_mapGuardInstalled;
 const IconPool kMapBuildingPools[] = {
     { 0x0004, 14 },                         // 家（0〜3）と住民の家（8〜17）の固定枠
     { 0x2B1C, 10 },                         // 役場・店などの割り当て枠（カウンタ +46000）
@@ -397,21 +404,18 @@ void CountMapPools(u32 &a, u32 &b) {
     }
 }
 
-bool MapPoolsFit(u32 a, u32 b) {
-    return a <= kMapPoolA && b + kMapPendingReserve <= kMapPoolB;
-}
-
-// 地図の建物アイコンを建物表から置き直す。地図が無い・枠が足りないときは何もしない。
+// 地図の建物アイコンを建物表から置き直す。地図が無い・枠の番人が入っていないときは何もしない。
+// 枠を超える分は番人が飛ばすので、そのときは Full（枠の分だけ出した）を返す。
 MapState RefreshMap(void) {
+    if (!s_mapGuardInstalled)
+        return MapState::NotFound;
     u32 a = 0, b = 0;
     CountMapPools(a, b);
-    if (!MapPoolsFit(a, b))
-        return MapState::Full;
     const u32 map = FindMapVillage();
     if (map == 0)
         return MapState::NotFound;
     // 数が壊れていたら触らない（地図でない物を掴んだ疑い）
-    if (*reinterpret_cast<u32 *>(map + kMapCountA) > kMapPoolB || *reinterpret_cast<u32 *>(map + kMapCountB) > kMapPoolA)
+    if (*reinterpret_cast<u32 *>(map + kMapCount49E4) > kMapPoolB || *reinterpret_cast<u32 *>(map + kMapCount2B1C) > kMapPoolA)
         return MapState::NotFound;
     for (u32 p = 0; p < sizeof(kMapBuildingPools) / sizeof(kMapBuildingPools[0]); ++p) {
         for (u32 i = 0; i < kMapBuildingPools[p].count; ++i) {
@@ -420,10 +424,11 @@ MapState RefreshMap(void) {
             IconUpdate(icon);
         }
     }
-    *reinterpret_cast<u32 *>(map + kMapCountA) = 0;
-    *reinterpret_cast<u32 *>(map + kMapCountB) = 0;
+    *reinterpret_cast<u32 *>(map + kMapCount49E4) = 0;
+    *reinterpret_cast<u32 *>(map + kMapCount2B1C) = 0;
     MapPlaceBuildings(map, 0, 1);
-    return MapState::Refreshed;
+    // 工事中の公共事業が B を 1 つ使うことがあるので、B は 1 つ手前から「超えた」と言う。
+    return (a > kMapPoolA || b + 1 > kMapPoolB) ? MapState::Full : MapState::Refreshed;
 }
 
 Result Execute(Op op) {
@@ -515,6 +520,46 @@ Result Execute(Op op) {
     }
 }
 
+}  // namespace
+
+// 地図の枠の番人。ゲームのスレッドから、0x2212B8 の BL が中継 0x838900 を経て呼ぶ。
+// AAPCS のふつうの関数として呼ばれるので、引数は r0 / r1 だけ見る。
+extern "C" u32 PublicWorksMapAllocGuard(u32 map, u32 id) {
+    if (id < kEmptyId) {
+        const char kind = kMapIconPool[id];
+        if (kind == 'A' && *reinterpret_cast<volatile u32 *>(map + kMapCount2B1C) >= kMapPoolA)
+            return 0;
+        if (kind == 'B' && *reinterpret_cast<volatile u32 *>(map + kMapCount49E4) >= kMapPoolB)
+            return 0;
+    }
+    return MapAllocBuildingIcon(map, id);
+}
+
+namespace {
+
+bool InstallMapGuard(void) {
+    if (s_mapGuardInstalled)
+        return true;
+    volatile u32 *site = reinterpret_cast<volatile u32 *>(kMapAllocCallSite);
+    volatile u32 *veneer = reinterpret_cast<volatile u32 *>(kMapAllocVeneer);
+    const u32 target = reinterpret_cast<u32>(&PublicWorksMapAllocGuard);
+    // 既に自分が入れた形なら入っているとみなす（プラグインの読み直し）。
+    if (*site == kMapAllocCallGuarded && veneer[0] == kVeneerLdrPc && veneer[1] == target) {
+        s_mapGuardInstalled = true;
+        return true;
+    }
+    // 他人の物を上書きしない。呼び出しが素の BL で、中継の置き場が 0 のときだけ入れる。
+    if (*site != kMapAllocCallOriginal || veneer[0] != 0 || veneer[1] != 0)
+        return false;
+    veneer[0] = kVeneerLdrPc;
+    veneer[1] = target;
+    CTRPluginFramework::GuiMenu::FlushMemory(kMapAllocVeneer, 8);  // 中継を先に見えるように
+    *site = kMapAllocCallGuarded;
+    CTRPluginFramework::GuiMenu::FlushMemory(kMapAllocCallSite, 4);
+    s_mapGuardInstalled = true;
+    return true;
+}
+
 bool EnsureHook(void) {
     if (s_hooked)
         return true;
@@ -552,6 +597,10 @@ void FrameStep(void) {
     s_result = Execute(op);
     s_doneSeq = s_seq;
     s_op = Op::None;
+}
+
+bool InstallMapIconGuard(void) {
+    return InstallMapGuard();
 }
 
 bool LastReloaded(void) {
@@ -612,16 +661,6 @@ Result Place(u8 id) {
         return Result::NoSaveData;
     if (IsDesignStand(id) && FreeStand(data) < 0)
         return Result::NoFreeStand;
-    // 地図の枠を溢れさせる設置は断る。溢れたまま部屋を読み直すと、ゲーム自身の地図作りが
-    // 枠の外を書く（IDA-opus-5.5-F006）。
-    u32 a = 0, b = 0;
-    CountMapPools(a, b);
-    if (kMapIconPool[id] == 'A')
-        ++a;
-    else if (kMapIconPool[id] == 'B')
-        ++b;
-    if (!MapPoolsFit(a, b))
-        return Result::MapFull;
     bool free = false;
     for (u32 i = 0; i < kSlots && !free; ++i) {
         const Slot *slot = SlotAt(i);
@@ -672,7 +711,6 @@ const char *ResultName(Result result) {
     case Result::NoSelection: return u8"建物を選んでいません";
     case Result::EmptySlot: return u8"選んだスロットに建物がありません";
     case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
-    case Result::MapFull: return u8"地図の枠が一杯です（役場・店など 10 / 橋など 7）";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";
     case Result::TimedOut: return u8"描画スレッドが応答しません";
@@ -709,7 +747,7 @@ namespace CTRPluginFramework
                                                        : PublicWorks::LastMapState() == PublicWorks::MapState::Refreshed
                                                              ? u8"完了（その場で反映・地図も更新）"
                                                              : PublicWorks::LastMapState() == PublicWorks::MapState::Full
-                                                                   ? u8"完了（地図の枠が一杯で地図は更新せず）"
+                                                                   ? u8"完了（その場で反映・地図は枠の分だけ）"
                                                                    : u8"完了（その場で反映・地図は見つからず）");
                 else
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
@@ -779,6 +817,9 @@ namespace CTRPluginFramework
 
         void    WirePublicWorks(void)
         {
+            // 村の地図は起動後に作られるので、先に番人を入れておく。以前の実験でセーブが既に
+            // 枠を超えていても、ゲーム自身の地図作りが枠の外を書かなくなる（IDA-opus-5.5-F006）。
+            PublicWorks::InstallMapIconGuard();
             // 名前はゲーム自身の表（0x00955700）から引く。役場・店・家も含めて名前のある全部。
             g_count = 0;
             for (u32 id = 0; id < PublicWorks::kEmptyId && g_count < kMaxNames; ++id)
