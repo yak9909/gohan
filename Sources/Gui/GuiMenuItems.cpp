@@ -202,7 +202,7 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kBeOn,
                         u8"好きな場所に建造物を建てましょう。カメラだけを動かして置く・動かす・消すができ、プレイヤーは動けません。"
                         u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、X でカーソルの建物をコピー、"
-                        u8"Y+十字で建物を順に選ぶ、A で実行、移動の選択は B で解除。");
+                        u8"A で実行、移動の選択は B で解除。");
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 

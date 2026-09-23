@@ -71,7 +71,6 @@ float s_current[3];
 // ---- メニュースレッドだけ ------------------------------------------------------------------------
 bool s_running;
 bool s_failed;                  // 失敗したらチェックを外すまで再開しない
-bool s_prevDiagonal;            // グリッドカーソルの縞の向きを借りる前の値
 Mode s_mode;
 u8 s_kinds[256];
 u32 s_kindCount;
@@ -479,10 +478,7 @@ bool Start(bool quiet) {
     std::memset(s_dpadHold, 0, sizeof(s_dpadHold));
     PublicWorks::Unhighlight();
     UpdateTiles();
-    s_prevDiagonal = GridCursor::DiagonalStripes();
-    GridCursor::SetDiagonalStripes(true);           // 傾きは斜め（利用者指示）
     if (!GridCursor::ShowTiles()) {
-        GridCursor::SetDiagonalStripes(s_prevDiagonal);
         GuiNotification::NotifyRed(Cheats::kBeOn, u8"グリッドカーソルを先に止めてください");
         s_failed = true;
         return false;
@@ -524,30 +520,6 @@ void MoveCursor(s32 dx, s32 dy) {
     }
     UpdateTiles();
     UpdateHover();
-}
-
-// Y + 十字: 建物のあるスロットを順に選ぶ
-void Cycle(s32 step) {
-    s32 at = s_selected;
-    for (u32 n = 0; n < PublicWorks::kSlots; ++n) {
-        at += step;
-        if (at < 0) at = (s32)PublicWorks::kSlots - 1;
-        if (at >= (s32)PublicWorks::kSlots) at = 0;
-        PublicWorks::Slot slot;
-        if (PublicWorks::ReadSlot((u32)at, slot) && slot.id < PublicWorks::kEmptyId) {
-            s_cx = slot.x;
-            s_cy = slot.y;
-            if (s_mode == Mode::Place)
-                UpdateTiles();                      // 配置では選択にしない（カーソルだけ飛ぶ）
-            else
-                Select(at);
-            static char message[96];
-            std::snprintf(message, sizeof(message), u8"%ld番 0x%02X %s (%u,%u)", (long)at, (unsigned)slot.id,
-                          PublicWorks::NameOf(slot.id), (unsigned)slot.x, (unsigned)slot.y);
-            GuiNotification::Notify(Cheats::kBeOn, message);
-            return;
-        }
-    }
 }
 
 bool s_restart;                                     // 画面遷移のあとで再開を待っている
@@ -641,7 +613,6 @@ void Watch(void) {
         return;
     if (s_cursorRetry) {
         s_cursorRetry = false;
-        GridCursor::SetDiagonalStripes(true);
         if (GridCursor::ShowTiles())
             UpdateTiles();
         return;
@@ -688,7 +659,6 @@ void Stop(void) {
         svcSleepThread(16666667LL);
     GridCursor::Hide();
     BuildingPreview::Hide();
-    GridCursor::SetDiagonalStripes(s_prevDiagonal);
     PublicWorks::Unhighlight();
     s_selected = -1;
 }
@@ -726,7 +696,6 @@ void Tick(u32 keys) {
 
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
-    const bool y = (keys & (u32)Key::Y) != 0;
 
     // スライドパッド（画面の上 = マスの -y）
     if (Repeat(s_hold[0], (keys & (u32)Key::CPadUp) != 0)) MoveCursor(0, -1);
@@ -744,11 +713,7 @@ void Tick(u32 keys) {
         NotifyMode();
     }
 
-    if (y) {
-        if (pressed & ((u32)Key::DPadRight | (u32)Key::DPadDown)) Cycle(+1);
-        if (pressed & ((u32)Key::DPadLeft | (u32)Key::DPadUp)) Cycle(-1);
-        s_dpadHold[0] = s_dpadHold[1] = 0;
-    } else if (s_mode == Mode::Place && s_kindCount > 0) {
+    if (s_mode == Mode::Place && s_kindCount > 0) {
         bool changed = false;
         if (Repeat(s_dpadHold[0], (keys & (u32)Key::DPadLeft) != 0)) {
             s_kind = (s_kind + s_kindCount - 1) % s_kindCount;

@@ -349,7 +349,8 @@ static bool BuildOneCursor(u32 index) {
     // 向きのアニメ。ゲーム自身と同じ slot 2（IDA-opus-5-F029）。
     // slot 0 の 150 フレームは Translate と MaterialColor しか書かないので、Rotate は衝突しない。
     s_rotBuilt[index] = false;
-    if (s_diagonal) {
+    // マス指定の形（公共事業エディター）は常に斜め。メニューの設定は変えない（変えると通知が出る。利用者報告）
+    if (s_diagonal || s_tileMode) {
         void* rot = s_rotAnims[index];
         void* rotCanm = reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset;
         if (std::memcmp(rotCanm, "CANM", 4) != 0) {
