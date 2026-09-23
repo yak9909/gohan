@@ -70,8 +70,6 @@ namespace PublicWorks
     // 直前の操作で下画面の地図の建物アイコンをどうしたか（IDA-opus-5.5-F005 / F006）。
     enum class MapState : u32 { Untouched, Refreshed, NotFound, Full };
     MapState        LastMapState(void);
-    // 地図のアイコン枠の番人を入れる（0x2212B8 の BL を付け替える）。入っていれば真。
-    bool            InstallMapIconGuard(void);
 
     // グリッドカーソルのフックから毎フレーム。
     void            FrameStep(void);
