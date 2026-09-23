@@ -38,6 +38,7 @@ namespace PublicWorks
         NoSelection,
         EmptySlot,          // 選んだスロットが空いている
         NoFreeStand,        // マイデザインの看板表に空きが無い
+        MapFull,            // 下画面の地図のアイコン枠を溢れさせる（IDA-opus-5.5-F006）
         HookFailed,
         Busy,
         TimedOut,
@@ -67,8 +68,9 @@ namespace PublicWorks
     const char *    ResultName(Result result);
     // 直前の操作で見た目をその場で作れず、部屋を読み直したか（IDA-opus-5.5-F004）。
     bool            LastReloaded(void);
-    // 直前の操作で下画面の地図の建物アイコンを置き直せたか（IDA-opus-5.5-F005）。
-    bool            LastMapRefreshed(void);
+    // 直前の操作で下画面の地図の建物アイコンをどうしたか（IDA-opus-5.5-F005 / F006）。
+    enum class MapState : u32 { Untouched, Refreshed, NotFound, Full };
+    MapState        LastMapState(void);
 
     // グリッドカーソルのフックから毎フレーム。
     void            FrameStep(void);

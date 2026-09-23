@@ -4,6 +4,7 @@
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
+#include "MapIconPools.h"
 
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
@@ -134,6 +135,14 @@ const u32 kMapIconStride = 0x314;           // MapIcon 1 個 = 788 B
 const u32 kMapCountA = 0xB3AC;              // map + 45996: プール +0x49E4 の使用数
 const u32 kMapCountB = 0xB3B0;              // map + 46000: プール +0x2B1C の使用数
 struct IconPool { u32 offset; u32 count; };
+// ゲームの割り当て関数 0x222434 は枠の数を見ない。溢れると隣の枠や配列の外を「アイコン」として
+// 書き（星アイコン、線路の柵アイコンの消滅、0x4B4338 の data abort。IDA-opus-5.5-F006）、ゲーム自身が
+// 部屋を読み直したときも同じことが起きる。なので呼ぶ前に建物表から使用数を数えて止める。
+const u32 kMapPoolA = 10;                   // 'A' = プール +0x2B1C
+const u32 kMapPoolB = 8;                    // 'B' = プール +0x49E4
+// 工事中の公共事業は B を 1 つ使う（sub_221190 の別枝。そこだけは < 8 を見ている）。
+// 工事中かどうかは数えないので、いつも 1 つ空けておく。
+const u32 kMapPendingReserve = 1;
 const IconPool kMapBuildingPools[] = {
     { 0x0004, 14 },                         // 家（0〜3）と住民の家（8〜17）の固定枠
     { 0x2B1C, 10 },                         // 役場・店などの割り当て枠（カウンタ +46000）
@@ -153,7 +162,7 @@ volatile u32 s_doneSeq;
 volatile Result s_result = Result::Ok;
 bool s_hooked;
 volatile bool s_reloaded;                   // 直前の操作で部屋を読み直したか
-volatile bool s_mapRefreshed;               // 直前の操作で下画面の地図を置き直したか
+volatile MapState s_mapState = MapState::Untouched;  // 直前の操作で下画面の地図をどうしたか
 
 u8 *BuildingData(void) {
     const u32 garden = *reinterpret_cast<volatile u32 *>(kGarden);
@@ -373,14 +382,37 @@ u32 FindMapVillage(void) {
     return 0;
 }
 
-// 地図の建物アイコンを建物表から置き直す。地図が無ければ何もしない。
-bool RefreshMap(void) {
+// 建物表から、地図が使う枠の数を数える（sub_221190 と同じく x >= 16 のものだけ）。
+void CountMapPools(u32 &a, u32 &b) {
+    a = 0;
+    b = 0;
+    for (u32 i = 0; i < kSlots; ++i) {
+        const Slot *slot = SlotAt(i);
+        if (slot == nullptr || slot->id >= kEmptyId || slot->x < 16)
+            continue;
+        if (kMapIconPool[slot->id] == 'A')
+            ++a;
+        else if (kMapIconPool[slot->id] == 'B')
+            ++b;
+    }
+}
+
+bool MapPoolsFit(u32 a, u32 b) {
+    return a <= kMapPoolA && b + kMapPendingReserve <= kMapPoolB;
+}
+
+// 地図の建物アイコンを建物表から置き直す。地図が無い・枠が足りないときは何もしない。
+MapState RefreshMap(void) {
+    u32 a = 0, b = 0;
+    CountMapPools(a, b);
+    if (!MapPoolsFit(a, b))
+        return MapState::Full;
     const u32 map = FindMapVillage();
     if (map == 0)
-        return false;
+        return MapState::NotFound;
     // 数が壊れていたら触らない（地図でない物を掴んだ疑い）
-    if (*reinterpret_cast<u32 *>(map + kMapCountA) > 8 || *reinterpret_cast<u32 *>(map + kMapCountB) > 10)
-        return false;
+    if (*reinterpret_cast<u32 *>(map + kMapCountA) > kMapPoolB || *reinterpret_cast<u32 *>(map + kMapCountB) > kMapPoolA)
+        return MapState::NotFound;
     for (u32 p = 0; p < sizeof(kMapBuildingPools) / sizeof(kMapBuildingPools[0]); ++p) {
         for (u32 i = 0; i < kMapBuildingPools[p].count; ++i) {
             const u32 icon = map + kMapBuildingPools[p].offset + kMapIconStride * i;
@@ -391,7 +423,7 @@ bool RefreshMap(void) {
     *reinterpret_cast<u32 *>(map + kMapCountA) = 0;
     *reinterpret_cast<u32 *>(map + kMapCountB) = 0;
     MapPlaceBuildings(map, 0, 1);
-    return true;
+    return MapState::Refreshed;
 }
 
 Result Execute(Op op) {
@@ -408,7 +440,7 @@ Result Execute(Op op) {
     // プレイヤーの位置は変えない（利用者指示 2026-09-23）。読み直すときも今の位置のまま。
     float stay[3] = { here[0], here[1], here[2] };
     s_reloaded = false;
-    s_mapRefreshed = false;
+    s_mapState = MapState::Untouched;
     switch (op) {
     case Op::Place: {
         // ゲームの設置関数。足元の属性・セーブの表・占有まで自分でやる。
@@ -421,7 +453,7 @@ Result Execute(Op op) {
             return Result::Ok;
         }
         RefreshItems(s_argX, s_argY);
-        s_mapRefreshed = RefreshMap();
+        s_mapState = RefreshMap();
         return Result::Ok;
     }
     case Op::Remove: {
@@ -447,7 +479,7 @@ Result Execute(Op op) {
             return Result::Ok;
         }
         RefreshItems(old.x, old.y);
-        s_mapRefreshed = RefreshMap();
+        s_mapState = RefreshMap();
         return Result::Ok;
     }
     case Op::Move: {
@@ -470,7 +502,7 @@ Result Execute(Op op) {
         }
         RefreshItems(old.x, old.y);
         RefreshItems(s_argX, s_argY);
-        s_mapRefreshed = RefreshMap();
+        s_mapState = RefreshMap();
         return Result::Ok;
     }
     case Op::Rebuild:
@@ -526,8 +558,8 @@ bool LastReloaded(void) {
     return s_reloaded;
 }
 
-bool LastMapRefreshed(void) {
-    return s_mapRefreshed;
+MapState LastMapState(void) {
+    return s_mapState;
 }
 
 bool ReadSlot(u32 index, Slot &out) {
@@ -580,6 +612,16 @@ Result Place(u8 id) {
         return Result::NoSaveData;
     if (IsDesignStand(id) && FreeStand(data) < 0)
         return Result::NoFreeStand;
+    // 地図の枠を溢れさせる設置は断る。溢れたまま部屋を読み直すと、ゲーム自身の地図作りが
+    // 枠の外を書く（IDA-opus-5.5-F006）。
+    u32 a = 0, b = 0;
+    CountMapPools(a, b);
+    if (kMapIconPool[id] == 'A')
+        ++a;
+    else if (kMapIconPool[id] == 'B')
+        ++b;
+    if (!MapPoolsFit(a, b))
+        return Result::MapFull;
     bool free = false;
     for (u32 i = 0; i < kSlots && !free; ++i) {
         const Slot *slot = SlotAt(i);
@@ -630,6 +672,7 @@ const char *ResultName(Result result) {
     case Result::NoSelection: return u8"建物を選んでいません";
     case Result::EmptySlot: return u8"選んだスロットに建物がありません";
     case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
+    case Result::MapFull: return u8"地図の枠が一杯です（役場・店など 10 / 橋など 7）";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";
     case Result::TimedOut: return u8"描画スレッドが応答しません";
@@ -663,9 +706,11 @@ namespace CTRPluginFramework
                 if (result == PublicWorks::Result::Ok)
                     GuiNotification::Notify(title, PublicWorks::LastReloaded()
                                                        ? u8"完了（部屋を読み直しました）"
-                                                       : PublicWorks::LastMapRefreshed()
+                                                       : PublicWorks::LastMapState() == PublicWorks::MapState::Refreshed
                                                              ? u8"完了（その場で反映・地図も更新）"
-                                                             : u8"完了（その場で反映・地図は見つからず）");
+                                                             : PublicWorks::LastMapState() == PublicWorks::MapState::Full
+                                                                   ? u8"完了（地図の枠が一杯で地図は更新せず）"
+                                                                   : u8"完了（その場で反映・地図は見つからず）");
                 else
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
             }
