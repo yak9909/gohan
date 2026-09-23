@@ -67,6 +67,8 @@ namespace PublicWorks
     const char *    ResultName(Result result);
     // 直前の操作で見た目をその場で作れず、部屋を読み直したか（IDA-opus-5.5-F004）。
     bool            LastReloaded(void);
+    // 直前の操作で下画面の地図の建物アイコンを置き直せたか（IDA-opus-5.5-F005）。
+    bool            LastMapRefreshed(void);
 
     // グリッドカーソルのフックから毎フレーム。
     void            FrameStep(void);

@@ -105,6 +105,41 @@ const u32 kAllLists[] = { 0x6758, 0x6774, 0x67A8, 0x67CC, 0x68A0, 0x68B0, 0x68C0
 
 float s_spawnPosition[3];
 
+// ---- 置いたマスのアイテムと下画面の地図（IDA-opus-5.5-F005）---------------------------------
+// アイテムの見た目は fgobj がマスごとに作る。ゲーム自身がアイテムを消したあとに呼ぶ
+// Field_MarkDirty（Vapecord TRAMPLE3）でそのマスの物体を壊し「未構築」に戻すと、今の地面で作り直す。
+typedef void (*MarkDirtyFn)(u32 x, u32 y, u32 destroy);           // 0x0059DA7C
+const MarkDirtyFn FieldMarkDirty = reinterpret_cast<MarkDirtyFn>(0x0059DA7C);
+const u32 kFieldTilesX = 0x70;              // fgobj のビットマップは 112 x 96 マス（0x5A1B28 の境界検査）
+const u32 kFieldTilesY = 0x60;
+const s32 kFootprintBefore = 7;             // 足元 16 x 16 の (7, 7) が建物の (x, y)
+const s32 kFootprintAfter = 8;
+
+// 下画面の村の地図（BsMenuMapVillage）。建物のアイコンは作成段 9 で 1 回だけ
+// sub_221190(map, 0, 1) が置く。プールを隠して数を 0 に戻し、同じ関数を呼び直す。
+typedef void (*MapPlaceFn)(u32 map, u32 book, u32 keep);           // 0x00221190
+typedef void (*IconVisibleFn)(u32 icon, u32 visible);              // 0x006A81C4
+typedef void (*IconUpdateFn)(u32 icon);                            // 0x0060D760
+const MapPlaceFn MapPlaceBuildings = reinterpret_cast<MapPlaceFn>(0x00221190);
+const IconVisibleFn IconSetVisible = reinterpret_cast<IconVisibleFn>(0x006A81C4);
+const IconUpdateFn IconUpdate = reinterpret_cast<IconUpdateFn>(0x0060D760);
+
+const u32 kBaseMgr = 0x0096F2A4;            // u32: 基本マネージャ（vc_GETDATA1 が返す）
+const u32 kBaseSlots = 0x400;               // mgr + 20 * slot = プロセス（sub_51EF38）
+const u32 kBaseSlotStride = 20;
+const u32 kMapVillageVtable = 0x008EBA24;   // vtbl_BsMenuMapVillage
+const u32 kMapInProcess = 0xA7C;            // proc + 2684 = 地図本体（作成段 9 の引数）
+const u32 kMapCreateStep = 0x578;           // proc + 1400: 作成が済むと 0 に戻る
+const u32 kMapIconStride = 0x314;           // MapIcon 1 個 = 788 B
+const u32 kMapCountA = 0xB3AC;              // map + 45996: プール +0x49E4 の使用数
+const u32 kMapCountB = 0xB3B0;              // map + 46000: プール +0x2B1C の使用数
+struct IconPool { u32 offset; u32 count; };
+const IconPool kMapBuildingPools[] = {
+    { 0x0004, 14 },                         // 家（0〜3）と住民の家（8〜17）の固定枠
+    { 0x2B1C, 10 },                         // 役場・店などの割り当て枠（カウンタ +46000）
+    { 0x49E4, 8 },                          // 橋・坂などの割り当て枠（カウンタ +45996）
+};
+
 // ---- 要求（メニュー → 描画スレッド）------------------------------------------------------
 enum class Op : u32 { None, Place, Remove, Move, Rebuild };
 
@@ -118,6 +153,7 @@ volatile u32 s_doneSeq;
 volatile Result s_result = Result::Ok;
 bool s_hooked;
 volatile bool s_reloaded;                   // 直前の操作で部屋を読み直したか
+volatile bool s_mapRefreshed;               // 直前の操作で下画面の地図を置き直したか
 
 u8 *BuildingData(void) {
     const u32 garden = *reinterpret_cast<volatile u32 *>(kGarden);
@@ -306,17 +342,56 @@ bool KillVisual(u32 id, u32 x, u32 y) {
     return false;
 }
 
-// 建ったものの中へ閉じ込めないよう、Vapecord と同じく 2 マス手前へ出す。
-void StepOut(u32 x, u32 y) {
-    const u32 player = GetPlayer(GetOnlineIndex(), 1);
-    if (player == 0)
-        return;
-    float out[3];
-    TileToWorld(out, x, y + 2);
-    float *p = reinterpret_cast<float *>(player + kPlayerPosition);
-    p[0] = out[0];
-    p[1] = out[1];
-    p[2] = out[2];
+// 足元 16 x 16 のマスのアイテムを、今の地面の高さで作り直させる。
+void RefreshItems(u32 x, u32 y) {
+    for (s32 dy = -kFootprintBefore; dy <= kFootprintAfter; ++dy) {
+        for (s32 dx = -kFootprintBefore; dx <= kFootprintAfter; ++dx) {
+            const s32 tx = (s32)x + dx;
+            const s32 ty = (s32)y + dy;
+            // sub_753450 は境界を見ないので、ここで絞る
+            if (tx < 0 || ty < 0 || tx >= (s32)kFieldTilesX || ty >= (s32)kFieldTilesY)
+                continue;
+            FieldMarkDirty((u32)tx, (u32)ty, 1);
+        }
+    }
+}
+
+u32 FindMapVillage(void) {
+    const u32 mgr = *reinterpret_cast<volatile u32 *>(kBaseMgr);
+    if (mgr == 0)
+        return 0;
+    for (u32 slot = 0; slot < kBaseSlots; ++slot) {
+        const u32 proc = *reinterpret_cast<volatile u32 *>(mgr + kBaseSlotStride * slot);
+        if (proc < 0x08000000u || *reinterpret_cast<volatile u32 *>(proc) != kMapVillageVtable)
+            continue;
+        if (*reinterpret_cast<volatile u8 *>(proc + kActorDestroying) != 0)
+            continue;
+        if (*reinterpret_cast<volatile u32 *>(proc + kMapCreateStep) != 0)
+            continue;
+        return proc + kMapInProcess;
+    }
+    return 0;
+}
+
+// 地図の建物アイコンを建物表から置き直す。地図が無ければ何もしない。
+bool RefreshMap(void) {
+    const u32 map = FindMapVillage();
+    if (map == 0)
+        return false;
+    // 数が壊れていたら触らない（地図でない物を掴んだ疑い）
+    if (*reinterpret_cast<u32 *>(map + kMapCountA) > 8 || *reinterpret_cast<u32 *>(map + kMapCountB) > 10)
+        return false;
+    for (u32 p = 0; p < sizeof(kMapBuildingPools) / sizeof(kMapBuildingPools[0]); ++p) {
+        for (u32 i = 0; i < kMapBuildingPools[p].count; ++i) {
+            const u32 icon = map + kMapBuildingPools[p].offset + kMapIconStride * i;
+            IconSetVisible(icon, 0);
+            IconUpdate(icon);
+        }
+    }
+    *reinterpret_cast<u32 *>(map + kMapCountA) = 0;
+    *reinterpret_cast<u32 *>(map + kMapCountB) = 0;
+    MapPlaceBuildings(map, 0, 1);
+    return true;
 }
 
 Result Execute(Op op) {
@@ -330,21 +405,23 @@ Result Execute(Op op) {
         return Result::NoPlayer;
 
     // 見た目はその場で作り直す（IDA-opus-5.5-F004）。作れなかったときだけ部屋を読み直す。
+    // プレイヤーの位置は変えない（利用者指示 2026-09-23）。読み直すときも今の位置のまま。
+    float stay[3] = { here[0], here[1], here[2] };
     s_reloaded = false;
+    s_mapRefreshed = false;
     switch (op) {
     case Op::Place: {
         // ゲームの設置関数。足元の属性・セーブの表・占有まで自分でやる。
         BuildingPlace(s_argX, s_argY, s_argId);
         if (IsDesignStand((u16)s_argId))
             StandPlace(data, s_argX, s_argY);
-        if (SpawnVisual(s_argId, s_argX, s_argY)) {
-            StepOut(s_argX, s_argY);
-        } else {
-            float out[3];
-            TileToWorld(out, s_argX, s_argY + 2);
-            Reload(out);
+        if (!SpawnVisual(s_argId, s_argX, s_argY)) {
+            Reload(stay);
             s_reloaded = true;
+            return Result::Ok;
         }
+        RefreshItems(s_argX, s_argY);
+        s_mapRefreshed = RefreshMap();
         return Result::Ok;
     }
     case Op::Remove: {
@@ -365,9 +442,12 @@ Result Execute(Op op) {
         RebuildAttributes();
         RebuildOccupancy();
         if (!KillVisual(old.id, old.x, old.y)) {
-            Reload(here);
+            Reload(stay);
             s_reloaded = true;
+            return Result::Ok;
         }
+        RefreshItems(old.x, old.y);
+        s_mapRefreshed = RefreshMap();
         return Result::Ok;
     }
     case Op::Move: {
@@ -383,14 +463,14 @@ Result Execute(Op op) {
         slot->y = (u8)s_argY;
         RebuildAttributes();
         RebuildOccupancy();
-        if (KillVisual(old.id, old.x, old.y) && SpawnVisual(old.id, s_argX, s_argY)) {
-            StepOut(s_argX, s_argY);
-        } else {
-            float out[3];
-            TileToWorld(out, s_argX, s_argY + 2);
-            Reload(out);
+        if (!KillVisual(old.id, old.x, old.y) || !SpawnVisual(old.id, s_argX, s_argY)) {
+            Reload(stay);
             s_reloaded = true;
+            return Result::Ok;
         }
+        RefreshItems(old.x, old.y);
+        RefreshItems(s_argX, s_argY);
+        s_mapRefreshed = RefreshMap();
         return Result::Ok;
     }
     case Op::Rebuild:
@@ -444,6 +524,10 @@ void FrameStep(void) {
 
 bool LastReloaded(void) {
     return s_reloaded;
+}
+
+bool LastMapRefreshed(void) {
+    return s_mapRefreshed;
 }
 
 bool ReadSlot(u32 index, Slot &out) {
@@ -579,7 +663,9 @@ namespace CTRPluginFramework
                 if (result == PublicWorks::Result::Ok)
                     GuiNotification::Notify(title, PublicWorks::LastReloaded()
                                                        ? u8"完了（部屋を読み直しました）"
-                                                       : u8"完了（その場で反映）");
+                                                       : PublicWorks::LastMapRefreshed()
+                                                             ? u8"完了（その場で反映・地図も更新）"
+                                                             : u8"完了（その場で反映・地図は見つからず）");
                 else
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
             }
