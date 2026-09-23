@@ -52,4 +52,14 @@ namespace BuildingHighlight
 
     // ゲームのスレッドから毎フレーム（グリッドカーソルのフックの相乗り枠）。
     void            FrameStep(void);
+
+    // ---- ほかの描画部品（設置プレビュー・グリッドカーソル）と共有する道具。描画スレッドから ----
+    // [addr, addr+len) が読めるか（svcQueryMemory。結果は FrameStep の先頭で捨てる）
+    bool            SafeReadable(u32 addr, u32 len);
+    // RTTI が nw::gfx::Material か（読めるかを確かめてから辿る）
+    bool            LooksLikeMaterial(u32 obj);
+    // TEV ブロック（244 B、書き換えてよい写し）の最終段を「前段と定数色 5 を混ぜる」に組み替える。
+    // 0 = できない / 1 = 空き段 / 2 = 詰めた / 3 = 近似（Constant5 は前乗算）。F011〜F013。
+    int             PlanTev(u8 *block, u32 colour);
+    u32             TintConstant(u32 color, u8 strength, bool premultiplied);
 }

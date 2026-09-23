@@ -1,5 +1,6 @@
 #include "BuildingPreview.hpp"
 
+#include "BuildingHighlight.hpp"
 #include "GridCursorGameApi.hpp"
 #include "PublicWorks.hpp"
 #include "RomfsIndex.hpp"
@@ -28,7 +29,6 @@ u8 s_instanceAllocator[16] BP_ALIGNED;
 u8 s_node[kNodeHolderBytes] BP_ALIGNED;
 
 const char kHeapNameText[] = "BuildingPreview";
-const u32 kLoadAttempts = 240;
 const u32 kInstanceHeapBytes = 0x10000;
 const u32 kInstanceReserve = 8192;
 const u32 kMaxMaterials = 32;
@@ -53,10 +53,20 @@ char s_pathText[kResCount][96];
 u32 s_sizes[kResCount];
 char s_modelName[64];
 
+// メニュースレッドが書く「次に出すもの」。s_pendSeq が奇数の間は書きかけ（描画スレッドは写さない）。
+char s_pendPath[kResCount][96];
+u32 s_pendSize[kResCount];
+char s_pendName[64];
+volatile s32 s_pendId = -1;         // -1 = 出せる種類ではない
+volatile u32 s_pendSeq;
+s32 s_shownId = -1;                 // メニュー側が最後に頼んだ id
+u32 s_stableFrames;                 // 頼まれた id が変わらずに続いたフレーム
+s32 s_lastSeen = -2;
+const u32 kDebounceFrames = 8;      // 十字キーを押し続けている間は読み込みを始めない
+
 volatile Stage s_stage = Stage::Off;
 volatile u32 s_failReason;
 volatile bool s_want;
-volatile s32 s_wantId = -1;
 volatile s32 s_tx, s_ty;
 s32 s_builtId = -1;
 u32 s_loadAttempts;
@@ -78,26 +88,16 @@ inline bool IsHeapPointer(const void *p) {
     const u32 v = reinterpret_cast<u32>(p);
     return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u;
 }
-inline bool IsCode(u32 p) { return p >= 0x00100000u && p < 0x01000000u && (p & 3u) == 0u; }
 
 void Stop(u32 reason) {
     s_failReason = reason;
     s_stage = Stage::Failed;
 }
 
+// ★範囲だけで番地と決めない（配列の先のゴミ 0x3F248A94 を読んで SIGSEGV、2026-09-24 実機）。
+//   読めるかは OS に問い合わせる（BuildingHighlight::SafeReadable）。
 bool IsMaterial(u32 obj) {
-    if (!IsHeapPointer(reinterpret_cast<void *>(obj)))
-        return false;
-    const u32 vt = R32(obj);
-    if (!IsCode(vt) || !IsCode(vt - 4))
-        return false;
-    const u32 ti = R32(vt - 4);
-    if (!IsCode(ti))
-        return false;
-    const u32 name = R32(ti + 4);
-    if (name < 0x00100000u || name >= 0x01000000u)
-        return false;
-    return std::strcmp(reinterpret_cast<const char *>(name), kMaterialName) == 0;
+    return BuildingHighlight::LooksLikeMaterial(obj);
 }
 
 void TeardownAll(void) {
@@ -129,15 +129,16 @@ void MakeTranslucent(void) {
     s_fragCount = 0;
     void *node = *reinterpret_cast<void **>(Word(s_node, 4));
     const u32 arr = *Word(node, kModelMaterials);
-    if (!IsHeapPointer(reinterpret_cast<void *>(arr)))
+    if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxMaterials))
         return;
     for (u32 k = 0; k < kMaxMaterials; ++k) {
         const u32 m = R32(arr + 4 * k);
-        if (!IsMaterial(m))
+        if (!IsMaterial(m) || !BuildingHighlight::SafeReadable(m + kMatColour, kMatFrag + 4 - kMatColour))
             break;
         const u32 colour = R32(m + kMatColour);
         const u32 frag = R32(m + kMatFrag);
-        if (!IsHeapPointer(reinterpret_cast<void *>(frag)) || !IsHeapPointer(reinterpret_cast<void *>(colour)))
+        if (!BuildingHighlight::SafeReadable(frag, kResFragKey + 4) ||
+            !BuildingHighlight::SafeReadable(colour, kResFragKey + 4))
             continue;
         if (R32(frag + kFragCheckA) != 0x00E40100u || R32(frag + kFragCheckB) != 0x803F0100u)
             continue;
@@ -226,12 +227,21 @@ void StepBuild(void) {
         void *heap = *reinterpret_cast<void **>(Word(s_resourceAllocator, 4));
         if (ResHolderRequestLoad(s_holders[s_loading], &s_paths[s_loading], heap, 128) == 1) {
             s_loadAttempts = 0;
-            if (++s_loading >= kResCount)
+            ++s_loading;
+            // ★読み込みの途中では絶対に片付けない。1 本読み終わった切れ目でだけ止まる。
+            //   途中でヒープを返すと、ゲームの読み込み係が返したヒープへ書き続け、以後の読み込みが
+            //   終わらなくなる（利用者報告「無限ロード。画面遷移でリロードすると表示される」）。
+            if (!s_want || s_pendId != s_builtId) {
+                s_stage = Stage::Teardown;
+                s_quietFrames = 0;
+                return;
+            }
+            if (s_loading >= kResCount)
                 s_stage = Stage::Setup;
             return;
         }
-        if (++s_loadAttempts >= kLoadAttempts)
-            Stop(4);
+        // 読み終わらないまま諦めると同じ問題になるので、失敗にはせず待ち続ける（数えるだけ）
+        ++s_loadAttempts;
         return;
     }
     case Stage::Setup: {
@@ -286,7 +296,7 @@ void StepBuild(void) {
     }
 }
 
-// 名前からパスと大きさを決める。モデルかテクスチャが無い種類は false。
+// 名前からパスと大きさを決める（メニュースレッド。書く先は pend）。モデルかテクスチャが無い種類は false。
 bool Resolve(u16 id) {
     const char *name = PublicWorks::NameOf(id);
     if (name[0] == '\0')
@@ -295,17 +305,17 @@ bool Resolve(u16 id) {
     const bool sobj = std::strncmp(name, "sobj_", 5) == 0;
     if (!fobj && !sobj)
         return false;
-    std::snprintf(s_pathText[kLut], sizeof(s_pathText[kLut]), fobj ? "Strc/fobj/lut/Lut_fieldobj.bcres"
+    std::snprintf(s_pendPath[kLut], sizeof(s_pendPath[kLut]), fobj ? "Strc/fobj/lut/Lut_fieldobj.bcres"
                                                                    : "Strc/sobj/lut/Lut_sobj.bcres");
-    std::snprintf(s_pathText[kTex], sizeof(s_pathText[kTex]),
+    std::snprintf(s_pendPath[kTex], sizeof(s_pendPath[kTex]),
                   fobj ? "Strc/fobj/%s/Textures/season00.bcres" : "Strc/sobj/%s/Textures/season00/season00.bcres",
                   name);
-    std::snprintf(s_pathText[kModel], sizeof(s_pathText[kModel]), fobj ? "Strc/fobj/%s/%s.bcres" : "Strc/sobj/%s/%s.bcres",
+    std::snprintf(s_pendPath[kModel], sizeof(s_pendPath[kModel]), fobj ? "Strc/fobj/%s/%s.bcres" : "Strc/sobj/%s/%s.bcres",
                   name, name);
-    std::snprintf(s_modelName, sizeof(s_modelName), "%s", name);
+    std::snprintf(s_pendName, sizeof(s_pendName), "%s", name);
     for (u32 i = 0; i < kResCount; ++i) {
-        s_sizes[i] = RomfsIndex::FileSize(s_pathText[i]);
-        if (s_sizes[i] == 0)
+        s_pendSize[i] = RomfsIndex::FileSize(s_pendPath[i]);
+        if (s_pendSize[i] == 0)
             return false;
     }
     return true;
@@ -314,12 +324,20 @@ bool Resolve(u16 id) {
 }  // namespace
 
 void FrameStep(void) {
-    const bool want = s_want;
-    const s32 wantId = s_wantId;
+    const s32 target = s_want ? s_pendId : -1;
+    if (target != s_lastSeen) {
+        s_lastSeen = target;
+        s_stableFrames = 0;
+    } else if (s_stableFrames < 1000) {
+        ++s_stableFrames;
+    }
+
+    if (s_stage == Stage::Load) {                   // 読み込み中は切れ目まで進める（StepBuild が判断する）
+        StepBuild();
+        return;
+    }
     // 止める・種類が変わった: 描くのをやめて 4 フレーム待ってから返す
-    if (s_stage != Stage::Off && (!want || wantId != s_builtId || s_stage == Stage::Teardown)) {
-        if (s_stage == Stage::Failed && want && wantId == s_builtId)
-            return;                                 // 同じ種類で失敗したまま。種類を変えるまで待つ
+    if (s_stage != Stage::Off && (target != s_builtId || s_stage == Stage::Teardown)) {
         if (s_stage != Stage::Teardown) {
             s_stage = Stage::Teardown;
             s_quietFrames = 0;
@@ -331,14 +349,25 @@ void FrameStep(void) {
         return;
     }
     if (s_stage == Stage::Off) {
-        if (!want || wantId < 0)
+        if (target < 0 || s_stableFrames < kDebounceFrames)
             return;
-        s_builtId = wantId;
+        // 頼まれたものを写す（書きかけなら次のフレーム）
+        const u32 seq = s_pendSeq;
+        if ((seq & 1u) != 0)
+            return;
+        for (u32 i = 0; i < kResCount; ++i) {
+            std::memcpy(s_pathText[i], s_pendPath[i], sizeof(s_pathText[i]));
+            s_sizes[i] = s_pendSize[i];
+        }
+        std::memcpy(s_modelName, s_pendName, sizeof(s_modelName));
+        if (s_pendSeq != seq || s_pendId != target)
+            return;
+        s_builtId = target;
         s_failReason = 0;
         s_stage = Stage::AllocHeaps;
     }
     if (s_stage == Stage::Failed)
-        return;
+        return;                                     // 同じ種類で失敗したまま。種類を変えるまで待つ
     if (s_sceneOwner != nullptr) {
         void *owner = *kSceneOwner;
         if (!IsHeapPointer(owner) || owner != s_sceneOwner ||
@@ -360,33 +389,21 @@ void FrameStep(void) {
 void Show(u16 id, s32 x, s32 y) {
     s_tx = x;
     s_ty = y;
-    if (s_want && s_wantId == (s32)id)
-        return;
-    // 描画スレッドが前の組を片付けてからでないとパスを書き換えられない
-    if (s_stage != Stage::Off && s_stage != Stage::Failed) {
-        s_want = false;
-        for (u32 i = 0; i < 30 && s_stage != Stage::Off; ++i)
-            svcSleepThread(16666667LL);
-        if (s_stage != Stage::Off && s_stage != Stage::Failed)
-            return;                                 // 次に呼ばれたときにもう一度
-    }
-    if (s_stage == Stage::Failed) {
-        s_want = false;
-        for (u32 i = 0; i < 30 && s_stage != Stage::Off; ++i)
-            svcSleepThread(16666667LL);
-    }
-    if (!Resolve(id)) {
-        s_wantId = -1;
-        s_want = false;
-        return;
-    }
-    s_wantId = id;
     s_want = true;
+    if (s_shownId == (s32)id)
+        return;
+    s_shownId = id;
+    // 次に出すものを書く。描画スレッドは待たない（切り替えは描画スレッドが切れ目で行う）。
+    s_pendSeq = s_pendSeq + 1;                      // 奇数 = 書きかけ
+    const bool ok = Resolve(id);
+    s_pendSeq = s_pendSeq + 1;
+    s_pendId = ok ? (s32)id : -1;
 }
 
 void Hide(void) {
     s_want = false;
-    s_wantId = -1;
+    s_shownId = -1;
+    s_pendId = -1;
 }
 
 void SetWave(const Wave &wave) {

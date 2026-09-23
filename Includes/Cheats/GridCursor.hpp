@@ -93,7 +93,10 @@ namespace GridCursor
     // マス指定の形で出す（建物エディター）。足元の形で出ているときは false。
     // 置く場所は SetTiles で村のマス (x, y) の並びとして渡す。体数が足りなければ組み直す。
     bool            ShowTiles(void);
-    void            SetTiles(const u8* xs, const u8* ys, u32 count);
+    // heightId >= 0 なら全部を「その建物を (anchorX, anchorY) に建てたときの高さ」に揃える（設置プレビューと同じ）。
+    void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY);
+    // マス指定の形の色（0x00BBGGRR と強さ 0〜255。0 で元の見た目）。
+    void            SetTint(u32 color, u8 strength);
     // プロセス終了時に 1 回。フック語を元の NOP へ戻し、置き場を消す。
     void            Shutdown(void);
 

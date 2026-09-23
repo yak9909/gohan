@@ -472,6 +472,28 @@ void Animate(void) {
 
 }  // namespace
 
+bool SafeReadable(u32 addr, u32 len) {
+    return Readable(addr, len);
+}
+
+bool LooksLikeMaterial(u32 obj) {
+    return IsClass(obj, kMaterial);
+}
+
+int PlanTev(u8 *block, u32 colour) {
+    return (int)PlanBlock(block, colour);
+}
+
+u32 TintConstant(u32 color, u8 strength, bool premultiplied) {
+    const u32 tint = strength;
+    if (!premultiplied)
+        return (tint << 24) | (color & 0x00FFFFFFu);
+    const u32 r = (color & 0xFFu) * tint / 255u;
+    const u32 g = ((color >> 8) & 0xFFu) * tint / 255u;
+    const u32 bl = ((color >> 16) & 0xFFu) * tint / 255u;
+    return (tint << 24) | (bl << 16) | (g << 8) | r;
+}
+
 void Select(u16 id, u8 x, u8 y) {
     s_reqId = id;
     s_reqX = x;

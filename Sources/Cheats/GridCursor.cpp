@@ -1,5 +1,8 @@
 #include "GridCursor.hpp"
 
+#include "BuildingHighlight.hpp"
+#include "PublicWorks.hpp"
+
 #include "Cheats.hpp"
 #include "GridCursorGameApi.hpp"
 #include "GridCursorStub.h"
@@ -121,8 +124,22 @@ static u8 s_pendY[kMaxCursors];
 static volatile u32 s_pendCount;
 static volatile u32 s_pendSeq;
 static u32 s_takenSeq;
+// ★高さはマスごとの地面ではなく、全部を 1 つの高さ（設置プレビューの高さ = PublicWorks::SpawnHeight）に揃える
+//   （利用者指示）。s_pendHeightId < 0 のときだけマスごとの地面。
+static volatile s32 s_pendHeightId = -1;
+static volatile u8 s_pendAnchorX;
+static volatile u8 s_pendAnchorY;
 typedef float (*GroundHeightFn)(const float* pos, u32 zero);    // 0x006C69C0（S0 で返る）
 static const GroundHeightFn GroundHeight = reinterpret_cast<GroundHeightFn>(0x006C69C0);
+
+// ★モードごとの色（建物エディター: 配置 = そのまま、移動 = 青、削除 = 赤）。
+//   UnitCursor の資源は自前で読んだものなので、TEV の最終段をその場で「前段と Constant5 を混ぜる」に
+//   組み替え（BuildingHighlight::PlanTev、F011〜F013 と同じ）、インスタンスごとの色の写し（mask 0x834 の 0x800）の
+//   Constant5 に色と強さを書く。強さ 0 なら元の見た目。
+static volatile u32 s_tintColor;
+static volatile u8 s_tintStrength;
+static bool s_tintPrepared;
+static bool s_tintPremultiplied;
 
 static bool s_hookInstalled;
 // スタブから毎フレーム呼ぶ相乗り先。フックを 2 つは置けないのでここで配る。
@@ -224,6 +241,9 @@ static void ComputeOrigin() {
 
 static void PoseTiles() {
     const u32 seq = s_pendSeq;
+    const s32 heightId = s_pendHeightId;
+    const u32 anchorX = s_pendAnchorX;
+    const u32 anchorY = s_pendAnchorY;
     u32 count = s_pendCount;
     if (count > kMaxCursors)
         count = kMaxCursors;
@@ -233,9 +253,10 @@ static void PoseTiles() {
     }
     s_tileCount = count;
     s_takenSeq = seq;                    // 写している間に書き換わっていれば次のフレームでもう一度
+    const float shared = heightId >= 0 ? PublicWorks::SpawnHeight((u16)heightId, anchorX, anchorY) : 0.0f;
     for (u32 i = 0; i < s_cursorCount && i < s_tileCount; ++i) {
         float pos[3] = { (float)(32 * s_tileX[i] + 16), 0.0f, (float)(32 * s_tileY[i] + 16) };
-        pos[1] = GroundHeight(pos, 0);
+        pos[1] = heightId >= 0 ? shared : GroundHeight(pos, 0);
         PoseCursor(i, pos[0], pos[1], pos[2]);
     }
 }
@@ -359,6 +380,7 @@ static void DestroyCursors() {
 }
 
 static void TeardownAll() {
+    s_tintPrepared = false;
     DestroyCursors();
     if (*Word(s_resourceHolder, 0) == kResourceLoaderVtable) {
         // Before the heap, always. The other order walks a pointer into freed memory and
@@ -507,6 +529,77 @@ static void StepBuild() {
     }
 }
 
+// ---------------------------------------------------------------------------------------
+// Tint (building editor). Runs on the draw thread once the cursors are built.
+// ---------------------------------------------------------------------------------------
+
+static const u32 kModelMaterials = 0x164;
+static const u32 kMatColour = 48;
+static const u32 kMatTev = 72;
+static const u32 kResTevRel = 648;
+static const u32 kResTevKey = 712;
+static const u32 kResConst5 = 36 + 4 * 54;
+static const u32 kTevBytes = 244;
+static const u32 kMaxTintMaterials = 8;
+
+static inline u32 Rd32(u32 a) { return *reinterpret_cast<volatile u32*>(a); }
+
+// 資源の TEV（全インスタンスで共有）を 1 回だけ組み替える。資源は自前なので戻さなくてよい。
+static void PrepareTint() {
+    s_tintPrepared = true;
+    s_tintPremultiplied = false;
+    if (s_cursorCount == 0)
+        return;
+    const u32 node = *Word(s_holders[0], 4);
+    const u32 arr = BuildingHighlight::SafeReadable(node + kModelMaterials, 4) ? Rd32(node + kModelMaterials) : 0;
+    if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
+        return;
+    for (u32 k = 0; k < kMaxTintMaterials; ++k) {
+        const u32 m = Rd32(arr + 4 * k);
+        if (!BuildingHighlight::LooksLikeMaterial(m))
+            break;
+        const u32 colour = Rd32(m + kMatColour);
+        const u32 tevres = Rd32(m + kMatTev);
+        if (!BuildingHighlight::SafeReadable(tevres, kResTevKey + 4) || !BuildingHighlight::SafeReadable(colour, 256))
+            continue;
+        const u32 rel = Rd32(tevres + kResTevRel);
+        if (rel == 0)
+            continue;
+        const u32 tev = tevres + kResTevRel + rel;
+        if (!BuildingHighlight::SafeReadable(tev, kTevBytes))
+            continue;
+        static u8 work[kTevBytes] __attribute__((aligned(4)));
+        std::memcpy(work, reinterpret_cast<const void*>(tev), kTevBytes);
+        const int plan = BuildingHighlight::PlanTev(work, colour);
+        if (plan == 0)
+            continue;
+        std::memcpy(reinterpret_cast<void*>(tev), work, kTevBytes);
+        *reinterpret_cast<volatile u32*>(tevres + kResTevKey) = 0;     // 毎回書き出させる
+        if (plan == 3)
+            s_tintPremultiplied = true;
+    }
+}
+
+static void ApplyTint() {
+    const u32 value = BuildingHighlight::TintConstant(s_tintColor, s_tintStrength, s_tintPremultiplied);
+    for (u32 i = 0; i < s_cursorCount; ++i) {
+        const u32 node = *Word(s_holders[i], 4);
+        if (node == 0u || !BuildingHighlight::SafeReadable(node + kModelMaterials, 4))
+            continue;
+        const u32 arr = Rd32(node + kModelMaterials);
+        if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
+            continue;
+        for (u32 k = 0; k < kMaxTintMaterials; ++k) {
+            const u32 m = Rd32(arr + 4 * k);
+            if (!BuildingHighlight::LooksLikeMaterial(m))
+                break;
+            const u32 colour = Rd32(m + kMatColour);
+            if (BuildingHighlight::SafeReadable(colour + kResConst5, 4))
+                *reinterpret_cast<volatile u32*>(colour + kResConst5) = value;
+        }
+    }
+}
+
 // Grow or shrink to the requested footprint without rebuilding what is already there.
 // ---------------------------------------------------------------------------------------
 // The frame callback. Runs on the game's draw thread, once per frame, from the stub.
@@ -592,6 +685,12 @@ extern "C" void FrameCallback(void) {
         PoseAll();
     }
 
+    if (s_tileMode) {
+        if (!s_tintPrepared)
+            PrepareTint();
+        ApplyTint();
+    }
+
     for (u32 i = 0; i < s_cursorCount; ++i) {
         if (s_tileMode && i >= s_tileCount)
             continue;                     // マス指定の形で使っていない体は出さない
@@ -664,8 +763,19 @@ static bool InstallHook(void) {
 }
 
 bool Show(void) {
-    if (s_stage == Stage::Ready || s_request == Request::Setup)
+    // ★片付けの途中で出し直しを頼まれたら、片付け終わってから組み直す。以前は段が Ready のままなので
+    //   何もせずに真を返し、片付けだけが進んで消えたままになった（建物エディターの画面遷移後の再開）。
+    if (s_request == Request::Teardown || s_stage == Stage::Teardown) {
+        if (!InstallHook())
+            return false;
+        s_wantShown = true;
+        s_rebuild = true;
         return true;
+    }
+    if (s_stage == Stage::Ready || s_request == Request::Setup) {
+        s_wantShown = true;
+        return true;
+    }
     s_failReason = Fail::kNone;
     if (!InstallHook())
         return false;
@@ -681,9 +791,12 @@ bool ShowTiles(void) {
     return Show();
 }
 
-void SetTiles(const u8* xs, const u8* ys, u32 count) {
+void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY) {
     if (count > kMaxCursors)
         count = kMaxCursors;
+    s_pendHeightId = heightId;
+    s_pendAnchorX = anchorX;
+    s_pendAnchorY = anchorY;
     for (u32 i = 0; i < count; ++i) {
         s_pendX[i] = xs[i];
         s_pendY[i] = ys[i];
@@ -696,6 +809,11 @@ void SetTiles(const u8* xs, const u8* ys, u32 count) {
         const u32 rows = (count + kMaxSide - 1) / kMaxSide;
         SetFootprint(kMaxSide, rows);
     }
+}
+
+void SetTint(u32 color, u8 strength) {
+    s_tintColor = color;
+    s_tintStrength = strength;
 }
 
 void Hide(void) {
