@@ -850,7 +850,9 @@ void Hide(void) {
 bool IsShown(void) {
     // 組み直しの間は一瞬 Off を通るので、段ではなく利用者の意思を返す。
     // そうしないと大きさを変えるたびにチェックが外れる。
-    return s_wantShown && s_stage != Stage::Failed;
+    // ★マス指定の形（公共事業エディターが使う）はメニュー項目の効果ではない。数えると、エディターが
+    //   出し入れするたびにメニューが「グリッドカーソル ON/OFF」を通知していた（利用者報告）。
+    return s_wantShown && !s_tileMode && s_stage != Stage::Failed;
 }
 
 void Shutdown(void) {

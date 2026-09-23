@@ -103,9 +103,9 @@ namespace CTRPluginFramework
                 SetHotkey(i, Bit(HB_A));
                 i = AddItem(ITEM_LIST, kCoordMoveKey, u8"座標移動に使うキーを指定できます。");
                 SetOptions(i, kMoveKeyOptions, kMoveKeyOptionCount);
-                // ★float は 1/10 単位（既定 2.0 / 範囲 0.1..99.9 / 十字キーで 0.5 ずつ）
+                // ★float は 1/10 単位（既定 5.0 / 範囲 0.1..99.9 / 十字キーで 0.5 ずつ）
                 i = AddItem(ITEM_VALUE, kCoordMoveSpeed, u8"座標移動の移動量を設定できます。");
-                SetValue(i, FMT_FLOAT, 20, 1, 999, 5);
+                SetValue(i, FMT_FLOAT, 50, 1, 999, 5);
                 i = AddItem(ITEM_LIST, kCoordMoveMode,
                             u8"座標移動の移動方法を変更できます。グリッド単位の時、スライドパッドによる向きは8方向に限定されます。");
                 SetOptions(i, kMoveModeOptions, kMoveModeOptionCount);
