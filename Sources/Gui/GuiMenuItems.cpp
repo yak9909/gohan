@@ -274,6 +274,16 @@ namespace CTRPluginFramework
                         u8"選んだ公共事業を足元へ動かし、当たり判定も作り直します。");
                 AddItem(ITEM_ACTION, kPwRebuild,
                         u8"建物表はそのまま、当たり判定と占有を建物表から作り直します。");
+                AddItem(ITEM_CHECKBOX, kHlOn,
+                        u8"「近くの公共事業を選ぶ」で選んだ建物に薄い青を重ね、透明度をゆらゆら変えます。");
+                i = AddItem(ITEM_VALUE, kHlTint, u8"薄い青をどれだけ混ぜるかです。0 で元の色、255 で青一色。");
+                SetValue(i, FMT_DEC, 176, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlAlpha, u8"揺れの中心の不透明度です。255 で不透明。");
+                SetValue(i, FMT_DEC, 208, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlWave, u8"不透明度が sin 波で上下する幅です。0 で揺れません。");
+                SetValue(i, FMT_DEC, 64, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlSpeed, u8"揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
+                SetValue(i, FMT_DEC, 11, 1, 100, 1);
                 AddItem(ITEM_ACTION, kMvStat,
                         u8"モデルビューアがどこで止まっているかを通知で出します。");
                 const int testCount = g_itemCount - testFirst;

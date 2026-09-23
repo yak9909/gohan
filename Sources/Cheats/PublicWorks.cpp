@@ -1,5 +1,7 @@
 #include "PublicWorks.hpp"
 
+#include "BuildingHighlight.hpp"
+
 #include "Cheats.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
@@ -585,6 +587,8 @@ Result Execute(Op op) {
             return Result::NoSaveData;
         if (!IsBuilding(slot->id))
             return Result::EmptySlot;
+        // 光らせている材質は実体と一緒に消えるので、消す前に元へ戻す。
+        BuildingHighlight::ClearNow();
         const Slot old = *slot;
         if (IsDesignStand(slot->id))
             StandRemove(data, slot->x, slot->y);
@@ -612,6 +616,8 @@ Result Execute(Op op) {
         if (!IsBuilding(slot->id))
             return Result::EmptySlot;
         const Slot old = *slot;
+        const bool lit = BuildingHighlight::GetState() == BuildingHighlight::State::Active;
+        BuildingHighlight::ClearNow();
         if (IsDesignStand(slot->id))
             StandMove(data, slot->x, slot->y, s_argX, s_argY);
         slot->x = (u8)s_argX;
@@ -626,6 +632,8 @@ Result Execute(Op op) {
         RefreshItems(old.x, old.y);
         RefreshItems(s_argX, s_argY);
         s_mapState = RefreshMap();
+        if (lit)                                    // 新しい実体を次のフレームで光らせ直す
+            BuildingHighlight::Select(old.id, (u8)s_argX, (u8)s_argY);
         return Result::Ok;
     }
     case Op::Rebuild:
@@ -670,11 +678,24 @@ Result Request(Op op) {
 
 void FrameStep(void) {
     const Op op = s_op;
-    if (op == Op::None)
-        return;
-    s_result = Execute(op);
-    s_doneSeq = s_seq;
-    s_op = Op::None;
+    if (op != Op::None) {
+        s_result = Execute(op);
+        s_doneSeq = s_seq;
+        s_op = Op::None;
+    }
+    BuildingHighlight::FrameStep();
+}
+
+bool Highlight(u32 index) {
+    const Slot *slot = SlotAt(index);
+    if (slot == nullptr || !IsBuilding(slot->id) || !EnsureHook())
+        return false;
+    BuildingHighlight::Select(slot->id, slot->x, slot->y);
+    return true;
+}
+
+void Unhighlight(void) {
+    BuildingHighlight::Clear();
 }
 
 bool LastReloaded(void) {
@@ -830,6 +851,51 @@ namespace CTRPluginFramework
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
             }
 
+            int         g_hlOn = -1, g_hlTint = -1, g_hlAlpha = -1, g_hlWave = -1, g_hlSpeed = -1;
+
+            int     Value(int index, int fallback)
+            {
+                return index >= 0 ? GuiMenu::ItemApplied(index) : fallback;
+            }
+
+            void    HighlightParamsApplied(int index, s32 value)
+            {
+                (void)index;
+                (void)value;
+                BuildingHighlight::Params p = BuildingHighlight::GetParams();
+                p.tint = (u8)Value(g_hlTint, p.tint);
+                p.alpha = (u8)Value(g_hlAlpha, p.alpha);
+                p.wave = (u8)Value(g_hlWave, p.wave);
+                p.speed = (u8)Value(g_hlSpeed, p.speed);
+                BuildingHighlight::SetParams(p);
+            }
+
+            // チェックボックスの効果（gohan-menu.md §4.3）。ON のあいだ「選ぶ」たびに光らせる。
+            bool        g_hlActive;
+
+            bool    HighlightWanted(void)
+            {
+                return g_hlActive;
+            }
+
+            bool    HighlightIsActive(int index)
+            {
+                (void)index;
+                return g_hlActive;
+            }
+
+            void    HighlightSetActive(int index, bool active)
+            {
+                (void)index;
+                g_hlActive = active;
+                if (!active)
+                    PublicWorks::Unhighlight();
+                else if (g_selected >= 0)
+                    PublicWorks::Highlight((u32)g_selected);
+            }
+
+            const GuiMenu::ToggleEffectFuncs kHighlightFuncs = { HighlightIsActive, HighlightSetActive };
+
             void    PlaceExecute(int index)
             {
                 (void)index;
@@ -858,6 +924,8 @@ namespace CTRPluginFramework
                               (long)g_selected, (unsigned)slot.id, name[0] != '\0' ? name : u8"（名前なし）",
                               (unsigned)slot.x, (unsigned)slot.y);
                 GuiNotification::Notify(kPwNearest, message);
+                if (HighlightWanted())
+                    PublicWorks::Highlight((u32)g_selected);
             }
 
             void    RemoveExecute(int index)
@@ -925,6 +993,19 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterExecute(move, MoveExecute);
             if (rebuild >= 0)
                 GuiMenu::RegisterExecute(rebuild, RebuildExecute);
+
+            g_hlOn = GuiMenu::FindItem(kHlOn);
+            g_hlTint = GuiMenu::FindItem(kHlTint);
+            g_hlAlpha = GuiMenu::FindItem(kHlAlpha);
+            g_hlWave = GuiMenu::FindItem(kHlWave);
+            g_hlSpeed = GuiMenu::FindItem(kHlSpeed);
+            if (g_hlOn >= 0)
+                GuiMenu::RegisterToggleEffect(g_hlOn, &kHighlightFuncs);
+            const int params[] = { g_hlTint, g_hlAlpha, g_hlWave, g_hlSpeed };
+            for (u32 k = 0; k < 4; ++k)
+                if (params[k] >= 0)
+                    GuiMenu::RegisterApply(params[k], HighlightParamsApplied);
+            HighlightParamsApplied(-1, 0);
         }
     }
 }

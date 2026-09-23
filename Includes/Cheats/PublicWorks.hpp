@@ -74,6 +74,10 @@ namespace PublicWorks
     enum class MapState : u32 { Untouched, Refreshed, NotFound, Full };
     MapState        LastMapState(void);
 
+    // スロットの建物を光らせる／やめる（BuildingHighlight。次のフレームで反映）。
+    bool            Highlight(u32 slot);
+    void            Unhighlight(void);
+
     // グリッドカーソルのフックから毎フレーム。
     void            FrameStep(void);
 }

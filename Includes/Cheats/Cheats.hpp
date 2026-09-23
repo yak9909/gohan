@@ -75,6 +75,11 @@ namespace CTRPluginFramework
         static const char kPwRemove[]  = u8"選んだ公共事業を消す";
         static const char kPwMove[]    = u8"選んだ公共事業を足元へ";
         static const char kPwRebuild[] = u8"当たり判定を作り直す";
+        static const char kHlOn[]      = u8"選んだ建物を光らせる";
+        static const char kHlTint[]    = u8"青の合成度合い";
+        static const char kHlAlpha[]   = u8"不透明度";
+        static const char kHlWave[]    = u8"揺れ幅";
+        static const char kHlSpeed[]   = u8"揺れの速さ";
         // 実際の名前は WirePublicWorks がゲームの表から入れる。ITEM_LIST は空を許さない。
         static const char *const kPwEmptyOptions[] = { u8"（読み込み中）" };
 
