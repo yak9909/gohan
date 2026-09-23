@@ -164,14 +164,12 @@ const char *ModeName(Mode mode) {
 }
 
 // ---- 衝突判定の形 ----------------------------------------------------------------------------
-// 利用者の定義（2026-09-24）: 足元データ（Strc/data/<名>.bin）で属性を書くマスのうち、
-//   「物を置けない、または花を植えられない」マス。それが 1 マスも無ければ、足元の範囲（属性を書くマスの外接の四角）を
-//   上下左右 1 マスずつ削った四角。
-// 判定はゲームの表をそのまま引く（IDA-opus-5.5-F019）:
-//   物を置ける   = byte_957D32[code] & 2   … FieldAttr_CanPlaceItem 0x5CD370（通常のドロップ 0x0A が使うモード 0）
-//   花を植えられる = byte_957A35[code] != 0 … FieldAttr_CanPlantFlower 0x5CD55C（花を植える 0x0C が使うモード 1）
-//   どちらも code >= 0xFF は 0 番を引く。表はゲームのメモリから読む。
-const u32 kPlaceTable = 0x00957D32;
+// 利用者の定義（2026-09-24）: 足元データ（Strc/data/<名>.bin）で属性を書くマスのうち「物・花を置けない」マス。
+//   それが 1 マスも無ければ、足元の範囲（属性を書くマスの外接の四角）を上下左右 1 マスずつ削った四角。
+// 利用者の正解（ベンチ 2x1、街灯 1x1、噴水 3x3、交番 3x3＋下段中央の突起 1）と一致するのは
+//   **花を植えられない = byte_957A35[code] == 0**（FieldAttr_CanPlantFlower 0x5CD55C、花を植える 0x0C のモード 1）だけ。
+//   物を置けるかの表 byte_957D32 & 2（0x5CD370）は外周 0x05 を「置けない」とするのでベンチが 4x3 になる（IDA-opus-5.5-F020）。
+//   code >= 0xFF は 0 番を引く。表はゲームのメモリから読む。
 const u32 kPlantTable = 0x00957A35;
 
 struct Shape {
@@ -184,9 +182,7 @@ Shape s_shapes[256];
 
 bool Blocks(u8 code) {
     const u32 i = code >= 0xFF ? 0u : code;
-    const u8 place = *reinterpret_cast<const volatile u8 *>(kPlaceTable + i);
-    const u8 plant = *reinterpret_cast<const volatile u8 *>(kPlantTable + i);
-    return (place & 2u) == 0 || plant == 0;
+    return *reinterpret_cast<const volatile u8 *>(kPlantTable + i) == 0;
 }
 
 void Push(Shape &s, s32 c, s32 r) {
@@ -579,7 +575,7 @@ void Watch(void) {
             GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物にはプレビューがありません");
             s_previewNotifiedId = ps.shownId;
         } else if (ps.failed) {
-            GuiNotification::NotifyRed(Cheats::kBeOn, ps.failReason == 10
+            GuiNotification::NotifyRed(Cheats::kBeOn, (ps.failReason == 10 || ps.failReason == 2 || ps.failReason == 3)
                                                           ? u8"メモリの空きが足りないのでプレビューを出しません"
                                                           : u8"プレビューを作れませんでした");
             s_previewNotifiedId = ps.shownId;

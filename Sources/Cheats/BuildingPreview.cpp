@@ -71,6 +71,7 @@ volatile bool s_want;
 volatile s32 s_tx, s_ty;
 s32 s_builtId = -1;
 u32 s_loadAttempts;
+u32 s_resourceSpare;            // Setup のあとに資源ヒープに残った量（見積もりの確かめ用）
 u32 s_loading;                  // いま読んでいる資源の番号
 u32 s_quietFrames;
 void *s_sceneOwner;
@@ -198,12 +199,16 @@ void StepBuild(void) {
         s_sceneResource = *reinterpret_cast<void **>(Word(owner, kSceneOwnerResourceOffset));
         s_heapName.vtable = kSafeStringVtable;
         s_heapName.text = kHeapNameText;
-        u32 bytes = 0x4000;
+        // ★資源ヒープは「ファイルの合計 x 1.5 + 16 KB」。以前の x 2 は、親ヒープの一番大きい塊（実機 150,880 B）より
+        //   大きくなって作れなかった（役場 03: 179,168 B。空きの合計は 306,824 B あった）。ヒープは連続した塊にしか作れない。
+        //   読み込んだあとの残り（s_resourceSpare）を記録して、足りているか後で確かめる。
+        u32 total = 0;
         for (u32 i = 0; i < kResCount; ++i) {
             s_paths[i].vtable = kSafeStringVtable;
             s_paths[i].text = s_pathText[i];
-            bytes += s_sizes[i] * 2;
+            total += s_sizes[i];
         }
+        const u32 bytes = total + total / 2 + 0x4000;
         // ★親ヒープ（空き 484 KB を実測）はゲームも使う。残りが足りなければ作らない
         if (HeapGetFreeSize(parent) < bytes + kInstanceHeapBytes + kParentReserve) {
             Stop(10);
@@ -264,6 +269,7 @@ void StepBuild(void) {
         ResHolderSetup(s_holders[kModel], s_resourceAllocator, reinterpret_cast<int>(s_holders[kLut]), 1);
         ResHolderSetup(s_holders[kTex], s_resourceAllocator, 0, 1);
         ResHolderSetup(s_holders[kModel], s_resourceAllocator, reinterpret_cast<int>(s_holders[kTex]), 1);
+        s_resourceSpare = HeapGetFreeSize(*reinterpret_cast<void **>(Word(s_resourceAllocator, 4)));
         void *model = FindModelByName(Word(s_holders[kModel], 4), s_modelName);
         if (!IsHeapPointer(model)) {
             Stop(6);
@@ -439,6 +445,7 @@ Status GetStatus(void) {
     out.failed = s_stage == Stage::Failed;
     out.failReason = s_failReason;
     out.ready = s_stage == Stage::Ready;
+    out.resourceSpare = s_resourceSpare;
     return out;
 }
 
