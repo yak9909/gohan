@@ -36,7 +36,6 @@ const u32 kTevStage0 = 44;                  // 1 段 28 B: 選択, 入力, ヘ�
 const u32 kTevStageBytes = 28;
 const u32 kTevUpdateWord = 228;             // レジスタ 0xE0 の値（更新ビット 8〜15）
 const u32 kTevLutRel = 40;                  // TEV ブロック内の唯一の相対ポインタ
-const u32 kFragDepth = 280;                 // bit1 = 深度書き込み
 const u32 kFragFbRead = 300;
 const u32 kFragCheckA = 320;                // 0x00E40100
 const u32 kFragCheckB = 324;                // 0x803F0100
@@ -51,6 +50,19 @@ const char kModel[] = "N2nw3gfx5ModelE";
 const char kSkeletalModel[] = "N2nw3gfx13SkeletalModelE";
 const char kMaterial[] = "N2nw3gfx8MaterialE";
 const char kHobjPrefix[] = "N4hobj";
+// ★役場の付属物（IDA-opus-5.5-F023、実機で青くなることを確認）:
+//   旗 = 役場 +0x4D0 が指す BsFlag（中の Model を集める）
+//   ふるさとチケットマシン = BsStrcMgr_SpawnStructures 0x6DE198 が役場のとき profile 0x9E で役場の横に作る別プロセス
+const char kFlag[] = "6BsFlag";
+const char kOffice[] = "12AcStrcOffice";
+const char kTicketMachine[] = "19AcHomeTicketMachine";
+const u32 kNodeParent = 4;
+// ★描画の層（Scene_DrawLayers 0x4EB840 が Material+8 の ResMaterial +32 の下位バイトで 0..3 の順に描く。V2-F024）。
+//   半透明にした材質は層 1 にして、不透明の物を全部描いたあとに描く。層 0 のままだと、あとから描かれる奥の物が
+//   前に出ていた（利用者報告）。同じ種類で M+8 を共有する建物も層 1 になるが、不透明のままなので見た目は変わらない。
+const u32 kMatResource = 8;
+const u32 kResLayer = 32;
+const u32 kTranslucentLayer = 1;
 
 // ---- 持ち物（gohan 自身の配列。GPU はこれを直接読まない: F012）--------------------------------
 const u32 kMaxProcs = 16;
@@ -61,7 +73,9 @@ const u32 kMaxUndo = 512;
 const u32 kUndoBytes = 24 * 1024;
 
 struct Undo { u32 addr; u16 len; u16 off; };
-struct Animated { u32 const5; u32 blendColor; bool premultiplied; };
+// alphaInConst: もともとブレンドしている材質。不透明度は Constant5 のアルファ（TEV で元のアルファに掛ける）、
+//   色は Constant5 の RGB（強さを掛けた色でスクリーン合成）。
+struct Animated { u32 const5; u32 blendColor; bool premultiplied; bool alphaInConst; };
 
 alignas(4) u8 s_tevPool[kMaxMaterials][kTevBytes];
 alignas(4) u32 s_vtPool[kMaxActivators][6];
@@ -250,7 +264,8 @@ void ScanObject(Gather &g, u32 obj, u32 depth) {
             continue;
         if (std::strcmp(n, kModel) == 0 || std::strcmp(n, kSkeletalModel) == 0) {
             AddModel(g, v);
-        } else if (depth < 3 && std::strncmp(n, kHobjPrefix, sizeof(kHobjPrefix) - 1) == 0) {
+        } else if (depth < 3 && (std::strncmp(n, kHobjPrefix, sizeof(kHobjPrefix) - 1) == 0 ||
+                                 std::strcmp(n, kFlag) == 0)) {
             bool dup = false;
             for (u32 i = 0; i < g.seenCount; ++i)
                 dup = dup || g.seen[i] == v;
@@ -262,7 +277,24 @@ void ScanObject(Gather &g, u32 obj, u32 depth) {
     }
 }
 
+// 役場なら、同じ管理役の下のチケットマシンも集める（役場からは指されていないので兄弟を探す）
+void GatherOfficeExtras(Gather &g, u32 actor) {
+    if (!IsClass(actor, kOffice))
+        return;
+    const u32 parent = R32(NodeOf(actor) + kNodeParent);
+    if (!IsHeap(parent))
+        return;
+    u32 c = R32(parent + kNodeFirstChild);
+    for (u32 n = 0; IsHeap(c) && n < 256; ++n) {
+        const u32 proc = R32(c);
+        if (IsClass(proc, kTicketMachine))
+            ScanObject(g, proc, 0);
+        c = R32(c + kNodeNextSibling);
+    }
+}
+
 void GatherModels(Gather &g, u32 actor) {
+    GatherOfficeExtras(g, actor);
     u32 stack[kMaxProcs];
     u32 top = 0, visited = 0;
     stack[top++] = actor;
@@ -360,6 +392,29 @@ u32 TintNow(void) {
     return o >= 0 ? (u32)o : (u32)s_params.tint;
 }
 
+// もともと半透明の材質（グロー・炎など）かどうか。ブレンドの式（レジスタ 0x101 の値 = frag +328）が
+// RGB で ONE / ZERO（不透明の既定）以外なら、画素ごとのアルファで合成している。
+bool BlendsAlready(u32 frag) {
+    const u32 blend = R32(frag + kFragBlend);
+    const u32 srcRgb = (blend >> 16) & 0xFu;
+    const u32 dstRgb = (blend >> 20) & 0xFu;
+    return !(srcRgb == 1u && dstRgb == 0u);
+}
+
+// 自前の最終段（段 5。Free / Compact のときだけ）を「元のアルファ × 定数アルファ」にする。
+//   RGB: tint なら MULTIPLY_ADD(前段, 1 - 定数.rgb, 定数.rgb)＝定数色でスクリーン合成、でなければ前段のまま
+//   A  : MODULATE(前段.a, 定数.a)
+// PICA の TEV 符号化（libctru/citro3d）: 入力 = rgb | a<<16（各 3 個 x 4bit、F = 前段、E = 定数）、
+// オペランド = rgb | a<<12（1 = ONE_MINUS_SRC_COLOR）、合成 = rgb | a<<16（0 REPLACE / 1 MODULATE / 8 MULTIPLY_ADD）。
+void MakeAlphaScaled(u8 *b, bool tint) {
+    u32 *s5 = StageAt(b, 5);
+    s5[0] = 5;
+    s5[1] = tint ? 0x00EF0EEFu : 0x00EF000Fu;
+    s5[3] = tint ? 0x010u : 0u;
+    s5[4] = tint ? 0x00010008u : 0x00010000u;
+    s5[6] = 0;
+}
+
 u32 Const5Value(bool premultiplied, u32 tint) {
     const u32 c = s_params.color;
     if (!premultiplied)
@@ -385,6 +440,13 @@ bool ApplyMaterial(u32 m) {
     const Plan plan = PlanBlock(work, colour);
     if (plan == Plan::Skip)
         return false;
+    // ★もともと半透明（グロー・炎など）の材質は、ブレンドを定数アルファに置き換えると画素ごとのアルファが
+    //   捨てられて一つの値に固定される（利用者報告: たいまつ・たき火）。TEV でアルファに掛ける形にする。
+    const bool ownFrag = frag == colour && R32(frag + kFragCheckA) == 0x00E40100u && R32(frag + kFragCheckB) == 0x803F0100u;
+    const bool blended = IsHeap(frag) && Readable(frag + kFragBlend, 4) && BlendsAlready(frag);
+    const bool scaleAlpha = blended && (plan == Plan::Free || plan == Plan::Compact);
+    if (scaleAlpha)
+        MakeAlphaScaled(work, true);
     if (colour != tevres) {
         // 共有の TEV: 写しを gohan の配列に置き、インスタンス専用の色の部分の未使用 +648 から指す
         if (R32(colour + kResTevRel) != 0)
@@ -403,16 +465,23 @@ bool ApplyMaterial(u32 m) {
     }
     Animated &a = s_anim[s_animCount];
     a.const5 = colour + kResConst5;
-    a.premultiplied = (plan == Plan::Replace);
+    a.premultiplied = (plan == Plan::Replace) || scaleAlpha;
+    a.alphaInConst = scaleAlpha;
     a.blendColor = 0;
-    if (!Put32(a.const5, Const5Value(a.premultiplied, TintNow())))
+    if (!Put32(a.const5, scaleAlpha ? ((u32)s_params.alpha << 24) | (Const5Value(true, TintNow()) & 0x00FFFFFFu)
+                                    : Const5Value(a.premultiplied, TintNow())))
         return false;
-    // 透明度（F002）: この建物専用のフラグメント設定のときだけ
-    if (frag == colour && R32(frag + kFragCheckA) == 0x00E40100u && R32(frag + kFragCheckB) == 0x803F0100u) {
-        if (Put32(frag + kFragDepth, R32(frag + kFragDepth) & ~2u) && Put32(frag + kFragFbRead, 0)
-            && Put32(frag + kFragBlend, kBlendConstAlpha) && Put32(frag + kFragBlendColor, (u32)s_params.alpha << 24)
-            && Put32(frag + kResFragKey, 0))
+    // 透明度（F002）: この建物専用のフラグメント設定で、もともと不透明の材質だけ。
+    // もともと半透明の材質はブレンド・深度・層に触らない（TEV でアルファに掛けた。上）。
+    if (ownFrag && !blended) {
+        // ★深度は書いたままにする（以前は書かなかった）。建物の奥の面が手前の面に重なって透けるのが減り、
+        //   あとから描かれる奥の物にも隠される（2026-09-24 実機で比較。+300 = 0 はブレンドに必要なので残す）。
+        if (Put32(frag + kFragFbRead, 0) && Put32(frag + kFragBlend, kBlendConstAlpha)
+            && Put32(frag + kFragBlendColor, (u32)s_params.alpha << 24) && Put32(frag + kResFragKey, 0))
             a.blendColor = frag + kFragBlendColor;
+        const u32 res = R32(m + kMatResource);
+        if (a.blendColor != 0 && IsHeap(res) && Readable(res + kResLayer, 4))
+            Put32(res + kResLayer, (R32(res + kResLayer) & ~0xFFu) | kTranslucentLayer);
     }
     ++s_animCount;
     return true;
@@ -474,6 +543,11 @@ void Animate(void) {
     if (alpha < 0) alpha = 0;
     if (alpha > 255) alpha = 255;
     for (u32 i = 0; i < s_animCount; ++i) {
+        if (s_anim[i].alphaInConst) {
+            *reinterpret_cast<volatile u32 *>(s_anim[i].const5) =
+                ((u32)alpha << 24) | (Const5Value(true, TintNow()) & 0x00FFFFFFu);
+            continue;
+        }
         *reinterpret_cast<volatile u32 *>(s_anim[i].const5) = Const5Value(s_anim[i].premultiplied, TintNow());
         if (s_anim[i].blendColor)
             *reinterpret_cast<volatile u32 *>(s_anim[i].blendColor) = (u32)alpha << 24;
@@ -492,6 +566,14 @@ bool LooksLikeMaterial(u32 obj) {
 
 int PlanTev(u8 *block, u32 colour) {
     return (int)PlanBlock(block, colour);
+}
+
+bool FragBlendsAlready(u32 frag) {
+    return Readable(frag + kFragBlend, 4) && BlendsAlready(frag);
+}
+
+void StageScalesAlpha(u8 *block, bool tint) {
+    MakeAlphaScaled(block, tint);
 }
 
 u32 TintConstant(u32 color, u8 strength, bool premultiplied) {

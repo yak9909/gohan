@@ -64,4 +64,8 @@ namespace BuildingHighlight
     // 0 = できない / 1 = 空き段 / 2 = 詰めた / 3 = 近似（Constant5 は前乗算）。F011〜F013。
     int             PlanTev(u8 *block, u32 colour);
     u32             TintConstant(u32 color, u8 strength, bool premultiplied);
+    // もともとブレンドしている材質か（frag = Material+80 の先。ブレンドの式が ONE/ZERO 以外）
+    bool            FragBlendsAlready(u32 frag);
+    // PlanTev の後で、最終段を「元のアルファ × Constant5 のアルファ」にする（tint なら色はスクリーン合成）
+    void            StageScalesAlpha(u8 *block, bool tint);
 }

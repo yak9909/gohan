@@ -37,7 +37,6 @@ const u32 kMaxMaterials = 32;
 // フラグメント設定（M+80 の先。IDA-gpt-6-astra-F002 / F010）
 const u32 kMatColour = 48;
 const u32 kMatFrag = 80;
-const u32 kFragDepth = 280;
 const u32 kFragFbRead = 300;
 const u32 kFragCheckA = 320;
 const u32 kFragCheckB = 324;
@@ -79,6 +78,8 @@ void *s_sceneResource;
 void *s_model;
 u32 s_frags[kMaxMaterials];
 u32 s_fragCount;
+u32 s_consts[kMaxMaterials];     // もともと半透明の材質の Constant5（アルファだけ毎フレーム書く）
+u32 s_constCount;
 u32 s_phase;
 Wave s_wave = { 0xA0, 0x40, 11 };
 
@@ -117,6 +118,7 @@ void TeardownAll(void) {
     s_sceneOwner = nullptr;
     s_sceneResource = nullptr;
     s_fragCount = 0;
+    s_constCount = 0;
     s_builtId = -1;
     // 次の組み立てで「前の holder がまだ生きている」と見誤らないよう、置き場ごと消す
     std::memset(s_holders, 0, sizeof(s_holders));
@@ -129,6 +131,7 @@ void TeardownAll(void) {
 // 自前インスタンスの材質（本体はインスタンスごとの写し）を定数アルファのブレンドにする。
 void MakeTranslucent(void) {
     s_fragCount = 0;
+    s_constCount = 0;
     void *node = *reinterpret_cast<void **>(Word(s_node, 4));
     const u32 arr = *Word(node, kModelMaterials);
     if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxMaterials))
@@ -144,7 +147,29 @@ void MakeTranslucent(void) {
             continue;
         if (R32(frag + kFragCheckA) != 0x00E40100u || R32(frag + kFragCheckB) != 0x803F0100u)
             continue;
-        *reinterpret_cast<volatile u32 *>(frag + kFragDepth) = R32(frag + kFragDepth) & ~2u;
+        // ★もともと半透明（グロー・炎など）の材質は、ブレンドを置き換えず TEV の最終段でアルファに掛ける
+        //   （画素ごとのアルファの濃淡を残す）。資源は自前なのでその場で書き換えてよい。
+        if (BuildingHighlight::FragBlendsAlready(frag)) {
+            const u32 tevres = R32(m + 72);
+            const u32 rel = BuildingHighlight::SafeReadable(tevres + 648, 4) ? R32(tevres + 648) : 0;
+            const u32 tev = tevres + 648 + rel;
+            static u8 work[244] __attribute__((aligned(4)));
+            if (rel == 0 || !BuildingHighlight::SafeReadable(tev, sizeof(work)) || s_constCount >= kMaxMaterials)
+                continue;
+            std::memcpy(work, reinterpret_cast<const void *>(tev), sizeof(work));
+            const int plan = BuildingHighlight::PlanTev(work, colour);
+            if (plan != 1 && plan != 2)
+                continue;                               // 最終段を置き換える形ではアルファに掛けられない
+            BuildingHighlight::StageScalesAlpha(work, false);
+            std::memcpy(reinterpret_cast<void *>(tev), work, sizeof(work));
+            *reinterpret_cast<volatile u32 *>(tevres + 712) = 0;       // TEV の鍵: 毎回書き出させる
+            s_consts[s_constCount++] = colour + 36 + 4 * 54;           // Constant5
+            continue;
+        }
+        // 深度は書いたまま（奥の面が重なって透けない）。層は 1（不透明の後。資源は自前なので戻さなくてよい）
+        const u32 res = R32(m + 8);
+        if (BuildingHighlight::SafeReadable(res + 32, 4))
+            *reinterpret_cast<volatile u32 *>(res + 32) = (R32(res + 32) & ~0xFFu) | 1u;
         *reinterpret_cast<volatile u32 *>(frag + kFragFbRead) = 0;
         *reinterpret_cast<volatile u32 *>(frag + kFragBlend) = kBlendConstAlpha;
         *reinterpret_cast<volatile u32 *>(frag + kFragBlendColor) = (u32)s_wave.alpha << 24;
@@ -184,6 +209,8 @@ void Animate(void) {
     if (a > 255) a = 255;
     for (u32 i = 0; i < s_fragCount; ++i)
         *reinterpret_cast<volatile u32 *>(s_frags[i] + kFragBlendColor) = (u32)a << 24;
+    for (u32 i = 0; i < s_constCount; ++i)
+        *reinterpret_cast<volatile u32 *>(s_consts[i]) = (u32)a << 24;
 }
 
 void StepBuild(void) {
