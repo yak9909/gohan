@@ -30,7 +30,7 @@ u8 s_node[kNodeHolderBytes] BP_ALIGNED;
 
 const char kHeapNameText[] = "BuildingPreview";
 const u32 kInstanceHeapBytes = 0x8000;      // モデルビューアと同じ（実測 5,090 B の 1 体に余裕）
-const u32 kParentReserve = 0x20000;         // ゲーム自身の分として親ヒープに必ず残す
+const u32 kParentReserve = 0xC000;          // ゲーム自身の分として親ヒープに必ず残す（128 KB では足りなくなった）
 const u32 kInstanceReserve = 8192;
 const u32 kMaxMaterials = 32;
 

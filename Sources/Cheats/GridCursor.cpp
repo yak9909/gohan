@@ -69,7 +69,8 @@ static const float kRotateFrame45 = 0.0f;
 //   足りなければ建てずに止まる。最後の 1 体は kInstanceHeapSlack が受ける。
 static const u32 kInstanceBytesPerCursor = 6144;
 // ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
-static const u32 kParentReserve = 0x20000;
+// ★128 KB では、UnitCursor 40 体と交番のプレビューが並ばず「足りない」になった（2026-09-24 実機、空き 208 KB）。
+static const u32 kParentReserve = 0xC000;
 static const u32 kInstanceHeapSlack = 0x4000;
 // 1 フレームに作る上限。これはゲームの描画パスの中なので、
 // 64 体を一気に作るとそのフレームだけ長く止まる。
@@ -819,10 +820,15 @@ void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u
     s_pendCount = count;
     ++s_pendSeq;
     // 組んである体数で足りなければ 8 の倍数で組み直す（ヒープは体数ぴったりで取るので）
-    const u32 have = (u32)s_footprintW * (u32)s_footprintH;
-    if ((s_tileMode || !s_wantShown) && count > have) {
-        const u32 rows = (count + kMaxSide - 1) / kMaxSide;
-        SetFootprint(kMaxSide, rows);
+    // 体数は形に合わせて増やし、小さい形に戻ったら減らす（親ヒープを空けて設置プレビューに回す）。
+    // 行 = 8 体。24 体より下には減らさず、2 行以上余ったときだけ減らす（切り替えのたびに組み直さないため）。
+    if (s_tileMode || !s_wantShown) {
+        const u32 have = (u32)s_footprintH;
+        u32 rows = (count + kMaxSide - 1) / kMaxSide;
+        if (rows < 3)
+            rows = 3;
+        if (rows > have || rows + 2 <= have)
+            SetFootprint(kMaxSide, rows);
     }
 }
 

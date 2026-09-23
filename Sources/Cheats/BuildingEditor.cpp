@@ -164,12 +164,15 @@ const char *ModeName(Mode mode) {
 }
 
 // ---- 衝突判定の形 ----------------------------------------------------------------------------
-// 足元データ（Strc/data/<名>.bin）の各マスの属性コード（byte 8）を、ゲームの属性の分類表で引き、
-// **0 でないマス = プレイヤーが歩けないマス**とする（利用者の定義「衝突判定 = 歩けない場所」）。
-// 分類表は `sub_5CD3C0`（`code >= 0xFF` なら 0 番、`byte_957B34[code]`）。フィールドの位置から属性を読んで
-// この表で分類する `sub_6C4BDC` が使っている（IDA-opus-5.5-F017）。例: ベンチの外周 0x05 は 2（歩けない）→ 4x3、
-// 柵・橋・交番の外周 0x31/0x32/0x33/0xA0 は 0（歩ける）→ 論理サイズと同じ。表はゲームのメモリから読む。
-const u32 kCollisionClass = 0x00957B34;
+// 利用者の定義（2026-09-24）: 足元データ（Strc/data/<名>.bin）で属性を書くマスのうち、
+//   「物を置けない、または花を植えられない」マス。それが 1 マスも無ければ、足元の範囲（属性を書くマスの外接の四角）を
+//   上下左右 1 マスずつ削った四角。
+// 判定はゲームの表をそのまま引く（IDA-opus-5.5-F019）:
+//   物を置ける   = byte_957D32[code] & 2   … FieldAttr_CanPlaceItem 0x5CD370（通常のドロップ 0x0A が使うモード 0）
+//   花を植えられる = byte_957A35[code] != 0 … FieldAttr_CanPlantFlower 0x5CD55C（花を植える 0x0C が使うモード 1）
+//   どちらも code >= 0xFF は 0 番を引く。表はゲームのメモリから読む。
+const u32 kPlaceTable = 0x00957D32;
+const u32 kPlantTable = 0x00957A35;
 
 struct Shape {
     bool loaded;
@@ -179,8 +182,19 @@ struct Shape {
 };
 Shape s_shapes[256];
 
-u8 CollisionClass(u8 code) {
-    return *reinterpret_cast<const volatile u8 *>(kCollisionClass + (code >= 0xFF ? 0u : code));
+bool Blocks(u8 code) {
+    const u32 i = code >= 0xFF ? 0u : code;
+    const u8 place = *reinterpret_cast<const volatile u8 *>(kPlaceTable + i);
+    const u8 plant = *reinterpret_cast<const volatile u8 *>(kPlantTable + i);
+    return (place & 2u) == 0 || plant == 0;
+}
+
+void Push(Shape &s, s32 c, s32 r) {
+    if (s.count >= kMaxCells)
+        return;
+    s.dx[s.count] = (s8)(c - kFootprintOrigin);
+    s.dy[s.count] = (s8)(r - kFootprintOrigin);
+    ++s.count;
 }
 
 const Shape &ShapeOf(u16 id) {
@@ -197,18 +211,27 @@ const Shape &ShapeOf(u16 id) {
         got = RomfsIndex::ReadFile(path, s_footprint, sizeof(s_footprint));
     }
     if (got == kFootprintBytes) {
+        s32 top = kFootprintSide, bottom = -1, left = kFootprintSide, right = -1;
         for (s32 r = 0; r < kFootprintSide; ++r) {
             for (s32 c = 0; c < kFootprintSide; ++c) {
                 const u8 code = s_footprint[160 * r + 10 * c + 8];
-                if (code == 0 || CollisionClass(code) == 0 || s.count >= kMaxCells)
+                if (code == 0)
                     continue;
-                s.dx[s.count] = (s8)(c - kFootprintOrigin);
-                s.dy[s.count] = (s8)(r - kFootprintOrigin);
-                ++s.count;
+                if (r < top) top = r;
+                if (r > bottom) bottom = r;
+                if (c < left) left = c;
+                if (c > right) right = c;
+                if (Blocks(code))
+                    Push(s, c, r);
             }
         }
+        if (s.count == 0 && bottom >= 0) {           // 置けない・植えられないマスが無い: 範囲を一回り削る
+            for (s32 r = top + 1; r <= bottom - 1; ++r)
+                for (s32 c = left + 1; c <= right - 1; ++c)
+                    Push(s, c, r);
+        }
     }
-    if (s.count == 0) {                             // 名前の無い家など: 基点の 1 マス
+    if (s.count == 0) {                             // 名前の無い家など・削って残らない形: 基点の 1 マス
         s.dx[0] = 0;
         s.dy[0] = 0;
         s.count = 1;
