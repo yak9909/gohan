@@ -13,6 +13,7 @@
 #include "FieldHookCaves.h"
 #include "GridCursor.hpp"
 #include "ModelViewer.hpp"
+#include "PublicWorks.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -253,6 +254,7 @@ namespace CTRPluginFramework
             WirePlayerResources();
             WireGridCursor();
             WireModelViewer();
+            WirePublicWorks();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }

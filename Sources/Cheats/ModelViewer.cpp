@@ -425,7 +425,10 @@ bool Show(void) {
         s_failReason = Fail::kHookFailed;
         return false;
     }
-    GridCursor::SetExtraFrameStep(FrameStep);
+    if (!GridCursor::AddExtraFrameStep(FrameStep)) {
+        s_failReason = Fail::kHookFailed;
+        return false;
+    }
     s_failReason = Fail::kNone;
     s_wantShown = true;
     if (s_stage == Stage::Off || s_stage == Stage::Failed)

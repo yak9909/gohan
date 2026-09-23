@@ -261,6 +261,19 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 0, -500, 500, 1);
                 i = AddItem(ITEM_VALUE, kMvZ, u8"プレイヤーからの Z ずらしです。");
                 SetValue(i, FMT_DEC, 0, -500, 500, 1);
+                i = AddItem(ITEM_LIST, kPwPick,
+                            u8"置く公共事業です。名前はゲーム内部のものです。");
+                SetOptions(i, kPwEmptyOptions, 1);
+                AddItem(ITEM_ACTION, kPwPlace,
+                        u8"選んだ公共事業をプレイヤーの足元に建て、部屋を読み直します。");
+                AddItem(ITEM_ACTION, kPwNearest,
+                        u8"プレイヤーに一番近い公共事業を選びます。");
+                AddItem(ITEM_ACTION, kPwRemove,
+                        u8"選んだ公共事業を消し、当たり判定もその場で作り直します。");
+                AddItem(ITEM_ACTION, kPwMove,
+                        u8"選んだ公共事業を足元へ動かし、当たり判定も作り直します。");
+                AddItem(ITEM_ACTION, kPwRebuild,
+                        u8"建物表はそのまま、当たり判定と占有を建物表から作り直します。");
                 AddItem(ITEM_ACTION, kMvStat,
                         u8"モデルビューアがどこで止まっているかを通知で出します。");
                 const int testCount = g_itemCount - testFirst;

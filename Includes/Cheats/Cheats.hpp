@@ -68,6 +68,16 @@ namespace CTRPluginFramework
         static const char kMvZ[]      = u8"Z ずらし";
         static const char kMvStat[]   = u8"モデルの状態";
 
+        // ---- root/テスト／公共事業 ----
+        static const char kPwPick[]    = u8"公共事業";
+        static const char kPwPlace[]   = u8"足元に置く";
+        static const char kPwNearest[] = u8"近くの公共事業を選ぶ";
+        static const char kPwRemove[]  = u8"選んだ公共事業を消す";
+        static const char kPwMove[]    = u8"選んだ公共事業を足元へ";
+        static const char kPwRebuild[] = u8"当たり判定を作り直す";
+        // 実際の名前は WirePublicWorks がゲームの表から入れる。ITEM_LIST は空を許さない。
+        static const char *const kPwEmptyOptions[] = { u8"（読み込み中）" };
+
         // 一覧を作るまでの仮の中身。ITEM_LIST は空の options を許さない。
         static const char *const kMvEmptyOptions[] = { u8"（一覧を作ってください）" };
         // ---- root/ゲーム/キーボード ----

@@ -1,0 +1,74 @@
+#pragma once
+
+#include <3ds.h>
+
+// 公共事業を置く・消す・動かす。そして**消した／動かしたあとの当たり判定をその場で直す**。
+//
+// Vapecord の公共事業チートはセーブの建物表を書き換えて部屋を読み直す。置く方はゲームの
+// 設置関数 0x002424F4 がその場で足元の属性を押すので判定が付くが、消す・動かす方は
+// **属性を戻す処理が走らない**ので、再起動するまで古い場所に当たり判定が残る（利用者確認）。
+//
+// ゲームには「区画の地形属性を素に戻して、建物表から全部押し直す」関数がある
+// （0x00242878。ModuleIndoor.cro / ModulePrologue.cro が自分で呼んでいる）。
+// 占有マップを消して全部書き直す関数もある（0x0024220C。本体の 15 か所が使う常用処理）。
+// 表を書き換えたあとにこの 2 つを呼べば、再起動と同じ状態になる（IDA-opus-5.5-F002）。
+//
+// ゲームの関数はすべて描画スレッド（グリッドカーソルのフック）で呼ぶ。
+// メニュー側は要求を置いて、終わるのを待つだけ。
+namespace PublicWorks
+{
+    static const u8  kFirstId = 0x90;       // fobj_* の範囲（Building_GetName の表）
+    static const u8  kLastId = 0xFB;
+    static const u8  kEmptyId = 0xFC;
+    static const u32 kSlots = 56;
+
+    enum class Result : u32
+    {
+        Ok,
+        NotInVillage,       // 村の屋外でしか触らない
+        NoSaveData,
+        NoPlayer,
+        InvalidId,          // 公共事業（fobj）以外は触らない
+        NoFreeSlot,
+        NoSelection,
+        NotPublicWorks,     // 選んだスロットが公共事業ではない
+        DesignStand,        // マイデザインの看板・顔出し看板は看板表も要るので今は触らない
+        HookFailed,
+        Busy,
+        TimedOut,
+    };
+
+    struct Slot
+    {
+        u16 id;
+        u8  x;
+        u8  y;
+    };
+
+    // ---- 読むだけ（メニュースレッド）----
+    bool            ReadSlot(u32 index, Slot &out);
+    const char *    NameOf(u16 id);                 // ゲームの表の名前。無ければ ""
+    bool            PlayerTile(u32 &x, u32 &y);
+    // プレイヤーに一番近い公共事業のスロット。無ければ -1。
+    s32             Nearest(void);
+
+    // ---- 変える（要求を出して描画スレッドの完了を待つ）----
+    Result          Place(u8 id);                   // プレイヤーの足元へ
+    Result          Remove(u32 slot);
+    Result          MoveToPlayer(u32 slot);
+    // 表は変えずに、当たり判定と占有だけ作り直して部屋を読み直す。
+    Result          Rebuild(void);
+
+    const char *    ResultName(Result result);
+
+    // グリッドカーソルのフックから毎フレーム。
+    void            FrameStep(void);
+}
+
+namespace CTRPluginFramework
+{
+    namespace Cheats
+    {
+        void    WirePublicWorks(void);
+    }
+}

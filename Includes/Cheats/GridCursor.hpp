@@ -97,7 +97,8 @@ namespace GridCursor
     // スタブは `.text` の空き 1 か所にしか置けないので、毎フレーム走りたい
     // チートはここへ相乗る。フック自体はプロセス終了まで入れたまま。
     bool            InstallFrameHook(void);              // 入っていなければ入れる
-    void            SetExtraFrameStep(void (*fn)(void)); // 描画スレッドで毎フレーム呼ばれる
+    // 描画スレッドで毎フレーム呼ばれる。複数のチートが相乗りできる（最大 4）。
+    bool            AddExtraFrameStep(void (*fn)(void));
     u32             LastFailReason(void);                // フック入れに失敗した理由
     // 画面基準。右が +dCol、下が +dRow（IDA-opus-5-F032 の実機観測に合わせてある）。
     void            Move(int dCol, int dRow);
