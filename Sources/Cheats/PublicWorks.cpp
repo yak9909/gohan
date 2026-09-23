@@ -141,11 +141,13 @@ struct IconPool { u32 offset; u32 count; };
 // ゲームの割り当て関数 0x222434 は枠の数を見ない。枠を超えると隣の枠や配列の外を「アイコン」として
 // 書く（星アイコン、線路の柵アイコンの消滅。IDA-opus-5.5-F006）。これはゲーム自身が部屋を読み直した
 // ときの挙動でもあるので**直さない**（利用者指示 2026-09-23）。ゲームのコードにも手を入れない。
-// その場で地図を作り直すのは、ゲームの枠に収まるときだけにする。収まらないときは何もせず、
-// 画面が切り替わったときのゲーム自身の作り直しに任せる（作成段 9 の状態は作りたてと同じでないと
-// 枠の外の中身が違い、0x4B4338 で落ちた。1 本目のダンプ）。
+// A（+0x2B1C、10 個）を超えた分は直後の B（+0x49E4、8 個）を上書きする。これが星アイコンで、
+// ゲーム自身の読み直しでも起きて落ちない。さらに先の +0x6284 は初期化されていないアイコンで、
+// そこへ届くと 0x4B4338 で落ちる（1 本目のダンプ。IDA-opus-5.5-F009）。
+// A の添字 18 = 0x2B1C + 788 * 18 = 0x6284、B の添字 8 = 0x49E4 + 788 * 8 = 0x6284。
 const u32 kMapPoolA = 10;                   // 'A' = プール +0x2B1C
 const u32 kMapPoolB = 8;                    // 'B' = プール +0x49E4
+const u32 kMapCrashA = 18;                  // A がこの数を超えると +0x6284 に届く
 // 工事中の公共事業は B を 1 つ使う（sub_221190 の別枝）。工事中かは数えないので 1 つ空けておく。
 const u32 kMapPendingReserve = 1;
 
@@ -494,17 +496,23 @@ void CountMapPools(u32 &a, u32 &b) {
 }
 
 // 地図の建物アイコンを、画面が切り替わったときと同じ関数（作成段 9）で置き直す。
-// 作りたてと同じ状態（枠のアイコンを隠し、数を 0）にしてから呼ぶ。枠に収まらないときは何もしない。
+// 作りたてと同じ状態（枠のアイコンを隠し、数を 0）にしてから呼ぶ。A が 10 を超えた分は
+// ゲームと同じく B を上書きして星アイコンになる。ゲームでも落ちる数のときだけ何もしない
+// （その数にならないよう Place が断るので、通常は起きない）。
+bool MapWouldCrash(u32 a, u32 b) {
+    return a > kMapCrashA || b + kMapPendingReserve > kMapPoolB;
+}
+
 MapState RefreshMap(void) {
     u32 a = 0, b = 0;
     CountMapPools(a, b);
-    if (a > kMapPoolA || b + kMapPendingReserve > kMapPoolB)
+    if (MapWouldCrash(a, b))
         return MapState::Full;
     const u32 map = FindMapVillage();
     if (map == 0)
         return MapState::NotFound;
-    // 数が壊れていたら触らない（地図でない物を掴んだ疑い）
-    if (*reinterpret_cast<u32 *>(map + kMapCount49E4) > kMapPoolB || *reinterpret_cast<u32 *>(map + kMapCount2B1C) > kMapPoolA)
+    // 数が壊れていたら触らない（地図でない物を掴んだ疑い）。A はゲームでも 10 を超えうる。
+    if (*reinterpret_cast<u32 *>(map + kMapCount49E4) > kMapPoolB || *reinterpret_cast<u32 *>(map + kMapCount2B1C) > kMapCrashA)
         return MapState::NotFound;
     for (u32 p = 0; p < sizeof(kMapBuildingPools) / sizeof(kMapBuildingPools[0]); ++p) {
         for (u32 i = 0; i < kMapBuildingPools[p].count; ++i) {
@@ -538,8 +546,26 @@ Result Execute(Op op) {
     case Op::Place: {
         // ゲームが部屋を読み込むときに枠へ入りきらない種類数にはしない（入りきらないと
         // ゲーム自身の読み込みが 0x56A0EC で落ちる。3 本目のダンプ。IDA-opus-5.5-F008）。
-        if (UsesSharedPool(BuildingProfile(s_argId)) && SharedKinds(s_argId) > kMaxSharedKinds)
-            return Result::TooManyKinds;
+        const u32 profile = BuildingProfile(s_argId);
+        if (UsesSharedPool(profile)) {
+            if (SharedKinds(s_argId) > kMaxSharedKinds)
+                return Result::TooManyKinds;
+        } else if (!ParentRoom()) {
+            // 役場・店などは 1 棟ごとに親ヒープから専用ヒープを借りる。読み直しても借りる量は
+            // 同じなので、読み直しへ逃がすとゲーム自身の読み込みが落ちる（4 本目。IDA-opus-5.5-F009）。
+            return Result::NoHeapRoom;
+        }
+        {
+            // 置いた後の地図がゲームでも落ちる数になるなら断る。
+            u32 a = 0, b = 0;
+            CountMapPools(a, b);
+            if (kMapIconPool[s_argId] == 'A')
+                ++a;
+            else if (kMapIconPool[s_argId] == 'B')
+                ++b;
+            if (MapWouldCrash(a, b))
+                return Result::MapLimit;
+        }
         // ゲームの設置関数。足元の属性・セーブの表・占有まで自分でやる。
         BuildingPlace(s_argX, s_argY, s_argId);
         if (IsDesignStand((u16)s_argId))
@@ -760,6 +786,8 @@ const char *ResultName(Result result) {
     case Result::EmptySlot: return u8"選んだスロットに建物がありません";
     case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
     case Result::TooManyKinds: return u8"公共事業の種類が多すぎます（ゲームが読み込める上限）";
+    case Result::NoHeapRoom: return u8"建物を読み込むメモリの空きがありません（ゲームの上限）";
+    case Result::MapLimit: return u8"地図のアイコンがゲームで作れる上限を超えます";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";
     case Result::TimedOut: return u8"描画スレッドが応答しません";
@@ -796,7 +824,7 @@ namespace CTRPluginFramework
                                                        : PublicWorks::LastMapState() == PublicWorks::MapState::Refreshed
                                                              ? u8"完了（その場で反映・地図も更新）"
                                                              : PublicWorks::LastMapState() == PublicWorks::MapState::Full
-                                                                   ? u8"完了（地図は枠を超えたので画面切り替えで更新）"
+                                                                   ? u8"完了（その場で反映・地図は更新せず）"
                                                                    : u8"完了（その場で反映・地図は開いたときに更新）");
                 else
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));

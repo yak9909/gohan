@@ -39,6 +39,8 @@ namespace PublicWorks
         EmptySlot,          // 選んだスロットが空いている
         NoFreeStand,        // マイデザインの看板表に空きが無い
         TooManyKinds,       // 共有の資源枠に入りきらない種類数になる（IDA-opus-5.5-F008）
+        NoHeapRoom,         // 役場・店などの専用ヒープを借りる親に余裕が無い（IDA-opus-5.5-F009）
+        MapLimit,           // 地図のアイコンがゲームでも落ちる数になる（IDA-opus-5.5-F009）
         HookFailed,
         Busy,
         TimedOut,
