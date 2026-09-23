@@ -59,6 +59,7 @@ namespace PublicWorks
     bool            PlayerTile(u32 &x, u32 &y);
     // プレイヤーに一番近い建物のスロット（役場・店・家も含む）。無ければ -1。
     s32             Nearest(void);
+    s32             NearestTo(u32 x, u32 y);        // マス (x, y) に一番近い建物（建物エディター）
 
     // ---- 変える（要求を出して描画スレッドの完了を待つ）----
     Result          Place(u8 id);                   // プレイヤーの足元へ
@@ -83,6 +84,8 @@ namespace PublicWorks
     void            Unhighlight(void);
 
     bool            IsBridgeId(u16 id);             // ゲームの Building_IsBridge 0x6CBDB4
+    // 建物を (x, y) に建てたときの実体の高さ（地面 0x6C69C0、橋は +32）。描画スレッドから呼ぶ。
+    float           SpawnHeight(u16 id, u32 x, u32 y);
     // 描画スレッドの毎フレームの口（グリッドカーソルのフック）を入れる。
     bool            StartFrameHook(void);
 
@@ -95,5 +98,7 @@ namespace CTRPluginFramework
     namespace Cheats
     {
         void    WirePublicWorks(void);
+        // メニューの「選んだ公共事業」を外から決める（建物エディター）。-1 で外す。
+        void    SetSelectedPublicWork(s32 slot);
     }
 }

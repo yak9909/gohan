@@ -1,6 +1,7 @@
 #include "PublicWorks.hpp"
 
 #include "BuildingEditor.hpp"
+#include "BuildingPreview.hpp"
 #include "BuildingHighlight.hpp"
 
 #include "Cheats.hpp"
@@ -395,11 +396,8 @@ bool SpawnVisual(u32 id, u32 x, u32 y) {
     if (UsesSharedPool(profile) ? !ResourceRoom(mgr) : !ParentRoom())
         return false;
     s_spawnPosition[0] = (float)(32 * x + 16);
-    s_spawnPosition[1] = 0.0f;
+    s_spawnPosition[1] = SpawnHeight(id, x, y);
     s_spawnPosition[2] = (float)(32 * y + 16);
-    s_spawnPosition[1] = GroundHeight(s_spawnPosition, 0);
-    if (IsBridge(id))
-        s_spawnPosition[1] += kBridgeLift;
     const u32 actor = SpawnActor(profile, mgr, id, s_spawnPosition, nullptr);
     if (actor == 0)
         return false;
@@ -689,6 +687,15 @@ void FrameStep(void) {
     }
     BuildingHighlight::FrameStep();
     BuildingEditor::FrameStep();
+    BuildingPreview::FrameStep();
+}
+
+float SpawnHeight(u16 id, u32 x, u32 y) {
+    float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
+    float h = GroundHeight(pos, 0);
+    if (IsBridge(id))
+        h += kBridgeLift;
+    return h;
 }
 
 bool IsBridgeId(u16 id) {
@@ -744,6 +751,10 @@ s32 Nearest(void) {
     u32 px = 0, py = 0;
     if (!PlayerTile(px, py))
         return -1;
+    return NearestTo(px, py);
+}
+
+s32 NearestTo(u32 px, u32 py) {
     s32 best = -1;
     u32 bestDistance = 0xFFFFFFFFu;
     for (u32 i = 0; i < kSlots; ++i) {
@@ -999,6 +1010,11 @@ namespace CTRPluginFramework
                 (void)index;
                 Report(kPwRebuild, PublicWorks::Rebuild());
             }
+        }
+
+        void    SetSelectedPublicWork(s32 slot)
+        {
+            g_selected = slot;
         }
 
         void    WirePublicWorks(void)

@@ -51,5 +51,6 @@ namespace RomfsIndex
     // 索引は要らない。ディレクトリとファイルのハッシュ表を辿り、読むのは小さい断片だけ。
     // ハッシュの式と表の並びは tools/strc/verify_romfs_lookup.py が生の RomFS 全ファイルで照合済み。
     // 戻り値は読めたバイト数。見つからない・cap を超える・読めなければ 0。
-    u32             ReadFile(const char *path, void *buf, u32 cap);
+    u32             ReadFile(const char *path, void *buf, u32 cap);   // buf が nullptr なら大きさだけ
+    u32             FileSize(const char *path);                       // 無ければ 0
 }

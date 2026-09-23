@@ -287,6 +287,12 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kBeOn,
                         u8"カメラを動かして離れた場所に建物を置く・動かす・消します。プレイヤーは動けません。"
                         u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、Y+十字で建物を順に選ぶ、A で実行。");
+                i = AddItem(ITEM_VALUE, kBpAlpha, u8"建物エディターの設置プレビューの、揺れの中心の不透明度です。");
+                SetValue(i, FMT_DEC, 160, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kBpWave, u8"設置プレビューの不透明度が sin 波で上下する幅です。");
+                SetValue(i, FMT_DEC, 64, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kBpSpeed, u8"設置プレビューの揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
+                SetValue(i, FMT_DEC, 11, 1, 100, 1);
                 AddItem(ITEM_ACTION, kMvStat,
                         u8"モデルビューアがどこで止まっているかを通知で出します。");
                 const int testCount = g_itemCount - testFirst;

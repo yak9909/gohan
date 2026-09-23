@@ -1,6 +1,7 @@
 #include "BuildingEditor.hpp"
 
 #include "BuildingHighlight.hpp"
+#include "BuildingPreview.hpp"
 #include "Cheats.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
@@ -167,8 +168,10 @@ const char *ModeName(Mode mode) {
     }
 }
 
-// その建物の足元の形を読む。ゲームが属性を書くマスだけ（Building_WriteOccupancy 0x526A0C と同じ規則:
-// 橋は 0 と 0xA1 を飛ばし、それ以外は 0 だけ飛ばす）。読めなければ 1 マス。
+// その建物の衝突判定のマスを読む。足元データのうちゲームが属性を書くマス（Building_WriteOccupancy
+// 0x526A0C と同じ規則: 橋は 0 と 0xA1 を飛ばし、それ以外は 0 だけ飛ばす）の、**外接の四角を上下左右
+// 1 マスずつ縮めた内側**（利用者指示「一回り小さい方」。ベンチ 4x3 -> 2x1、街灯 3x3 -> 1x1、
+// 噴水 5x5 -> 3x3、南北の橋 4x6 -> 橋板 2x4）。縮めて何も残らない形はそのまま。読めなければ 1 マス。
 void LoadCells(u16 id) {
     if (s_cellsFor == (s32)id)
         return;
@@ -183,11 +186,26 @@ void LoadCells(u16 id) {
     }
     if (got == kFootprintBytes) {
         const bool bridge = PublicWorks::IsBridgeId(id);
+        bool written[kFootprintSide][kFootprintSide];
+        s32 top = kFootprintSide, bottom = -1, left = kFootprintSide, right = -1;
         for (s32 r = 0; r < kFootprintSide; ++r) {
             for (s32 c = 0; c < kFootprintSide; ++c) {
                 const u8 code = s_footprint[160 * r + 10 * c + 8];
-                const bool written = bridge ? (code != 0 && code != 0xA1) : code != 0;
-                if (!written || s_cellCount >= kMaxCells)
+                written[r][c] = bridge ? (code != 0 && code != 0xA1) : code != 0;
+                if (!written[r][c])
+                    continue;
+                if (r < top) top = r;
+                if (r > bottom) bottom = r;
+                if (c < left) left = c;
+                if (c > right) right = c;
+            }
+        }
+        const bool shrink = bottom - top >= 2 && right - left >= 2;
+        for (s32 r = 0; r < kFootprintSide; ++r) {
+            for (s32 c = 0; c < kFootprintSide; ++c) {
+                if (!written[r][c] || s_cellCount >= kMaxCells)
+                    continue;
+                if (shrink && (r <= top || r >= bottom || c <= left || c >= right))
                     continue;
                 s_cellDx[s_cellCount] = (s8)(c - kFootprintOrigin);
                 s_cellDy[s_cellCount] = (s8)(r - kFootprintOrigin);
@@ -235,25 +253,17 @@ void UpdateTiles(void) {
     }
     // 削除モードは出さない（利用者指示）
     GridCursor::SetTiles(xs, ys, n);
-}
-
-// 置こうとしている形が、exclude 以外の建物と重なるか。重なる建物のスロット、無ければ -1。
-s32 Overlap(s32 exclude) {
-    for (u32 i = 0; i < s_cellCount; ++i) {
-        const s32 x = s_cx + s_cellDx[i];
-        const s32 y = s_cy + s_cellDy[i];
-        if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
-            return 0x7FFF;
-        const s32 slot = PublicWorks::SlotAtTile((u32)x, (u32)y);
-        if (slot >= 0 && slot != exclude)
-            return slot;
-    }
-    return -1;
+    // 設置プレビュー（配置モードだけ。色は合成しない）
+    if (s_mode == Mode::Place && s_kindCount > 0)
+        BuildingPreview::Show(s_kinds[s_kind], s_cx, s_cy);
+    else
+        BuildingPreview::Hide();
 }
 
 void Select(s32 slot) {
     s_selected = slot;
-    if (slot < 0 || s_mode == Mode::Place) {
+    Cheats::SetSelectedPublicWork(slot);         // メニューの「選んだ公共事業」と同じもの
+    if (slot < 0) {
         PublicWorks::Unhighlight();
     } else {
         BuildingHighlight::SetColor(s_mode == Mode::Remove ? BuildingHighlight::kRed : BuildingHighlight::kBlue);
@@ -284,16 +294,6 @@ void Report(PublicWorks::Result result) {
         GuiNotification::Notify(Cheats::kBeOn, u8"完了");
     else
         GuiNotification::NotifyRed(Cheats::kBeOn, PublicWorks::ResultName(result));
-}
-
-void NotifyOverlap(s32 slot) {
-    static char message[96];
-    PublicWorks::Slot s;
-    if (slot == 0x7FFF || !PublicWorks::ReadSlot((u32)slot, s))
-        std::snprintf(message, sizeof(message), u8"村の端からはみ出します");
-    else
-        std::snprintf(message, sizeof(message), u8"%ld番 %s と重なります", (long)slot, PublicWorks::NameOf(s.id));
-    GuiNotification::NotifyRed(Cheats::kBeOn, message);
 }
 
 bool Start(void) {
@@ -400,12 +400,6 @@ void Execute(void) {
         if (s_kindCount == 0)
             return;
         const u8 id = s_kinds[s_kind];
-        LoadCells(id);
-        const s32 hit = Overlap(-1);
-        if (hit >= 0) {
-            NotifyOverlap(hit);
-            return;
-        }
         Report(PublicWorks::PlaceAt(id, (u32)s_cx, (u32)s_cy));
         AfterChange();
         return;
@@ -417,16 +411,11 @@ void Execute(void) {
         }
         if (s_selected < 0)
             return;
-        PublicWorks::Slot slot;
-        if (!PublicWorks::ReadSlot((u32)s_selected, slot))
-            return;
-        LoadCells(slot.id);
-        const s32 hit = Overlap(s_selected);
-        if (hit >= 0) {
-            NotifyOverlap(hit);
-            return;
-        }
-        Report(PublicWorks::MoveTo((u32)s_selected, (u32)s_cx, (u32)s_cy));
+        const PublicWorks::Result result = PublicWorks::MoveTo((u32)s_selected, (u32)s_cx, (u32)s_cy);
+        // 動かしたら選択を外す（利用者指示）。Op::Move は光っていた建物を新しい実体で光らせ直すので、
+        // そのあとで外す要求を置く（次のフレームで反映）。
+        Select(-1);
+        Report(result);
         AfterChange();
         return;
     }
@@ -464,6 +453,7 @@ void Stop(void) {
     for (u32 i = 0; i < 18 && s_patched; ++i)
         svcSleepThread(16666667LL);
     GridCursor::Hide();
+    BuildingPreview::Hide();
     GridCursor::SetDiagonalStripes(s_prevDiagonal);
     PublicWorks::Unhighlight();
     s_selected = -1;
@@ -503,7 +493,8 @@ void Tick(u32 keys) {
         const u32 count = (u32)Mode::Count;
         const u32 now = (u32)s_mode;
         s_mode = (Mode)((pressed & (u32)Key::R) ? (now + 1) % count : (now + count - 1) % count);
-        Select(s_mode == Mode::Remove ? PublicWorks::SlotAtTile((u32)s_cx, (u32)s_cy) : -1);
+        // 削除はカーソルの下がそのまま選択。ほかは選んでいるものを引き継ぎ、色だけ替える
+        Select(s_mode == Mode::Remove ? PublicWorks::SlotAtTile((u32)s_cx, (u32)s_cy) : s_selected);
         NotifyMode();
     }
 
@@ -529,6 +520,23 @@ void Tick(u32 keys) {
 
     if (pressed & (u32)Key::A)
         Execute();
+
+    // 配置: X でカーソルに一番近い建物を「選んだ建物」にする（利用者指示）
+    if ((pressed & (u32)Key::X) && s_mode == Mode::Place) {
+        const s32 nearest = PublicWorks::NearestTo((u32)s_cx, (u32)s_cy);
+        if (nearest < 0) {
+            GuiNotification::NotifyRed(Cheats::kBeOn, u8"近くに建物がありません");
+        } else {
+            Select(nearest);
+            PublicWorks::Slot slot;
+            static char message[96];
+            if (PublicWorks::ReadSlot((u32)nearest, slot)) {
+                std::snprintf(message, sizeof(message), u8"選んだ: %ld番 0x%02X %s (%u,%u)", (long)nearest,
+                              (unsigned)slot.id, PublicWorks::NameOf(slot.id), (unsigned)slot.x, (unsigned)slot.y);
+                GuiNotification::Notify(Cheats::kBeOn, message);
+            }
+        }
+    }
 }
 
 }  // namespace BuildingEditor
@@ -540,6 +548,18 @@ namespace CTRPluginFramework
         namespace
         {
             int     g_editorIndex = -1;
+            int     g_bpAlpha = -1, g_bpWave = -1, g_bpSpeed = -1;
+
+            void    PreviewWaveApplied(int index, s32 value)
+            {
+                (void)index;
+                (void)value;
+                BuildingPreview::Wave w = BuildingPreview::GetWave();
+                if (g_bpAlpha >= 0) w.alpha = (u8)GuiMenu::ItemApplied(g_bpAlpha);
+                if (g_bpWave >= 0) w.wave = (u8)GuiMenu::ItemApplied(g_bpWave);
+                if (g_bpSpeed >= 0) w.speed = (u8)GuiMenu::ItemApplied(g_bpSpeed);
+                BuildingPreview::SetWave(w);
+            }
         }
 
         bool    BuildingEditorTick(int index, u16 held)
@@ -566,6 +586,14 @@ namespace CTRPluginFramework
         void    WireBuildingEditor(void)
         {
             g_editorIndex = GuiMenu::FindItem(kBeOn);
+            g_bpAlpha = GuiMenu::FindItem(kBpAlpha);
+            g_bpWave = GuiMenu::FindItem(kBpWave);
+            g_bpSpeed = GuiMenu::FindItem(kBpSpeed);
+            const int items[] = { g_bpAlpha, g_bpWave, g_bpSpeed };
+            for (u32 k = 0; k < 3; ++k)
+                if (items[k] >= 0)
+                    GuiMenu::RegisterApply(items[k], PreviewWaveApplied);
+            PreviewWaveApplied(-1, 0);
         }
     }
 }

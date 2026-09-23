@@ -511,6 +511,8 @@ u32 ReadFrom(Handle file, const char *path, void *buf, u32 cap) {
                 const u64 size = ((u64)e[5] << 32) | e[4];
                 if (size == 0 || size > cap)
                     return 0;
+                if (buf == nullptr)                     // 大きさだけ（FileSize）
+                    return (u32)size;
                 return ReadAt(file, level3 + header[9] + offset, buf, (u32)size) ? (u32)size : 0;
             }
             entry = e[6];
@@ -523,7 +525,7 @@ u32 ReadFrom(Handle file, const char *path, void *buf, u32 cap) {
 }  // namespace
 
 u32 ReadFile(const char *path, void *buf, u32 cap) {
-    if (path == nullptr || buf == nullptr || cap == 0)
+    if (path == nullptr || cap == 0)
         return 0;
     u32 got = 0;
     // 更新タイトルが先（同じパスがあればゲームもこちらを使う）
@@ -558,6 +560,10 @@ u32 ReadFile(const char *path, void *buf, u32 cap) {
     FSFILE_Close(base);
     svcCloseHandle(base);
     return got;
+}
+
+u32 FileSize(const char *path) {
+    return ReadFile(path, nullptr, 0xFFFFFFFFu);
 }
 
 }  // namespace RomfsIndex
