@@ -157,9 +157,29 @@ const u32 kMapPendingReserve = 1;
 const u32 kResourceMgr = 0xF24;             // mgr + 3876
 const u32 kResourceFreeHead = 0x563C;       // mgr + 22076 = 空き一覧の先頭（ノード +8 が次）
 const u32 kResourceNodeNext = 8;
-const u32 kFieldObjProfile = 0x80;          // AcStrcFieldObj。公共事業は 1 種類 3 ファイル・78 KB まで
 const u32 kSpawnFreeEntries = 3;            // fobj の 1 種類のファイル数の最大（romfs）
 const u32 kSpawnFreeHeap = 0x30000;         // 77,712 B（fobj の最大）の 2 倍を切り上げ
+
+// この共有の 64 枠を使うのは、実体の vtable slot 55 が 0xB49620 を呼ぶ 7 クラスだけ（IDA-opus-5.5-F008）。
+// 1 種類 = 2 枠（モデル＋季節テクスチャ 1 本。実機で 4 種 = 8 枠、ベンチ 1 種で +2 を確認）。
+const u8 kSharedPoolProfiles[] = {
+    0x80,                                   // AcStrcFieldObj
+    0x8D,                                   // AcStrcBridge
+    0x8E,                                   // AcStrcLightHouse
+    0x8F,                                   // AcStrcTrashBox
+    0x90,                                   // AcStrcMyDesignSign
+    0x92,                                   // AcStrcGeyser
+    0x93,                                   // AcStrcScreen
+};
+const u32 kResourceEntries = 0x40;          // BsStrcMgr_InitHeaps が作る枠の数
+const u32 kEntriesPerKind = 2;
+// 部屋の読み直しでゲームが読むのは「表にある種類 × 2」。64 枠 = 32 種が上限で、2 種ぶん余裕を残す。
+const u32 kMaxSharedKinds = kResourceEntries / kEntriesPerKind - 2;
+
+// 役場・店などは実体ごとに専用の ExpHeap（実測 69,632〜82,420 B）を親ヒープから借りる
+// （実体 +0xFC の専用置き場、読み込みは 0xB47474）。親は BsStrcMgr の親 *(0x94CC68)（村で 5 MB）。
+const u32 kStrcParentHeap = 0x0094CC68;     // u32: sead::ExpHeap*
+const u32 kSpawnParentFree = 0x40000;       // 実測の最大 82,420 B の 3 倍強
 const IconPool kMapBuildingPools[] = {
     { 0x0004, 14 },                         // 家（0〜3）と住民の家（8〜17）の固定枠
     { 0x2B1C, 10 },                         // 役場・店などの割り当て枠（カウンタ +46000）
@@ -302,6 +322,10 @@ bool CanSpawnInPlace(u32 id) {
     return filter == 0 || filter == 165;
 }
 
+bool IsHeap(u32 h) {
+    return h >= 0x30000000u && h < 0x40000000u && (h & 3u) == 0u;
+}
+
 // ResourceMgr に 1 種類分（最大 3 ファイル・78 KB）を読む余裕があるか。
 bool ResourceRoom(u32 mgr) {
     u32 free = 0;
@@ -315,10 +339,42 @@ bool ResourceRoom(u32 mgr) {
     if (free < kSpawnFreeEntries)
         return false;
     void *heap = *reinterpret_cast<void **>(mgr + kResourceMgr + 4);
-    const u32 h = reinterpret_cast<u32>(heap);
-    if (h < 0x30000000u || h >= 0x40000000u || (h & 3u) != 0u)
+    if (!IsHeap(reinterpret_cast<u32>(heap)))
         return false;
     return HeapFreeSize(heap) >= kSpawnFreeHeap;
+}
+
+bool UsesSharedPool(u32 profile) {
+    for (u32 i = 0; i < sizeof(kSharedPoolProfiles); ++i)
+        if (kSharedPoolProfiles[i] == profile)
+            return true;
+    return false;
+}
+
+// 役場・店などの専用ヒープを借りる親に余裕があるか。
+bool ParentRoom(void) {
+    const u32 heap = *reinterpret_cast<volatile u32 *>(kStrcParentHeap);
+    return IsHeap(heap) && HeapFreeSize(reinterpret_cast<void *>(heap)) >= kSpawnParentFree;
+}
+
+// 建物表にある、共有の枠を使う建物の種類の数（extra があればそれも 1 種として足す）。
+u32 SharedKinds(u32 extra) {
+    bool seen[0x100] = {};
+    u32 kinds = 0;
+    for (u32 i = 0; i <= kSlots; ++i) {
+        u32 id = extra;
+        if (i < kSlots) {
+            const Slot *slot = SlotAt(i);
+            if (slot == nullptr)
+                continue;
+            id = slot->id;
+        }
+        if (id >= kEmptyId || seen[id] || !UsesSharedPool(BuildingProfile(id)))
+            continue;
+        seen[id] = true;
+        ++kinds;
+    }
+    return kinds;
 }
 
 // sub_6DE198 の 1 件分: 位置 → 高さ → 生成 → 一覧へ。作れたら true。
@@ -326,10 +382,9 @@ bool SpawnVisual(u32 id, u32 x, u32 y) {
     const u32 mgr = StrcMgr();
     if (mgr == 0 || !CanSpawnInPlace(id))
         return false;
-    // 役場・店・家は 1 種類で数十〜数百ファイル・数 MB あり、何本読むかも確かめていない。
-    // その場で作るのは公共事業（AcStrcFieldObj）だけにし、ほかはゲームの読み直しに任せる。
+    // 読む先で余裕の見方が違う（IDA-opus-5.5-F008）。足りなければゲームの読み直しに任せる。
     const u32 profile = BuildingProfile(id);
-    if (profile != kFieldObjProfile || !ResourceRoom(mgr))
+    if (UsesSharedPool(profile) ? !ResourceRoom(mgr) : !ParentRoom())
         return false;
     s_spawnPosition[0] = (float)(32 * x + 16);
     s_spawnPosition[1] = 0.0f;
@@ -481,6 +536,10 @@ Result Execute(Op op) {
     s_mapState = MapState::Untouched;
     switch (op) {
     case Op::Place: {
+        // ゲームが部屋を読み込むときに枠へ入りきらない種類数にはしない（入りきらないと
+        // ゲーム自身の読み込みが 0x56A0EC で落ちる。3 本目のダンプ。IDA-opus-5.5-F008）。
+        if (UsesSharedPool(BuildingProfile(s_argId)) && SharedKinds(s_argId) > kMaxSharedKinds)
+            return Result::TooManyKinds;
         // ゲームの設置関数。足元の属性・セーブの表・占有まで自分でやる。
         BuildingPlace(s_argX, s_argY, s_argId);
         if (IsDesignStand((u16)s_argId))
@@ -700,6 +759,7 @@ const char *ResultName(Result result) {
     case Result::NoSelection: return u8"建物を選んでいません";
     case Result::EmptySlot: return u8"選んだスロットに建物がありません";
     case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
+    case Result::TooManyKinds: return u8"公共事業の種類が多すぎます（ゲームが読み込める上限）";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";
     case Result::TimedOut: return u8"描画スレッドが応答しません";
@@ -737,7 +797,7 @@ namespace CTRPluginFramework
                                                              ? u8"完了（その場で反映・地図も更新）"
                                                              : PublicWorks::LastMapState() == PublicWorks::MapState::Full
                                                                    ? u8"完了（地図は枠を超えたので画面切り替えで更新）"
-                                                                   : u8"完了（その場で反映・地図は見つからず）");
+                                                                   : u8"完了（その場で反映・地図は開いたときに更新）");
                 else
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
             }

@@ -38,6 +38,7 @@ namespace PublicWorks
         NoSelection,
         EmptySlot,          // 選んだスロットが空いている
         NoFreeStand,        // マイデザインの看板表に空きが無い
+        TooManyKinds,       // 共有の資源枠に入りきらない種類数になる（IDA-opus-5.5-F008）
         HookFailed,
         Busy,
         TimedOut,
