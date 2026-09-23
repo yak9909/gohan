@@ -520,6 +520,52 @@ void CopyKind(void) {
     GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物は配置の一覧にありません");
 }
 
+// 約 0.5 秒ごと: グリッドカーソルが止まっていたら理由を出して組み直し、プレビューが出せない種類なら知らせる
+u32 s_watchTicks;
+bool s_cursorRetry;
+bool s_cursorNotified;
+s32 s_previewNotifiedId = -1;
+
+void Watch(void) {
+    if (++s_watchTicks % 30 != 0)
+        return;
+    if (s_cursorRetry) {
+        s_cursorRetry = false;
+        GridCursor::SetDiagonalStripes(true);
+        if (GridCursor::ShowTiles())
+            UpdateTiles();
+        return;
+    }
+    const GridCursor::Status gs = GridCursor::Read();
+    if (gs.stage == GridCursor::Stage::Failed) {
+        if (!s_cursorNotified) {
+            static char message[96];
+            std::snprintf(message, sizeof(message), u8"UnitCursor: %s", GridCursor::FailName(gs.failReason));
+            GuiNotification::NotifyRed(Cheats::kBeOn, message);
+            s_cursorNotified = true;
+        }
+        GridCursor::Hide();
+        s_cursorRetry = true;
+        return;
+    }
+    if (gs.stage == GridCursor::Stage::Ready)
+        s_cursorNotified = false;
+    const BuildingPreview::Status ps = BuildingPreview::GetStatus();
+    if (s_mode == Mode::Place && ps.shownId >= 0 && ps.shownId != s_previewNotifiedId) {
+        if (!ps.available) {
+            GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物にはプレビューがありません");
+            s_previewNotifiedId = ps.shownId;
+        } else if (ps.failed) {
+            GuiNotification::NotifyRed(Cheats::kBeOn, ps.failReason == 10
+                                                          ? u8"メモリの空きが足りないのでプレビューを出しません"
+                                                          : u8"プレビューを作れませんでした");
+            s_previewNotifiedId = ps.shownId;
+        } else if (ps.ready) {
+            s_previewNotifiedId = ps.shownId;
+        }
+    }
+}
+
 }  // namespace
 
 bool Running(void) { return s_running; }
@@ -573,6 +619,7 @@ void Tick(u32 keys) {
     }
     // プレイヤーを止める（メニューの表示中も。毎ティック頼み続けている間だけ効く）
     GuiMenu::BlockGameAll();
+    Watch();
 
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;

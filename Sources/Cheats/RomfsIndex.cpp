@@ -524,42 +524,62 @@ u32 ReadFrom(Handle file, const char *path, void *buf, u32 cap) {
 
 }  // namespace
 
-u32 ReadFile(const char *path, void *buf, u32 cap) {
-    if (path == nullptr || cap == 0)
-        return 0;
-    u32 got = 0;
-    // 更新タイトルが先（同じパスがあればゲームもこちらを使う）
+namespace {
+
+// ★開いたものを使い回す。以前は 1 回読むたびに更新タイトル（媒体を 3 通り試す）と base を開き直していて、
+//   建物エディターで種類を切り替えるたびに重かった（利用者報告、2026-09-24）。
+Handle s_updateHandle;
+Handle s_baseHandle;
+bool s_updateTried;
+
+Handle UpdateHandle(void) {
+    if (s_updateTried)
+        return s_updateHandle;
+    s_updateTried = true;
     const u64 running = CTRPluginFramework::Process::GetTitleID();
     const u64 updateTid = ((u64)kUpdateTitleHigh << 32) | (u32)running;
     static const u8 kMediaTypes[] = { 1, 2, 0 };
-    for (u32 i = 0; i < sizeof(kMediaTypes) && got == 0; ++i) {
+    for (u32 i = 0; i < sizeof(kMediaTypes); ++i) {
         u32 archiveData[4] = { (u32)updateTid, (u32)(updateTid >> 32), kMediaTypes[i], 0 };
         u32 fileData[5] = { 0, 0, 0, 0, 0 };
         const FS_Path titlePath = { PATH_BINARY, sizeof(archiveData), archiveData };
         const FS_Path titleFile = { PATH_BINARY, sizeof(fileData), fileData };
         Handle update = 0;
-        if (R_FAILED(FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent, titlePath, titleFile,
-                                             FS_OPEN_READ, 0)) || update == 0)
-            continue;
-        got = ReadFrom(update, path, buf, cap);
-        FSFILE_Close(update);
-        svcCloseHandle(update);
-        break;                                          // 開けた媒体で見つからなければ base へ
+        if (R_SUCCEEDED(FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent, titlePath, titleFile,
+                                                FS_OPEN_READ, 0)) && update != 0) {
+            s_updateHandle = update;
+            break;
+        }
     }
-    if (got != 0)
-        return got;
+    return s_updateHandle;
+}
+
+Handle BaseHandle(void) {
+    if (s_baseHandle != 0)
+        return s_baseHandle;
     static const char kEmptyText[] = "";
     static const u8 kZeros[0xC] = { 0 };
     const FS_Path archivePath = { PATH_EMPTY, 1, kEmptyText };
     const FS_Path filePath = { PATH_BINARY, sizeof(kZeros), kZeros };
     Handle base = 0;
-    if (R_FAILED(FSUSER_OpenFileDirectly(&base, (FS_ArchiveID)kArchiveRomfs, archivePath, filePath,
-                                         FS_OPEN_READ, 0)) || base == 0)
+    if (R_SUCCEEDED(FSUSER_OpenFileDirectly(&base, (FS_ArchiveID)kArchiveRomfs, archivePath, filePath,
+                                            FS_OPEN_READ, 0)) && base != 0)
+        s_baseHandle = base;
+    return s_baseHandle;
+}
+
+}  // namespace
+
+u32 ReadFile(const char *path, void *buf, u32 cap) {
+    if (path == nullptr || cap == 0)
         return 0;
-    got = ReadFrom(base, path, buf, cap);
-    FSFILE_Close(base);
-    svcCloseHandle(base);
-    return got;
+    // 更新タイトルが先（同じパスがあればゲームもこちらを使う）
+    const Handle update = UpdateHandle();
+    u32 got = update != 0 ? ReadFrom(update, path, buf, cap) : 0;
+    if (got != 0)
+        return got;
+    const Handle base = BaseHandle();
+    return base != 0 ? ReadFrom(base, path, buf, cap) : 0;
 }
 
 u32 FileSize(const char *path) {

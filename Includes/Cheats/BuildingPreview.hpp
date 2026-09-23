@@ -30,6 +30,15 @@ namespace BuildingPreview
     const Wave &    GetWave(void);
     // 通知用: いまの状態の名前
     const char *    StateName(void);
+    struct Status
+    {
+        s32     shownId;        // 最後に頼まれた id
+        bool    available;      // その種類にプレビューの資源がある（無ければ出さない）
+        bool    failed;
+        u32     failReason;     // 10 = 親ヒープの空きが足りない（ゲームの分を残すため作らない）
+        bool    ready;
+    };
+    Status          GetStatus(void);
 
     // ---- 描画スレッド（PublicWorks::FrameStep から）----
     void            FrameStep(void);

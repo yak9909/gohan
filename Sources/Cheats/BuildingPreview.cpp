@@ -29,7 +29,8 @@ u8 s_instanceAllocator[16] BP_ALIGNED;
 u8 s_node[kNodeHolderBytes] BP_ALIGNED;
 
 const char kHeapNameText[] = "BuildingPreview";
-const u32 kInstanceHeapBytes = 0x10000;
+const u32 kInstanceHeapBytes = 0x8000;      // モデルビューアと同じ（実測 5,090 B の 1 体に余裕）
+const u32 kParentReserve = 0x20000;         // ゲーム自身の分として親ヒープに必ず残す
 const u32 kInstanceReserve = 8192;
 const u32 kMaxMaterials = 32;
 
@@ -203,6 +204,11 @@ void StepBuild(void) {
             s_paths[i].text = s_pathText[i];
             bytes += s_sizes[i] * 2;
         }
+        // ★親ヒープ（空き 484 KB を実測）はゲームも使う。残りが足りなければ作らない
+        if (HeapGetFreeSize(parent) < bytes + kInstanceHeapBytes + kParentReserve) {
+            Stop(10);
+            return;
+        }
         HeapAllocatorCtor(s_resourceAllocator);
         HeapAllocatorCtor(s_instanceAllocator);
         if (HeapCreateNamed(s_resourceAllocator, bytes, parent, &s_heapName, 1, 0u) != 1 ||
@@ -297,8 +303,22 @@ void StepBuild(void) {
 }
 
 // 名前からパスと大きさを決める（メニュースレッド。書く先は pend）。モデルかテクスチャが無い種類は false。
+// 役場 0x50・駅 0x54・0x4F は PwpPreview_LoadSlot 0x227CFC と同じ特別な名前（村の今の見た目の番号を庭データから読む:
+// 庭 *(0x955F8C) +401848 の u16。役場 = 下位 2 ビット（sub_6CA35C）、駅 = ビット 8〜9（sub_6CA378））。
 bool Resolve(u16 id) {
-    const char *name = PublicWorks::NameOf(id);
+    char name[48];
+    const char *base = PublicWorks::NameOf(id);
+    const u32 garden = *reinterpret_cast<const volatile u32 *>(0x00955F8C);
+    const u32 look = (garden >= 0x08000000u && BuildingHighlight::SafeReadable(garden + 401848, 2))
+                         ? *reinterpret_cast<const volatile u16 *>(garden + 401848) : 0u;
+    if (id == 0x50)
+        std::snprintf(name, sizeof(name), "sobj_officeA%02u", (unsigned)(look & 3u));
+    else if (id == 0x54)
+        std::snprintf(name, sizeof(name), "sobj_stationA%02u", (unsigned)((look >> 8) & 3u));
+    else if (id == 0x4F)
+        std::snprintf(name, sizeof(name), "sobj_reset_cls");
+    else
+        std::snprintf(name, sizeof(name), "%s", base);
     if (name[0] == '\0')
         return false;
     const bool fobj = std::strncmp(name, "fobj_", 5) == 0;
@@ -411,6 +431,16 @@ void SetWave(const Wave &wave) {
 }
 
 const Wave &GetWave(void) { return s_wave; }
+
+Status GetStatus(void) {
+    Status out;
+    out.shownId = s_shownId;
+    out.available = s_pendId >= 0 || s_shownId < 0;
+    out.failed = s_stage == Stage::Failed;
+    out.failReason = s_failReason;
+    out.ready = s_stage == Stage::Ready;
+    return out;
+}
 
 const char *StateName(void) {
     switch (s_stage) {

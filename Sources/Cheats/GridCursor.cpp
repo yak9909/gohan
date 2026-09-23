@@ -64,7 +64,12 @@ static const u32 kRotateCanmOffset = 0x161C;
 static const float kRotateFrame45 = 0.0f;
 // 1 体あたりの予約量。実測 5,090 B（IDA-opus-5-F023）に、向きアニメをもう一つ
 // 組む分と余裕を乗せてある。★足りないまま建てるとゲーム側が落ちる（F034）ので多めに取る。
-static const u32 kInstanceBytesPerCursor = 8192;
+// ★親ヒープ（*0x94CC48）の空きは実機で 484 KB しかなく（2026-09-24）、設置プレビューと並ぶと足りなかった。
+//   実測 5,090 B（F023）＋向きアニメの分として 6 KB。1 体ごとに建てる前に残りを見る（kHeapExhausted）ので、
+//   足りなければ建てずに止まる。最後の 1 体は kInstanceHeapSlack が受ける。
+static const u32 kInstanceBytesPerCursor = 6144;
+// ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
+static const u32 kParentReserve = 0x20000;
 static const u32 kInstanceHeapSlack = 0x4000;
 // 1 フレームに作る上限。これはゲームの描画パスの中なので、
 // 64 体を一気に作るとそのフレームだけ長く止まる。
@@ -407,8 +412,12 @@ static void TeardownAll() {
 static void StepBuild() {
     switch (s_stage) {
     case Stage::AllocHeaps: {
-        if (*kRoomId != 0) {                      // the village outdoors
-            Stop(Fail::kNotInVillage);
+        // ★マス指定の形（建物エディター）では、村の屋外でない・シーンが取れない一瞬があっても
+        //   失敗にせず次のフレームでもう一度見る（実機で組み直しの途中にこれで止まり、UnitCursor が消えた）。
+        void* owner = *kSceneOwner;
+        if (*kRoomId != 0 || !IsHeapPointer(owner)) {
+            if (!s_tileMode)
+                Stop(Fail::kNotInVillage);
             return;
         }
         void* parent = *kParentHeap;
@@ -416,10 +425,13 @@ static void StepBuild() {
             Stop(Fail::kNoParentHeap);
             return;
         }
-        void* owner = *kSceneOwner;
-        if (!IsHeapPointer(owner)) {
-            Stop(Fail::kNotInVillage);
-            return;
+        {
+            const u32 want = kResourceHeapBytes + (u32)s_footprintW * (u32)s_footprintH * kInstanceBytesPerCursor +
+                             kInstanceHeapSlack + kParentReserve;
+            if (HeapGetFreeSize(parent) < want) {
+                Stop(Fail::kInstanceHeap);
+                return;
+            }
         }
         s_sceneOwner = owner;
         s_sceneResource = *reinterpret_cast<void**>(Word(owner, kSceneOwnerResourceOffset));
@@ -788,6 +800,9 @@ bool ShowTiles(void) {
     if (!s_tileMode && s_wantShown)
         return false;                     // 足元の形で出ている。混ぜない
     s_tileMode = true;
+    // 最初から 8x3 = 24 体で組む（公共事業の大半が入る）。大きい形のときだけ増やす。
+    if ((u32)s_footprintW * (u32)s_footprintH < 24)
+        SetFootprint(kMaxSide, 3);
     return Show();
 }
 
