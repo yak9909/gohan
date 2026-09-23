@@ -83,8 +83,55 @@ volatile State s_state = State::Off;
 Params s_params = { 0x00FFB060u, 0xB0, 0xD0, 0x40, 11 };   // 青は F011〜F013 の実機の色
 
 // ---- 読み書き -----------------------------------------------------------------------------
-bool IsHeap(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
-bool IsCode(u32 p) { return p >= 0x00100000u && p < 0x01000000u; }
+// ★範囲だけで番地と決めない。0x3F800000（float の 1.0）を番地とみなして読みに行き SIGSEGV になった。
+// 読めるかどうかは OS に問い合わせる（svcQueryMemory）。結果は 1 フレームのあいだだけ覚えておく。
+struct Region { u32 base; u32 end; bool readable; };
+const u32 kMaxRegions = 24;
+Region s_regions[kMaxRegions];
+u32 s_regionCount, s_regionNext;
+
+void ForgetRegions(void) { s_regionCount = s_regionNext = 0; }
+
+bool ReadableAt(u32 a) {
+    for (u32 i = 0; i < s_regionCount; ++i)
+        if (a >= s_regions[i].base && a < s_regions[i].end)
+            return s_regions[i].readable;
+    MemInfo mi;
+    PageInfo pi;
+    bool ok = false;
+    Region r = { a & ~0xFFFu, (a & ~0xFFFu) + 0x1000u, false };
+    if (R_SUCCEEDED(svcQueryMemory(&mi, &pi, a))) {
+        ok = mi.state != MEMSTATE_FREE && (mi.perm & MEMPERM_READ) != 0;
+        if (mi.size != 0 && a >= mi.base_addr && a - mi.base_addr < mi.size) {
+            r.base = mi.base_addr;
+            r.end = mi.base_addr + mi.size;
+            if (r.end < r.base)
+                r.end = 0xFFFFFFFFu;
+        }
+    }
+    r.readable = ok;
+    if (s_regionCount < kMaxRegions)
+        s_regions[s_regionCount++] = r;
+    else
+        s_regions[s_regionNext++ % kMaxRegions] = r;
+    return ok;
+}
+
+// [a, a+len) がすべて読めるか
+bool Readable(u32 a, u32 len) {
+    if (len == 0 || a + len < a)
+        return false;
+    const u32 last = a + len - 1;
+    for (u32 p = a & ~0xFFFu;; p += 0x1000u) {
+        if (!ReadableAt(p < a ? a : p))
+            return false;
+        if (p >= (last & ~0xFFFu))
+            return true;
+    }
+}
+
+bool IsHeap(u32 p) { return p >= 0x08000000u && (p & 3u) == 0u && Readable(p, 4); }
+bool IsCode(u32 p) { return p >= 0x00100000u && p < 0x01000000u && (p & 3u) == 0u && Readable(p, 4); }
 u32 R32(u32 a) { return *reinterpret_cast<volatile u32 *>(a); }
 u8 R8(u32 a) { return *reinterpret_cast<volatile u8 *>(a); }
 
@@ -94,11 +141,13 @@ const char *ClassName(u32 obj) {
     const u32 vt = R32(obj);
     if (!IsCode(vt))
         return nullptr;
+    if (!IsCode(vt - 4))
+        return nullptr;
     const u32 ti = R32(vt - 4);
-    if (!IsCode(ti))
+    if (!IsCode(ti) || !IsCode(ti + 4))
         return nullptr;
     const u32 name = R32(ti + 4);
-    if (!IsCode(name))
+    if (name < 0x00100000u || name >= 0x01000000u || !Readable(name, 32))
         return nullptr;
     return reinterpret_cast<const char *>(name);
 }
@@ -189,8 +238,10 @@ void AddModel(Gather &g, u32 m) {
 }
 
 void ScanObject(Gather &g, u32 obj, u32 depth) {
+    if (!Readable(obj - 16, 16))
+        return;
     const u32 size = R32(obj - 4);          // ヒープの見出し +0xC（F012）
-    if (size == 0 || size > 0x10000u)
+    if (size == 0 || size > 0x10000u || !Readable(obj, size & ~3u))
         return;
     for (u32 off = 0; off + 4 <= size; off += 4) {
         const u32 v = R32(obj + off);
@@ -362,7 +413,7 @@ void SwapActivator(u32 model) {
     if (!IsHeap(act) || s_vtUsed >= kMaxActivators)
         return;
     const u32 vt = R32(act);
-    if (!IsCode(vt) || R32(vt + 12) != kSimpleActivate)
+    if (!IsCode(vt) || !Readable(vt - 4, 24) || R32(vt + 12) != kSimpleActivate)
         return;
     u32 *copy = s_vtPool[s_vtUsed++];
     for (u32 j = 0; j < 6; ++j)
@@ -452,6 +503,7 @@ u32 MaterialCount(void) { return s_animCount; }
 u32 ModelCount(void) { return s_modelCount; }
 
 void FrameStep(void) {
+    ForgetRegions();
     const Req req = s_req;
     if (req != Req::None) {
         s_req = Req::None;
