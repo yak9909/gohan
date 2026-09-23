@@ -634,7 +634,6 @@ void CopyKind(void) {
 // 約 0.5 秒ごと: グリッドカーソルが止まっていたら理由を出して組み直し、プレビューが出せない種類なら知らせる
 u32 s_watchTicks;
 bool s_cursorRetry;
-bool s_cursorNotified;
 s32 s_previewNotifiedId = -1;
 
 void Watch(void) {
@@ -649,18 +648,11 @@ void Watch(void) {
     }
     const GridCursor::Status gs = GridCursor::Read();
     if (gs.stage == GridCursor::Stage::Failed) {
-        if (!s_cursorNotified) {
-            static char message[96];
-            std::snprintf(message, sizeof(message), u8"UnitCursor: %s", GridCursor::FailName(gs.failReason));
-            GuiNotification::NotifyRed(Cheats::kBeOn, message);
-            s_cursorNotified = true;
-        }
+        // 通知は出さない（利用者指示）。黙って組み直す
         GridCursor::Hide();
         s_cursorRetry = true;
         return;
     }
-    if (gs.stage == GridCursor::Stage::Ready)
-        s_cursorNotified = false;
     const BuildingPreview::Status ps = BuildingPreview::GetStatus();
     if (s_mode == Mode::Place && ps.shownId >= 0 && ps.shownId != s_previewNotifiedId) {
         if (!ps.available) {

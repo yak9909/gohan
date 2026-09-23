@@ -1066,12 +1066,7 @@ namespace CTRPluginFramework
                     GridCursor::SetSpacing(GuiMenu::ItemApplied(g_tileIndex));
                 if (g_scaleIndex >= 0)
                     GridCursor::SetScalePercent(GuiMenu::ItemApplied(g_scaleIndex));
-                if (!GridCursor::Show())
-                {
-                    const GridCursor::Status s = GridCursor::Read();
-
-                    GuiNotification::NotifyRed(kGridCursor, GridCursor::FailName(s.failReason));
-                }
+                GridCursor::Show();     // 失敗しても通知は出さない（利用者指示）。理由は「状態を見る」で出る
             }
 
             const GuiMenu::ToggleEffectFuncs kShowFuncs = { ShowIsActive, ShowSetActive };
