@@ -1,0 +1,101 @@
+name: Sync resolved menu issues
+
+on:
+  push:
+    branches: ["work/spec-md"]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/spec-md
+      - name: Update gohan-menu spec
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('gohan-menu.md')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''**【確定・2026-09-17】X/L の短押し・長押し判定**
+          - 押下した瞬間には適用・差し戻しを行わない。**短押し処理はリリース時**に行う。
+          - 600msに達した時点で長押しへ確定し、短押し処理は行わない。
+          - 長押し中の進捗は0→100%が視認できるバーで表示する。
+          - 適用待ち項目が1件も無い場合、X/Lの長押し進捗は開始しない。'''.replace('          ', '')
+          new = '''**【確定・2026-09-23】X/L の短押し・長押し判定**
+          - 押下した瞬間には適用・差し戻しを行わない。**短押し処理はリリース時**に行う。
+          - 600msに達した時点で長押しへ確定し、短押し処理は行わない。
+          - 長押し中の進捗は0→100%が視認できるバーで表示する。
+          - **進捗が2/5未満（600ms中240ms未満）で離した場合だけ短押しとして扱う。**
+          - **進捗が2/5以上かつ満了前に離した場合は長押しをキャンセルし、選択項目の単体適用／単体戻しも行わない。**
+          - 進捗バーの**最初の2/5は灰色**で表示し、キャンセル境界を視覚的に示す。
+          - 適用待ち項目が1件も無い場合、X/Lの長押し進捗は開始しない。'''.replace('          ', '')
+          if old not in text: raise SystemExit('X/L section not found')
+          text = text.replace(old, new)
+
+          marker = '### 操作可能UI表示中の入力占有【確定・2026-09-17】\n'
+          disabled = '''### 無効項目【確定・2026-09-23】
+
+          `gohan/work/cheat-impl` の `RegisterDisabled` と同じ契約にする。
+
+          - 無効項目は**灰色表示**する。
+          - 無効でもDPad／タッチで**カーソルを置いて説明を確認できる**。
+          - 無効中は値変更、A決定、X適用、Yホットキー設定、ホットキー発火を行わない。
+          - 無効条件は固定フラグだけでなく判定関数を登録でき、メニュー更新ごとに再評価できる。
+          - 連動型の読取失敗・利用不可も同じ無効状態として扱う。
+
+          '''.replace('          ', '')
+          if disabled.strip() not in text:
+              if marker not in text: raise SystemExit('input section marker not found')
+              text = text.replace(marker, disabled + marker)
+
+          start = text.index('### お気に入り【確定・2026-09-17】')
+          end = text.index('\n---\n\n## 3.', start)
+          replacement = '''### 設定画面・お気に入り・値固定【確定・2026-09-23】
+
+          **STARTはチートメニュー設定画面 `SETTINGS` の開閉に使う。** お気に入り一覧を直接開くキーにはしない。
+
+          - START：通常のメニュー階層から `SETTINGS` を開く。SETTINGS配下にいる間にSTARTを押すと配下ごと閉じ、呼び出し元へ戻る。
+          - SELECTは設定画面／お気に入り機能へ割り当てず、既存用途を維持する。
+          - SETTINGSには少なくとも `FAVORITES` と `VALUE LOCK` を置く。
+          - Bは通常どおり1階層戻る操作として残す。
+
+          **FAVORITES**
+          - R短押しで通常のメニュー閲覧中の選択Itemをお気に入り登録／解除する。
+          - SETTINGSの `FAVORITES` をA決定するとお気に入り一覧を開く。0件なら項目自体を無効表示する。
+          - 一覧にはコピーを作らず**元Itemそのものへの参照**を並べ、ON/OFF、編集値、適用値、適用待ち、ホットキー、効果状態を共有する。
+          - FAVORITES内でR解除した項目はその場で一覧から消す。最後の1件なら呼び出し元へ戻す。
+          - フォルダを含む全Itemを登録可能とする。
+          - 登録済みItemには適用待ち黄色より淡い**薄黄色の `F` マーカー**を表示する。
+          - Simulatorは階層パス由来の安定キーを `localStorage` に保存して復元する。CTRPF側もindexではなく安定ID相当で永続化する。
+
+          **VALUE LOCK（値固定）**
+          - SETTINGSを開いた時点で選択していたItemを対象にする。
+          - 対象は**連動型数値／連動型リストのみ**。通常値、通常リスト、チェック、アクション等では項目を無効表示する。
+          - ONにすると、その時点の値を固定値として保持し、ゲーム側の値が変化してもメニュー更新時に固定値へ戻す。
+          - 項目が変更不可／読取不可状態の場合は**新規に固定しない**。
+          - 既に固定済みの項目が後から変更不可になった場合でも、SETTINGSから固定解除できる経路は残す。
+          - 固定中に正規の適用経路で値を変更した場合は、その適用値を新しい固定値として扱う。
+
+          **入力関係**
+          - Rはメニュー外では従来どおりホットキー入力として扱う。
+          - ホットキー入力UI表示中のRもお気に入り操作ではなく束縛候補ボタンとして扱う。
+          '''.replace('          ', '').rstrip()
+          text = text[:start] + replacement + text[end:]
+
+          path.write_text(text, encoding='utf-8')
+          Path('.github/workflows/finalize-menu-issues.yml').unlink()
+      - name: Commit spec
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add gohan-menu.md .github/workflows/finalize-menu-issues.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Specify resolved menu issues"
+          git push origin HEAD:work/spec-md
