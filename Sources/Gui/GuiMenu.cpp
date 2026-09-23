@@ -140,9 +140,13 @@ namespace CTRPluginFramework
                 }
             }
 
+            // ★スレッドの有無では判定しない。各チートの登録（WireBehaviors）はスレッドを作る前に走るので、
+            //   以前の「g_thread != nullptr」だと登録時の SetItemOptions / SetItemApplied が
+            //   黙って何もしなかった（公共事業のリストが「読み込み中」のまま、利用者報告 2026-09-23）。
+            //   項目表は BuildTree で登録より前に組まれているので、項目数だけ見れば足りる。
             bool    ItemOk(int index)
             {
-                return index >= 0 && index < g_itemCount && g_thread != nullptr;
+                return index >= 0 && index < g_itemCount;
             }
 
             bool    SlotOk(int index)

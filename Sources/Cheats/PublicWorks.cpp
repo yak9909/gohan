@@ -22,6 +22,15 @@ const u32 kGarden = 0x00955F8C;             // u32: garden の先頭
 const u32 kBuildingData = 0x4BE80;
 const u32 kCountOffset = 0x04;              // u8 NormalPWPsAmount
 const u32 kSlotsOffset = 0x08;              // ACNL_Building[56]
+// マイデザインの看板・顔出し看板の表（Vapecord DesignStand）。garden + 0x4BF70 から 8 枚。
+// 1 枚 = パターン 0x870 B + x u32 + y u32 = 0x878 B。次の欄 UnlockedPWPs が 0x50330 なので
+// (0x50330 - 0x4BF70) / 8 = 0x878 と合う。空きは x = y = 0xFFFFFFFF。
+const u32 kStandsOffset = 0x4BF70 - 0x4BE80;
+const u32 kStandBytes = 0x878;
+const u32 kStandPattern = 0x870;
+const u32 kStandX = 0x870;
+const u32 kStandY = 0x874;
+const u32 kStandEmpty = 0xFFFFFFFFu;
 
 const u32 kCurrentRoom = 0x0095133A;        // u8: 0 = 村の屋外
 const u32 kU0Data = 0x0096FC06;             // Vapecord U0DATA（JPN 列）
@@ -83,12 +92,67 @@ Slot *SlotAt(u32 index) {
     return reinterpret_cast<Slot *>(data + kSlotsOffset + 4 * index);
 }
 
-bool IsPublicWorks(u16 id) {
-    return id >= kFirstId && id <= kLastId;
+bool IsBuilding(u16 id) {
+    return id < kEmptyId;
 }
 
+// Vapecord の IsFaceCutOutBuilding と同じ 2 つ。この 2 つだけ看板表にも位置を持つ。
 bool IsDesignStand(u16 id) {
     return id == 0xDC || id == 0xDD;
+}
+
+u8 *StandAt(u8 *data, u32 index) {
+    return data + kStandsOffset + kStandBytes * index;
+}
+
+u32 &StandX(u8 *stand) { return *reinterpret_cast<u32 *>(stand + kStandX); }
+u32 &StandY(u8 *stand) { return *reinterpret_cast<u32 *>(stand + kStandY); }
+
+s32 FreeStand(u8 *data) {
+    for (u32 i = 0; i < kStands; ++i) {
+        u8 *stand = StandAt(data, i);
+        if (StandX(stand) == kStandEmpty && StandY(stand) == kStandEmpty)
+            return (s32)i;
+    }
+    return -1;
+}
+
+// Vapecord SetFaceCutOutData をそのまま: 空きに位置を入れ、残りの空きへそのパターンを写す。
+void StandPlace(u8 *data, u32 x, u32 y) {
+    const s32 free = FreeStand(data);
+    if (free < 0)
+        return;
+    u8 *stand = StandAt(data, (u32)free);
+    StandX(stand) = x & 0xFF;
+    StandY(stand) = y & 0xFF;
+    for (u32 j = 0; j < kStands; ++j) {
+        u8 *other = StandAt(data, j);
+        if (StandX(other) == kStandEmpty && StandY(other) == kStandEmpty)
+            std::memcpy(other, stand, kStandPattern);
+    }
+}
+
+// Vapecord EditFaceCutOutData: 古い位置の看板を新しい位置へ。
+void StandMove(u8 *data, u32 oldX, u32 oldY, u32 newX, u32 newY) {
+    for (u32 i = 0; i < kStands; ++i) {
+        u8 *stand = StandAt(data, i);
+        if (StandX(stand) == oldX && StandY(stand) == oldY) {
+            StandX(stand) = newX & 0xFF;
+            StandY(stand) = newY & 0xFF;
+            return;
+        }
+    }
+}
+
+// Vapecord TryRemoveBuilding: その位置の看板を空きに戻す。
+void StandRemove(u8 *data, u32 x, u32 y) {
+    for (u32 i = 0; i < kStands; ++i) {
+        u8 *stand = StandAt(data, i);
+        if (StandX(stand) == x && StandY(stand) == y) {
+            StandX(stand) = kStandEmpty;
+            StandY(stand) = kStandEmpty;
+        }
+    }
 }
 
 const float *PlayerPosition(void) {
@@ -120,6 +184,8 @@ Result Execute(Op op) {
     case Op::Place: {
         // ゲームの設置関数。足元の属性・セーブの表・占有まで自分でやる。
         BuildingPlace(s_argX, s_argY, s_argId);
+        if (IsDesignStand((u16)s_argId))
+            StandPlace(data, s_argX, s_argY);
         // 足元に建ったものの中へ閉じ込めないよう、Vapecord と同じく 2 マス手前へ出す。
         float out[3];
         TileToWorld(out, s_argX, s_argY + 2);
@@ -130,10 +196,10 @@ Result Execute(Op op) {
         Slot *slot = SlotAt(s_argSlot);
         if (slot == nullptr)
             return Result::NoSaveData;
-        if (!IsPublicWorks(slot->id))
-            return Result::NotPublicWorks;
+        if (!IsBuilding(slot->id))
+            return Result::EmptySlot;
         if (IsDesignStand(slot->id))
-            return Result::DesignStand;
+            StandRemove(data, slot->x, slot->y);
         slot->id = kEmptyId;
         slot->x = 0;
         slot->y = 0;
@@ -145,10 +211,10 @@ Result Execute(Op op) {
         Slot *slot = SlotAt(s_argSlot);
         if (slot == nullptr)
             return Result::NoSaveData;
-        if (!IsPublicWorks(slot->id))
-            return Result::NotPublicWorks;
+        if (!IsBuilding(slot->id))
+            return Result::EmptySlot;
         if (IsDesignStand(slot->id))
-            return Result::DesignStand;
+            StandMove(data, slot->x, slot->y, s_argX, s_argY);
         slot->x = (u8)s_argX;
         slot->y = (u8)s_argY;
         break;
@@ -234,7 +300,7 @@ s32 Nearest(void) {
     u32 bestDistance = 0xFFFFFFFFu;
     for (u32 i = 0; i < kSlots; ++i) {
         const Slot *slot = SlotAt(i);
-        if (slot == nullptr || !IsPublicWorks(slot->id))
+        if (slot == nullptr || !IsBuilding(slot->id))
             continue;
         const s32 dx = (s32)slot->x - (s32)px;
         const s32 dy = (s32)slot->y - (s32)py;
@@ -248,13 +314,13 @@ s32 Nearest(void) {
 }
 
 Result Place(u8 id) {
-    if (!IsPublicWorks(id))
+    if (!IsBuilding(id))
         return Result::InvalidId;
-    if (IsDesignStand(id))
-        return Result::DesignStand;
     u8 *data = BuildingData();
     if (data == nullptr)
         return Result::NoSaveData;
+    if (IsDesignStand(id) && FreeStand(data) < 0)
+        return Result::NoFreeStand;
     bool free = false;
     for (u32 i = 0; i < kSlots && !free; ++i) {
         const Slot *slot = SlotAt(i);
@@ -300,11 +366,11 @@ const char *ResultName(Result result) {
     case Result::NotInVillage: return u8"村の屋外ではありません";
     case Result::NoSaveData: return u8"建物表が読めません";
     case Result::NoPlayer: return u8"プレイヤーが取れません";
-    case Result::InvalidId: return u8"公共事業ではありません";
+    case Result::InvalidId: return u8"その番号の建物はありません";
     case Result::NoFreeSlot: return u8"建物の空きがありません";
     case Result::NoSelection: return u8"建物を選んでいません";
-    case Result::NotPublicWorks: return u8"選んだものは公共事業ではありません";
-    case Result::DesignStand: return u8"マイデザインの看板は未対応です";
+    case Result::EmptySlot: return u8"選んだスロットに建物がありません";
+    case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";
     case Result::TimedOut: return u8"描画スレッドが応答しません";
@@ -324,9 +390,12 @@ namespace CTRPluginFramework
     {
         namespace
         {
-            const u32   kCount = PublicWorks::kLastId - PublicWorks::kFirstId + 1;
+            // 名前のある建物は 175 件（tools/strc/catalog_buildings.py）。項目は 255 まで持てる。
+            const u32   kMaxNames = 255;
 
-            const char *g_names[kCount];
+            const char *g_names[kMaxNames];
+            u8          g_ids[kMaxNames];
+            u32         g_count;
             int         g_pickIndex = -1;
             s32         g_selected = -1;
 
@@ -343,9 +412,9 @@ namespace CTRPluginFramework
                 (void)index;
                 const int pick = g_pickIndex >= 0 ? GuiMenu::ItemApplied(g_pickIndex) : -1;
 
-                if (pick < 0 || (u32)pick >= kCount)
+                if (pick < 0 || (u32)pick >= g_count)
                     return;
-                Report(kPwPlace, PublicWorks::Place((u8)(PublicWorks::kFirstId + pick)));
+                Report(kPwPlace, PublicWorks::Place(g_ids[pick]));
             }
 
             void    NearestExecute(int index)
@@ -361,8 +430,6 @@ namespace CTRPluginFramework
                     return;
                 }
                 const char *name = PublicWorks::NameOf(slot.id);
-                if (std::strncmp(name, "fobj_", 5) == 0)
-                    name += 5;
                 std::snprintf(message, sizeof(message), u8"%ld番 %s (%u,%u)",
                               (long)g_selected, name, (unsigned)slot.x, (unsigned)slot.y);
                 GuiNotification::Notify(kPwNearest, message);
@@ -402,17 +469,20 @@ namespace CTRPluginFramework
 
         void    WirePublicWorks(void)
         {
-            // 名前はゲーム自身の表（0x00955700）から引く。"fobj_" を外して見せる。
-            for (u32 i = 0; i < kCount; ++i)
+            // 名前はゲーム自身の表（0x00955700）から引く。役場・店・家も含めて名前のある全部。
+            g_count = 0;
+            for (u32 id = 0; id < PublicWorks::kEmptyId && g_count < kMaxNames; ++id)
             {
-                const char *name = PublicWorks::NameOf((u16)(PublicWorks::kFirstId + i));
-                if (std::strncmp(name, "fobj_", 5) == 0)
-                    name += 5;
-                g_names[i] = name[0] != '\0' ? name : u8"?";
+                const char *name = PublicWorks::NameOf((u16)id);
+                if (name[0] == '\0')
+                    continue;
+                g_names[g_count] = name;
+                g_ids[g_count] = (u8)id;
+                ++g_count;
             }
             g_pickIndex = GuiMenu::FindItem(kPwPick);
-            if (g_pickIndex >= 0)
-                GuiMenu::SetItemOptions(g_pickIndex, g_names, (int)kCount);
+            if (g_pickIndex >= 0 && g_count > 0)
+                GuiMenu::SetItemOptions(g_pickIndex, g_names, (int)g_count);
 
             const int place = GuiMenu::FindItem(kPwPlace);
             const int nearest = GuiMenu::FindItem(kPwNearest);

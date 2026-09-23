@@ -17,10 +17,11 @@
 // メニュー側は要求を置いて、終わるのを待つだけ。
 namespace PublicWorks
 {
-    static const u8  kFirstId = 0x90;       // fobj_* の範囲（Building_GetName の表）
+    static const u8  kFirstId = 0x90;       // fobj_*（公共事業）の範囲。検査の照合用
     static const u8  kLastId = 0xFB;
-    static const u8  kEmptyId = 0xFC;
+    static const u8  kEmptyId = 0xFC;       // これ未満は全部「建物」。役場・店・家も扱う
     static const u32 kSlots = 56;
+    static const u32 kStands = 8;           // マイデザインの看板・顔出し看板
 
     enum class Result : u32
     {
@@ -28,11 +29,11 @@ namespace PublicWorks
         NotInVillage,       // 村の屋外でしか触らない
         NoSaveData,
         NoPlayer,
-        InvalidId,          // 公共事業（fobj）以外は触らない
+        InvalidId,          // 0xFC 以上（空き）
         NoFreeSlot,
         NoSelection,
-        NotPublicWorks,     // 選んだスロットが公共事業ではない
-        DesignStand,        // マイデザインの看板・顔出し看板は看板表も要るので今は触らない
+        EmptySlot,          // 選んだスロットが空いている
+        NoFreeStand,        // マイデザインの看板表に空きが無い
         HookFailed,
         Busy,
         TimedOut,
@@ -49,7 +50,7 @@ namespace PublicWorks
     bool            ReadSlot(u32 index, Slot &out);
     const char *    NameOf(u16 id);                 // ゲームの表の名前。無ければ ""
     bool            PlayerTile(u32 &x, u32 &y);
-    // プレイヤーに一番近い公共事業のスロット。無ければ -1。
+    // プレイヤーに一番近い建物のスロット（役場・店・家も含む）。無ければ -1。
     s32             Nearest(void);
 
     // ---- 変える（要求を出して描画スレッドの完了を待つ）----
