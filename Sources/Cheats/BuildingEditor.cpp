@@ -553,8 +553,13 @@ void Cycle(s32 step) {
 bool s_restart;                                     // 画面遷移のあとで再開を待っている
 u32 s_restartTicks;
 
-void AfterChange(void) {
-    if (PublicWorks::LastReloaded()) {              // 部屋を読み直した。カメラも実体も作り直されている
+void AfterChange(PublicWorks::Result result) {
+    // ★成功した操作のときだけ見る（タイムアウト等で前の操作の記録を読まない）
+    if (result == PublicWorks::Result::Ok && PublicWorks::LastReloaded()) {
+        static char message[96];
+        std::snprintf(message, sizeof(message), u8"部屋を読み直しました（%s）",
+                      PublicWorks::ReloadWhyName(PublicWorks::LastReloadWhy()));
+        GuiNotification::Notify(Cheats::kBeOn, message);
         Stop();
         s_restart = true;
         s_restartTicks = 0;
@@ -567,8 +572,9 @@ void Execute(void) {
     case Mode::Place: {
         if (s_kindCount == 0)
             return;
-        Report(PublicWorks::PlaceAt(s_kinds[s_kind], (u32)s_cx, (u32)s_cy));
-        AfterChange();
+        const PublicWorks::Result result = PublicWorks::PlaceAt(s_kinds[s_kind], (u32)s_cx, (u32)s_cy);
+        Report(result);
+        AfterChange(result);
         return;
     }
     case Mode::Move: {
@@ -582,7 +588,7 @@ void Execute(void) {
         // 動かしたら選択を外す（利用者指示）。Op::Move が光らせ直した要求をここで外す。
         Select(-1);
         Report(result);
-        AfterChange();
+        AfterChange(result);
         return;
     }
     case Mode::Remove: {
@@ -596,7 +602,7 @@ void Execute(void) {
         if (result == PublicWorks::Result::Ok)
             Select(Hovered());
         Report(result);
-        AfterChange();
+        AfterChange(result);
         return;
     }
     default:
@@ -740,8 +746,9 @@ void Tick(u32 keys) {
         const u32 count = (u32)Mode::Count;
         const u32 now = (u32)s_mode;
         s_mode = (Mode)((pressed & (u32)Key::R) ? (now + 1) % count : (now + count - 1) % count);
-        // 削除はカーソルの下がそのまま選択。移動は選んでいるものを引き継ぐ。配置は選択なし
-        Select(s_mode == Mode::Remove ? Hovered() : s_mode == Mode::Move ? s_selected : -1);
+        // 削除はカーソルの下がそのまま選択。移動と配置は選択なしで始める
+        // （削除でカーソルを合わせた建物が、移動へ切り替えると選ばれていた。利用者報告）
+        Select(s_mode == Mode::Remove ? Hovered() : -1);
         NotifyMode();
     }
 
@@ -768,6 +775,11 @@ void Tick(u32 keys) {
 
     if (pressed & (u32)Key::A)
         Execute();
+    // 移動: B で選択を外す（利用者指示）
+    if ((pressed & (u32)Key::B) && s_mode == Mode::Move && s_selected >= 0) {
+        Select(-1);
+        GuiNotification::Notify(Cheats::kBeOn, u8"選択を外しました");
+    }
     if ((pressed & (u32)Key::X) && s_mode == Mode::Place)
         CopyKind();
 }

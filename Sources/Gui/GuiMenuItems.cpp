@@ -172,14 +172,37 @@ namespace CTRPluginFramework
                         u8"もうわざわざタイトル画面へ戻る必要はありません。地図上で選択したプレイヤーのデータへ切り替えます。");
                 const int mapCount = g_itemCount - mapFirst;
 
+                // ---- root/村/公共事業エディターの設定（§9）----
+                const int editorSetFirst = g_itemCount;
+                i = AddItem(ITEM_VALUE, kHlTint, u8"移動で選んだ建物に重ねる青の濃さです。0 で元の色、255 で青一色。削除の赤も同じ濃さです。");
+                SetValue(i, FMT_DEC, 176, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlAlpha, u8"選んだ建物の、揺れの中心の不透明度です。255 で不透明。");
+                SetValue(i, FMT_DEC, 208, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlWave, u8"選んだ建物の不透明度が sin 波で上下する幅です。0 で揺れません。");
+                SetValue(i, FMT_DEC, 64, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kHlSpeed, u8"選んだ建物の揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
+                SetValue(i, FMT_DEC, 11, 1, 100, 1);
+                i = AddItem(ITEM_VALUE, kBpAlpha, u8"設置プレビューの、揺れの中心の不透明度です。");
+                SetValue(i, FMT_DEC, 160, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kBpWave, u8"設置プレビューの不透明度が sin 波で上下する幅です。");
+                SetValue(i, FMT_DEC, 64, 0, 255, 8);
+                i = AddItem(ITEM_VALUE, kBpSpeed, u8"設置プレビューの揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
+                SetValue(i, FMT_DEC, 11, 1, 100, 1);
+                const int editorSetCount = g_itemCount - editorSetFirst;
+
                 // ---- root/村（§9）----
                 const int townFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"マップ", u8"地図で選んだものに対する操作です。");
                 SetFolder(i, mapFirst, mapCount);
+                i = AddItem(ITEM_FOLDER, u8"公共事業エディターの設定", u8"公共事業エディターの選択と設置プレビューの見た目です。");
+                SetFolder(i, editorSetFirst, editorSetCount);
                 AddItem(ITEM_CHECKBOX, u8"アイテムが消えない（未設計）", u8"無効な位置にあるアイテムが翌日に消えないようにします。");
                 i = AddItem(ITEM_LINKED_LIST, kWeather, u8"天気を変更します。");
                 SetOptions(i, kWeatherOptions, kWeatherOptionCount);
-                AddItem(ITEM_ACTION, u8"公共事業エディター（未設計）", u8"好きな場所に建造物を建てましょう。");
+                AddItem(ITEM_CHECKBOX, kBeOn,
+                        u8"好きな場所に建造物を建てましょう。カメラだけを動かして置く・動かす・消すができ、プレイヤーは動けません。"
+                        u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、X でカーソルの建物をコピー、"
+                        u8"Y+十字で建物を順に選ぶ、A で実行、移動の選択は B で解除。");
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 
@@ -213,10 +236,9 @@ namespace CTRPluginFramework
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));
                 const int gameCount = g_itemCount - gameFirst;
 
-                // ---- root/テスト（§18）----
-                // 解析で確かめたモデル描画を実機で試すための場所。確かめ終わったものから
-                // 本来のフォルダへ移す。
-                const int testFirst = g_itemCount;
+                // ---- root/テスト/UnitCursor（§18）----
+                // 解析で確かめたモデル描画を実機で試すための場所。確かめ終わったものから本来のフォルダへ移す。
+                const int unitCursorFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, kGridCursor,
                         u8"村の地面にグリッドカーソルを出します。プレイヤーの足元が基点です。");
                 i = AddItem(ITEM_VALUE, kGridCursorCols,
@@ -239,6 +261,10 @@ namespace CTRPluginFramework
                         u8"有効な間、十字キーでカーソルを 1 マスずつ動かします。プレイヤーは歩きません。");
                 AddItem(ITEM_ACTION, kGridCursorStat,
                         u8"グリッドカーソルがいまどこで止まっているかを通知で出します。");
+                const int unitCursorCount = g_itemCount - unitCursorFirst;
+
+                // ---- root/テスト/モデル（§18）----
+                const int modelFirst = g_itemCount;
                 AddItem(ITEM_ACTION, kMvBuild,
                         u8"ゲームの RomFS を歩いて .bcres の一覧を作ります。最初に 1 回だけ。");
                 i = AddItem(ITEM_VALUE, kMvScroll,
@@ -261,40 +287,16 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 0, -500, 500, 1);
                 i = AddItem(ITEM_VALUE, kMvZ, u8"プレイヤーからの Z ずらしです。");
                 SetValue(i, FMT_DEC, 0, -500, 500, 1);
-                i = AddItem(ITEM_LIST, kPwPick,
-                            u8"置く公共事業です。名前はゲーム内部のものです。");
-                SetOptions(i, kPwEmptyOptions, 1);
-                AddItem(ITEM_ACTION, kPwPlace,
-                        u8"選んだ公共事業をプレイヤーの足元に建て、部屋を読み直します。");
-                AddItem(ITEM_ACTION, kPwNearest,
-                        u8"プレイヤーに一番近い公共事業を選びます。");
-                AddItem(ITEM_ACTION, kPwRemove,
-                        u8"選んだ公共事業を消し、当たり判定もその場で作り直します。");
-                AddItem(ITEM_ACTION, kPwMove,
-                        u8"選んだ公共事業を足元へ動かし、当たり判定も作り直します。");
-                AddItem(ITEM_ACTION, kPwRebuild,
-                        u8"建物表はそのまま、当たり判定と占有を建物表から作り直します。");
-                AddItem(ITEM_CHECKBOX, kHlOn,
-                        u8"「近くの公共事業を選ぶ」で選んだ建物に薄い青を重ね、透明度をゆらゆら変えます。");
-                i = AddItem(ITEM_VALUE, kHlTint, u8"薄い青をどれだけ混ぜるかです。0 で元の色、255 で青一色。");
-                SetValue(i, FMT_DEC, 176, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlAlpha, u8"揺れの中心の不透明度です。255 で不透明。");
-                SetValue(i, FMT_DEC, 208, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlWave, u8"不透明度が sin 波で上下する幅です。0 で揺れません。");
-                SetValue(i, FMT_DEC, 64, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlSpeed, u8"揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
-                SetValue(i, FMT_DEC, 11, 1, 100, 1);
-                AddItem(ITEM_CHECKBOX, kBeOn,
-                        u8"カメラを動かして離れた場所に建物を置く・動かす・消します。プレイヤーは動けません。"
-                        u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、Y+十字で建物を順に選ぶ、A で実行。");
-                i = AddItem(ITEM_VALUE, kBpAlpha, u8"建物エディターの設置プレビューの、揺れの中心の不透明度です。");
-                SetValue(i, FMT_DEC, 160, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kBpWave, u8"設置プレビューの不透明度が sin 波で上下する幅です。");
-                SetValue(i, FMT_DEC, 64, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kBpSpeed, u8"設置プレビューの揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
-                SetValue(i, FMT_DEC, 11, 1, 100, 1);
                 AddItem(ITEM_ACTION, kMvStat,
                         u8"モデルビューアがどこで止まっているかを通知で出します。");
+                const int modelCount = g_itemCount - modelFirst;
+
+                // ---- root/テスト（§18）----
+                const int testFirst = g_itemCount;
+                i = AddItem(ITEM_FOLDER, u8"UnitCursor", u8"ゲームの UnitCursor（模様替えのマス）を村の地面に出す試験です。");
+                SetFolder(i, unitCursorFirst, unitCursorCount);
+                i = AddItem(ITEM_FOLDER, u8"モデル", u8"RomFS の .bcres を選んで出すモデルビューアです。");
+                SetFolder(i, modelFirst, modelCount);
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----

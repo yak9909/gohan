@@ -76,11 +76,11 @@ namespace CTRPluginFramework
         static const char kPwMove[]    = u8"選んだ公共事業を足元へ";
         static const char kPwRebuild[] = u8"当たり判定を作り直す";
         static const char kHlOn[]      = u8"選んだ建物を光らせる";
-        static const char kHlTint[]    = u8"青の合成度合い";
-        static const char kHlAlpha[]   = u8"不透明度";
-        static const char kHlWave[]    = u8"揺れ幅";
-        static const char kHlSpeed[]   = u8"揺れの速さ";
-        static const char kBeOn[]      = u8"建物エディター";
+        static const char kHlTint[]    = u8"選択の色の濃さ";
+        static const char kHlAlpha[]   = u8"選択の不透明度";
+        static const char kHlWave[]    = u8"選択の揺れ幅";
+        static const char kHlSpeed[]   = u8"選択の揺れの速さ";
+        static const char kBeOn[]      = u8"公共事業エディター";
         static const char kBpAlpha[]   = u8"プレビューの不透明度";
         static const char kBpWave[]    = u8"プレビューの揺れ幅";
         static const char kBpSpeed[]   = u8"プレビューの揺れの速さ";

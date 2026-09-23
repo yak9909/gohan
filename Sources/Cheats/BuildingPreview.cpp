@@ -446,6 +446,7 @@ Status GetStatus(void) {
     out.failReason = s_failReason;
     out.ready = s_stage == Stage::Ready;
     out.resourceSpare = s_resourceSpare;
+    out.stage = (u32)s_stage;
     return out;
 }
 

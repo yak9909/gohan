@@ -38,6 +38,7 @@ namespace BuildingPreview
         u32     failReason;     // 2/3 = ヒープが作れない（連続した空きが無い）、10 = 空きの合計が足りない
         bool    ready;
         u32     resourceSpare;  // Setup のあとに資源ヒープに残った量
+        u32     stage;          // 0 = 何も持っていない
     };
     Status          GetStatus(void);
 

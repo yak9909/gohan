@@ -75,6 +75,10 @@ namespace PublicWorks
     const char *    ResultName(Result result);
     // 直前の操作で見た目をその場で作れず、部屋を読み直したか（IDA-opus-5.5-F004）。
     bool            LastReloaded(void);
+    // 読み直した理由（その場で作れなかった／消せなかったわけ）。
+    enum class ReloadWhy : u32 { None, NoManager, Special, SharedPoolFull, ParentHeapLow, SpawnFailed, ActorNotFound };
+    ReloadWhy       LastReloadWhy(void);
+    const char *    ReloadWhyName(ReloadWhy why);
     // 直前の操作で下画面の地図の建物アイコンをどうしたか（IDA-opus-5.5-F005 / F006）。
     enum class MapState : u32 { Untouched, Refreshed, NotFound, Full };
     MapState        LastMapState(void);

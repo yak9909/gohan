@@ -208,6 +208,7 @@ volatile u32 s_doneSeq;
 volatile Result s_result = Result::Ok;
 bool s_hooked;
 volatile bool s_reloaded;                   // 直前の操作で部屋を読み直したか
+volatile ReloadWhy s_reloadWhy = ReloadWhy::None;   // 読み直した理由（通知に出す）
 volatile MapState s_mapState = MapState::Untouched;  // 直前の操作で下画面の地図をどうしたか
 
 u8 *BuildingData(void) {
@@ -389,18 +390,28 @@ u32 SharedKinds(u32 extra) {
 // sub_6DE198 の 1 件分: 位置 → 高さ → 生成 → 一覧へ。作れたら true。
 bool SpawnVisual(u32 id, u32 x, u32 y) {
     const u32 mgr = StrcMgr();
-    if (mgr == 0 || !CanSpawnInPlace(id))
+    if (mgr == 0) {
+        s_reloadWhy = ReloadWhy::NoManager;
         return false;
+    }
+    if (!CanSpawnInPlace(id)) {
+        s_reloadWhy = ReloadWhy::Special;
+        return false;
+    }
     // 読む先で余裕の見方が違う（IDA-opus-5.5-F008）。足りなければゲームの読み直しに任せる。
     const u32 profile = BuildingProfile(id);
-    if (UsesSharedPool(profile) ? !ResourceRoom(mgr) : !ParentRoom())
+    if (UsesSharedPool(profile) ? !ResourceRoom(mgr) : !ParentRoom()) {
+        s_reloadWhy = UsesSharedPool(profile) ? ReloadWhy::SharedPoolFull : ReloadWhy::ParentHeapLow;
         return false;
+    }
     s_spawnPosition[0] = (float)(32 * x + 16);
     s_spawnPosition[1] = SpawnHeight(id, x, y);
     s_spawnPosition[2] = (float)(32 * y + 16);
     const u32 actor = SpawnActor(profile, mgr, id, s_spawnPosition, nullptr);
-    if (actor == 0)
+    if (actor == 0) {
+        s_reloadWhy = ReloadWhy::SpawnFailed;
         return false;
+    }
 
     u32 list = kListOther;
     if (id <= 3)
@@ -431,8 +442,10 @@ bool IsActorOf(u32 actor, u32 id, u32 x, u32 y) {
 // デストラクタは自分を一覧から外さないので、順序を逆にすると解放済みを読まれる。
 bool KillVisual(u32 id, u32 x, u32 y) {
     const u32 mgr = StrcMgr();
-    if (mgr == 0 || IsSpecial(id))
+    if (mgr == 0 || IsSpecial(id)) {
+        s_reloadWhy = mgr == 0 ? ReloadWhy::NoManager : ReloadWhy::Special;
         return false;
+    }
     for (u32 l = 0; l < sizeof(kAllLists) / sizeof(kAllLists[0]); ++l) {
         u32 *count = ListCount(mgr, kAllLists[l]);
         u32 *array = ListArray(mgr, kAllLists[l]);
@@ -450,6 +463,7 @@ bool KillVisual(u32 id, u32 x, u32 y) {
             return true;
         }
     }
+    s_reloadWhy = ReloadWhy::ActorNotFound;
     return false;
 }
 
@@ -545,6 +559,7 @@ Result Execute(Op op) {
     // プレイヤーの位置は変えない（利用者指示 2026-09-23）。読み直すときも今の位置のまま。
     float stay[3] = { here[0], here[1], here[2] };
     s_reloaded = false;
+    s_reloadWhy = ReloadWhy::None;
     s_mapState = MapState::Untouched;
     switch (op) {
     case Op::Place: {
@@ -664,6 +679,10 @@ Result Request(Op op) {
         return Result::HookFailed;
     if (s_op != Op::None)
         return Result::Busy;
+    // ★前の操作の「読み直した」を残さない。以前はここで消さず、要求がタイムアウトすると前の操作
+    //   （特殊建物で読み直した）の記録を建物エディターが読み、関係ない操作のたびに再開を繰り返しえた。
+    s_reloaded = false;
+    s_reloadWhy = ReloadWhy::None;
     const u32 seq = s_seq + 1;
     s_seq = seq;
     s_op = op;                                      // 最後に書く。これで描画スレッドが拾う
@@ -720,6 +739,23 @@ void Unhighlight(void) {
 
 bool LastReloaded(void) {
     return s_reloaded;
+}
+
+ReloadWhy LastReloadWhy(void) {
+    return s_reloadWhy;
+}
+
+const char *ReloadWhyName(ReloadWhy why) {
+    switch (why) {
+    case ReloadWhy::None: return u8"-";
+    case ReloadWhy::NoManager: return u8"建物の管理役が取れない";
+    case ReloadWhy::Special: return u8"その場で作れない特殊な建物";
+    case ReloadWhy::SharedPoolFull: return u8"共有の資源枠に空きがない";
+    case ReloadWhy::ParentHeapLow: return u8"建物用の親ヒープの空きが少ない";
+    case ReloadWhy::SpawnFailed: return u8"生成に失敗";
+    case ReloadWhy::ActorNotFound: return u8"消す実体が見つからない";
+    }
+    return u8"?";
 }
 
 MapState LastMapState(void) {
