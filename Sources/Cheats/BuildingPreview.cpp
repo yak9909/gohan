@@ -195,6 +195,12 @@ void Pose(void) {
     matrix[3] = out[0];
     matrix[7] = out[1];
     matrix[11] = out[2];
+    // ★橋（IDA-opus-5.5-F024）: 実機の AcStrcBridge のモデル行列は平行移動が (x, 0, 0) で、回転だけが
+    //   曲面の角度（z から決まる。建物と同じ）。半径はモデル自身が持つので、地面の高さは使わない。
+    if (angle != 0 && PublicWorks::IsBridgeId((u16)s_builtId)) {
+        matrix[7] = 0.0f;
+        matrix[11] = 0.0f;
+    }
     if (angle != 0)
         AppendRotationX16(matrix, angle);
     SetMatrix3x4(s_node, matrix);

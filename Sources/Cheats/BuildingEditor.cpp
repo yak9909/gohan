@@ -550,12 +550,12 @@ void Execute(void) {
         return;
     }
     case Mode::Move: {
-        if (hovered >= 0 && hovered != s_selected) {
-            Select(hovered);
+        // 選べるのは何も選んでいないときだけ（利用者指示）。選んでいる間の A は、ほかの建物の上でも必ず動かす
+        if (s_selected < 0) {
+            if (hovered >= 0)
+                Select(hovered);
             return;
         }
-        if (s_selected < 0)
-            return;
         const PublicWorks::Result result = PublicWorks::MoveTo((u32)s_selected, (u32)s_cx, (u32)s_cy);
         // 動かしたら選択を外す（利用者指示）。Op::Move が光らせ直した要求をここで外す。
         Select(-1);
