@@ -420,4 +420,144 @@ const char *ReasonName(Fail reason) {
     return u8"?";
 }
 
+// ---------------------------------------------------------------------------------------
+// ReadFile: ハッシュ表で 1 本だけ引く
+// ---------------------------------------------------------------------------------------
+
+namespace {
+
+bool ReadAt(Handle file, u64 at, void *out, u32 size) {
+    u32 got = 0;
+    return R_SUCCEEDED(FSFILE_Read(file, &got, at, out, size)) && got == size;
+}
+
+// RomFS の名前ハッシュ（3dbrew / libctru romfs_dev.c の calc_hash と同じ式）
+u32 NameHash(u32 parent, const char *name, u32 length) {
+    u32 hash = parent ^ 123456789u;
+    for (u32 i = 0; i < length; ++i) {
+        hash = (hash >> 5) | (hash << 27);
+        hash ^= (u8)name[i];
+    }
+    return hash;
+}
+
+// エントリの名前（UTF-16LE）が ASCII の name[0..length) と同じか
+bool SameName(Handle file, u64 at, u32 nameLength, const char *name, u32 length) {
+    if (nameLength != length * 2 || nameLength > 2 * kMaxPath)
+        return false;
+    u16 text[kMaxPath];
+    if (!ReadAt(file, at, text, nameLength))
+        return false;
+    for (u32 i = 0; i < length; ++i)
+        if (text[i] != (u8)name[i])
+            return false;
+    return true;
+}
+
+u32 ReadFrom(Handle file, const char *path, void *buf, u32 cap) {
+    u8 front[0x60];
+    if (!ReadAt(file, 0, front, sizeof(front)))
+        return 0;
+    u64 level3 = 0;
+    if (std::memcmp(front, "IVFC", 4) == 0) {
+        const u32 shift = Word(front + 0x4C);
+        if (shift > 24)
+            return 0;
+        const u64 block = (u64)1 << shift;
+        level3 = ((u64)0x60 + block - 1) & ~(block - 1);
+    }
+    u32 header[10];
+    if (!ReadAt(file, level3, header, sizeof(header)) || header[0] != 0x28)
+        return 0;
+    const u32 dirBuckets = header[2] / 4;
+    const u32 fileBuckets = header[6] / 4;
+    if (dirBuckets == 0 || fileBuckets == 0)
+        return 0;
+
+    u32 dir = 0;                                        // 根
+    const char *part = path;
+    for (u32 depth = 0; depth < kMaxDepth; ++depth) {
+        const char *slash = std::strchr(part, '/');
+        const u32 length = slash != nullptr ? (u32)(slash - part) : (u32)std::strlen(part);
+        if (length == 0 || length > kMaxPath)
+            return 0;
+        if (slash != nullptr) {                         // ディレクトリ
+            u32 entry = kEnd;
+            if (!ReadAt(file, level3 + header[1] + 4 * (NameHash(dir, part, length) % dirBuckets), &entry, 4))
+                return 0;
+            for (u32 guard = 0; entry != kEnd && guard < 4096; ++guard) {
+                u32 e[6];                               // parent, sibling, child, file, hashNext, nameLen
+                if (entry > header[4] || !ReadAt(file, level3 + header[3] + entry, e, sizeof(e)))
+                    return 0;
+                if (e[0] == dir && SameName(file, level3 + header[3] + entry + kDirEntry, e[5], part, length))
+                    break;
+                entry = e[4];
+            }
+            if (entry == kEnd)
+                return 0;
+            dir = entry;
+            part = slash + 1;
+            continue;
+        }
+        u32 entry = kEnd;                               // ファイル
+        if (!ReadAt(file, level3 + header[5] + 4 * (NameHash(dir, part, length) % fileBuckets), &entry, 4))
+            return 0;
+        for (u32 guard = 0; entry != kEnd && guard < 4096; ++guard) {
+            u32 e[8];                                   // parent, sibling, offset(64), size(64), hashNext, nameLen
+            if (entry > header[8] || !ReadAt(file, level3 + header[7] + entry, e, sizeof(e)))
+                return 0;
+            if (e[0] == dir && SameName(file, level3 + header[7] + entry + kFileEntry, e[7], part, length)) {
+                const u64 offset = ((u64)e[3] << 32) | e[2];
+                const u64 size = ((u64)e[5] << 32) | e[4];
+                if (size == 0 || size > cap)
+                    return 0;
+                return ReadAt(file, level3 + header[9] + offset, buf, (u32)size) ? (u32)size : 0;
+            }
+            entry = e[6];
+        }
+        return 0;
+    }
+    return 0;
+}
+
+}  // namespace
+
+u32 ReadFile(const char *path, void *buf, u32 cap) {
+    if (path == nullptr || buf == nullptr || cap == 0)
+        return 0;
+    u32 got = 0;
+    // 更新タイトルが先（同じパスがあればゲームもこちらを使う）
+    const u64 running = CTRPluginFramework::Process::GetTitleID();
+    const u64 updateTid = ((u64)kUpdateTitleHigh << 32) | (u32)running;
+    static const u8 kMediaTypes[] = { 1, 2, 0 };
+    for (u32 i = 0; i < sizeof(kMediaTypes) && got == 0; ++i) {
+        u32 archiveData[4] = { (u32)updateTid, (u32)(updateTid >> 32), kMediaTypes[i], 0 };
+        u32 fileData[5] = { 0, 0, 0, 0, 0 };
+        const FS_Path titlePath = { PATH_BINARY, sizeof(archiveData), archiveData };
+        const FS_Path titleFile = { PATH_BINARY, sizeof(fileData), fileData };
+        Handle update = 0;
+        if (R_FAILED(FSUSER_OpenFileDirectly(&update, (FS_ArchiveID)kArchiveContent, titlePath, titleFile,
+                                             FS_OPEN_READ, 0)) || update == 0)
+            continue;
+        got = ReadFrom(update, path, buf, cap);
+        FSFILE_Close(update);
+        svcCloseHandle(update);
+        break;                                          // 開けた媒体で見つからなければ base へ
+    }
+    if (got != 0)
+        return got;
+    static const char kEmptyText[] = "";
+    static const u8 kZeros[0xC] = { 0 };
+    const FS_Path archivePath = { PATH_EMPTY, 1, kEmptyText };
+    const FS_Path filePath = { PATH_BINARY, sizeof(kZeros), kZeros };
+    Handle base = 0;
+    if (R_FAILED(FSUSER_OpenFileDirectly(&base, (FS_ArchiveID)kArchiveRomfs, archivePath, filePath,
+                                         FS_OPEN_READ, 0)) || base == 0)
+        return 0;
+    got = ReadFrom(base, path, buf, cap);
+    FSFILE_Close(base);
+    svcCloseHandle(base);
+    return got;
+}
+
 }  // namespace RomfsIndex

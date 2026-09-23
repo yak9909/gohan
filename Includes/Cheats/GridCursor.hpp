@@ -90,6 +90,10 @@ namespace GridCursor
     // 描画を止めて instance・アニメ・ヒープを返し、済んだらフックを外す。
     void            Hide(void);
     bool            IsShown(void);          // 出ている（または出そうとしている）
+    // マス指定の形で出す（建物エディター）。足元の形で出ているときは false。
+    // 置く場所は SetTiles で村のマス (x, y) の並びとして渡す。体数が足りなければ組み直す。
+    bool            ShowTiles(void);
+    void            SetTiles(const u8* xs, const u8* ys, u32 count);
     // プロセス終了時に 1 回。フック語を元の NOP へ戻し、置き場を消す。
     void            Shutdown(void);
 

@@ -1140,9 +1140,10 @@ namespace CTRPluginFramework
         void    SetTouchBlock(bool on)  { WriteInputFlag(1, on ? 1 : 0); }
 
         // ★1 回の書き込みで決める（2 回に分けるとゲームが途中の 0 を読むことがある）
-        void    SetButtonBlock(bool buttons, bool dpadOnly)
+        //   3 = ボタン＋スライドパッド（ビットとアナログ値）。建物エディターでプレイヤーを止める。
+        void    SetButtonBlock(bool buttons, bool dpadOnly, bool everything)
         {
-            WriteInputFlag(0, buttons ? 1 : dpadOnly ? 2 : 0);
+            WriteInputFlag(0, everything ? 3 : buttons ? 1 : dpadOnly ? 2 : 0);
         }
 
         void    DrawBottomDim(u32 color, float amount)

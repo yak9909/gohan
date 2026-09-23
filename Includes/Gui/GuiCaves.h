@@ -79,16 +79,17 @@ static const unsigned long kGuiHookCount = 2;
 //   ★CTRPF は HID を直接読むので自前メニューの操作とタッチは影響を受けない。
 // ================================================================
 static const unsigned long kGuiInputCave[] = {
-    0xE59F306C, 0xE5D3C001, 0xE35C0000, 0x0A00000C, 0xE590C010, 0xE3CCC001,
+    0xE59F3088, 0xE5D3C001, 0xE35C0000, 0x0A00000C, 0xE590C010, 0xE3CCC001,
     0xE580C010, 0xE590C108, 0xE35C0000, 0xBA000006, 0xE92D0010, 0xE3A04001,
     0xE1A04C14, 0xE590C110, 0xE1CCC004, 0xE580C110, 0xE8BD0010, 0xE590C110,
-    0xE5D33000, 0xE3530000, 0x0A000005, 0xE3530002, 0x1A000001, 0xE59F3014,
-    0xEA000000, 0xE59F3010, 0xE00CC003, 0xE580C110, 0xEAF42B7C, 0x009B7010,
-    0xFFF0FFFF, 0xFFF08764,
+    0xE5D33000, 0xE3530000, 0x0A00000C, 0xE3530002, 0x1A000001, 0xE59F3030,
+    0xEA000007, 0xE3530003, 0x1A000004, 0xE3A03000, 0xE580311C, 0xE5803120,
+    0xE59F3018, 0xEA000000, 0xE59F3014, 0xE00CC003, 0xE580C110, 0xEAF42B75,
+    0x009B7010, 0xFFF0FFFF, 0xFF008764, 0xFFF08764,
 };
-static const unsigned long kGuiInputCaveCount = 32;
+static const unsigned long kGuiInputCaveCount = 40;
 static const unsigned long kGuiInputCaveBase  = 0x00838020;
-static const unsigned long kGuiInputCtlIndex  = 29;   // CTL 番地のリテラル語位置
+static const unsigned long kGuiInputCtlIndex  = 36;   // CTL 番地のリテラル語位置
 static const unsigned long kGuiInputCtl       = 0x009B7010;   // +0 ボタン遮断 / +1 タッチ遮断
 static const unsigned long kGuiInputHookAddr  = 0x0053CDF4;
 static const unsigned long kGuiInputHookOrig  = 0xEB001823;

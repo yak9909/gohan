@@ -80,7 +80,7 @@ volatile Req s_req = Req::None;
 volatile u16 s_reqId;
 volatile u8 s_reqX, s_reqY;
 volatile State s_state = State::Off;
-Params s_params = { 0x00FFB060u, 0xB0, 0xD0, 0x40, 11 };   // 青は F011〜F013 の実機の色
+Params s_params = { kBlue, 0xB0, 0xD0, 0x40, 11 };   // 青は F011〜F013 の実機の色
 
 // ---- 読み書き -----------------------------------------------------------------------------
 // ★範囲だけで番地と決めない。0x3F800000（float の 1.0）を番地とみなして読みに行き SIGSEGV になった。
@@ -498,6 +498,25 @@ void SetParams(const Params &params) {
 }
 
 const Params &GetParams(void) { return s_params; }
+
+void SetColor(u32 color) {
+    s_params.color = color & 0x00FFFFFFu;
+}
+
+bool Current(u16 &id, u8 &x, u8 &y) {
+    if (s_req == Req::Select) {                 // まだ当てていない要求も「いま選んでいるもの」
+        id = s_reqId;
+        x = s_reqX;
+        y = s_reqY;
+        return true;
+    }
+    if (s_state != State::Active)
+        return false;
+    id = s_reqId;
+    x = s_reqX;
+    y = s_reqY;
+    return true;
+}
 State GetState(void) { return s_state; }
 u32 MaterialCount(void) { return s_animCount; }
 u32 ModelCount(void) { return s_modelCount; }

@@ -109,6 +109,21 @@ static bool s_haveOrigin; // 一度掴んだら大きさを変えても掴み直
 static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
+// ★マス指定の形（建物エディター）。プレイヤーの足元ではなく、村のマス (x, y) の並びへ 1 体ずつ置く。
+//   マス (x, y) の中心は world (32x+16, 地面, 32y+16)（建物の実体の位置と同じ規則。PublicWorks）。
+//   メニュースレッドが pend に書いて番号を進め、描画スレッドが Reposition で写す。
+static volatile bool s_tileMode;
+static u8 s_tileX[kMaxCursors];
+static u8 s_tileY[kMaxCursors];
+static u32 s_tileCount;
+static u8 s_pendX[kMaxCursors];
+static u8 s_pendY[kMaxCursors];
+static volatile u32 s_pendCount;
+static volatile u32 s_pendSeq;
+static u32 s_takenSeq;
+typedef float (*GroundHeightFn)(const float* pos, u32 zero);    // 0x006C69C0（S0 で返る）
+static const GroundHeightFn GroundHeight = reinterpret_cast<GroundHeightFn>(0x006C69C0);
+
 static bool s_hookInstalled;
 // スタブから毎フレーム呼ぶ相乗り先。フックを 2 つは置けないのでここで配る。
 static const u32 kMaxExtraSteps = 4;
@@ -207,7 +222,29 @@ static void ComputeOrigin() {
     }
 }
 
+static void PoseTiles() {
+    const u32 seq = s_pendSeq;
+    u32 count = s_pendCount;
+    if (count > kMaxCursors)
+        count = kMaxCursors;
+    for (u32 i = 0; i < count; ++i) {
+        s_tileX[i] = s_pendX[i];
+        s_tileY[i] = s_pendY[i];
+    }
+    s_tileCount = count;
+    s_takenSeq = seq;                    // 写している間に書き換わっていれば次のフレームでもう一度
+    for (u32 i = 0; i < s_cursorCount && i < s_tileCount; ++i) {
+        float pos[3] = { (float)(32 * s_tileX[i] + 16), 0.0f, (float)(32 * s_tileY[i] + 16) };
+        pos[1] = GroundHeight(pos, 0);
+        PoseCursor(i, pos[0], pos[1], pos[2]);
+    }
+}
+
 static void PoseAll() {
+    if (s_tileMode) {
+        PoseTiles();
+        return;
+    }
     const float ox = s_originX;
     const float oz = s_originZ;
     u32 index = 0;
@@ -551,9 +588,13 @@ extern "C" void FrameCallback(void) {
     if (s_request == Request::Reposition) {
         s_request = Request::None;
         PoseAll();
+    } else if (s_tileMode && s_takenSeq != s_pendSeq) {
+        PoseAll();
     }
 
     for (u32 i = 0; i < s_cursorCount; ++i) {
+        if (s_tileMode && i >= s_tileCount)
+            continue;                     // マス指定の形で使っていない体は出さない
         void* holder = s_holders[i];
         if (*Word(holder, 4) == 0u)
             continue;
@@ -633,7 +674,32 @@ bool Show(void) {
     return true;
 }
 
+bool ShowTiles(void) {
+    if (!s_tileMode && s_wantShown)
+        return false;                     // 足元の形で出ている。混ぜない
+    s_tileMode = true;
+    return Show();
+}
+
+void SetTiles(const u8* xs, const u8* ys, u32 count) {
+    if (count > kMaxCursors)
+        count = kMaxCursors;
+    for (u32 i = 0; i < count; ++i) {
+        s_pendX[i] = xs[i];
+        s_pendY[i] = ys[i];
+    }
+    s_pendCount = count;
+    ++s_pendSeq;
+    // 組んである体数で足りなければ 8 の倍数で組み直す（ヒープは体数ぴったりで取るので）
+    const u32 have = (u32)s_footprintW * (u32)s_footprintH;
+    if ((s_tileMode || !s_wantShown) && count > have) {
+        const u32 rows = (count + kMaxSide - 1) / kMaxSide;
+        SetFootprint(kMaxSide, rows);
+    }
+}
+
 void Hide(void) {
+    s_tileMode = false;
     s_wantShown = false;
     s_haveOrigin = false;   // 次に出すときはプレイヤーの足元から
     s_rebuild = false;

@@ -83,7 +83,7 @@ namespace CTRPluginFramework
         void        DrawBottomDim(u32 color, float amount);   // ★BuildBottom の先頭で 1 回だけ
         // ゲーム側のボタン遮断（スライドパッドは残る）。buttons が優先。
         //   dpadOnly: 十字キーだけ遮断する（座標移動の「十字キーの無効化」。入力遮断ケーブの値 2）
-        void        SetButtonBlock(bool buttons, bool dpadOnly = false);
+        void        SetButtonBlock(bool buttons, bool dpadOnly = false, bool everything = false);   // everything はスライドパッドも
         int         MaxTexts(Screen screen);
         int         MaxChars(Screen screen);
     }

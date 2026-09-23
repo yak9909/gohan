@@ -62,6 +62,10 @@ namespace PublicWorks
 
     // ---- 変える（要求を出して描画スレッドの完了を待つ）----
     Result          Place(u8 id);                   // プレイヤーの足元へ
+    Result          PlaceAt(u8 id, u32 x, u32 y);   // 村のマス (x, y) へ（建物エディター）
+    Result          MoveTo(u32 slot, u32 x, u32 y);
+    // マス (x, y) を占有している建物のスロット（ゲームの占有マップから）。無ければ -1。
+    s32             SlotAtTile(u32 x, u32 y);
     Result          Remove(u32 slot);
     Result          MoveToPlayer(u32 slot);
     // 表は変えずに、当たり判定と占有だけ作り直す（見た目は変わらないので読み直さない）。
@@ -77,6 +81,10 @@ namespace PublicWorks
     // スロットの建物を光らせる／やめる（BuildingHighlight。次のフレームで反映）。
     bool            Highlight(u32 slot);
     void            Unhighlight(void);
+
+    bool            IsBridgeId(u16 id);             // ゲームの Building_IsBridge 0x6CBDB4
+    // 描画スレッドの毎フレームの口（グリッドカーソルのフック）を入れる。
+    bool            StartFrameHook(void);
 
     // グリッドカーソルのフックから毎フレーム。
     void            FrameStep(void);

@@ -11,6 +11,7 @@
 
 #include "Cheats.hpp"
 #include "FieldHookCaves.h"
+#include "BuildingEditor.hpp"
 #include "GridCursor.hpp"
 #include "ModelViewer.hpp"
 #include "PublicWorks.hpp"
@@ -218,12 +219,16 @@ namespace CTRPluginFramework
             {
                 if (PlayerMoveTick(index, held))
                     return;
+                if (BuildingEditorTick(index, held))
+                    return;
                 GridCursorTick(index, held);
             }
 
             void    DispatchDisable(int index)
             {
                 if (PlayerMoveDisable(index))
+                    return;
+                if (BuildingEditorDisable(index))
                     return;
                 GridCursorDisable(index);
             }
@@ -255,6 +260,7 @@ namespace CTRPluginFramework
             WireGridCursor();
             WireModelViewer();
             WirePublicWorks();
+            WireBuildingEditor();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }

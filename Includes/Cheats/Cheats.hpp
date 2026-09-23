@@ -80,6 +80,7 @@ namespace CTRPluginFramework
         static const char kHlAlpha[]   = u8"不透明度";
         static const char kHlWave[]    = u8"揺れ幅";
         static const char kHlSpeed[]   = u8"揺れの速さ";
+        static const char kBeOn[]      = u8"建物エディター";
         // 実際の名前は WirePublicWorks がゲームの表から入れる。ITEM_LIST は空を許さない。
         static const char *const kPwEmptyOptions[] = { u8"（読み込み中）" };
 

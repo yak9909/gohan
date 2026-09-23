@@ -104,6 +104,9 @@ namespace CTRPluginFramework
         // このフレームだけゲーム側の十字キーを無効にする。OnTick から毎フレーム呼び続けている間だけ効く
         // （呼ばなくなった次のフレームで戻る）。CTRPF 側の入力（held）は影響を受けない。
         void    BlockGameDpad(void);
+        // このフレームだけゲーム側の入力をスライドパッドも含めて全部無効にする（建物エディター）。
+        // メニューの表示中も優先する。OnTick から毎フレーム呼び続けている間だけ効く。
+        void    BlockGameAll(void);
         int     ItemCount(void);
         const char *ItemLabel(int index);
         int     ItemValue(int index);

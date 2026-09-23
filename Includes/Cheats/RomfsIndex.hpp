@@ -46,4 +46,10 @@ namespace RomfsIndex
     u32             Window(u32 start, const char **names, u32 cap);
 
     const char *    ReasonName(Fail reason);
+
+    // 1 本のファイルをパスで読む（更新タイトル → base の順。ゲームの読み込みと同じ優先）。
+    // 索引は要らない。ディレクトリとファイルのハッシュ表を辿り、読むのは小さい断片だけ。
+    // ハッシュの式と表の並びは tools/strc/verify_romfs_lookup.py が生の RomFS 全ファイルで照合済み。
+    // 戻り値は読めたバイト数。見つからない・cap を超える・読めなければ 0。
+    u32             ReadFile(const char *path, void *buf, u32 cap);
 }

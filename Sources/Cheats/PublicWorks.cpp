@@ -1,5 +1,6 @@
 #include "PublicWorks.hpp"
 
+#include "BuildingEditor.hpp"
 #include "BuildingHighlight.hpp"
 
 #include "Cheats.hpp"
@@ -118,6 +119,9 @@ typedef void (*MarkDirtyFn)(u32 x, u32 y, u32 destroy);           // 0x0059DA7C
 const MarkDirtyFn FieldMarkDirty = reinterpret_cast<MarkDirtyFn>(0x0059DA7C);
 const u32 kFieldTilesX = 0x70;              // fgobj のビットマップは 112 x 96 マス（0x5A1B28 の境界検査）
 const u32 kFieldTilesY = 0x60;
+const u32 kOccupancyLayer1 = 0x00AB1DE8;    // dword_AB1DE4[1]
+const u32 kOccupancyWidth = 112;
+const u32 kOccupancyHeight = 96;
 const s32 kFootprintBefore = 7;             // 足元 16 x 16 の (7, 7) が建物の (x, y)
 const s32 kFootprintAfter = 8;
 
@@ -684,6 +688,15 @@ void FrameStep(void) {
         s_op = Op::None;
     }
     BuildingHighlight::FrameStep();
+    BuildingEditor::FrameStep();
+}
+
+bool IsBridgeId(u16 id) {
+    return id < kEmptyId && IsBridge(id);
+}
+
+bool StartFrameHook(void) {
+    return EnsureHook();
 }
 
 bool Highlight(u32 index) {
@@ -749,6 +762,13 @@ s32 Nearest(void) {
 }
 
 Result Place(u8 id) {
+    u32 x = 0, y = 0;
+    if (!PlayerTile(x, y))
+        return Result::NoPlayer;
+    return PlaceAt(id, x, y);
+}
+
+Result PlaceAt(u8 id, u32 x, u32 y) {
     if (!IsBuilding(id))
         return Result::InvalidId;
     u8 *data = BuildingData();
@@ -763,9 +783,6 @@ Result Place(u8 id) {
     }
     if (!free)
         return Result::NoFreeSlot;
-    u32 x = 0, y = 0;
-    if (!PlayerTile(x, y))
-        return Result::NoPlayer;
     s_argId = id;
     s_argX = x;
     s_argY = y;
@@ -789,6 +806,30 @@ Result MoveToPlayer(u32 slot) {
     s_argX = x;
     s_argY = y;
     return Request(Op::Move);
+}
+
+Result MoveTo(u32 slot, u32 x, u32 y) {
+    if (slot >= kSlots)
+        return Result::NoSelection;
+    s_argSlot = slot;
+    s_argX = x;
+    s_argY = y;
+    return Request(Op::Move);
+}
+
+s32 SlotAtTile(u32 x, u32 y) {
+    // 占有レイヤ 1（村の建物）。112 x 96 バイト、値はスロット番号、空きは 0xFF
+    // （Building_WriteOccupancy 0x526A0C → sub_2E5EB8、消去 sub_2E5ED4）。
+    if (x >= kOccupancyWidth || y >= kOccupancyHeight)
+        return -1;
+    const u8 *layer = *reinterpret_cast<u8 *const *>(kOccupancyLayer1);
+    if (layer == nullptr)
+        return -1;
+    const u8 v = layer[kOccupancyWidth * y + x];
+    if (v == 0xFF || v >= kSlots)
+        return -1;
+    const Slot *slot = SlotAt(v);
+    return (slot != nullptr && IsBuilding(slot->id)) ? (s32)v : -1;
 }
 
 Result Rebuild(void) {
