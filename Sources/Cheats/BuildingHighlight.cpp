@@ -350,6 +350,14 @@ Plan PlanBlock(u8 *b, u32 colour) {
     return plan;
 }
 
+// 合成度合いの上書き（建物エディターの移動モードの「カーソルを合わせた建物」= 白 50）。負ならメニューの値。
+volatile s16 s_tintOverride = -1;
+
+u32 TintNow(void) {
+    const s16 o = s_tintOverride;
+    return o >= 0 ? (u32)o : (u32)s_params.tint;
+}
+
 u32 Const5Value(bool premultiplied, u32 tint) {
     const u32 c = s_params.color;
     if (!premultiplied)
@@ -395,7 +403,7 @@ bool ApplyMaterial(u32 m) {
     a.const5 = colour + kResConst5;
     a.premultiplied = (plan == Plan::Replace);
     a.blendColor = 0;
-    if (!Put32(a.const5, Const5Value(a.premultiplied, s_params.tint)))
+    if (!Put32(a.const5, Const5Value(a.premultiplied, TintNow())))
         return false;
     // 透明度（F002）: この建物専用のフラグメント設定のときだけ
     if (frag == colour && R32(frag + kFragCheckA) == 0x00E40100u && R32(frag + kFragCheckB) == 0x803F0100u) {
@@ -464,7 +472,7 @@ void Animate(void) {
     if (alpha < 0) alpha = 0;
     if (alpha > 255) alpha = 255;
     for (u32 i = 0; i < s_animCount; ++i) {
-        *reinterpret_cast<volatile u32 *>(s_anim[i].const5) = Const5Value(s_anim[i].premultiplied, s_params.tint);
+        *reinterpret_cast<volatile u32 *>(s_anim[i].const5) = Const5Value(s_anim[i].premultiplied, TintNow());
         if (s_anim[i].blendColor)
             *reinterpret_cast<volatile u32 *>(s_anim[i].blendColor) = (u32)alpha << 24;
     }
@@ -523,6 +531,12 @@ const Params &GetParams(void) { return s_params; }
 
 void SetColor(u32 color) {
     s_params.color = color & 0x00FFFFFFu;
+    s_tintOverride = -1;
+}
+
+void SetStyle(u32 color, s16 tint) {
+    s_params.color = color & 0x00FFFFFFu;
+    s_tintOverride = tint;
 }
 
 bool Current(u16 &id, u8 &x, u8 &y) {

@@ -41,7 +41,9 @@ namespace BuildingHighlight
     // 色だけ替える（建物エディター: 移動は青、削除は赤）。次のフレームから反映。
     static const u32 kBlue = 0x00FFB060u;   // 0x00BBGGRR（F011〜F013 の実機の色）
     static const u32 kRed = 0x004040FFu;
-    void            SetColor(u32 color);
+    void            SetColor(u32 color);                // 合成度合いはメニューの値
+    static const u32 kWhite = 0x00FFFFFFu;
+    void            SetStyle(u32 color, s16 tint);      // 合成度合いも決める（負ならメニューの値）
     // いま光らせている建物の (id, x, y)。光っていなければ false。
     bool            Current(u16 &id, u8 &x, u8 &y);
     const Params &  GetParams(void);

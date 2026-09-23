@@ -44,6 +44,17 @@ const u32 kMaxCells = 64;
 
 const float kCameraFollow = 0.35f;          // 1 フレームで目標へ寄る割合
 
+// ---- 足元データの取り寄せ（名前の無い建物 = 住民・プレイヤーの家）----------------------------------
+// 家は名前表に名前が無く、足元のファイル名（hobj_npchouse_%02d 等）は住民ごとの型で決まる。村にある建物の足元は
+// ゲームが読み込み済みなので、描画スレッドで Building_GetFootprint 0x1B1720(x, y, id) を呼んで写す（IDA-opus-5.5-F021）。
+typedef const u8 *(*GetFootprintFn)(u32 x, u32 y, u32 id);
+const GetFootprintFn GetFootprint = reinterpret_cast<GetFootprintFn>(0x001B1720);
+volatile u32 s_fetchSeq;          // メニュー: 頼んだ番号
+volatile u32 s_fetchDone;         // 描画: 済ませた番号
+volatile u32 s_fetchId, s_fetchX, s_fetchY;
+volatile bool s_fetchOk;
+u8 s_fetchBuf[2560];
+
 // ---- メニュー ↔ 描画スレッド -------------------------------------------------------------------
 volatile bool s_want;           // メニュー: エディターを動かしたい
 volatile bool s_patched;        // 描画: カメラを止めている
@@ -102,6 +113,13 @@ void Lose(u32 reason) {
 }  // namespace
 
 void FrameStep(void) {
+    if (s_fetchDone != s_fetchSeq) {                // 足元の取り寄せ（エディターの状態に関係なく）
+        const u8 *fp = GetFootprint(s_fetchX, s_fetchY, s_fetchId);
+        s_fetchOk = fp != nullptr && BuildingHighlight::SafeReadable(reinterpret_cast<u32>(fp), sizeof(s_fetchBuf));
+        if (s_fetchOk)
+            std::memcpy(s_fetchBuf, fp, sizeof(s_fetchBuf));
+        s_fetchDone = s_fetchSeq;
+    }
     if (!s_patched) {
         if (!s_want || s_lost)
             return;
@@ -185,6 +203,33 @@ bool Blocks(u8 code) {
     return *reinterpret_cast<const volatile u8 *>(kPlantTable + i) == 0;
 }
 
+// 村にあるその id の建物の位置で、ゲームの足元データを描画スレッドに写してもらう（最大 0.3 秒待つ）
+bool FetchFromGame(u16 id) {
+    u32 x = 0, y = 0;
+    bool found = false;
+    for (u32 i = 0; i < PublicWorks::kSlots && !found; ++i) {
+        PublicWorks::Slot slot;
+        if (PublicWorks::ReadSlot(i, slot) && slot.id == id) {
+            x = slot.x;
+            y = slot.y;
+            found = true;
+        }
+    }
+    if (!found)
+        return false;
+    s_fetchId = id;
+    s_fetchX = x;
+    s_fetchY = y;
+    const u32 seq = s_fetchSeq + 1;
+    s_fetchSeq = seq;
+    for (u32 i = 0; i < 18 && s_fetchDone != seq; ++i)
+        svcSleepThread(16666667LL);
+    if (s_fetchDone != seq || !s_fetchOk)
+        return false;
+    std::memcpy(s_footprint, s_fetchBuf, sizeof(s_footprint));
+    return true;
+}
+
 void Push(Shape &s, s32 c, s32 r) {
     if (s.count >= kMaxCells)
         return;
@@ -205,6 +250,8 @@ const Shape &ShapeOf(u16 id) {
     if (name[0] != '\0') {
         std::snprintf(path, sizeof(path), "Strc/data/%s.bin", name);
         got = RomfsIndex::ReadFile(path, s_footprint, sizeof(s_footprint));
+    } else {
+        got = FetchFromGame(id) ? kFootprintBytes : 0;
     }
     if (got == kFootprintBytes) {
         s32 top = kFootprintSide, bottom = -1, left = kFootprintSide, right = -1;
@@ -320,8 +367,30 @@ void UpdateTiles(void) {
     }
 }
 
+// 移動モードで何も選んでいないとき、カーソルを合わせた建物に薄い白（合成度合い 50）を重ねる（利用者指示）
+const s16 kHoverTint = 50;
+s32 s_hoverShown = -1;
+
+void UpdateHover(void) {
+    if (s_mode != Mode::Move || s_selected >= 0) {
+        s_hoverShown = -1;
+        return;
+    }
+    const s32 hovered = Hovered();
+    if (hovered == s_hoverShown)
+        return;
+    s_hoverShown = hovered;
+    if (hovered < 0) {
+        PublicWorks::Unhighlight();
+    } else {
+        BuildingHighlight::SetStyle(BuildingHighlight::kWhite, kHoverTint);
+        PublicWorks::Highlight((u32)hovered);
+    }
+}
+
 void Select(s32 slot) {
     s_selected = slot;
+    s_hoverShown = -1;
     if (slot < 0) {
         PublicWorks::Unhighlight();
     } else {
@@ -329,6 +398,7 @@ void Select(s32 slot) {
         PublicWorks::Highlight((u32)slot);
     }
     UpdateTiles();
+    UpdateHover();
 }
 
 void NotifyKind(const char *prefix) {
@@ -438,6 +508,7 @@ void MoveCursor(s32 dx, s32 dy) {
         }
     }
     UpdateTiles();
+    UpdateHover();
 }
 
 // Y + 十字: 建物のあるスロットを順に選ぶ
