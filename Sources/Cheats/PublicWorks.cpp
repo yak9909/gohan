@@ -1002,7 +1002,8 @@ const char *ResultName(Result result) {
     case Result::EmptySlot: return u8"選んだスロットに建物がありません";
     case Result::NoFreeStand: return u8"マイデザインの看板の空きがありません";
     case Result::TooManyKinds: return u8"公共事業の種類が多すぎます（ゲームが読み込める上限）";
-    case Result::NoHeapRoom: return u8"建物を読み込むメモリの空きがありません（ゲームの上限）";
+    // ★ゲームの上限ではなく gohan の余裕（kSpawnParentFree = 256 KB。役場・店は 1 棟に約 70〜90 KB を借りる。F009）
+    case Result::NoHeapRoom: return u8"役場・店などを置くには建物用メモリの空きが 256KB 要ります（gohan の安全の余裕）";
     case Result::MapLimit: return u8"地図のアイコンがゲームで作れる上限を超えます";
     case Result::HookFailed: return u8"フックが入れられません";
     case Result::Busy: return u8"前の処理が終わっていません";

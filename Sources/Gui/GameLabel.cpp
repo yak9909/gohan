@@ -94,7 +94,11 @@ const u8 kBlueDark[3] = { 0x5A, 0xAA, 0xE6 }, kBlueLight[3] = { 0xD2, 0xF0, 0xFF
 //   TextBox のマテリアル（+256）の色 [1]（素は 8c3c14 = 茶。文字はこの色で塗られる）を白にする。
 const u32 kTextColorTop = 216, kTextColorBottom = 220, kTextMaterial = 256;
 // 文字色（利用者: 背景より濃い水色。白から変更）。byte の並びは R, G, B, A（ctor がリソースの 4 byte をそのまま組む）
-const u8 kTextRgba[4] = { 0x1E, 0x6E, 0xB4, 0xFF };
+// 利用者: もう少し濃く（1E6EB4 → 0F4C8A）
+const u8 kTextRgba[4] = { 0x0F, 0x4C, 0x8A, 0xFF };
+// ゲームの時計: BsTimeBelWindow の実体 dword_94A720（BsTimeBelWindow_Init 0x2939C8 の最後で入る）、+1760 = N_time ペイン。
+//   左下の箱と重なるので、出している間は毎フレーム見える旗（ペイン+183 bit0）を落とす（ゲームの処理の後・記録の前）。
+const u32 kTimeBelWindowPtr = 0x0094A720, kTimeBelClockPane = 1760;
 const u32 kTeardownWaitFrames = 3;
 
 enum class Dir : u8 { None, In, Out };
@@ -113,6 +117,7 @@ struct Label {
     // メニューのスレッドが書く
     volatile bool want;
     volatile u32 row;
+    volatile bool bottom;
     u16 pend[kMaxChars + 1];
     volatile u32 textSeq;
 };
@@ -122,6 +127,26 @@ bool s_holderMade, s_holderReady, s_hookReady;
 Label s_labels[kSlots];
 const char *volatile s_error = "";
 u32 s_waitFrames;
+volatile bool s_hideClock;
+u32 s_clockPane;                // 隠しているペイン（0 = 隠していない）
+u8 s_clockFlag;                 // 隠す前の旗
+
+void StepClock(void) {
+    const u32 win = *reinterpret_cast<const volatile u32 *>(kTimeBelWindowPtr);
+    const u32 pane = (win >= 0x30000000u && win < 0x40000000u) ? *reinterpret_cast<const volatile u32 *>(win + kTimeBelClockPane) : 0u;
+    if (s_hideClock && pane >= 0x30000000u && pane < 0x40000000u) {
+        if (s_clockPane != pane) {
+            s_clockPane = pane;
+            s_clockFlag = *reinterpret_cast<volatile u8 *>(pane + kPaneFlags);
+        }
+        *reinterpret_cast<volatile u8 *>(pane + kPaneFlags) &= ~1u;
+    } else if (s_clockPane != 0) {
+        if (pane == s_clockPane)
+            *reinterpret_cast<volatile u8 *>(pane + kPaneFlags) =
+                (u8)((*reinterpret_cast<volatile u8 *>(pane + kPaneFlags) & ~1u) | (s_clockFlag & 1u));
+        s_clockPane = 0;
+    }
+}
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline float &F(void *p, u32 off) { return *reinterpret_cast<float *>(P(p, off)); }
@@ -294,7 +319,7 @@ bool BuildLabel(Label &l) {
 // 箱を左端 left に置く（上下は kTop）。N_all をずらして合わせる
 void Place(Label &l, float left) {
     const float cx = left + l.width * 0.5f;
-    const float cy = kTop - (float)l.row * kRowPitch;
+    const float cy = l.bottom ? -kTop + (float)l.row * kRowPitch : kTop - (float)l.row * kRowPitch;
     MovePane(l.all, cx - (l.bellX + kBoxOffX), cy - (l.bellY + kBoxOffY));
     l.placedX = left;
 }
@@ -414,6 +439,15 @@ void SetRow(u32 slot, u32 row) {
         s_labels[slot].row = row;
 }
 
+void SetBottom(u32 slot, bool bottom) {
+    if (slot < kSlots)
+        s_labels[slot].bottom = bottom;
+}
+
+void HideGameClock(bool hide) {
+    s_hideClock = hide;
+}
+
 void Show(u32 slot) {
     if (slot >= kSlots)
         return;
@@ -442,6 +476,7 @@ const char *LastError(void) {
 }
 
 void FrameStep(void) {
+    StepClock();
     bool anyWant = false;
     for (u32 i = 0; i < kSlots; ++i)
         anyWant = anyWant || s_labels[i].want;
@@ -452,16 +487,17 @@ void FrameStep(void) {
     }
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
     // 段ごとに左から順に並べる。出したい箱か、まだ描いている（退場中の）箱だけが場所を取る
-    float left[kSlots];
+    float left[2][kSlots];                  // [上/下][段]
     for (u32 r = 0; r < kSlots; ++r)
-        left[r] = kLeft;
+        left[0][r] = left[1][r] = kLeft;
     for (u32 i = 0; i < kSlots; ++i) {
         Label &l = s_labels[i];
         const u32 row = l.row < kSlots ? l.row : kSlots - 1;
+        float &x = left[l.bottom ? 1 : 0][row];
         const bool takesRoom = l.want || l.live;
-        StepLabel(l, left[row], mgr);
+        StepLabel(l, x, mgr);
         if (takesRoom && l.width > 0.0f)
-            left[row] += l.width + kGap;
+            x += l.width + kGap;
     }
     // 退場し終えた箱を壊す（描くのをやめてから数フレーム後。GPU がまだ読んでいるかもしれない）
     bool pending = false;

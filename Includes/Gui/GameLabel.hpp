@@ -16,6 +16,9 @@ namespace GameLabel
 
     void        SetText(u32 slot, const char *utf8);    // 出ている間でも差し替えられる
     void        SetRow(u32 slot, u32 row);              // 段（0 = いちばん上）。同じ段は左から横に並ぶ
+    void        SetBottom(u32 slot, bool bottom);       // 真: 左下の段に置く（row は下から数える）
+    // ゲームの時計（BsTimeBelWindow の N_time。上画面左下）を隠す。偽で元の見える旗へ戻す
+    void        HideGameClock(bool hide);
     void        Show(u32 slot);
     void        Hide(u32 slot);                         // 退場が終われば資源を返す（全部の箱が消えたら arc も）
     bool        Present(void);

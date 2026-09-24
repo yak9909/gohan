@@ -462,13 +462,15 @@ void UpdateCapacityLabels(bool force) {
     s_capShown = key;
     s_memShown = memKey;
     static char line1[48], line2[48], line3[48];
-    // 3 つ目（2 段目）: 建物用の親ヒープの空き / 大きさ（KB）。役場・店などを置くときはここが 256 KB 以上要る
+    // 3 つ目（左下、値だけ。利用者指示）: 建物用の親ヒープの空き / 大きさ（KB）。重なるゲームの時計は隠す
     if (c.memTotalKB != 0)
-        std::snprintf(line3, sizeof(line3), u8"メモリの空き %u/%uKB", (unsigned)c.memFreeKB, (unsigned)c.memTotalKB);
+        std::snprintf(line3, sizeof(line3), u8"%u/%uKB", (unsigned)c.memFreeKB, (unsigned)c.memTotalKB);
     else
-        std::snprintf(line3, sizeof(line3), u8"メモリの空き -");
+        std::snprintf(line3, sizeof(line3), u8"-");
     GameLabel::SetText(2, line3);
-    GameLabel::SetRow(2, 1);
+    GameLabel::SetRow(2, 0);
+    GameLabel::SetBottom(2, true);
+    GameLabel::HideGameClock(true);
     GameLabel::Show(2);
     if (c.valid) {
         std::snprintf(line1, sizeof(line1), u8"設置上限 %u/%u", (unsigned)c.used, (unsigned)c.slots);
@@ -787,6 +789,7 @@ void Stop(void) {
     GameList::Hide();
     for (u32 i = 0; i < GameLabel::kSlots; ++i)
         GameLabel::Hide(i);
+    GameLabel::HideGameClock(false);
     s_capShown = 0xFFFFFFFFu;
     s_memShown = 0xFFFFFFFFu;
     PublicWorks::Unhighlight();
