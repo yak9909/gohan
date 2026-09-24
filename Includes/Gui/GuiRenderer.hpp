@@ -67,7 +67,6 @@ namespace CTRPluginFramework
         u32         HeapSize(void);
         u32         AtlasVa(void);      // CAVE_N のキャッシュ吐き出し先に使う
         u32         AtlasBytes(void);
-        bool        RelocateAtlas(u32 newGpuBase);  // F035: HOME から戻ったとき、取り直した GPU 用メモリへアトラスを移す
         u32         RecordedBytes(Screen screen);   // ノード +0x108
         const char *LastError(void);
         void        DumpLog(void);                  // /gohan_gui.txt へ書き出す

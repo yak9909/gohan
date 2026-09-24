@@ -1531,34 +1531,6 @@ namespace CTRPluginFramework
             return true;
         }
 
-        // ★F035: アトラスを新しい GPU 用メモリへ移す（HOME から戻ったとき）。
-        //   アトラスの番地が入っている所は 3 種類: 共有 Material の blk+0x04（PA）、書体ごとの TGLP+0x14（VA）と記述子+0x08（PA>>3）。
-        //   記録済みのコマンドリストには古い PA が焼かれているので、上下のノードに記録し直しを要求する。
-        bool    RelocateAtlas(u32 newGpuBase)
-        {
-            if (!g_ready || newGpuBase == 0)
-                return false;
-            g_gpuBase = newGpuBase;
-            const u32 atlas = g_gpuBase + g_offAtlas;
-
-            std::memcpy((void *)atlas, kUiAtlas, kUiSheetBytes);
-            svcFlushProcessDataCache(CUR_PROCESS_HANDLE, atlas, kUiSheetBytes);
-            const u32 pa = AtlasPa(atlas);
-
-            W32(g_base + 0x80 + 0x04, pa);
-            for (int font = 0; font < 2; ++font)
-            {
-                const u32 rf = FontResFontAddr(font);
-
-                W32(rf + 0x40 + 0x14, atlas);
-                W32(rf + 0x60 + 0x08, pa >> 3);
-            }
-            W8(kGuiNodeTop + 0x11D, 1);
-            W8(kGuiNodeBot + 0x11D, 1);
-            Log("アトラスを移した VA 0x%08X PA 0x%08X", (unsigned int)atlas, (unsigned int)pa);
-            return true;
-        }
-
         void    Uninstall(void)
         {
             if (!g_ready)
