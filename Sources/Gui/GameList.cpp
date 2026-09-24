@@ -16,6 +16,26 @@ const u32 kLayoutMgrPtr = 0x0096FC38;       // u32: ssys::ma::lyt::LayoutMgr
 const u32 kLytAllocatorPtr = 0x0096FC3C;    // u32: ssys::ma::Allocator（+4 = sead::ExpHeap）
 const u32 kMenuOpenState = 0x00949D1E;      // u8: g_MenuOpenState。1 = アイドル / 2 = 開き要求 / 3 = 開いている（旧 menu_system.md）
 const u32 kMenuFlags = 0x00949D68;          // u32: vc_MENU_FLAGS。bit 0x08 = 通常の下メニューが出ている
+// ---- 元の下画面 UI（地図・タブ）をゲームの手順で退場／復帰させる（IDA-opus-5.5-F036、実機で確認）----------------
+//   BsMenuTab = *(BsMenuMgr+480)。命令バイト 0x949D24 を BsMenuTab_ConsumeCommand 0x6D3F04 が毎フレーム**状態に関係なく**
+//   読んで 11 に戻す: 7 = 全タブ退場（→ タブ選択）、2 = 状態 18「地図同期タブ入場」（地図を作り直し → 全タブ入場 → タブ選択）。
+//   地図は 0x949D25 = 0 で退場して画面ごと破棄される（sub_6D1428 → sub_6D0B54 → sub_2B3A98）。2 = アイドル。
+//   実機: 7 + 0 で地図 +484 = 0・タブのマスク 0・フラグ 0x4、2 で地図が同じ番地に戻り マスク 0x81DF・フラグ 0x2。
+//   ★命令は「タブ選択」で落ち着いているときだけ書く（ほかの状態でも強制的に切り替わってしまう）。
+const u32 kMenuMgrPtr = 0x00949D4C;         // u32: BsMenuMgr
+const u32 kMgrTab = 480;                    // BsMenuTab*
+const u32 kMgrMap = 484;                    // 地図の画面（無ければ 0）
+const u32 kMgrOther = 488;                  // もう 1 つの下画面（0x949D29 で出し入れ）
+const u32 kTabCalc = 32;                    // 状態の calc
+const u32 kTabCalcAdj = 36;
+const u32 kTabShown = 6578;                 // u16: 出ているタブのマスク
+const u32 kTabMoving = 6580;                // u16: 出入り中のマスク
+const u32 kTabIdleCalc = 0x006D474C;        // 「タブ選択」
+const u32 kTabCommand = 0x00949D24;         // u8: 11 = 何もしない
+const u32 kMapCommand = 0x00949D25;         // u8: 2 = 何もしない
+const u32 kOtherCommand = 0x00949D29;       // u8: 2 = 何もしない
+const u8 kCmdNone = 11, kCmdAllTabsOut = 7, kCmdRestoreField = 2, kMapIdle = 2, kMapOut = 0;
+const u32 kRoomIdFn = 0x002F75CC;           // Room_GetCurrentId
 
 typedef void *(*HeapAllocFn)(u32 size, void *heap, s32 align);
 typedef void *(*CtorFn)(void *self);
@@ -139,6 +159,10 @@ bool s_frameBuilt;      // LayoutBuild 済み
 bool s_animsMade;
 bool s_listSetup;       // SetupStep が 1 を返した
 enum class Dir : u8 { None, In, Out };
+enum class Field : u8 { Shown, Exiting, Hidden, Restoring };
+volatile Field s_field = Field::Shown;
+u32 s_fieldFrames;          // 今の段に入ってからのフレーム数
+u32 s_fieldRoom;            // 退場させたときの部屋
 Dir s_frameDir = Dir::None;
 Dir s_listDir = Dir::None;
 bool s_hookReady;
@@ -247,6 +271,75 @@ void DestroyAll(void) {
 }
 
 // ★0 ではなく 1 がアイドル。村の屋外で 1 / フラグ 0x2（実機）。以前は「0 以外 = 開いている」と取り違え、一度も組み立てなかった。
+inline u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
+inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
+inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
+
+u32 RoomId(void) {
+    return reinterpret_cast<u32 (*)(void)>(kRoomIdFn)();
+}
+
+// タブが「タブ選択」で、命令バイトがどれも消費済み
+bool FieldIdle(void) {
+    const u32 mgr = R32(kMenuMgrPtr);
+    const u32 tab = mgr != 0 ? R32(mgr + kMgrTab) : 0;
+    if (tab == 0)
+        return false;
+    return R32(tab + kTabCalc) == kTabIdleCalc && R32(tab + kTabCalcAdj) == 0
+        && *reinterpret_cast<const volatile u16 *>(tab + kTabMoving) == 0
+        && R8(kTabCommand) == kCmdNone && R8(kMapCommand) == kMapIdle;
+}
+
+// 元の下画面 UI を hide に合わせて動かす。戻り値: 隠れきっている
+bool StepField(bool hide) {
+    const u32 mgr = R32(kMenuMgrPtr);
+    const u32 tab = mgr != 0 ? R32(mgr + kMgrTab) : 0;
+    ++s_fieldFrames;
+    if (s_field != Field::Shown && RoomId() != s_fieldRoom) {
+        s_field = Field::Shown;             // 場面が変わった: 下画面はゲームが作り直す。命令は出さない
+        s_fieldFrames = 0;
+    }
+    switch (s_field) {
+    case Field::Shown:
+        if (hide && FieldIdle()) {
+            s_fieldRoom = RoomId();
+            if (R32(mgr + kMgrMap) != 0)
+                W8(kMapCommand, kMapOut);
+            if (R32(mgr + kMgrOther) != 0)
+                W8(kOtherCommand, 0);
+            W8(kTabCommand, kCmdAllTabsOut);
+            s_field = Field::Exiting;
+            s_fieldFrames = 0;
+        }
+        return false;
+    case Field::Exiting:
+        // 全タブが引っ込み、地図の画面が無くなった（命令は消費済み）
+        if (s_fieldFrames > 1 && FieldIdle() && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) == 0
+            && R32(mgr + kMgrMap) == 0) {
+            s_field = Field::Hidden;
+            s_fieldFrames = 0;
+        }
+        return false;
+    case Field::Hidden:
+        if (!hide && FieldIdle()) {
+            W8(kTabCommand, kCmdRestoreField);
+            s_field = Field::Restoring;
+            s_fieldFrames = 0;
+            return false;
+        }
+        return true;
+    case Field::Restoring:
+        // 状態 18 → 7 → タブ選択。地図が作り直され、タブが出そろった
+        if (s_fieldFrames > 1 && FieldIdle() && (R32(kMenuFlags) & 0x02u) != 0
+            && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) != 0) {
+            s_field = Field::Shown;
+            s_fieldFrames = 0;
+        }
+        return false;
+    }
+    return false;
+}
+
 bool MenuOpen(void) {
     return *reinterpret_cast<const volatile u8 *>(kMenuOpenState) != 1
         || (*reinterpret_cast<const volatile u32 *>(kMenuFlags) & 0x08u) != 0;
@@ -447,7 +540,7 @@ bool Wanted(void) {
 }
 
 bool Present(void) {
-    return s_stage != Stage::Off;
+    return s_stage != Stage::Off || s_field != Field::Shown;
 }
 
 void Select(s32 index) {
@@ -471,7 +564,7 @@ void Shutdown(void) {
     if (!s_hookReady)
         return;
     s_shutdown = true;
-    for (u32 i = 0; i < 60 && s_stage != Stage::Off; ++i)
+    for (u32 i = 0; i < 90 && (s_stage != Stage::Off || s_field != Field::Shown); ++i)
         svcSleepThread(16666667LL);
 }
 
@@ -479,6 +572,8 @@ void Shutdown(void) {
 void FrameStep(void) {
     const bool want = s_want && !s_shutdown && !MenuOpen() && s_pendCount > 0;
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
+    // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
+    const bool fieldHidden = StepField((want && s_error[0] == 0) || s_stage == Stage::Live);
 
     switch (s_stage) {
     case Stage::Off:
@@ -496,6 +591,8 @@ void FrameStep(void) {
             }
             return;
         }
+        if (want && !fieldHidden)
+            return;                         // 元の UI が退場しきるまで待つ（組み上がったまま描かない）
         s_stage = Stage::Live;
         s_selectDone = s_selectSeq;
         ApplySelect(s_wantSelect);
@@ -521,7 +618,7 @@ void FrameStep(void) {
     }
     // 一覧が差し替えられた: 退場させて組み直す
     const bool stale = s_builtSeq != s_itemsSeq;
-    const bool show = want && !stale;
+    const bool show = want && !stale && fieldHidden;
     if (show && s_frameDir != Dir::In && s_listDir != Dir::In && (s_frameDir == Dir::Out || s_listDir == Dir::Out))
         EnterBoth();
     else if (!show && s_frameDir != Dir::Out && s_listDir != Dir::Out)
