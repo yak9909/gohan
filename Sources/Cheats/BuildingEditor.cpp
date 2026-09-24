@@ -3,6 +3,7 @@
 #include "BuildingHighlight.hpp"
 #include "BuildingPreview.hpp"
 #include "Cheats.hpp"
+#include "GameList.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
@@ -457,6 +458,39 @@ bool ReadyToStart(void) {
     return InVillage() && IsHeap(R32(kCameraGame)) && IsHeap(R32(kPlayerPtr)) && PublicWorks::PlayerTile(x, y);
 }
 
+// 下画面にゲームのリスト UI で配置の一覧を出す（GameList、IDA-opus-5.5-F036）。一覧は最初の 1 回だけ渡す。
+bool s_listGiven;
+
+void ShowKindList(void) {
+    if (!s_listGiven && s_kindCount > 0) {
+        static const char *names[sizeof(s_kinds)];
+        for (u32 k = 0; k < s_kindCount; ++k)
+            names[k] = PublicWorks::NameOf(s_kinds[k]);
+        s_listGiven = GameList::SetItems(names, s_kindCount);
+    }
+    if (s_listGiven)
+        GameList::Show((s32)s_kind);
+}
+
+// リストで選ばれた種類を配置する種類にする（ほかのモードなら配置へ切り替える）
+void TakeListChoice(void) {
+    const s32 chosen = GameList::TakeDecided();
+    if (chosen < 0 || (u32)chosen >= s_kindCount)
+        return;
+    const bool modeChanged = s_mode != Mode::Place;
+    if (!modeChanged && (u32)chosen == s_kind)
+        return;
+    s_kind = (u32)chosen;
+    if (modeChanged) {
+        s_mode = Mode::Place;
+        Select(-1);
+        NotifyMode();
+    } else {
+        UpdateTiles();
+        NotifyKind(ModeName(s_mode));
+    }
+}
+
 // quiet: 再開のときは失敗を通知しない
 bool Start(bool quiet) {
     if (!PublicWorks::StartFrameHook()) {
@@ -503,6 +537,7 @@ bool Start(bool quiet) {
     s_lost = false;
     s_want = true;
     s_running = true;
+    ShowKindList();
     NotifyMode();
     return true;
 }
@@ -627,6 +662,7 @@ void CopyKind(void) {
             s_kind = k;
             UpdateTiles();
             NotifyKind(u8"コピー");
+            GameList::Select((s32)s_kind);
             return;
         }
     }
@@ -689,6 +725,7 @@ void Stop(void) {
         svcSleepThread(16666667LL);
     GridCursor::Hide();
     BuildingPreview::Hide();
+    GameList::Hide();
     PublicWorks::Unhighlight();
     s_selected = -1;
 }
@@ -765,8 +802,10 @@ void Tick(u32 keys) {
             // 形は 1 回読めば残る。モデルの読み込みは描画スレッドが押す手が止まってから始める（待たない）
             UpdateTiles();
             NotifyKind(ModeName(s_mode));
+            GameList::Select((s32)s_kind);
         }
     }
+    TakeListChoice();
 
     if (pressed & (u32)Key::A)
         Execute();
