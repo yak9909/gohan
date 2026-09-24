@@ -306,13 +306,16 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_VALUE, kPcYaw, u8"画面に固定したときの複製の向きです。度。");
                 SetValue(i, FMT_DEC, 0, -180, 180, 15);
                 i = AddItem(ITEM_VALUE, kPcPitch, u8"画面に固定したときの複製の傾き（前後）です。度。正で頭が手前へ。");
-                SetValue(i, FMT_DEC, 10, -90, 90, 5);
+                SetValue(i, FMT_DEC, 45, -90, 90, 5);
                 i = AddItem(ITEM_VALUE, kPcX, u8"複製を出す位置（上画面の横、0〜400）です。");
                 SetValue(i, FMT_DEC, 330, 0, 400, 5);
                 i = AddItem(ITEM_VALUE, kPcY, u8"複製を出す位置（上画面の縦、0〜240）です。");
                 SetValue(i, FMT_DEC, 150, 0, 240, 5);
                 i = AddItem(ITEM_VALUE, kPcZoom, u8"画面に固定したときの複製の大きさです。百分率。");
                 SetValue(i, FMT_DEC, 60, 10, 300, 5);
+                i = AddItem(ITEM_VALUE, kPcLight,
+                            u8"画面に固定したときの複製のライトの明るさです。百分率。周りの光には左右されません。");
+                SetValue(i, FMT_DEC, 100, 30, 200, 10);
                 AddItem(ITEM_ACTION, kPcStat,
                         u8"複製がいまどこで止まっているかを通知で出します。");
                 const int cloneCount = g_itemCount - cloneFirst;

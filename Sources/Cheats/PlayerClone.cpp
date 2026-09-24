@@ -97,6 +97,49 @@ const float kHideDepth = -5000.0f;
 const float kCameraDistance = 120.0f;       // 複製までの距離（near 50 より遠いこと）
 const u32 kCameraBytes = 488;               // view +328（48 B）と projection +424（64 B）が収まる大きさ
 
+// ---- 複製だけのライト（IDA-opus-5.5-F033）------------------------------------------------------------
+// 描画の文脈 +64 がライトの状態。BindMaterial 0x494B4C → sub_49586C が材質の組の番号（ResMaterial +664）で sub_49AD20 を呼び、
+// 組の表（+64+144 の先の 4 本。Render_DrawSceneIndexed が BsLightMgr の組 dword_98529C を入れる）から アンビエント（組 +12）・
+// 半球（+16）・フラグメント（+68..+72）を写す。番号が前と同じなら何もしない（+64+156 が前の番号）。
+// フラグメントの向きは sub_494E20 が文脈 +164 のカメラ（ゲームのカメラ）の view で変換し、半球の向きは sub_495624 が同じ view で
+// 変換する。複製は専用カメラの view（回転なし）で法線を出すので、ゲームのライトのままだと光の向きが食い違う（利用者:
+// 「左下から小さいポイントライト」）。描く間だけ組の表を自前の組に差し替え、終わったら戻して sub_49AE18（状態の初期化。
+// 番号 -1・変更印を立てる。Render_DrawSceneIndexed の頭 sub_4EFA00 → sub_49489C も同じものを呼ぶ）で次の材質に取り直させる。
+// 自前のライトは今の組のライトを写したもの（vtable などはそのまま）で、色と向きだけを変える。
+typedef void (*LightStateResetFn)(u32 state);
+const LightStateResetFn LightStateReset = reinterpret_cast<LightStateResetFn>(0x0049AE18);
+const u32 kContextLightState = 64;
+const u32 kContextActiveCamera = 164;       // sub_4EFA00 が **(文脈 +172) を入れる。ライトの向きはこのカメラの view（+328）で変換
+const u32 kLightStateSets = 144;            // 組の表（LightSet* を 4 本）へのポインタ
+const u32 kLightSetCount = 4;
+const u32 kSetAmbient = 12;
+const u32 kSetHemi = 16;
+const u32 kSetFragBegin = 68;
+const u32 kSetFragEnd = 72;
+const u32 kSetBytes = 0x60;
+const u32 kLightRes = 8;                    // nw ライト +8 = 資源
+const u32 kLightLink = 12;                  // 半球: 0 でなく資源の印 bit1 が立つと vtbl+20 で行列を取る。自前では 0
+const u32 kFragDirection = 380;             // FragmentLight: ワールドの向き（sub_494E20 が -(view * dir) を送る）
+const u32 kResKind = 184;                   // 0 = 方向光
+const u32 kResFragColors = 0xFC;            // アンビエント・ディフューズ・スペキュラ 0・1（0xAABBGGRR。sub_4AFA0C が材質の色と掛ける）
+const u32 kResAmbientColor = 200;           // AmbientLight（sub_4AFA0C: エミッション + これ * 材質のアンビエント）
+const u32 kResHemiGround = 184;             // HemiSphereLight: float4 地面色（頂点シェーダ c22）
+const u32 kResHemiSky = 200;                // float4 空の色（c23）
+const u32 kFragObjBytes = 0x190;
+const u32 kFragResBytes = 0x110;            // +280/+284 の相対位置（スポット・距離減衰）は写さない（方向光は読まない）
+const u32 kAmbObjBytes = 0x20;
+const u32 kAmbResBytes = 0xD0;
+const u32 kHemiObjBytes = 0x20;
+const u32 kHemiResBytes = 0xF0;
+// 色（明るさ 100% のとき）。正面の面でおよそ 0.35 + 0.15 + 0.5 = 1.0、横で 0.7、裏で 0.5 になる（材質の色がさらに掛かる）
+const float kLitAmbient = 0.35f;            // AmbientLight
+const float kLitFragAmbient = 0.15f;
+const float kLitDiffuse = 0.50f;
+const float kLitSpecular = 0.15f;
+const float kLitHemi = 0.20f;               // 空と地面を同じ色にして向きの影響を無くす
+// 光の来る向き（専用カメラの view。x = 右、y = 上、z = カメラ側）。正面やや左上から
+const float kLitToLight[3] = { -0.30f, 0.40f, 1.0f };
+
 const u32 kPlayerPtr = 0x00AA7994;          // AcPlayer*
 const u32 kPlayerMgrPtr = 0x0094A374;       // BsPlayerMgr*（部品バンクの管理役 = +24）
 const u32 kRoomIdByte = 0x0095133A;         // 今の部屋（g_CurrentRoomId）
@@ -159,7 +202,7 @@ bool s_hooked;
 // 画面に固定
 volatile bool s_screen;                     // メニュー: 画面に固定する
 volatile s32 s_yaw;                         // 度
-volatile s32 s_pitch = 10;                  // 度（X 軸まわり。利用者: 上を向きすぎなので少し前へ）
+volatile s32 s_pitch = 45;                  // 度（X 軸まわり。利用者: 45 度ぐらいがちょうどいい）
 volatile s32 s_pixelX = 330;                // 上画面のピクセル（400x240）。複製の足元付近が来る位置ではなく、カメラの中心
 volatile s32 s_pixelY = 150;
 volatile s32 s_zoom = 60;                   // 百分率
@@ -169,6 +212,16 @@ volatile u32 s_partCount;
 volatile bool s_lateReady;                  // s_parts が今の複製のもの
 volatile u32 s_lateDraws;
 bool s_lateHooked;
+volatile s32 s_bright = 100;                // 複製のライトの明るさ（百分率）
+volatile u32 s_litDraws;                    // 自前のライトで描いた回数
+u32 s_litSet[kSetBytes / 4];
+u32 s_litFragList[1];
+u32 s_litFragObj[kFragObjBytes / 4];
+u32 s_litFragRes[0x120 / 4];
+u32 s_litAmbObj[kAmbObjBytes / 4];
+u32 s_litAmbRes[kAmbResBytes / 4];
+u32 s_litHemiObj[kHemiObjBytes / 4];
+u32 s_litHemiRes[0x100 / 4];
 
 u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 u16 R16(u32 a) { return *reinterpret_cast<const volatile u16 *>(a); }
@@ -475,6 +528,100 @@ bool BuildCamera(u32 gameCamera) {
     return true;
 }
 
+u32 LitByte(float v) {
+    const float s = v * (float)s_bright / 100.0f * 255.0f + 0.5f;
+    return s <= 0.0f ? 0u : s >= 255.0f ? 255u : (u32)s;
+}
+
+u32 LitColor(float v) {
+    const u32 c = LitByte(v);
+    return 0xFF000000u | (c << 16) | (c << 8) | c;      // 0xAABBGGRR
+}
+
+void Copy(u32 *dst, u32 src, u32 bytes) {
+    for (u32 i = 0; i < bytes / 4; ++i)
+        dst[i] = R32(src + 4 * i);
+}
+
+// 今の組の表から写し元を探し、自前の組を作る。1 つも無ければ false（ゲームのライトのまま描く）
+bool BuildLights(u32 context) {
+    const u32 sets = R32(context + kContextLightState + kLightStateSets);
+    const u32 gameCamera = R32(context + kContextActiveCamera);
+    if (!IsHeap(sets) || !IsHeap(gameCamera))
+        return false;
+    u32 amb = 0, hemi = 0, frag = 0;
+    for (u32 k = 0; k < kLightSetCount; ++k) {
+        const u32 set = R32(sets + 4 * k);
+        if (!IsHeap(set))
+            continue;
+        if (amb == 0u && IsHeap(R32(set + kSetAmbient)))
+            amb = R32(set + kSetAmbient);
+        if (hemi == 0u && IsHeap(R32(set + kSetHemi)))
+            hemi = R32(set + kSetHemi);
+        const u32 b = R32(set + kSetFragBegin), e = R32(set + kSetFragEnd);
+        if (frag == 0u && IsHeap(b) && e > b && IsHeap(R32(b)))
+            frag = R32(b);
+    }
+    if (amb != 0u && !IsHeap(R32(amb + kLightRes)))
+        amb = 0;
+    if (hemi != 0u && !IsHeap(R32(hemi + kLightRes)))
+        hemi = 0;
+    if (frag != 0u && !IsHeap(R32(frag + kLightRes)))
+        frag = 0;
+    if (amb == 0u && hemi == 0u && frag == 0u)
+        return false;
+
+    std::memset(s_litSet, 0, sizeof(s_litSet));
+    u8 *set = reinterpret_cast<u8 *>(s_litSet);
+    if (amb != 0u) {
+        Copy(s_litAmbObj, amb, kAmbObjBytes);
+        Copy(s_litAmbRes, R32(amb + kLightRes), kAmbResBytes);
+        u8 *res = reinterpret_cast<u8 *>(s_litAmbRes);
+        *reinterpret_cast<u32 *>(res + kResAmbientColor) = LitColor(kLitAmbient);
+        s_litAmbObj[kLightRes / 4] = reinterpret_cast<u32>(s_litAmbRes);
+        *reinterpret_cast<u32 *>(set + kSetAmbient) = reinterpret_cast<u32>(s_litAmbObj);
+    }
+    if (hemi != 0u) {
+        Copy(s_litHemiObj, hemi, kHemiObjBytes);
+        Copy(s_litHemiRes, R32(hemi + kLightRes), kHemiResBytes);
+        u8 *res = reinterpret_cast<u8 *>(s_litHemiRes);
+        const float h = (float)LitByte(kLitHemi) / 255.0f;
+        const float c[4] = { h, h, h, 1.0f };
+        std::memcpy(res + kResHemiGround, c, sizeof(c));
+        std::memcpy(res + kResHemiSky, c, sizeof(c));
+        s_litHemiObj[kLightRes / 4] = reinterpret_cast<u32>(s_litHemiRes);
+        s_litHemiObj[kLightLink / 4] = 0;
+        *reinterpret_cast<u32 *>(set + kSetHemi) = reinterpret_cast<u32>(s_litHemiObj);
+    }
+    u32 fragCount = 0;
+    if (frag != 0u) {
+        Copy(s_litFragObj, frag, kFragObjBytes);
+        std::memset(s_litFragRes, 0, sizeof(s_litFragRes));
+        Copy(s_litFragRes, R32(frag + kLightRes), kFragResBytes);
+        u8 *res = reinterpret_cast<u8 *>(s_litFragRes);
+        *reinterpret_cast<u32 *>(res + kResKind) = 0;
+        u32 *colors = reinterpret_cast<u32 *>(res + kResFragColors);
+        colors[0] = LitColor(kLitFragAmbient);
+        colors[1] = LitColor(kLitDiffuse);
+        colors[2] = LitColor(kLitSpecular);
+        colors[3] = LitColor(kLitSpecular);
+        // 送られるのは -(V * dir)（V = ゲームのカメラの view の回転）。これを専用カメラの view での光の向き L にしたいので
+        // dir = -V^T L（view は正規直交）
+        const float *v = reinterpret_cast<const float *>(gameCamera + kCameraView);
+        const float lx = kLitToLight[0], ly = kLitToLight[1], lz = kLitToLight[2];
+        const float n = std::sqrt(lx * lx + ly * ly + lz * lz);
+        float *dir = reinterpret_cast<float *>(reinterpret_cast<u8 *>(s_litFragObj) + kFragDirection);
+        for (u32 j = 0; j < 3; ++j)
+            dir[j] = -(v[j] * lx + v[4 + j] * ly + v[8 + j] * lz) / n;
+        s_litFragObj[kLightRes / 4] = reinterpret_cast<u32>(s_litFragRes);
+        s_litFragList[0] = reinterpret_cast<u32>(s_litFragObj);
+        fragCount = 1;
+    }
+    *reinterpret_cast<u32 *>(set + kSetFragBegin) = reinterpret_cast<u32>(&s_litFragList[0]);
+    *reinterpret_cast<u32 *>(set + kSetFragEnd) = reinterpret_cast<u32>(&s_litFragList[fragCount]);
+    return true;
+}
+
 extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     if (s_stage != kLive || !s_screen || !s_lateReady)
         return;
@@ -493,6 +640,17 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
         return;
     const u32 body = R32(Model() + kModelBody + kHolderNode);
     const u32 count = s_partCount;
+    const u32 sets = R32(context + kContextLightState + kLightStateSets);
+    u32 saved[kLightSetCount];
+    const bool lit = BuildLights(context);
+    if (lit) {
+        for (u32 k = 0; k < kLightSetCount; ++k) {
+            saved[k] = R32(sets + 4 * k);
+            *reinterpret_cast<volatile u32 *>(sets + 4 * k) = reinterpret_cast<u32>(s_litSet);
+        }
+        LightStateReset(context + kContextLightState);
+        ++s_litDraws;
+    }
     CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
     *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
     *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
@@ -503,6 +661,11 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
             if (IsHeap(holder))
                 DrawNodeLayer(R32(holder + kHolderNode), layer, drawContext);
         }
+    }
+    if (lit) {
+        for (u32 k = 0; k < kLightSetCount; ++k)
+            *reinterpret_cast<volatile u32 *>(sets + 4 * k) = saved[k];
+        LightStateReset(context + kContextLightState);
     }
     CameraBind(context, camera, 1);
 }
@@ -583,6 +746,10 @@ bool IsShown(void) {
     return s_want;
 }
 
+void SetBrightness(s32 percent) {
+    s_bright = percent;
+}
+
 void SetScreen(bool on, s32 yaw, s32 pitch, s32 x, s32 y, s32 zoom) {
     s_yaw = yaw;
     s_pitch = pitch;
@@ -621,6 +788,7 @@ Status Read(void) {
     s.hairColor = s_constructed ? R32(Model() + kModelHairColor) : 0;
     s.lateDraws = s_lateDraws;
     s.parts = s_partCount;
+    s.litDraws = s_litDraws;
     return s;
 }
 
@@ -667,6 +835,7 @@ namespace CTRPluginFramework
             int             g_pcXIndex = -1;
             int             g_pcYIndex = -1;
             int             g_pcZoomIndex = -1;
+            int             g_pcLightIndex = -1;
             bool            g_pcScreenOn;
 
             s32     Applied(int index, s32 fallback)
@@ -678,8 +847,9 @@ namespace CTRPluginFramework
             {
                 (void)index;
                 (void)value;
-                PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcPitchIndex, 10),
+                PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcPitchIndex, 45),
                                        Applied(g_pcXIndex, 330), Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
+                PlayerClone::SetBrightness(Applied(g_pcLightIndex, 100));
             }
 
             bool    ScreenIsActive(int index)
@@ -736,9 +906,10 @@ namespace CTRPluginFramework
                     std::snprintf(message, sizeof(message), u8"%s: %s", PlayerClone::StageName(s.stage),
                                   PlayerClone::FailName(s.failReason));
                 else
-                    std::snprintf(message, sizeof(message), u8"%s %luF 髪%u/%lu 部品%lu 描%lu", PlayerClone::StageName(s.stage),
-                                  (unsigned long)s.frames, (unsigned)s.hair, (unsigned long)s.hairColor,
-                                  (unsigned long)s.parts, (unsigned long)s.lateDraws);
+                    std::snprintf(message, sizeof(message), u8"%s %luF 髪%u/%lu 部品%lu 描%lu 光%lu",
+                                  PlayerClone::StageName(s.stage), (unsigned long)s.frames, (unsigned)s.hair,
+                                  (unsigned long)s.hairColor, (unsigned long)s.parts, (unsigned long)s.lateDraws,
+                                  (unsigned long)s.litDraws);
                 GuiNotification::Notify(kPcStat, message);
             }
         }
@@ -764,9 +935,10 @@ namespace CTRPluginFramework
             g_pcXIndex = GuiMenu::FindItem(kPcX);
             g_pcYIndex = GuiMenu::FindItem(kPcY);
             g_pcZoomIndex = GuiMenu::FindItem(kPcZoom);
+            g_pcLightIndex = GuiMenu::FindItem(kPcLight);
             if (g_pcScreenIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_pcScreenIndex, &kScreenFuncs);
-            const int values[] = { g_pcYawIndex, g_pcPitchIndex, g_pcXIndex, g_pcYIndex, g_pcZoomIndex };
+            const int values[] = { g_pcYawIndex, g_pcPitchIndex, g_pcXIndex, g_pcYIndex, g_pcZoomIndex, g_pcLightIndex };
             for (int v : values)
                 if (v >= 0)
                     GuiMenu::RegisterApply(v, ScreenApplied);

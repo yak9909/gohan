@@ -23,6 +23,8 @@ namespace PlayerClone
     void            SetHair(s32 style, s32 color);
     // 画面に固定（late pass で専用カメラ）。yaw / pitch は度、x/y は上画面のピクセル（カメラの中心）、zoom は百分率
     void            SetScreen(bool on, s32 yaw, s32 pitch, s32 x, s32 y, s32 zoom);
+    // 画面に固定のときの複製だけのライトの明るさ（百分率）。ゲームの周りの光には左右されない（IDA-opus-5.5-F033）
+    void            SetBrightness(s32 percent);
     // プロセス終了時に 1 回。late pass のフックを戻して置き場を消す
     void            Shutdown(void);
     struct Status
@@ -34,7 +36,8 @@ namespace PlayerClone
         u8      hair;           // 複製の pm+548
         u32     hairColor;      // 複製の pm+552
         u32     lateDraws;      // late pass で描いたメッシュの累計
-        u32     parts;          // 部品の表から抜き取った数（画面に固定のとき）
+        u32     parts;          // 部品の表から読んだ数（画面に固定のとき）
+        u32     litDraws;       // 複製だけのライトに差し替えて描いた回数
     };
     Status          Read(void);
     const char *    StageName(u32 stage);

@@ -79,6 +79,7 @@ namespace CTRPluginFramework
         static const char kPcX[]      = u8"画面の X";
         static const char kPcY[]      = u8"画面の Y";
         static const char kPcZoom[]   = u8"複製の大きさ";
+        static const char kPcLight[]  = u8"複製の明るさ";
 
         // ---- root/テスト／公共事業 ----
         static const char kPwPick[]    = u8"公共事業";
