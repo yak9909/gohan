@@ -110,6 +110,10 @@ typedef void (*LightStateResetFn)(u32 state);
 const LightStateResetFn LightStateReset = reinterpret_cast<LightStateResetFn>(0x0049AE18);
 const u32 kContextLightState = 64;
 const u32 kContextActiveCamera = 164;       // sub_4EFA00 が **(文脈 +172) を入れる。ライトの向きはこのカメラの view（+328）で変換
+// ★sub_49AE18 はライトの状態の後ろの文脈 +160（霧）・+164（カメラ）・+184 も 0 / 0 / -1 にする（state+96 / +100 / +120）。
+//   ゲームは直後の sub_4EFA00 でカメラを入れ直す。入れ直さずに描くと sub_494E20 が view を 0+328 から読んで落ちた（実機 SIGSEGV 0x495998）
+const u32 kContextFog = 160;
+const u32 kContextStateTail = 184;
 const u32 kLightStateSets = 144;            // 組の表（LightSet* を 4 本）へのポインタ
 const u32 kLightSetCount = 4;
 const u32 kSetAmbient = 12;
@@ -622,6 +626,17 @@ bool BuildLights(u32 context) {
     return true;
 }
 
+// ライトの状態を初期化する（次の材質でライトを送り直させる）。巻き添えで消える霧・カメラ・+184 は元の値へ戻す
+void ResetLights(u32 context) {
+    const u32 fog = R32(context + kContextFog);
+    const u32 camera = R32(context + kContextActiveCamera);
+    const u32 tail = R32(context + kContextStateTail);
+    LightStateReset(context + kContextLightState);
+    *reinterpret_cast<volatile u32 *>(context + kContextFog) = fog;
+    *reinterpret_cast<volatile u32 *>(context + kContextActiveCamera) = camera;
+    *reinterpret_cast<volatile u32 *>(context + kContextStateTail) = tail;
+}
+
 extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     if (s_stage != kLive || !s_screen || !s_lateReady)
         return;
@@ -648,7 +663,7 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
             saved[k] = R32(sets + 4 * k);
             *reinterpret_cast<volatile u32 *>(sets + 4 * k) = reinterpret_cast<u32>(s_litSet);
         }
-        LightStateReset(context + kContextLightState);
+        ResetLights(context);
         ++s_litDraws;
     }
     CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
@@ -665,7 +680,7 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     if (lit) {
         for (u32 k = 0; k < kLightSetCount; ++k)
             *reinterpret_cast<volatile u32 *>(sets + 4 * k) = saved[k];
-        LightStateReset(context + kContextLightState);
+        ResetLights(context);
     }
     CameraBind(context, camera, 1);
 }
