@@ -96,6 +96,11 @@ const float kCameraHeight = 12.0f;          // 複製の原点から見る高さ
 const float kHideDepth = -5000.0f;
 const float kCameraDistance = 120.0f;       // 複製までの距離（near 50 より遠いこと）
 const u32 kCameraBytes = 488;               // view +328（48 B）と projection +424（64 B）が収まる大きさ
+// ★法線は頂点シェーダの c3〜c5 で視点の空間へ回る。c3〜c5 は描画ごとに sub_495A10 / sub_495538 がノード +444 から送る
+//   （c0〜c2 = ノード +140 か単位行列）。+444 は Scene の更新がゲームのカメラで計算した model-view なので、そのままだと法線は
+//   ゲームのカメラ基準になり、専用カメラ基準で送る光と食い違う（屋外はカメラの上下が逆で暗く平らになった。実機 2026-09-25、
+//   IDA-opus-5.5-F033）。描く間だけ +444 を V_専用 * V_ゲーム^-1 * (+444) に置き換え、描いた後に戻す。
+const u32 kNodeModelView = 444;
 
 // ---- 複製だけのライト（IDA-opus-5.5-F033）------------------------------------------------------------
 // 描画の文脈 +64 がライトの状態。BindMaterial 0x494B4C → sub_49586C が材質の組の番号（ResMaterial +664）で sub_49AD20 を呼び、
@@ -223,6 +228,8 @@ volatile s32 s_pixelY = 150;
 volatile s32 s_zoom = 60;                   // 百分率
 u8 s_camera[kCameraBytes] __attribute__((aligned(8)));
 u32 s_parts[kMaxParts];                     // このフレームに部品の表から抜き取った holder（+4 がノード）
+float s_savedModelView[1 + kMaxParts][12];  // late pass で置き換えたノード +444 の元の値
+u32 s_savedModelViewNode[1 + kMaxParts];
 volatile u32 s_partCount;
 volatile bool s_lateReady;                  // s_parts が今の複製のもの
 volatile u32 s_lateDraws;
@@ -668,6 +675,49 @@ void ResetLights(u32 context) {
     *reinterpret_cast<volatile u32 *>(context + kContextStateTail) = tail;
 }
 
+// 3x4 の剛体（回転は正規直交）: o = a * b
+void Mul34(const float *a, const float *b, float *o) {
+    for (u32 r = 0; r < 3; ++r) {
+        for (u32 c = 0; c < 4; ++c) {
+            float s = a[4 * r + 0] * b[c] + a[4 * r + 1] * b[4 + c] + a[4 * r + 2] * b[8 + c];
+            if (c == 3)
+                s += a[4 * r + 3];
+            o[4 * r + c] = s;
+        }
+    }
+}
+
+// o = m^-1（m の回転は正規直交。ゲームの view は正規直交であることを屋内・屋外とも実機で確認）
+void InvRigid34(const float *m, float *o) {
+    for (u32 r = 0; r < 3; ++r)
+        for (u32 c = 0; c < 3; ++c)
+            o[4 * r + c] = m[4 * c + r];
+    for (u32 r = 0; r < 3; ++r)
+        o[4 * r + 3] = -(o[4 * r + 0] * m[3] + o[4 * r + 1] * m[7] + o[4 * r + 2] * m[11]);
+}
+
+// ノード +444 を toOurs * (+444) に置き換え、元の値を slot に取っておく
+void RetargetModelView(u32 node, u32 slot, const float *toOurs) {
+    s_savedModelViewNode[slot] = 0;
+    if (!IsHeap(node))
+        return;
+    float *mv = reinterpret_cast<float *>(node + kNodeModelView);
+    std::memcpy(s_savedModelView[slot], mv, sizeof(s_savedModelView[slot]));
+    float o[12];
+    Mul34(toOurs, s_savedModelView[slot], o);
+    std::memcpy(mv, o, sizeof(o));
+    s_savedModelViewNode[slot] = node;
+}
+
+void RestoreModelViews(u32 slots) {
+    for (u32 i = 0; i < slots; ++i) {
+        const u32 node = s_savedModelViewNode[i];
+        if (node != 0u)
+            std::memcpy(reinterpret_cast<float *>(node + kNodeModelView), s_savedModelView[i], sizeof(s_savedModelView[i]));
+        s_savedModelViewNode[i] = 0;
+    }
+}
+
 extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     if (s_stage != kLive || !s_screen || !s_lateReady)
         return;
@@ -695,6 +745,21 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
         ResetLights(context);
         ++s_litDraws;
     }
+    // 法線の基準を専用カメラへ（c3〜c5 = ノード +444）
+    u32 retargeted = 0;
+    const u32 gameCamera = R32(context + kContextActiveCamera);
+    if (IsHeap(gameCamera)) {
+        float inv[12], toOurs[12];
+        InvRigid34(reinterpret_cast<const float *>(gameCamera + kCameraView), inv);
+        Mul34(reinterpret_cast<const float *>(s_camera + kCameraView), inv, toOurs);
+        RetargetModelView(body, 0, toOurs);
+        retargeted = 1;
+        for (u32 i = 0; i < count && i < kMaxParts; ++i) {
+            const u32 holder = s_parts[i];
+            RetargetModelView(IsHeap(holder) ? R32(holder + kHolderNode) : 0u, 1 + i, toOurs);
+            retargeted = 2 + i;
+        }
+    }
     CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
     *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
     *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
@@ -706,6 +771,9 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
                 DrawNodeLayer(R32(holder + kHolderNode), layer, drawContext);
         }
     }
+    RestoreModelViews(retargeted);
+    // 次の描画が +444 を送り直すように、文脈の「前回のノード」（+28）を消す
+    *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
     if (lit) {
         *setsPtr = savedSets;
         ResetLights(context);
