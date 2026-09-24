@@ -41,6 +41,10 @@ extern "C" {
     MemProbeRow    g_memProbe[32];
     s64            g_memRegionUsed[4];     // svcGetSystemInfo(0, 0..3)（0 = 全体）
     u32            g_memRegionSize[3];     // 設定ページ 0x1FF80040 / 44 / 48（APPLICATION / SYSTEM / BASE の割り当て）
+    MemInfo        g_memMap[64];           // svcQueryMemory で 0 から順にたどったプロセスのメモリ配置
+    u32            g_memMapCount;
+    // [K] svcControlMemoryUnsafe で空き番地へ貼る試験: {va, res, paLuma, paCtru, rw, freeRes, sysUsedBefore, sysUsedAlloc, sysUsedFreed}
+    u32            g_memK[9];
 }
 
 namespace CTRPluginFramework
@@ -192,6 +196,68 @@ namespace CTRPluginFramework
         AddRow(unsafe ? 3 : 2, op, size, res, addr, (u32)fr);
     }
 
+    static u32 SystemUsed(void)
+    {
+        s64 v = -1;
+        svcGetSystemInfo(&v, 0, 2);
+        return (u32)v;
+    }
+
+    // プロセスのメモリ配置をたどり、[0x0E000000, 0x14000000) で 1MB 以上空いている区画の先頭を返す（無ければ 0）
+    static u32 FindFreeVa(u32 need)
+    {
+        g_memMapCount = 0;
+        u32 addr = 0, pick = 0;
+        while (addr < 0x40000000u && g_memMapCount < 64)
+        {
+            MemInfo mi;
+            PageInfo pi;
+            if (R_FAILED(svcQueryMemory(&mi, &pi, addr)) || mi.size == 0)
+                break;
+            g_memMap[g_memMapCount++] = mi;
+            if (pick == 0u && mi.state == MEMSTATE_FREE && mi.base_addr >= 0x0E000000u && mi.base_addr < 0x14000000u
+                && mi.size >= need)
+                pick = mi.base_addr;
+            addr = mi.base_addr + mi.size;
+        }
+        for (u32 i = 0; i < g_memMapCount; ++i)
+            Log("    %08X +%08X perm %u state %u", g_memMap[i].base_addr, g_memMap[i].size, g_memMap[i].perm, g_memMap[i].state);
+        return pick;
+    }
+
+    static void TestUnsafeAtFreeVa(void)
+    {
+        const u32 size = 0x40000;
+        for (u32 i = 0; i < 9; ++i)
+            g_memK[i] = 0;
+        const u32 va = FindFreeVa(0x100000);
+        g_memK[0] = va;
+        if (va == 0u)
+        {
+            Log("  空き番地が見つからない");
+            return;
+        }
+        g_memK[6] = SystemUsed();
+        u32 out = 0;
+        const Result res = svcControlMemoryUnsafe(&out, va, size, (MemOp)(MEMOP_ALLOC_LINEAR | MEMOP_REGION_SYSTEM),
+                                                  MEMPERM_READWRITE);
+        g_memK[1] = (u32)res;
+        if (R_FAILED(res))
+        {
+            Log("  VA %08X -> 失敗 res=%08X", va, (u32)res);
+            return;
+        }
+        g_memK[7] = SystemUsed();
+        g_memK[2] = svcConvertVAToPA((void *)va, false);
+        g_memK[3] = osConvertVirtToPhys((void *)va);
+        g_memK[4] = RwCheck((void *)va, size) ? 1u : 0u;
+        u32 dummy = 0;
+        g_memK[5] = (u32)svcControlMemoryUnsafe(&dummy, va, size, MEMOP_FREE, (MemPerm)0);
+        g_memK[8] = SystemUsed();
+        Log("  VA %08X out %08X PA(Luma) %08X PA(ctru) %08X rw=%u 解放 res=%08X", va, out, g_memK[2], g_memK[3], g_memK[4], g_memK[5]);
+        Log("  SYSTEM 使用量: 前 %08X / 確保後 %08X / 解放後 %08X", g_memK[6], g_memK[7], g_memK[8]);
+    }
+
     static void RunTest(void)
     {
         g_log.clear();
@@ -234,15 +300,12 @@ namespace CTRPluginFramework
                 }
         }
         Log("");
-        Log("[J] svcControlMemoryUnsafe(MEMOP_ALLOC_LINEAR | 領域)  ※Luma 0xA3");
-        {
-            const u32 regions[3] = { MEMOP_REGION_APP, MEMOP_REGION_SYSTEM, MEMOP_REGION_BASE };
-            for (u32 r = 0; r < 3; ++r)
-            {
-                TestRegionLinear(true, regions[r], 0x10000);
-                Flush();
-            }
-        }
+        // [J]（addr0 = 0 の Unsafe）は外した: Unsafe は addr0 へ貼るので 0 だと番地 0 に貼ってしまう（実機 2026-09-25、IDA-opus-5.5-F035）
+        Log("");
+        Flush();
+
+        Log("[K] 空き番地へ svcControlMemoryUnsafe(ALLOC_LINEAR | REGION_SYSTEM) 0x40000");
+        TestUnsafeAtFreeVa();
         Log("");
         Flush();
 
