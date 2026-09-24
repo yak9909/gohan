@@ -312,22 +312,31 @@ bool Covers(const PublicWorks::Slot &slot, s32 x, s32 y) {
     return false;
 }
 
-// カーソルの下の建物。**衝突判定のマスがカーソルに重なる建物**のうち、建物の基点がマンハッタン距離で一番近いもの。
-// 重なる建物が無ければ、ゲームの占有マップ（足元の全マス）で引く。
+// カーソルの下の建物。候補は**衝突判定のマスがカーソルのマスに重なるか、上下左右に隣り合う建物**。
+// その中で建物の基点とのマンハッタン距離が一番近いもの（同じ距離なら重なっている方）。
+// ★以前は重なる建物だけを候補にしていて、(2,1) と (3,1) の建物があるときカーソル (2,2) で (3,1) が選ばれた
+//   （(3,1) の衝突判定だけが (2,2) に届いていた。利用者報告「直感に反する」2026-09-25）。
+// 候補が無ければ、ゲームの占有マップ（足元の全マス）で引く。
 s32 Hovered(void) {
     s32 best = -1;
     s32 bestDistance = 0x7FFFFFFF;
+    bool bestCovers = false;
     for (u32 i = 0; i < PublicWorks::kSlots; ++i) {
         PublicWorks::Slot slot;
-        if (!PublicWorks::ReadSlot(i, slot) || slot.id >= PublicWorks::kEmptyId || !Covers(slot, s_cx, s_cy))
+        if (!PublicWorks::ReadSlot(i, slot) || slot.id >= PublicWorks::kEmptyId)
             continue;
-        // 近さはマンハッタン距離（利用者指示）
+        const bool covers = Covers(slot, s_cx, s_cy);
+        if (!covers && !Covers(slot, s_cx - 1, s_cy) && !Covers(slot, s_cx + 1, s_cy)
+            && !Covers(slot, s_cx, s_cy - 1) && !Covers(slot, s_cx, s_cy + 1))
+            continue;
+        // 近さは基点とのマンハッタン距離（利用者指示）
         const s32 dx = (s32)slot.x - s_cx;
         const s32 dy = (s32)slot.y - s_cy;
         const s32 distance = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
-        if (distance < bestDistance) {
+        if (distance < bestDistance || (distance == bestDistance && covers && !bestCovers)) {
             bestDistance = distance;
             best = (s32)i;
+            bestCovers = covers;
         }
     }
     return best >= 0 ? best : PublicWorks::SlotAtTile((u32)s_cx, (u32)s_cy);
@@ -484,6 +493,10 @@ void UpdateCapacityLabels(bool force) {
     }
     GameLabel::SetText(0, line1);
     GameLabel::SetText(1, line2);
+    // 上限に届いた・足りないときは赤く（利用者指示）
+    GameLabel::SetAlert(0, c.valid && c.used >= c.slots);
+    GameLabel::SetAlert(1, c.valid && c.kindsLeft == 0);
+    GameLabel::SetAlert(2, c.memTotalKB != 0 && (s32)c.memFreeKB < kReserveKB);
     GameLabel::Show(0);
     GameLabel::Show(1);
 }

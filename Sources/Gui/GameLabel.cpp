@@ -96,6 +96,9 @@ const u32 kTextColorTop = 216, kTextColorBottom = 220, kTextMaterial = 256;
 // 文字色（利用者: 背景より濃い水色。白から変更）。byte の並びは R, G, B, A（ctor がリソースの 4 byte をそのまま組む）
 // 利用者: もう少し濃く（1E6EB4 → 0F4C8A）
 const u8 kTextRgba[4] = { 0x0F, 0x4C, 0x8A, 0xFF };
+// 警告色（利用者: 上限に届いた・足りないときは箱と文字を赤く）
+const u8 kRedDark[3] = { 0xE0, 0x48, 0x48 }, kRedLight[3] = { 0xFF, 0xD4, 0xD4 };
+const u8 kRedTextRgba[4] = { 0xA0, 0x18, 0x18, 0xFF };
 // ゲームの時計: BsTimeBelWindow の実体 dword_94A720（BsTimeBelWindow_Init 0x2939C8 の最後で入る）、+1760 = N_time ペイン。
 //   左下の箱と重なるので、出している間は毎フレーム見える旗（ペイン+183 bit0）を落とす（ゲームの処理の後・記録の前）。
 const u32 kTimeBelWindowPtr = 0x0094A720, kTimeBelClockPane = 1760;
@@ -116,6 +119,8 @@ struct Label {
     float placedX;                          // いま置いている箱の左端（並べ直しが要るかの判定）
     // メニューのスレッドが書く
     volatile bool want;
+    volatile bool alert;
+    bool alertShown;                        // いま塗っている色（組み立て直後は通常色）
     volatile u32 row;
     volatile bool bottom;
     u16 pend[kMaxChars + 1];
@@ -174,6 +179,27 @@ float Progress(void *anim) {
         return 1.0f;
     const float p = F(anim, kAnimCur) / total;
     return p < 0.0f ? 0.0f : (p > 1.0f ? 1.0f : p);
+}
+
+// 箱と文字の色を塗る（通常 = 水色 / 警告 = 赤）
+void Paint(Label &l, bool alert) {
+    const u8 *text = alert ? kRedTextRgba : kTextRgba;
+    for (u32 k = 0; k < 4; ++k) {
+        P(l.text, kTextColorTop)[k] = text[k];
+        P(l.text, kTextColorBottom)[k] = text[k];
+    }
+    B(l.text, kTextDirty) |= 1u;
+    if (W(l.base, kPicMaterial) != 0) {
+        u8 *mat = reinterpret_cast<u8 *>(W(l.base, kPicMaterial));
+        const u8 *dark = alert ? kRedDark : kBlueDark;
+        const u8 *light = alert ? kRedLight : kBlueLight;
+        for (u32 k = 0; k < 3; ++k) {
+            mat[kMatColor0 + k] = dark[k];
+            mat[kMatColor1 + k] = light[k];
+        }
+        mat[kMatFlags] &= ~4u;              // GPU へ送り直させる
+    }
+    l.alertShown = alert;
 }
 
 void Switch(Label &l, void *from, void *to) {
@@ -281,25 +307,14 @@ bool BuildLabel(Label &l) {
     B(l.text, kTextPosition) = 4;
     B(l.text, kTextDirty) |= 1u;
     MovePane(l.text, kBoxOffX - kTextParentX, kBoxOffY - kTextParentY);
-    // 文字を白に
-    for (u32 k = 0; k < 4; ++k) {
-        P(l.text, kTextColorTop)[k] = kTextRgba[k];
-        P(l.text, kTextColorBottom)[k] = kTextRgba[k];
-    }
+    // 文字の色（マテリアルの色 [1] を白にして、文字色 2 つで決める）
+    Paint(l, false);
     if (W(l.text, kTextMaterial) != 0) {
         u8 *tm = reinterpret_cast<u8 *>(W(l.text, kTextMaterial));
         tm[kMatColor1] = tm[kMatColor1 + 1] = tm[kMatColor1 + 2] = 0xFF;
         tm[kMatFlags] &= ~4u;
     }
-    // 箱の色
-    if (W(l.base, kPicMaterial) != 0) {
-        u8 *mat = reinterpret_cast<u8 *>(W(l.base, kPicMaterial));
-        for (u32 k = 0; k < 3; ++k) {
-            mat[kMatColor0 + k] = kBlueDark[k];
-            mat[kMatColor1 + k] = kBlueLight[k];
-        }
-        mat[kMatFlags] &= ~4u;              // GPU へ送り直させる
-    }
+
     // 登場し終えたときの N_bell の位置（箱を置くときの基準）
     GroupBind(l.layout, l.in, l.group, 0);
     AnimSetFrame(l.in, F(l.in, kAnimTotal) - 1.0f);
@@ -367,6 +382,8 @@ bool StepLabel(Label &l, float left, void *mgr) {
     }
     if (l.placedX != left)
         Place(l, left);
+    if (l.alertShown != l.alert)
+        Paint(l, l.alert);
     if (want) {
         if (!l.entered) {
             Switch(l, l.out, l.in);         // dir が None なので 0 から
@@ -442,6 +459,11 @@ void SetRow(u32 slot, u32 row) {
 void SetBottom(u32 slot, bool bottom) {
     if (slot < kSlots)
         s_labels[slot].bottom = bottom;
+}
+
+void SetAlert(u32 slot, bool alert) {
+    if (slot < kSlots)
+        s_labels[slot].alert = alert;
 }
 
 void HideGameClock(bool hide) {
