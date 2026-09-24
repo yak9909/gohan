@@ -17,17 +17,17 @@ namespace {
 // ---- ゲームの関数（IDA-opus-5.5-F028 / F029）------------------------------------------------------
 typedef void (*CtorFn)(void *pm);
 typedef u32 (*CreateFromProfileFn)(void *pm, u32 profile, u32 a3, u32 maskBit, u32 a5, u32 a6);
-typedef u32 (*DestroyStepFn)(void *pm);
 typedef void (*DtorFn)(void *pm);
 typedef void (*SetMatrixFn)(void *pm, const float *m);
 typedef void (*ModelStepFn)(void *pm);
 typedef void (*CalcAnimFn)(void *pm, u32 a2, u32 a3);
 typedef u32 (*ProfileFn)(u32 index);
 typedef void (*SubmitFn)(void *holder, u32 scene);
+typedef u32 (*ReleaseFn)(u32 table, u32 *handle);
+typedef void (*EntryFn)(u32 entry);
 
 const CtorFn PlayerModelCtor = reinterpret_cast<CtorFn>(0x001D3854);
 const CreateFromProfileFn CreateFromProfile = reinterpret_cast<CreateFromProfileFn>(0x001CF090);
-const DestroyStepFn DestroyStep = reinterpret_cast<DestroyStepFn>(0x001D30D0);
 const DtorFn PlayerModelDtor = reinterpret_cast<DtorFn>(0x001D3980);
 const SetMatrixFn SetMatrix = reinterpret_cast<SetMatrixFn>(0x001CEC10);        // vtbl[9]
 const ModelStepFn StepFaceTool = reinterpret_cast<ModelStepFn>(0x001D2BE8);     // vtbl[2]
@@ -36,6 +36,12 @@ const ModelStepFn StepAttach = reinterpret_cast<ModelStepFn>(0x001D33FC);       
 const ModelStepFn StepParts = reinterpret_cast<ModelStepFn>(0x001D2CCC);        // vtbl[5]
 const ProfileFn PlayerProfile = reinterpret_cast<ProfileFn>(0x002FEB60);        // vc_PSOFFSET
 const SubmitFn Submit = reinterpret_cast<SubmitFn>(0x004ED630);                 // Scene_SubmitNode
+// ★枠を返すのは BankTable_Release。vt[0]（頭なら 0x822B98）で部品を下ろし終えてから空きにし、済めば 1（IDA-opus-5.5-F030）。
+//   使用中ビットと使用数だけを消すと部品が読み込まれたまま残り、管理役の片付け（sub_2A0E74 はテクスチャアニメを先に消す）が
+//   あとで頭を下ろすときにアロケータ 0 で落ちた（実機 SIGSEGV 0x569B48）。
+const ReleaseFn BankRelease = reinterpret_cast<ReleaseFn>(0x002138FC);
+const EntryFn FaceCancel = reinterpret_cast<EntryFn>(0x002711A4);              // PlayerModel_DestroyStep が顔の枠に先に呼ぶ
+const ModelStepFn DestroyBody = reinterpret_cast<ModelStepFn>(0x001AC1E8);      // 体のインスタンスを消す（DestroyStep が体の枠の前に呼ぶ）
 
 const u32 kPlayerPtr = 0x00AA7994;          // AcPlayer*
 const u32 kPlayerMgrPtr = 0x0094A374;       // BsPlayerMgr*（部品バンクの管理役 = +24）
@@ -55,6 +61,7 @@ const u32 kDollToolParam = 4;               // 人形の第 6 引数
 
 const float kSideOffset = 30.0f;            // 体の行列の X 軸の向きへずらす量（world 単位）
 const u32 kCreateLimit = 300;               // 10 秒（30fps）で作成が終わらなければ諦める
+const u32 kQuietFrames = 4;                 // 積むのをやめてから消すまで待つフレーム数（GridCursor と同じ。描画中の参照を残さない）
 
 // 部品バンク（管理役からの位置と、1 体が取る枠の数）。PlayerModel_Setup 0x1CF474 が取るもの
 struct BankNeed { u32 offset; u16 need; };
@@ -64,6 +71,18 @@ const BankNeed kBanks[] = {
 };
 const u32 kBankCount = 4;                   // BankTable +4 = 枠数
 const u32 kBankUsed = 8;                    // BankTable +8 = 使用中の数（u16。BankTable_Acquire 0x2137CC が増やす）
+
+// 片付けの順（PlayerModel_DestroyStep 0x1D30D0 と同じ）: {管理役からの位置, pm の組の位置}。顔・体は別に扱う
+struct Pair { u32 bank; u32 handle; };
+const Pair kReleaseOrder[] = {
+    { 60624, 404 }, { 51872, 396 }, { 47376, 388 }, { 39016, 380 }, { 30348, 372 }, { 21680, 356 },
+    { 13292, 364 }, { 4148, 348 },
+};
+const Pair kFacePairs[] = { { 156, 332 }, { 156, 340 } };
+const Pair kTexAnimPairs[] = { { 76448, 436 }, { 76448, 428 }, { 76152, 420 }, { 76152, 412 } };
+const Pair kBodyPair = { 0, 324 };
+const u32 kFaceEntryBytes = 284;
+const u32 kTableEntries = 12;
 
 enum Stage : u32 { kOff = 0, kCreating = 1, kLive = 2, kDestroying = 3, kFailed = 4 };
 
@@ -104,6 +123,41 @@ bool SceneChanged(void) {
     return R32(kPlayerMgrPtr) != s_mgr || R32(kPlayerPtr) != s_player || R8(kRoomIdByte) != s_room
         || R32(kSceneOwnerPtr) != s_owner;
 }
+
+// 組がまだこの管理役の枠を指しているか。返し終えた組は {0, -1}（BankTable_Release）。
+bool Held(const Pair &p) {
+    const u32 table = s_mgr + kBankMgrOffset + p.bank;
+    return R32(Model() + p.handle) == table && R32(Model() + p.handle + 4) < R32(table + kBankCount);
+}
+
+u32 Release(const Pair &p) {
+    if (!Held(p))
+        return 1;
+    return BankRelease(s_mgr + kBankMgrOffset + p.bank, reinterpret_cast<u32 *>(Model() + p.handle));
+}
+
+// PlayerModel_DestroyStep と同じことを、大域の管理役（場面の切り替え中は 0）ではなく作ったときの管理役で行う。
+// 管理役は全部の枠が返るまで片付けを待つ（BsPlayerMgr vtbl[20] 0x1C475C → sub_2A0E74）ので、その間は生きている。
+bool ReleaseStep(void) {
+    u32 done = 1;
+    for (const Pair &p : kReleaseOrder)
+        done &= Release(p);
+    for (const Pair &p : kFacePairs) {
+        if (Held(p)) {
+            const u32 table = s_mgr + kBankMgrOffset + p.bank;
+            FaceCancel(table + kTableEntries + kFaceEntryBytes * R32(Model() + p.handle + 4));
+        }
+    }
+    for (const Pair &p : kFacePairs)
+        done &= Release(p);
+    for (const Pair &p : kTexAnimPairs)
+        done &= Release(p);
+    DestroyBody(s_model);
+    done &= Release(kBodyPair);
+    return done != 0u;
+}
+
+void StepDestroy(void);
 
 void Abandon(u32 reason) {
     std::memset(s_model, 0, sizeof(s_model));
@@ -162,7 +216,10 @@ void StepCreate(void) {
         s_frames = 0;
     }
     if (SceneChanged()) {
-        Abandon(4);
+        s_fail = 4;
+        s_stage = kDestroying;                      // 取った枠を返す（手放すと無限ロード）
+        s_frames = 0;
+        StepDestroy();
         return;
     }
     const u32 profile = PlayerProfile(R8(s_player + kActorPlayerIndex));
@@ -186,7 +243,10 @@ void StepCreate(void) {
 
 void StepLive(void) {
     if (SceneChanged()) {
-        Abandon(4);
+        s_fail = 4;
+        s_stage = kDestroying;                      // 取った枠を返す（手放すと無限ロード）
+        s_frames = 0;
+        StepDestroy();
         return;
     }
     ApplyHair();
@@ -200,17 +260,16 @@ void StepLive(void) {
     ++s_frames;
 }
 
+// 片付け。場面の切り替え中でも同じ（覚えておいた管理役の枠を返す）。返し終えるまで毎フレーム。
+// ★諦めて捨てない: 1 枠でも残ると管理役の片付けが永久に待ち、無限ロードになる（実機 2026-09-24）。
 void StepDestroy(void) {
     if (!s_constructed) {
         s_stage = s_fail != 0u ? kFailed : kOff;
         return;
     }
-    if (SceneChanged()) {
-        Abandon(4);
+    if (++s_frames <= kQuietFrames)
         return;
-    }
-    ++s_frames;
-    if (DestroyStep(s_model) == 0u && s_frames < kCreateLimit)
+    if (!ReleaseStep())
         return;
     PlayerModelDtor(s_model);
     std::memset(s_model, 0, sizeof(s_model));
