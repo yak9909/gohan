@@ -3,6 +3,7 @@
 #include "BuildingHighlight.hpp"
 #include "BuildingPreview.hpp"
 #include "Cheats.hpp"
+#include "GameLabel.hpp"
 #include "GameList.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
@@ -436,7 +437,16 @@ void NotifyKind(const char *prefix) {
     GuiNotification::Notify(Cheats::kBeOn, message);
 }
 
+// 上画面左上の箱（ゲームの所持ベルの箱、GameLabel）に今のモードを出す
+void ShowModeLabel(void) {
+    static const char *const kLabel[] = { u8"配置モード", u8"移動モード", u8"削除モード" };
+    const u32 m = (u32)s_mode;
+    GameLabel::SetText(m < 3 ? kLabel[m] : "");
+    GameLabel::Show();
+}
+
 void NotifyMode(void) {
+    ShowModeLabel();
     if (s_mode == Mode::Place) {
         NotifyKind(ModeName(s_mode));
         return;
@@ -731,6 +741,7 @@ void Stop(void) {
     GridCursor::Hide();
     BuildingPreview::Hide();
     GameList::Hide();
+    GameLabel::Hide();
     PublicWorks::Unhighlight();
     s_selected = -1;
 }
