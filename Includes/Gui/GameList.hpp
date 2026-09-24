@@ -33,6 +33,10 @@ namespace GameList
     // 一覧自身の関数（選択の見た目 vt[16]・スクロール）で動かす。ゲームの入力には触らない。スライドパッドは使わない。
     void        FeedDpad(u32 heldKeys);
     const char *LastError(void);
+    // 元の下画面 UI（地図・タブ）が出入りしている・開いていたメニューを閉じさせている最中。
+    //   ★この間はゲームが地図の arc（596 KB の塊）を取り直すことがあるので、ほかの部品は arc を新しく読まない
+    //   （持ち物欄を閉じさせた直後に地図の arc が取れず SIGSEGV した。2026-09-25）
+    bool        FieldTransition(void);
 
     void        FrameStep(void);        // ゲームのスレッド
     void        Shutdown(void);         // プラグイン終了時（ゲームのスレッドで片付け終わるまで待つ）

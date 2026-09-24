@@ -57,7 +57,9 @@ namespace PublicWorks
     //   used / slots: 建物表の使用数 / 枠数（56。埋まると設置は NoFreeSlot）。公共事業以外（役場・店など）も含む。
     //   kindsLeft: 共有の資源枠を使う建物（普通の公共事業・橋など 7 クラス）の、新しい種類をあと何種類置けるか
     //     （上限 kMaxSharedKinds = 30。同じ種類を増やしてもメモリは増えない。IDA-opus-5.5-F008）。
-    struct Capacity { u16 used; u16 slots; u16 kindsLeft; bool valid; };
+    //   memFreeKB / memTotalKB: 建物用の親ヒープ *(0x94CC68)（役場・店などが 1 棟ごとに専用ヒープを借りる先。
+    //     設置の判定 NoHeapRoom はここの空きが 0x40000 未満で断る）の空き / 大きさ（KB）。
+    struct Capacity { u16 used; u16 slots; u16 kindsLeft; bool valid; u16 memFreeKB; u16 memTotalKB; };
     Capacity        GetCapacity(void);
 
     // ---- 読むだけ（メニュースレッド）----

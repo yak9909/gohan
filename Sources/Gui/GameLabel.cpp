@@ -1,5 +1,6 @@
 #include "GameLabel.hpp"
 #include "FrameTrace.hpp"
+#include "GameList.hpp"
 #include "GridCursor.hpp"
 
 #include <3ds.h>
@@ -82,8 +83,9 @@ const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags 
 //   ★時計は左上ではなく左下にある（最初の版は時計の下のつもりで y=36 に置き「下すぎる」と言われた）。
 // 箱の元の幅は 98 を横 1.3 倍（127px）。文字の幅（全角 15px・半角 9px の見積もり。「配置モード」5 文字 ≒ 75px を実機で確認）
 //   に左右 16px を足した幅がこれより広ければ横に伸ばす。
-const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f;
-const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 32.0f, kWide = 15.0f, kNarrow = 9.0f;
+const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f, kRowPitch = 36.0f;
+// 余白は左右合わせて 60px（利用者: 32px では窮屈。一回り大きく）
+const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 60.0f, kWide = 15.0f, kNarrow = 9.0f;
 // 箱（P_bell_base、N_bell の子で (-59,-6)）と影（P_bell_sh、(-57,-8)）。文字は N_bell_00（(-16,-18)）の子。
 const float kBoxOffX = -59.0f, kBoxOffY = -6.0f, kTextParentX = -16.0f, kTextParentY = -18.0f;
 // 色（利用者: 水色）。マテリアル色 [0]/[1] を LA4 の明るさで混ぜる。素は e1b90f / fffabe（山吹・クリーム）。
@@ -91,6 +93,8 @@ const u8 kBlueDark[3] = { 0x5A, 0xAA, 0xE6 }, kBlueLight[3] = { 0xD2, 0xF0, 0xFF
 // 文字（利用者: 白）。TextBox の文字色 2 つ（+216 上 / +220 下、nwlyt_TextBox_Ctor がリソース +92.. から写す）と、
 //   TextBox のマテリアル（+256）の色 [1]（素は 8c3c14 = 茶。文字はこの色で塗られる）を白にする。
 const u32 kTextColorTop = 216, kTextColorBottom = 220, kTextMaterial = 256;
+// 文字色（利用者: 背景より濃い水色。白から変更）。byte の並びは R, G, B, A（ctor がリソースの 4 byte をそのまま組む）
+const u8 kTextRgba[4] = { 0x1E, 0x6E, 0xB4, 0xFF };
 const u32 kTeardownWaitFrames = 3;
 
 enum class Dir : u8 { None, In, Out };
@@ -108,6 +112,7 @@ struct Label {
     float placedX;                          // いま置いている箱の左端（並べ直しが要るかの判定）
     // メニューのスレッドが書く
     volatile bool want;
+    volatile u32 row;
     u16 pend[kMaxChars + 1];
     volatile u32 textSeq;
 };
@@ -252,8 +257,10 @@ bool BuildLabel(Label &l) {
     B(l.text, kTextDirty) |= 1u;
     MovePane(l.text, kBoxOffX - kTextParentX, kBoxOffY - kTextParentY);
     // 文字を白に
-    W(l.text, kTextColorTop) = 0xFFFFFFFFu;
-    W(l.text, kTextColorBottom) = 0xFFFFFFFFu;
+    for (u32 k = 0; k < 4; ++k) {
+        P(l.text, kTextColorTop)[k] = kTextRgba[k];
+        P(l.text, kTextColorBottom)[k] = kTextRgba[k];
+    }
     if (W(l.text, kTextMaterial) != 0) {
         u8 *tm = reinterpret_cast<u8 *>(W(l.text, kTextMaterial));
         tm[kMatColor1] = tm[kMatColor1 + 1] = tm[kMatColor1 + 2] = 0xFF;
@@ -287,7 +294,8 @@ bool BuildLabel(Label &l) {
 // 箱を左端 left に置く（上下は kTop）。N_all をずらして合わせる
 void Place(Label &l, float left) {
     const float cx = left + l.width * 0.5f;
-    MovePane(l.all, cx - (l.bellX + kBoxOffX), kTop - (l.bellY + kBoxOffY));
+    const float cy = kTop - (float)l.row * kRowPitch;
+    MovePane(l.all, cx - (l.bellX + kBoxOffX), cy - (l.bellY + kBoxOffY));
     l.placedX = left;
 }
 
@@ -320,7 +328,8 @@ void ApplyText(Label &l) {
 bool StepLabel(Label &l, float left, void *mgr) {
     const bool want = l.want;
     if (!l.live) {
-        if (!want || !s_holderReady || s_error[0] != 0 || l.made)
+        // ★元の下画面 UI が出入りしている間は新しく組まない（地図の arc の取り直しと重ねない）
+        if (!want || !s_holderReady || s_error[0] != 0 || l.made || GameList::FieldTransition())
             return false;                   // l.made: 退場し終えて壊すのを待っている
         if (!BuildLabel(l)) {
             DestroyLabel(l);
@@ -400,6 +409,11 @@ void SetText(u32 slot, const char *utf8) {
     l.textSeq = l.textSeq + 1;
 }
 
+void SetRow(u32 slot, u32 row) {
+    if (slot < kSlots)
+        s_labels[slot].row = row;
+}
+
 void Show(u32 slot) {
     if (slot >= kSlots)
         return;
@@ -431,20 +445,23 @@ void FrameStep(void) {
     bool anyWant = false;
     for (u32 i = 0; i < kSlots; ++i)
         anyWant = anyWant || s_labels[i].want;
-    if (anyWant && s_error[0] == 0 && !HolderStep()) {
+    if (anyWant && s_error[0] == 0 && (s_holderReady || !GameList::FieldTransition()) && !HolderStep()) {
         if (s_error[0] != 0)
             DestroyHolder();
         return;
     }
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
-    // 左から順に並べる。出したい箱か、まだ描いている（退場中の）箱だけが場所を取る
-    float left = kLeft;
+    // 段ごとに左から順に並べる。出したい箱か、まだ描いている（退場中の）箱だけが場所を取る
+    float left[kSlots];
+    for (u32 r = 0; r < kSlots; ++r)
+        left[r] = kLeft;
     for (u32 i = 0; i < kSlots; ++i) {
         Label &l = s_labels[i];
+        const u32 row = l.row < kSlots ? l.row : kSlots - 1;
         const bool takesRoom = l.want || l.live;
-        StepLabel(l, left, mgr);
+        StepLabel(l, left[row], mgr);
         if (takesRoom && l.width > 0.0f)
-            left += l.width + kGap;
+            left[row] += l.width + kGap;
     }
     // 退場し終えた箱を壊す（描くのをやめてから数フレーム後。GPU がまだ読んでいるかもしれない）
     bool pending = false;

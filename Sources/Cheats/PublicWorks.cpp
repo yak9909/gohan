@@ -709,6 +709,7 @@ Result Request(Op op) {
 
 namespace {
 volatile u32 s_capWord;             // used | slots << 8 | kindsLeft << 16 | 1 << 24（1 語で書く: 読む側が途中の値を見ない）
+volatile u32 s_memWord;             // 親ヒープの空き KB | 大きさ KB << 16
 u32 s_capFrames;
 
 void UpdateCapacity(void) {
@@ -726,6 +727,14 @@ void UpdateCapacity(void) {
     }
     const u32 kinds = SharedKinds(kEmptyId);
     const u32 left = kinds < kMaxSharedKinds ? kMaxSharedKinds - kinds : 0;
+    const u32 heap = *reinterpret_cast<volatile u32 *>(kStrcParentHeap);
+    if (IsHeap(heap)) {
+        const u32 freeKb = HeapFreeSize(reinterpret_cast<void *>(heap)) / 1024u;
+        const u32 totalKb = *reinterpret_cast<volatile u32 *>(heap + 0x20) / 1024u;   // sead::ExpHeap の大きさ
+        s_memWord = (freeKb & 0xFFFFu) | ((totalKb & 0xFFFFu) << 16);
+    } else {
+        s_memWord = 0;
+    }
     s_capWord = (used & 0xFFu) | ((kSlots & 0xFFu) << 8) | ((left & 0xFFu) << 16) | (1u << 24);
 }
 }  // namespace
@@ -737,6 +746,9 @@ Capacity GetCapacity(void) {
     c.slots = (u16)((w >> 8) & 0xFFu);
     c.kindsLeft = (u16)((w >> 16) & 0xFFu);
     c.valid = (w >> 24) != 0;
+    const u32 m = s_memWord;
+    c.memFreeKB = (u16)(m & 0xFFFFu);
+    c.memTotalKB = (u16)(m >> 16);
     return c;
 }
 

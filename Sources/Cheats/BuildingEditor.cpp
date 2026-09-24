@@ -451,14 +451,25 @@ void NotifyKind(const char *prefix) {
 //   箱 2「新しい種類 あと N」: 普通の公共事業・橋などが使う共有の資源枠で、あと何種類の新しい建物を置けるか
 //     （同じ種類ならメモリは増えない。役場・店などは親ヒープで別に判定される）
 u32 s_capShown = 0xFFFFFFFFu;
+u32 s_memShown = 0xFFFFFFFFu;
 
 void UpdateCapacityLabels(bool force) {
     const PublicWorks::Capacity c = PublicWorks::GetCapacity();
     const u32 key = c.valid ? ((u32)c.used | ((u32)c.slots << 8) | ((u32)c.kindsLeft << 16) | (1u << 24)) : 0u;
-    if (!force && key == s_capShown)
+    const u32 memKey = (u32)c.memFreeKB | ((u32)c.memTotalKB << 16);
+    if (!force && key == s_capShown && memKey == s_memShown)
         return;
     s_capShown = key;
-    static char line1[48], line2[48];
+    s_memShown = memKey;
+    static char line1[48], line2[48], line3[48];
+    // 3 つ目（2 段目）: 建物用の親ヒープの空き / 大きさ（KB）。役場・店などを置くときはここが 256 KB 以上要る
+    if (c.memTotalKB != 0)
+        std::snprintf(line3, sizeof(line3), u8"メモリの空き %u/%uKB", (unsigned)c.memFreeKB, (unsigned)c.memTotalKB);
+    else
+        std::snprintf(line3, sizeof(line3), u8"メモリの空き -");
+    GameLabel::SetText(2, line3);
+    GameLabel::SetRow(2, 1);
+    GameLabel::Show(2);
     if (c.valid) {
         std::snprintf(line1, sizeof(line1), u8"設置上限 %u/%u", (unsigned)c.used, (unsigned)c.slots);
         std::snprintf(line2, sizeof(line2), u8"新しい種類 あと%u", (unsigned)c.kindsLeft);
@@ -777,6 +788,7 @@ void Stop(void) {
     for (u32 i = 0; i < GameLabel::kSlots; ++i)
         GameLabel::Hide(i);
     s_capShown = 0xFFFFFFFFu;
+    s_memShown = 0xFFFFFFFFu;
     PublicWorks::Unhighlight();
     s_selected = -1;
 }

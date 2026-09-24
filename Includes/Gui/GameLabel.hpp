@@ -15,6 +15,7 @@ namespace GameLabel
     const u32   kMaxChars = 24;
 
     void        SetText(u32 slot, const char *utf8);    // 出ている間でも差し替えられる
+    void        SetRow(u32 slot, u32 row);              // 段（0 = いちばん上）。同じ段は左から横に並ぶ
     void        Show(u32 slot);
     void        Hide(u32 slot);                         // 退場が終われば資源を返す（全部の箱が消えたら arc も）
     bool        Present(void);

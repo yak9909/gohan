@@ -1,5 +1,6 @@
 #include "GameList.hpp"
 #include "FrameTrace.hpp"
+#include "GameLabel.hpp"
 #include "GridCursor.hpp"
 
 #include <3ds.h>
@@ -375,7 +376,8 @@ bool StepField(bool hide) {
         }
         return false;
     case Field::Hidden:
-        if (!hide && FieldIdle()) {
+        // ★地図を戻す（ゲームが map_village.arc の 596 KB の塊を取り直す）のは、リストを片付け、箱の arc も返してから
+        if (!hide && FieldIdle() && s_stage == Stage::Off && !GameLabel::Present()) {
             W8(kTabCommand, kCmdRestoreField);
             FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdRestoreField);
             s_field = Field::Restoring;
@@ -688,6 +690,10 @@ bool Present(void) {
     return s_stage != Stage::Off || s_field != Field::Shown;
 }
 
+bool FieldTransition(void) {
+    return s_field == Field::Exiting || s_field == Field::Restoring || s_menuCloseSent;
+}
+
 void Select(s32 index) {
     s_wantSelect = index;
     s_selectSeq = s_selectSeq + 1;
@@ -724,7 +730,8 @@ void FrameStep(void) {
 
     switch (s_stage) {
     case Stage::Off:
-        if (!want || s_error[0] != 0)
+        // ★組み立て（catalogue.arc の読み込み）は元の UI が退場し終えてから（地図の作り直しと重ねない）
+        if (!want || s_error[0] != 0 || !fieldHidden)
             return;
         s_stage = Stage::Loading;
         // 続けて組み立てへ
