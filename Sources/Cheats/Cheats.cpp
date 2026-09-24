@@ -14,6 +14,7 @@
 #include "BuildingEditor.hpp"
 #include "GridCursor.hpp"
 #include "ModelViewer.hpp"
+#include "PlayerClone.hpp"
 #include "PublicWorks.hpp"
 #include "GuiMenu.hpp"
 
@@ -259,6 +260,7 @@ namespace CTRPluginFramework
             WirePlayerResources();
             WireGridCursor();
             WireModelViewer();
+            WirePlayerClone();
             WirePublicWorks();
             WireBuildingEditor();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。

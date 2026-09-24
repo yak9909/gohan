@@ -68,6 +68,12 @@ namespace CTRPluginFramework
         static const char kMvZ[]      = u8"Z ずらし";
         static const char kMvStat[]   = u8"モデルの状態";
 
+        // ---- root/テスト／プレイヤー複製 ----
+        static const char kPcShow[]  = u8"複製を出す";
+        static const char kPcHair[]  = u8"複製の髪型";
+        static const char kPcColor[] = u8"複製の髪色";
+        static const char kPcStat[]  = u8"複製の状態";
+
         // ---- root/テスト／公共事業 ----
         static const char kPwPick[]    = u8"公共事業";
         static const char kPwPlace[]   = u8"足元に置く";

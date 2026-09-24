@@ -291,12 +291,28 @@ namespace CTRPluginFramework
                         u8"モデルビューアがどこで止まっているかを通知で出します。");
                 const int modelCount = g_itemCount - modelFirst;
 
+                // ---- root/テスト/プレイヤー複製（試験）----
+                const int cloneFirst = g_itemCount;
+                AddItem(ITEM_CHECKBOX, kPcShow,
+                        u8"自分と同じ見た目の複製を 1 体、プレイヤーの右隣に出します。服・帽子・アクセはそのままです。");
+                i = AddItem(ITEM_VALUE, kPcHair,
+                            u8"複製だけの髪型です。-1 で本物のまま。0〜16 は男の子、17〜33 は女の子の髪型です。");
+                SetValue(i, FMT_DEC, -1, -1, 33, 1);
+                i = AddItem(ITEM_VALUE, kPcColor,
+                            u8"複製だけの髪色です。-1 で本物のまま。0〜15。");
+                SetValue(i, FMT_DEC, -1, -1, 15, 1);
+                AddItem(ITEM_ACTION, kPcStat,
+                        u8"複製がいまどこで止まっているかを通知で出します。");
+                const int cloneCount = g_itemCount - cloneFirst;
+
                 // ---- root/テスト（§18）----
                 const int testFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"UnitCursor", u8"ゲームの UnitCursor（模様替えのマス）を村の地面に出す試験です。");
                 SetFolder(i, unitCursorFirst, unitCursorCount);
                 i = AddItem(ITEM_FOLDER, u8"モデル", u8"RomFS の .bcres を選んで出すモデルビューアです。");
                 SetFolder(i, modelFirst, modelCount);
+                i = AddItem(ITEM_FOLDER, u8"プレイヤー複製", u8"自分のプレイヤーの複製を出し、髪型と髪色だけを変える試験です。");
+                SetFolder(i, cloneFirst, cloneCount);
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----
