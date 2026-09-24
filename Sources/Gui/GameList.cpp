@@ -1,4 +1,5 @@
 #include "GameList.hpp"
+#include "FrameTrace.hpp"
 #include "GridCursor.hpp"
 
 #include <3ds.h>
@@ -278,6 +279,7 @@ void SwitchAnim(void *layout, void *from, void *to) {
 
 // ---- 片付け ---------------------------------------------------------------------------------
 void DestroyAll(void) {
+    FrameTrace::Mark(FrameTrace::ListDestroy, reinterpret_cast<u32>(s_list));
     if (s_list != nullptr) {
         if (s_listSetup) {
             u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -341,9 +343,12 @@ bool StepField(bool hide) {
     case Field::Shown:
         if (hide && MenuOpen()) {
             // 下画面メニューが出きっていれば、ゲームの「メニューアウト」で閉じさせる（1 回だけ）。閉じ終わるまで待つ
-            if (!s_menuCloseSent && R8(kMenuOpenState) == 3 && (R32(kMenuFlags) & kMenuShownFlag) != 0
+            // ★g_MenuOpenState は開いたあと 1 に戻ることがある（カタログ表示中も 1 だった）ので条件にしない。
+            //   下メニューが入場し終えた（MENU_FLAGS 0x08|0x10）ことだけを見る（利用者報告: 持ち物欄が閉じない）。
+            if (!s_menuCloseSent && (R32(kMenuFlags) & (0x08u | kMenuShownFlag)) == (0x08u | kMenuShownFlag)
                 && R8(kTabCommand) == kCmdNone) {
                 W8(kTabCommand, kCmdMenuOut);
+                FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdMenuOut);
                 s_menuCloseSent = true;
             }
             return false;
@@ -356,6 +361,7 @@ bool StepField(bool hide) {
             if (R32(mgr + kMgrOther) != 0)
                 W8(kOtherCommand, 0);
             W8(kTabCommand, kCmdAllTabsOut);
+            FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdAllTabsOut);
             s_field = Field::Exiting;
             s_fieldFrames = 0;
         }
@@ -371,6 +377,7 @@ bool StepField(bool hide) {
     case Field::Hidden:
         if (!hide && FieldIdle()) {
             W8(kTabCommand, kCmdRestoreField);
+            FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdRestoreField);
             s_field = Field::Restoring;
             s_fieldFrames = 0;
             return false;
@@ -532,6 +539,7 @@ void ApplySelect(s32 index) {
 
 // 選択を index へ動かす。見えていなければ 1 行ずつスクロールして端に入れる（上なら先頭、下なら末尾の行）
 void MoveSelect(s32 index) {
+    FrameTrace::Mark(FrameTrace::ListMove, (u32)index);
     const s32 top = S(s_list, kListTop);
     const s32 rows = VisibleRows();
     s32 want = top;
@@ -578,6 +586,7 @@ void StepDpad(void) {
 }
 
 void EnterBoth(void) {
+    FrameTrace::Mark(FrameTrace::ListEnter);
     SwitchAnim(s_frame, s_frameOut, s_frameIn);
     s_frameDir = Dir::In;
     // 中身は状態機械の「入場処理」に任せる（終われば「待機処理」へ）。enter が in を 0 から結合するので、
@@ -592,6 +601,7 @@ void EnterBoth(void) {
 }
 
 void LeaveBoth(void) {
+    FrameTrace::Mark(FrameTrace::ListLeave);
     SwitchAnim(s_frame, s_frameIn, s_frameOut);
     s_frameDir = Dir::Out;
     const bool wasIn = B(P(s_list, kListAnimIn), kAnimBound) != 0;
@@ -731,6 +741,7 @@ void FrameStep(void) {
         if (want && !fieldHidden)
             return;                         // 元の UI が退場しきるまで待つ（組み上がったまま描かない）
         s_stage = Stage::Live;
+        FrameTrace::Mark(FrameTrace::ListBuildDone, s_count);
         s_selectDone = s_selectSeq;
         ApplySelect(s_wantSelect);
         if (want)

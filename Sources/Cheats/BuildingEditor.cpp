@@ -445,15 +445,8 @@ void NotifyKind(const char *prefix) {
     GuiNotification::Notify(Cheats::kBeOn, message);
 }
 
-// 上画面左上の箱（ゲームの所持ベルの箱、GameLabel）に今のモードを出す
-void ShowModeLabel(void) {
-    static const char *const kLabel[] = { u8"配置モード", u8"移動モード", u8"削除モード" };
-    const u32 m = (u32)s_mode;
-    GameLabel::SetText(0, m < 3 ? kLabel[m] : "");
-    GameLabel::Show(0);
-}
 
-// 箱 1・2: 設置の余裕（PublicWorks::GetCapacity。ゲームのスレッドが約 0.5 秒ごとに数え直す）。変わったときだけ書く
+// 上画面左上の箱（GameLabel、横に並ぶ）: 設置の余裕。モードの箱は利用者指示で出さない（PublicWorks::GetCapacity。ゲームのスレッドが約 0.5 秒ごとに数え直す）。変わったときだけ書く
 //   箱 1「設置上限 使用/枠」: 建物表（56 枠。埋まると置けない）。公共事業以外の建物も入る
 //   箱 2「新しい種類 あと N」: 普通の公共事業・橋などが使う共有の資源枠で、あと何種類の新しい建物を置けるか
 //     （同じ種類ならメモリは増えない。役場・店などは親ヒープで別に判定される）
@@ -473,14 +466,13 @@ void UpdateCapacityLabels(bool force) {
         std::snprintf(line1, sizeof(line1), u8"設置上限 -");
         std::snprintf(line2, sizeof(line2), u8"新しい種類 -");
     }
-    GameLabel::SetText(1, line1);
-    GameLabel::SetText(2, line2);
+    GameLabel::SetText(0, line1);
+    GameLabel::SetText(1, line2);
+    GameLabel::Show(0);
     GameLabel::Show(1);
-    GameLabel::Show(2);
 }
 
 void NotifyMode(void) {
-    ShowModeLabel();
     if (s_mode == Mode::Place) {
         NotifyKind(ModeName(s_mode));
         return;

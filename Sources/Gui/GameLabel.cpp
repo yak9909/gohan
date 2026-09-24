@@ -1,4 +1,5 @@
 #include "GameLabel.hpp"
+#include "FrameTrace.hpp"
 #include "GridCursor.hpp"
 
 #include <3ds.h>
@@ -76,16 +77,20 @@ const u32 kAnimTotal = 4, kAnimCur = 8;
 const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
 
 // ---- 見た目（利用者の指示）----
-// 箱: 上画面（400x240、中心が原点・上が +y）の左上の端から下へ。左端 x = -192、1 段目の中心 y = 96、36px ごと。
+// 箱: 上画面（400x240、中心が原点・上が +y）の左上の端から**横に並べる**（利用者指示。最初は縦に並べていた）。
+//   左端 x = -192、中心 y = 96、箱と箱の間は kGap。出ていない箱は詰める。
 //   ★時計は左上ではなく左下にある（最初の版は時計の下のつもりで y=36 に置き「下すぎる」と言われた）。
 // 箱の元の幅は 98 を横 1.3 倍（127px）。文字の幅（全角 15px・半角 9px の見積もり。「配置モード」5 文字 ≒ 75px を実機で確認）
 //   に左右 16px を足した幅がこれより広ければ横に伸ばす。
-const float kLeft = -192.0f, kTop = 96.0f, kPitch = 36.0f;
+const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f;
 const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 32.0f, kWide = 15.0f, kNarrow = 9.0f;
 // 箱（P_bell_base、N_bell の子で (-59,-6)）と影（P_bell_sh、(-57,-8)）。文字は N_bell_00（(-16,-18)）の子。
 const float kBoxOffX = -59.0f, kBoxOffY = -6.0f, kTextParentX = -16.0f, kTextParentY = -18.0f;
 // 色（利用者: 水色）。マテリアル色 [0]/[1] を LA4 の明るさで混ぜる。素は e1b90f / fffabe（山吹・クリーム）。
 const u8 kBlueDark[3] = { 0x5A, 0xAA, 0xE6 }, kBlueLight[3] = { 0xD2, 0xF0, 0xFF };
+// 文字（利用者: 白）。TextBox の文字色 2 つ（+216 上 / +220 下、nwlyt_TextBox_Ctor がリソース +92.. から写す）と、
+//   TextBox のマテリアル（+256）の色 [1]（素は 8c3c14 = 茶。文字はこの色で塗られる）を白にする。
+const u32 kTextColorTop = 216, kTextColorBottom = 220, kTextMaterial = 256;
 const u32 kTeardownWaitFrames = 3;
 
 enum class Dir : u8 { None, In, Out };
@@ -99,6 +104,8 @@ struct Label {
     Dir dir;
     u32 textDone;
     float bellX, bellY;                     // 登場し終えたときの N_bell の位置
+    float width;                            // 箱の幅（ApplyText が決める）
+    float placedX;                          // いま置いている箱の左端（並べ直しが要るかの判定）
     // メニューのスレッドが書く
     volatile bool want;
     u16 pend[kMaxChars + 1];
@@ -150,6 +157,7 @@ void Switch(Label &l, void *from, void *to) {
 }
 
 void DestroyLabel(Label &l) {
+    FrameTrace::Mark(FrameTrace::LabelDestroy, reinterpret_cast<u32>(l.layout), l.made ? 1 : 0);
     if (l.made) {
         if (l.built)
             LayoutFinalize(l.layout);
@@ -196,6 +204,7 @@ bool HolderStep(void) {
     }
     RegisterTex(s_holder);
     s_holderReady = true;
+    FrameTrace::Mark(FrameTrace::LabelHolderDone);
     return true;
 }
 
@@ -242,7 +251,15 @@ bool BuildLabel(Label &l) {
     B(l.text, kTextPosition) = 4;
     B(l.text, kTextDirty) |= 1u;
     MovePane(l.text, kBoxOffX - kTextParentX, kBoxOffY - kTextParentY);
-    // 色
+    // 文字を白に
+    W(l.text, kTextColorTop) = 0xFFFFFFFFu;
+    W(l.text, kTextColorBottom) = 0xFFFFFFFFu;
+    if (W(l.text, kTextMaterial) != 0) {
+        u8 *tm = reinterpret_cast<u8 *>(W(l.text, kTextMaterial));
+        tm[kMatColor1] = tm[kMatColor1 + 1] = tm[kMatColor1 + 2] = 0xFF;
+        tm[kMatFlags] &= ~4u;
+    }
+    // 箱の色
     if (W(l.base, kPicMaterial) != 0) {
         u8 *mat = reinterpret_cast<u8 *>(W(l.base, kPicMaterial));
         for (u32 k = 0; k < 3; ++k) {
@@ -258,14 +275,25 @@ bool BuildLabel(Label &l) {
     l.bellX = F(bell, kPaneX);
     l.bellY = F(bell, kPaneY);
     GroupUnbind(l.layout, l.in, l.group, 0);
+    FrameTrace::Mark(FrameTrace::LabelBuild, reinterpret_cast<u32>(l.layout));
     l.textDone = l.textSeq - 1;             // 文字を必ず一度書く
+    l.width = 0.0f;
+    l.placedX = -10000.0f;
     l.entered = false;
     l.live = true;
     return true;
 }
 
-// 文字を書き、幅を合わせ、左端をそろえて置く
-void ApplyText(Label &l, u32 slot) {
+// 箱を左端 left に置く（上下は kTop）。N_all をずらして合わせる
+void Place(Label &l, float left) {
+    const float cx = left + l.width * 0.5f;
+    MovePane(l.all, cx - (l.bellX + kBoxOffX), kTop - (l.bellY + kBoxOffY));
+    l.placedX = left;
+}
+
+// 文字を書き、幅を合わせる（置く場所は FrameStep が並べて決める）
+void ApplyText(Label &l) {
+    FrameTrace::Mark(FrameTrace::LabelText, reinterpret_cast<u32>(l.layout));
     u32 len = 0;
     float width = 0.0f;
     while (len < kMaxChars && l.pend[len] != 0) {
@@ -283,14 +311,13 @@ void ApplyText(Label &l, u32 slot) {
     Touch(l.base);
     Touch(l.shadow);
     Touch(l.text);
-    // 箱の中心 = (kLeft + w/2, kTop - 段 × kPitch)。N_all をずらして合わせる
-    const float cx = kLeft + w * 0.5f;
-    const float cy = kTop - (float)slot * kPitch;
-    MovePane(l.all, cx - (l.bellX + kBoxOffX), cy - (l.bellY + kBoxOffY));
+    B(l.text, kTextDirty) |= 1u;
+    l.width = w;
+    l.placedX = -10000.0f;                  // 置き直させる
 }
 
 // 1 つの箱の 1 フレーム。戻り値: 描いた（出ている・アニメ中）
-bool StepLabel(Label &l, u32 slot, void *mgr) {
+bool StepLabel(Label &l, float left, void *mgr) {
     const bool want = l.want;
     if (!l.live) {
         if (!want || !s_holderReady || s_error[0] != 0 || l.made)
@@ -302,8 +329,10 @@ bool StepLabel(Label &l, u32 slot, void *mgr) {
     }
     if (l.textDone != l.textSeq) {
         l.textDone = l.textSeq;
-        ApplyText(l, slot);
+        ApplyText(l);
     }
+    if (l.placedX != left)
+        Place(l, left);
     if (want) {
         if (!l.entered) {
             Switch(l, l.out, l.in);         // dir が None なので 0 から
@@ -408,8 +437,15 @@ void FrameStep(void) {
         return;
     }
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
-    for (u32 i = 0; i < kSlots; ++i)
-        StepLabel(s_labels[i], i, mgr);
+    // 左から順に並べる。出したい箱か、まだ描いている（退場中の）箱だけが場所を取る
+    float left = kLeft;
+    for (u32 i = 0; i < kSlots; ++i) {
+        Label &l = s_labels[i];
+        const bool takesRoom = l.want || l.live;
+        StepLabel(l, left, mgr);
+        if (takesRoom && l.width > 0.0f)
+            left += l.width + kGap;
+    }
     // 退場し終えた箱を壊す（描くのをやめてから数フレーム後。GPU がまだ読んでいるかもしれない）
     bool pending = false;
     for (u32 i = 0; i < kSlots; ++i)

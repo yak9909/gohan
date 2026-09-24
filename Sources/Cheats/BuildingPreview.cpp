@@ -1,4 +1,5 @@
 #include "BuildingPreview.hpp"
+#include "FrameTrace.hpp"
 
 #include "BuildingHighlight.hpp"
 #include "GridCursorGameApi.hpp"
@@ -383,6 +384,13 @@ bool Resolve(u16 id) {
 }  // namespace
 
 void FrameStep(void) {
+    {   // フリーズ調査: 段の変化
+        static u32 lastStage = 0xFFFFFFFFu;
+        if ((u32)s_stage != lastStage) {
+            lastStage = (u32)s_stage;
+            FrameTrace::Mark(FrameTrace::PreviewStage, lastStage, (u16)s_pendId);
+        }
+    }
     const s32 target = s_want ? s_pendId : -1;
     if (target != s_lastSeen) {
         s_lastSeen = target;

@@ -1,4 +1,5 @@
 #include "BuildingHighlight.hpp"
+#include "FrameTrace.hpp"
 
 #include <3ds.h>
 #include <cmath>
@@ -587,6 +588,7 @@ u32 TintConstant(u32 color, u8 strength, bool premultiplied) {
 }
 
 void Select(u16 id, u8 x, u8 y) {
+    FrameTrace::Mark(FrameTrace::HighlightSelect, (u32)x | ((u32)y << 8), id);
     s_reqId = id;
     s_reqX = x;
     s_reqY = y;
@@ -594,6 +596,7 @@ void Select(u16 id, u8 x, u8 y) {
 }
 
 void Clear(void) {
+    FrameTrace::Mark(FrameTrace::HighlightClear);
     s_req = Req::Clear;
 }
 

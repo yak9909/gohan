@@ -1,4 +1,5 @@
 #include "GridCursor.hpp"
+#include "FrameTrace.hpp"
 
 #include "BuildingHighlight.hpp"
 #include "PublicWorks.hpp"
@@ -387,6 +388,7 @@ static void DestroyCursors() {
 }
 
 static void TeardownAll() {
+    FrameTrace::Mark(FrameTrace::GridTeardown);
     s_tintPrepared = false;
     DestroyCursors();
     if (*Word(s_resourceHolder, 0) == kResourceLoaderVtable) {
@@ -621,6 +623,15 @@ static void ApplyTint() {
 
 extern "C" void FrameCallback(void) {
     ++s_frames;
+    {   // フリーズ調査: 段の変化と 30 フレームごとの目印
+        static u32 lastStage = 0xFFFFFFFFu;
+        if ((u32)s_stage != lastStage) {
+            lastStage = (u32)s_stage;
+            FrameTrace::Mark(FrameTrace::GridStage, lastStage);
+        }
+        if (s_frames % 30 == 0)
+            FrameTrace::Mark(FrameTrace::FrameMark, s_frames);
+    }
 
     // 相乗り先が先。こちらが何をしていても、あちらは毎フレーム走る。
     for (u32 i = 0; i < kMaxExtraSteps; ++i) {

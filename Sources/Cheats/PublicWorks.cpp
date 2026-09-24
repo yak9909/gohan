@@ -1,4 +1,5 @@
 #include "PublicWorks.hpp"
+#include "FrameTrace.hpp"
 
 #include "BuildingEditor.hpp"
 #include "BuildingPreview.hpp"
@@ -554,6 +555,7 @@ MapState RefreshMap(void) {
 }
 
 Result Execute(Op op) {
+    FrameTrace::Mark(FrameTrace::WorksExecute, (u32)op, (u16)s_argId);
     if (*reinterpret_cast<volatile u8 *>(kCurrentRoom) != 0)
         return Result::NotInVillage;
     u8 *data = BuildingData();
