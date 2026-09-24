@@ -21,6 +21,27 @@
 #include <string>
 
 #include "LinearAllocTest.hpp"
+#include "csvc.h"   // Luma の独自 SVC（svcControlMemoryEx 0xA2 / svcControlMemoryUnsafe 0xA3）
+
+// ★デバッガから読むための結果（IDA-opus-5.5-F035。SD と画面にも出す）
+struct MemProbeRow
+{
+    u32     kind;       // 1 = svcControlMemory、2 = svcControlMemoryEx、3 = svcControlMemoryUnsafe
+    u32     op;         // MEMOP_* | MEMOP_REGION_*
+    u32     size;
+    u32     res;        // 確保の結果コード
+    u32     va;
+    u32     pa;
+    u32     rw;         // 読み書きの確認 1 = OK
+    u32     freeRes;    // 解放の結果コード
+};
+extern "C" {
+    volatile u32   g_memProbeMagic;        // 0x4D454D50（'MEMP'）で試験完了
+    volatile u32   g_memProbeCount;
+    MemProbeRow    g_memProbe[32];
+    s64            g_memRegionUsed[4];     // svcGetSystemInfo(0, 0..3)（0 = 全体）
+    u32            g_memRegionSize[3];     // 設定ページ 0x1FF80040 / 44 / 48（APPLICATION / SYSTEM / BASE の割り当て）
+}
 
 namespace CTRPluginFramework
 {
@@ -93,6 +114,22 @@ namespace CTRPluginFramework
             rw ? "OK" : "NG", va & 0x7F);
     }
 
+    static void AddRow(u32 kind, u32 op, u32 size, Result res, u32 va, u32 freeRes)
+    {
+        if (g_memProbeCount >= 32)
+            return;
+        MemProbeRow &r = g_memProbe[g_memProbeCount];
+        r.kind = kind;
+        r.op = op;
+        r.size = size;
+        r.res = (u32)res;
+        r.va = va;
+        r.pa = va ? osConvertVirtToPhys((void *)va) : 0;
+        r.rw = va ? (RwCheck((void *)va, size) ? 1u : 0u) : 0u;
+        r.freeRes = freeRes;
+        ++g_memProbeCount;
+    }
+
     // svcControlMemory による直接確保。libctru のヒープ初期化に依存しない。
     static void TestSvcLinear(u32 size)
     {
@@ -102,18 +139,64 @@ namespace CTRPluginFramework
         if (R_FAILED(res))
         {
             Log("  svcControlMemory size 0x%08X -> 失敗 res=%08X", size, (u32)res);
+            AddRow(1, MEMOP_ALLOC_LINEAR, size, res, 0, 0);
             return;
         }
 
         ReportBlock("svcLinear ", (void *)addr, size);
 
         u32 dummy = 0;
-        svcControlMemory(&dummy, addr, 0, size, MEMOP_FREE, (MemPerm)0);
+        Result fr = svcControlMemory(&dummy, addr, 0, size, MEMOP_FREE, (MemPerm)0);
+        AddRow(1, MEMOP_ALLOC_LINEAR, size, res, addr, (u32)fr);
+    }
+
+    // [H] 各領域の使用量と割り当て
+    static void TestRegions(void)
+    {
+        const volatile u32 *cfg = (const volatile u32 *)0x1FF80040;
+        for (u32 i = 0; i < 3; ++i)
+            g_memRegionSize[i] = cfg[i];
+        for (u32 i = 0; i < 4; ++i)
+        {
+            s64 v = -1;
+            svcGetSystemInfo(&v, 0, (s32)i);
+            g_memRegionUsed[i] = v;
+        }
+        static const char *names[3] = { "APPLICATION", "SYSTEM", "BASE" };
+        for (u32 i = 0; i < 3; ++i)
+        {
+            const s64 used = g_memRegionUsed[i + 1];
+            Log("  %-11s 割り当て 0x%08X  使用 0x%08X  空き 0x%08X (%u KiB)", names[i], g_memRegionSize[i], (u32)used,
+                (u32)((s64)g_memRegionSize[i] - used), (u32)(((s64)g_memRegionSize[i] - used) / 1024));
+        }
+    }
+
+    // [I] / [J] 領域を指定した LINEAR 確保（Luma の独自 SVC）。確保できたらすぐ解放する
+    static void TestRegionLinear(bool unsafe, u32 region, u32 size)
+    {
+        const u32 op = (u32)MEMOP_ALLOC_LINEAR | region;
+        u32     addr = 0;
+        Result  res = unsafe ? svcControlMemoryUnsafe(&addr, 0, size, (MemOp)op, MEMPERM_READWRITE)
+                             : svcControlMemoryEx(&addr, 0, 0, size, (MemOp)op, MEMPERM_READWRITE, false);
+        if (R_FAILED(res))
+        {
+            Log("  %s op %05X size 0x%06X -> 失敗 res=%08X", unsafe ? "Unsafe" : "Ex    ", op, size, (u32)res);
+            AddRow(unsafe ? 3 : 2, op, size, res, 0, 0);
+            return;
+        }
+        ReportBlock(unsafe ? "Unsafe" : "Ex    ", (void *)addr, size);
+        u32 dummy = 0;
+        Result fr = unsafe ? svcControlMemoryUnsafe(&dummy, addr, size, MEMOP_FREE, (MemPerm)0)
+                           : svcControlMemoryEx(&dummy, addr, 0, size, MEMOP_FREE, (MemPerm)0, false);
+        Log("    解放 res=%08X", (u32)fr);
+        AddRow(unsafe ? 3 : 2, op, size, res, addr, (u32)fr);
     }
 
     static void RunTest(void)
     {
         g_log.clear();
+        g_memProbeMagic = 0;
+        g_memProbeCount = 0;
 
         Log("=== GPU 可視メモリ 可用性テスト ===");
         Log("");
@@ -128,6 +211,35 @@ namespace CTRPluginFramework
             for (int i = 0; i < 4; ++i)
             {
                 TestSvcLinear(sizes[i]);
+                Flush();
+            }
+        }
+        Log("");
+        Flush();
+
+        Log("[H] 各領域の割り当てと使用量（svcGetSystemInfo 0 / 設定ページ 0x1FF80040）");
+        TestRegions();
+        Log("");
+        Flush();
+
+        Log("[I] svcControlMemoryEx(MEMOP_ALLOC_LINEAR | 領域)  ※Luma 0xA2");
+        {
+            const u32 regions[3] = { MEMOP_REGION_APP, MEMOP_REGION_SYSTEM, MEMOP_REGION_BASE };
+            const u32 sizes[3] = { 0x10000, 0x40000, 0x100000 };
+            for (u32 r = 0; r < 3; ++r)
+                for (u32 s = 0; s < 3; ++s)
+                {
+                    TestRegionLinear(false, regions[r], sizes[s]);
+                    Flush();
+                }
+        }
+        Log("");
+        Log("[J] svcControlMemoryUnsafe(MEMOP_ALLOC_LINEAR | 領域)  ※Luma 0xA3");
+        {
+            const u32 regions[3] = { MEMOP_REGION_APP, MEMOP_REGION_SYSTEM, MEMOP_REGION_BASE };
+            for (u32 r = 0; r < 3; ++r)
+            {
+                TestRegionLinear(true, regions[r], 0x10000);
                 Flush();
             }
         }
@@ -208,6 +320,7 @@ namespace CTRPluginFramework
         Log("");
         Log("=== 全段階を完走した ===");
         Flush();
+        g_memProbeMagic = 0x4D454D50;
     }
 
     // 複数の候補パスへ書き、それぞれの結果コードを返す。
