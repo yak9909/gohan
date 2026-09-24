@@ -316,6 +316,22 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_VALUE, kPcLight,
                             u8"画面に固定したときの複製のライトの明るさです。百分率。周りの光には左右されません。");
                 SetValue(i, FMT_DEC, 130, 30, 200, 10);
+                i = AddItem(ITEM_VALUE, kPcLitX, u8"複製に当てる光の来る向き（横）です。負で左、正で右から。縦・手前と合わせて向きになります。");
+                SetValue(i, FMT_DEC, -30, -200, 200, 10);
+                i = AddItem(ITEM_VALUE, kPcLitY, u8"複製に当てる光の来る向き（縦）です。負で下、正で上から。");
+                SetValue(i, FMT_DEC, -40, -200, 200, 10);
+                i = AddItem(ITEM_VALUE, kPcLitZ, u8"複製に当てる光の来る向き（手前）です。正で手前（見ている側）、負で奥から。");
+                SetValue(i, FMT_DEC, 100, -200, 200, 10);
+                i = AddItem(ITEM_VALUE, kPcLitAmb, u8"複製全体に一様に足す明るさです。百分率。");
+                SetValue(i, FMT_DEC, 35, 0, 200, 5);
+                i = AddItem(ITEM_VALUE, kPcLitFragAmb, u8"複製に当てる光の、向きに関係なく足す明るさです。百分率。");
+                SetValue(i, FMT_DEC, 15, 0, 200, 5);
+                i = AddItem(ITEM_VALUE, kPcLitDiff, u8"複製に当てる光の強さです。光の向いた面ほど明るくなります。百分率。");
+                SetValue(i, FMT_DEC, 50, 0, 200, 5);
+                i = AddItem(ITEM_VALUE, kPcLitSpec, u8"複製に当てる光の照り返しの強さです。百分率。");
+                SetValue(i, FMT_DEC, 15, 0, 200, 5);
+                i = AddItem(ITEM_VALUE, kPcLitHemi, u8"複製全体に足す空の明るさです。百分率。");
+                SetValue(i, FMT_DEC, 20, 0, 200, 5);
                 AddItem(ITEM_ACTION, kPcStat,
                         u8"複製がいまどこで止まっているかを通知で出します。");
                 const int cloneCount = g_itemCount - cloneFirst;

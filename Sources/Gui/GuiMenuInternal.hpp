@@ -122,7 +122,7 @@ namespace CTRPluginFramework
                 ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI
             };
 
-            const int   kMaxItems   = 96;
+            const int   kMaxItems   = 128;     // 子の番号は u8（childFirst）なので 255 まで
             const int   kLongList   = 30;
             const int   kMaxDepth   = 4;
             const int   kNameBytes  = 28;

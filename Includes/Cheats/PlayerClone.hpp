@@ -25,6 +25,8 @@ namespace PlayerClone
     void            SetScreen(bool on, s32 yaw, s32 pitch, s32 x, s32 y, s32 zoom);
     // 画面に固定のときの複製だけのライトの明るさ（百分率）。ゲームの周りの光には左右されない（IDA-opus-5.5-F033）
     void            SetBrightness(s32 percent);
+    // ライトの設定（0..2 = 光の来る向き x/y/z の百分率、3 = 環境光、4 = 方向光の環境、5 = 拡散、6 = 反射、7 = 半球。色は百分率）
+    void            SetLight(u32 index, s32 value);
     // プロセス終了時に 1 回。late pass のフックを戻して置き場を消す
     void            Shutdown(void);
     struct Status

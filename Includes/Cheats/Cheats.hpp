@@ -80,6 +80,14 @@ namespace CTRPluginFramework
         static const char kPcY[]      = u8"画面の Y";
         static const char kPcZoom[]   = u8"複製の大きさ";
         static const char kPcLight[]  = u8"複製の明るさ";
+        static const char kPcLitX[]   = u8"光の向き 横";
+        static const char kPcLitY[]   = u8"光の向き 縦";
+        static const char kPcLitZ[]   = u8"光の向き 手前";
+        static const char kPcLitAmb[] = u8"環境光";
+        static const char kPcLitFragAmb[] = u8"光の環境色";
+        static const char kPcLitDiff[] = u8"光の拡散";
+        static const char kPcLitSpec[] = u8"光の反射";
+        static const char kPcLitHemi[] = u8"半球光";
 
         // ---- root/テスト／公共事業 ----
         static const char kPwPick[]    = u8"公共事業";

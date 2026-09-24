@@ -141,14 +141,19 @@ const u32 kAmbObjBytes = 0x20;
 const u32 kAmbResBytes = 0xD0;
 const u32 kHemiObjBytes = 0x20;
 const u32 kHemiResBytes = 0xF0;
-// 色（明るさ 100% のとき）。正面の面でおよそ 0.35 + 0.15 + 0.5 = 1.0、横で 0.7、裏で 0.5 になる（材質の色がさらに掛かる）
-const float kLitAmbient = 0.35f;            // AmbientLight
-const float kLitFragAmbient = 0.15f;
-const float kLitDiffuse = 0.50f;
-const float kLitSpecular = 0.15f;
-const float kLitHemi = 0.20f;               // 空と地面を同じ色にして向きの影響を無くす
-// 光の来る向き（専用カメラの view。x = 右、y = 上、z = カメラ側）。正面やや左下から
-const float kLitToLight[3] = { -0.30f, -0.40f, 1.0f };     // 利用者: 常に左下から当たって見えてほしい
+// ライトの設定（メニューで変える。利用者: gohan 側で調整して良い当たり方を探る）。既定は下の表。
+// 色は百分率（明るさ 100% のとき。材質の色がさらに掛かる）、向きは百分率の成分（専用カメラの view。x = 右、y = 上、z = カメラ側。
+// 長さは正規化する。0 ベクトルなら正面）
+enum LightParam : u32 {
+    kLpDirX = 0, kLpDirY, kLpDirZ,          // 光の来る向き
+    kLpAmbient,                             // AmbientLight（大域アンビエント = これ * 材質のアンビエント）
+    kLpFragAmbient,                         // 方向光のアンビエント
+    kLpDiffuse,                             // 方向光のディフューズ
+    kLpSpecular,                            // 方向光のスペキュラ 0・1
+    kLpHemi,                                // 半球（空と地面を同じ色にして向きの影響を無くす）
+    kLpCount
+};
+const s32 kLightDefaults[kLpCount] = { -30, -40, 100, 35, 15, 50, 15, 20 };
 
 const u32 kPlayerPtr = 0x00AA7994;          // AcPlayer*
 const u32 kPlayerMgrPtr = 0x0094A374;       // BsPlayerMgr*（部品バンクの管理役 = +24）
@@ -223,6 +228,7 @@ volatile bool s_lateReady;                  // s_parts が今の複製のもの
 volatile u32 s_lateDraws;
 bool s_lateHooked;
 volatile s32 s_bright = 130;                // 複製のライトの明るさ（百分率。利用者: 130 がちょうど良い）
+volatile s32 s_light[kLpCount] = { -30, -40, 100, 35, 15, 50, 15, 20 };    // kLightDefaults と同じ（検査で突き合わせる）
 volatile u32 s_litTemplates;                // 最後に写し元にできたライト（1 アンビエント・2 半球・4 方向光。0 = 全部一から）
 u32 s_litSets[kLightSetCount];
 volatile u32 s_litDraws;                    // 自前のライトで描いた回数
@@ -545,6 +551,10 @@ u32 LitByte(float v) {
     return s <= 0.0f ? 0u : s >= 255.0f ? 255u : (u32)s;
 }
 
+float LightPercent(u32 i) {
+    return (float)s_light[i] / 100.0f;
+}
+
 u32 LitColor(float v) {
     const u32 c = LitByte(v);
     return 0xFF000000u | (c << 16) | (c << 8) | c;      // 0xAABBGGRR
@@ -603,13 +613,13 @@ bool BuildLights(u32 context) {
     std::memset(s_litSet, 0, sizeof(s_litSet));
     u8 *set = reinterpret_cast<u8 *>(s_litSet);
     MakeLight(s_litAmbObj, sizeof(s_litAmbObj), s_litAmbRes, sizeof(s_litAmbRes), amb, kAmbResBytes, kVtblAmbientLight);
-    *reinterpret_cast<u32 *>(reinterpret_cast<u8 *>(s_litAmbRes) + kResAmbientColor) = LitColor(kLitAmbient);
+    *reinterpret_cast<u32 *>(reinterpret_cast<u8 *>(s_litAmbRes) + kResAmbientColor) = LitColor(LightPercent(kLpAmbient));
     *reinterpret_cast<u32 *>(set + kSetAmbient) = reinterpret_cast<u32>(s_litAmbObj);
 
     MakeLight(s_litHemiObj, sizeof(s_litHemiObj), s_litHemiRes, sizeof(s_litHemiRes), hemi, kHemiResBytes, kVtblHemiLight);
     {
         u8 *res = reinterpret_cast<u8 *>(s_litHemiRes);
-        const float h = (float)LitByte(kLitHemi) / 255.0f;
+        const float h = (float)LitByte(LightPercent(kLpHemi)) / 255.0f;
         const float c[4] = { h, h, h, 1.0f };
         std::memcpy(res + kResHemiGround, c, sizeof(c));
         std::memcpy(res + kResHemiSky, c, sizeof(c));       // 空と地面が同じなので向きと補間は効かない
@@ -622,15 +632,19 @@ bool BuildLights(u32 context) {
         u8 *res = reinterpret_cast<u8 *>(s_litFragRes);
         *reinterpret_cast<u32 *>(res + kResKind) = 0;
         u32 *colors = reinterpret_cast<u32 *>(res + kResFragColors);
-        colors[0] = LitColor(kLitFragAmbient);
-        colors[1] = LitColor(kLitDiffuse);
-        colors[2] = LitColor(kLitSpecular);
-        colors[3] = LitColor(kLitSpecular);
+        colors[0] = LitColor(LightPercent(kLpFragAmbient));
+        colors[1] = LitColor(LightPercent(kLpDiffuse));
+        colors[2] = LitColor(LightPercent(kLpSpecular));
+        colors[3] = LitColor(LightPercent(kLpSpecular));
         // 送られるのは -(V * dir)（V = ゲームのカメラの view の回転）。これを専用カメラの view での光の向き L にしたいので
         // dir = -V^T L（view は正規直交）
         const float *v = reinterpret_cast<const float *>(gameCamera + kCameraView);
-        const float lx = kLitToLight[0], ly = kLitToLight[1], lz = kLitToLight[2];
-        const float n = std::sqrt(lx * lx + ly * ly + lz * lz);
+        float lx = LightPercent(kLpDirX), ly = LightPercent(kLpDirY), lz = LightPercent(kLpDirZ);
+        float n = std::sqrt(lx * lx + ly * ly + lz * lz);
+        if (n < 0.001f) {
+            lx = ly = 0.0f;
+            lz = n = 1.0f;
+        }
         float *dir = reinterpret_cast<float *>(reinterpret_cast<u8 *>(s_litFragObj) + kFragDirection);
         for (u32 j = 0; j < 3; ++j)
             dir[j] = -(v[j] * lx + v[4 + j] * ly + v[8 + j] * lz) / n;
@@ -779,6 +793,11 @@ void SetBrightness(s32 percent) {
     s_bright = percent;
 }
 
+void SetLight(u32 index, s32 value) {
+    if (index < kLpCount)
+        s_light[index] = value;
+}
+
 void SetScreen(bool on, s32 yaw, s32 pitch, s32 x, s32 y, s32 zoom) {
     s_yaw = yaw;
     s_pitch = pitch;
@@ -866,6 +885,11 @@ namespace CTRPluginFramework
             int             g_pcYIndex = -1;
             int             g_pcZoomIndex = -1;
             int             g_pcLightIndex = -1;
+            // ライトの設定の項目（並びは PlayerClone::LightParam と同じ）
+            const char *const kPcLightItems[] = { kPcLitX, kPcLitY, kPcLitZ, kPcLitAmb, kPcLitFragAmb, kPcLitDiff, kPcLitSpec,
+                                                  kPcLitHemi };
+            const s32 kPcLightFallback[] = { -30, -40, 100, 35, 15, 50, 15, 20 };
+            int             g_pcLightItems[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
             bool            g_pcScreenOn;
 
             s32     Applied(int index, s32 fallback)
@@ -880,6 +904,8 @@ namespace CTRPluginFramework
                 PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcPitchIndex, 45),
                                        Applied(g_pcXIndex, 330), Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
                 PlayerClone::SetBrightness(Applied(g_pcLightIndex, 130));
+                for (u32 k = 0; k < 8; ++k)
+                    PlayerClone::SetLight(k, Applied(g_pcLightItems[k], kPcLightFallback[k]));
             }
 
             bool    ScreenIsActive(int index)
@@ -936,10 +962,8 @@ namespace CTRPluginFramework
                     std::snprintf(message, sizeof(message), u8"%s: %s", PlayerClone::StageName(s.stage),
                                   PlayerClone::FailName(s.failReason));
                 else
-                    std::snprintf(message, sizeof(message), u8"%s %luF 髪%u/%lu 部品%lu 描%lu 光%lu/%lu",
-                                  PlayerClone::StageName(s.stage), (unsigned long)s.frames, (unsigned)s.hair,
-                                  (unsigned long)s.hairColor, (unsigned long)s.parts, (unsigned long)s.lateDraws,
-                                  (unsigned long)s.litDraws, (unsigned long)s.litTemplates);
+                    std::snprintf(message, sizeof(message), u8"%s 部品%lu 光%lu/%lu", PlayerClone::StageName(s.stage),
+                                  (unsigned long)s.parts, (unsigned long)s.litDraws, (unsigned long)s.litTemplates);
                 GuiNotification::Notify(kPcStat, message);
             }
         }
@@ -972,6 +996,11 @@ namespace CTRPluginFramework
             for (int v : values)
                 if (v >= 0)
                     GuiMenu::RegisterApply(v, ScreenApplied);
+            for (u32 k = 0; k < 8; ++k) {
+                g_pcLightItems[k] = GuiMenu::FindItem(kPcLightItems[k]);
+                if (g_pcLightItems[k] >= 0)
+                    GuiMenu::RegisterApply(g_pcLightItems[k], ScreenApplied);
+            }
         }
     }
 }
