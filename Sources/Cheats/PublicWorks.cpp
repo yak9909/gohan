@@ -100,7 +100,15 @@ const u32 kActorPosition = 0x14;            // float x, y, z（Actor 基底 ctor
 const u32 kActorDestroying = 0x0F;          // u8: 削除要求済み
 const u32 kActorBuildingId = 0x66;          // u8（CRO の 0xB7E5E8）
 const u32 kActorHouseFlag = 0x5C0;          // u8: プレイヤーの家だけ（CRO の 0xB7E19C）
-const float kBridgeLift = 32.0f;            // flt_6DE560
+// ★橋を建てるときの持ち上げ（BsStrcMgr_SpawnStructures 0x6DE6CC が FLDS で読む flt_6DE560 = 32.0）。数値は写さず、ゲームのものを読む
+const u32 kBridgeLiftAddr = 0x006DE560;
+// 川底の判定（IDA-opus-5.5-F026/F027）: マスの属性コード（sub_6C4F08(pos, 0)、0 = 無し）を FieldAttr_WaterKind 0x5CD544
+// （byte_957936）で引いて 1 = 川。岸の角の斜めのマスは 0。
+typedef u32 (*AttrAtFn)(const float *pos, u32 room);                // 0x006C4F08
+typedef u32 (*WaterKindFn)(u32 code);                               // 0x005CD544
+const AttrAtFn AttrAt = reinterpret_cast<AttrAtFn>(0x006C4F08);
+const WaterKindFn WaterKind = reinterpret_cast<WaterKindFn>(0x005CD544);
+const u32 kWaterRiver = 1;
 const u32 kNpcHouseTable = 0x008887A0;      // u8[10]: 住民の家
 
 // 管理役の一覧（{数, 容量, 配列}）。番地は sub_6DE198 の即値（逆アセンブルと逆コンパイルで一致）。
@@ -713,23 +721,63 @@ float SpawnHeight(u16 id, u32 x, u32 y) {
     float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
     float h = GroundHeight(pos, 0);
     if (IsBridge(id))
-        h += kBridgeLift;
+        h += *reinterpret_cast<const volatile float *>(kBridgeLiftAddr);
     return h;
 }
 
-float LandHeight(u32 l, u32 t, u32 r, u32 b) {
-    float best = 0.0f;
-    bool any = false;
-    for (u32 y = t; y <= b && y < 256u; ++y) {
-        for (u32 x = l; x <= r && x < 256u; ++x) {
-            float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
-            const float h = GroundHeight(pos, 0);
-            if (!any || h > best)
-                best = h;
-            any = true;
+namespace {
+
+bool IsRiverBed(s32 x, s32 y) {
+    if (x < 0 || y < 0 || x >= (s32)kFieldTilesX || y >= (s32)kFieldTilesY)
+        return false;
+    const float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
+    return WaterKind(AttrAt(pos, 0)) == kWaterRiver;
+}
+
+u32 s_bridgeKey = 0xFFFFFFFFu;
+float s_bridgeHeight;
+
+}  // namespace
+
+float BridgeHeight(u32 x, u32 y) {
+    const u32 key = x | (y << 8);
+    if (key == s_bridgeKey)
+        return s_bridgeHeight;
+    // 近い順（チェビシェフ距離の輪、輪の中はマンハッタン距離の小さいもの）に川底を探す
+    s32 bx = -1, by = -1;
+    for (s32 r = 0; r < (s32)kFieldTilesX && bx < 0; ++r) {
+        s32 best = 0x7FFFFFFF;
+        for (s32 dy = -r; dy <= r; ++dy) {
+            for (s32 dx = -r; dx <= r; ++dx) {
+                if (dx != -r && dx != r && dy != -r && dy != r)
+                    continue;                                   // 輪の上だけ
+                const s32 d = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+                if (d < best && IsRiverBed((s32)x + dx, (s32)y + dy)) {
+                    best = d;
+                    bx = (s32)x + dx;
+                    by = (s32)y + dy;
+                }
+            }
         }
     }
-    return best;
+    float h;
+    if (bx >= 0) {
+        float pos[3] = { (float)(32 * bx + 16), 0.0f, (float)(32 * by + 16) };
+        h = GroundHeight(pos, 0) + *reinterpret_cast<const volatile float *>(kBridgeLiftAddr);
+    } else {                                                    // 村に川が無い: 基点の地面
+        float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
+        h = GroundHeight(pos, 0);
+    }
+    s_bridgeKey = key;
+    s_bridgeHeight = h;
+    return h;
+}
+
+float CursorHeight(u16 id, u32 x, u32 y) {
+    if (IsBridgeId(id))
+        return BridgeHeight(x, y);
+    float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
+    return GroundHeight(pos, 0);
 }
 
 bool IsBridgeId(u16 id) {

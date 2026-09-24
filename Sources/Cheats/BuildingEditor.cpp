@@ -62,10 +62,10 @@ volatile bool s_lost;           // 描画: 場面が変わった／カメラが�
 volatile s32 s_cx, s_cy;        // カーソルのマス
 volatile u32 s_lostReason;
 volatile bool s_snapCamera;     // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
-// 橋を出しているとき: カメラの高さもカーソルと同じ「四角の中の地面の最大」にする（0 = カーソルのマスの地面）。
-// 1 語に l | 有効 0x80 | t<<8 | r<<16 | b<<24 で詰めて、スレッド間で 1 回で読み書きする（l < 0x80）。
-volatile u32 s_heightBox;
-u32 PackBox(u32 l, u32 t, u32 r, u32 b) { return 0x80u | l | (t << 8) | (r << 16) | (b << 24); }
+// 橋を出しているとき: カメラの高さもカーソルと同じ橋の高さにする（0 = カーソルのマスの地面）。
+// 1 語に 有効 0x10000 | x | y<<8 で詰めて、スレッド間で 1 回で読み書きする。
+volatile u32 s_bridgeAnchor;
+u32 PackAnchor(u32 x, u32 y) { return 0x10000u | x | (y << 8); }
 
 // ---- 描画スレッドだけ ---------------------------------------------------------------------------
 u32 s_camera;
@@ -109,10 +109,10 @@ void Unpatch(void) {
 }
 
 float CameraHeight(float *at) {
-    const u32 box = s_heightBox;
-    if (box == 0)
+    const u32 anchor = s_bridgeAnchor;
+    if (anchor == 0)
         return GroundHeight(at, 0);
-    return PublicWorks::LandHeight(box & 0x7Fu, (box >> 8) & 0xFFu, (box >> 16) & 0xFFu, box >> 24);
+    return PublicWorks::BridgeHeight(anchor & 0xFFu, (anchor >> 8) & 0xFFu);
 }
 
 void Lose(u32 reason) {
@@ -213,9 +213,6 @@ struct Shape {
     u8 count;
     s8 dx[kMaxCells];
     s8 dy[kMaxCells];
-    // 足元データの全マス（属性 0 以外）の外接の四角（基点からの相対）。橋ではこの四角が岸まで届くので、
-    // この中の地面の高さの最大が「岸の高さ」（IDA-opus-5.5-F025）
-    s8 left, top, right, bottom;
 };
 Shape s_shapes[256];
 
@@ -289,12 +286,6 @@ const Shape &ShapeOf(u16 id) {
                     Push(s, c, r);
             }
         }
-        if (bottom >= 0) {
-            s.left = (s8)(left - kFootprintOrigin);
-            s.top = (s8)(top - kFootprintOrigin);
-            s.right = (s8)(right - kFootprintOrigin);
-            s.bottom = (s8)(bottom - kFootprintOrigin);
-        }
         if (s.count == 0 && bottom >= 0) {           // 置けない・植えられないマスが無い: 範囲を一回り削る
             for (s32 r = top + 1; r <= bottom - 1; ++r)
                 for (s32 c = left + 1; c <= right - 1; ++c)
@@ -356,30 +347,21 @@ void PutShape(u16 id, s32 ax, s32 ay, u32 color, u8 strength) {
         ++n;
     }
     GridCursor::SetTint(color, strength);
-    // 高さは全部そろえる。橋以外は基点の地面（建てたときの高さと同じ）。
-    // ★橋は足元の四角（岸まで）の地面の最大＝岸の高さ。川の上でも陸の上でも同じ高さに出す。
-    //   ゲームの建て方（地面 + 32）をカーソルに使うと、陸の上で 1 マス高くなっていた（利用者指示 2026-09-24）。
-    s32 l = ax, t = ay, r = ax, b = ay;
-    if (PublicWorks::IsBridgeId(id)) {
-        l = ax + s.left;
-        t = ay + s.top;
-        r = ax + s.right;
-        b = ay + s.bottom;
-    }
-    l = l < 0 ? 0 : (l >= kTilesX ? kTilesX - 1 : l);
-    r = r < 0 ? 0 : (r >= kTilesX ? kTilesX - 1 : r);
-    t = t < 0 ? 0 : (t >= kTilesY ? kTilesY - 1 : t);
-    b = b < 0 ? 0 : (b >= kTilesY ? kTilesY - 1 : b);
-    s_heightBox = PublicWorks::IsBridgeId(id) ? PackBox((u32)l, (u32)t, (u32)r, (u32)b) : 0u;
-    GridCursor::SetTiles(xs, ys, n, true, (u8)l, (u8)t, (u8)r, (u8)b);
+    // 高さは全部そろえる（PublicWorks::CursorHeight）。橋以外は基点の地面（建てたときの高さと同じ）。
+    // ★橋はどこでも一定の高さ（利用者 2026-09-24）＝ゲームの橋の計算（川底 + flt_6DE560）を最寄りの川底で行った値
+    //   （IDA-opus-5.5-F027）。カメラも同じ高さ。
+    const s32 cx = ax < 0 ? 0 : (ax >= kTilesX ? kTilesX - 1 : ax);
+    const s32 cy = ay < 0 ? 0 : (ay >= kTilesY ? kTilesY - 1 : ay);
+    s_bridgeAnchor = PublicWorks::IsBridgeId(id) ? PackAnchor((u32)cx, (u32)cy) : 0u;
+    GridCursor::SetTiles(xs, ys, n, (s32)id, (u8)cx, (u8)cy);
 }
 
 void PutSingle(u32 color, u8 strength) {
     const u8 x = (u8)s_cx;
     const u8 y = (u8)s_cy;
     GridCursor::SetTint(color, strength);
-    s_heightBox = 0;
-    GridCursor::SetTiles(&x, &y, 1, false, x, y, x, y);
+    s_bridgeAnchor = 0;
+    GridCursor::SetTiles(&x, &y, 1, -1, x, y);
 }
 
 // いまのモードで、UnitCursor と設置プレビューを置き直す。

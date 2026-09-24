@@ -90,8 +90,11 @@ namespace PublicWorks
     bool            IsBridgeId(u16 id);             // ゲームの Building_IsBridge 0x6CBDB4
     // 建物を (x, y) に建てたときの実体の高さ（地面 0x6C69C0、橋は +32）。描画スレッドから呼ぶ。
     float           SpawnHeight(u16 id, u32 x, u32 y);
-    // マスの四角 [l,r]x[t,b] の中の地面の高さの最大（ゲームのスレッドから）。橋のカーソルとカメラ（岸の高さ）
-    float           LandHeight(u32 l, u32 t, u32 r, u32 b);
+    // 橋の高さ（ゲームのスレッドから）。ゲームが橋を建てる計算（基点の地面 + flt_6DE560）を、(x, y) に最も近い
+    // 川底のマスで行う。基点が川底なら建てたときの高さそのもの。結果は (x, y) ごとに覚える。
+    float           BridgeHeight(u32 x, u32 y);
+    // UnitCursor の高さ: 橋なら BridgeHeight、ほかは基点の地面
+    float           CursorHeight(u16 id, u32 x, u32 y);
     // 描画スレッドの毎フレームの口（グリッドカーソルのフック）を入れる。
     bool            StartFrameHook(void);
 
