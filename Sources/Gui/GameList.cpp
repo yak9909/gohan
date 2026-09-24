@@ -36,14 +36,16 @@ const u32 kMapCommand = 0x00949D25;         // u8: 2 = 何もしない
 const u32 kOtherCommand = 0x00949D29;       // u8: 2 = 何もしない
 const u8 kCmdNone = 11, kCmdAllTabsOut = 7, kCmdRestoreField = 2, kMapIdle = 2, kMapOut = 0;
 const u32 kRoomIdFn = 0x002F75CC;           // Room_GetCurrentId
-// ---- 十字キーをリストにだけ渡す -------------------------------------------------------------------
-//   一覧（ButtonActionControl・スクロール）は十字を BsMenuMgr の sead::ControllerWrapper（mgr+68、vtbl 0x8FF31C）から読む
-//   （sub_6D33F0 = mgr+72 & マスク = wrapper の trig）。建物エディターはゲームの入力を丸ごと止めているので、
-//   一覧の更新の直前だけ十字を書き、直後に元へ戻す。欄は旧 input_block.md: +4 trig / +8 release / +0xC repeat / +0x110 hold。
-const u32 kMgrPad = 68;
-const u32 kPadTrig = 0x04, kPadRelease = 0x08, kPadRepeat = 0x0C, kPadHold = 0x110;
-const u32 kSeadUp = 0x00010000u, kSeadDown = 0x00020000u, kSeadLeft = 0x00040000u, kSeadRight = 0x00080000u;
-const u32 kRepeatDelay = 15, kRepeatEvery = 4;  // フレーム（30fps）
+// ---- 十字キーで一覧を動かす -----------------------------------------------------------------------
+//   ★ゲームの一覧の十字操作は「手カーソル」（BsMenuMgr+500 の BsHandCursor）を動かし、その下の行にフォーカスして
+//   A で決定する方式（ButtonActionControl vt[8] 0x2F62C8。一覧は +208=3 なので vt[7] の行送りは使わない）。
+//   手カーソルはゲームの計算フェーズで自分で入力を読むので、入力を止めたまま描画フェーズから入れても届かない
+//   （最初の版は BsMenuMgr の ControllerWrapper へ差し込んだが効かなかった。しかもビットの並びも違っていた:
+//    写し側ビット i ← 物理側ビット 表[i]、十字は写し 0x400/0x800/0x1000/0x2000）。
+//   そこで十字は自分で読み、一覧自身の関数で動かす: 選択の見た目 = vt[16]、スクロール = sub_2987A8。
+//   上下 = 1 行、左右 = 8 行。押し続けると連続。スライドパッドは使わない。
+const u32 kDpadUp = 1u, kDpadDown = 2u, kDpadLeft = 4u, kDpadRight = 8u;
+const u32 kRepeatDelay = 12, kRepeatEvery = 3;  // フレーム（30fps）
 
 typedef void *(*HeapAllocFn)(u32 size, void *heap, s32 align);
 typedef void *(*CtorFn)(void *self);
@@ -185,7 +187,7 @@ enum class Field : u8 { Shown, Exiting, Hidden, Restoring };
 volatile Field s_field = Field::Shown;
 u32 s_fieldFrames;          // 今の段に入ってからのフレーム数
 u32 s_fieldRoom;            // 退場させたときの部屋
-volatile u32 s_dpadHeld;    // sead のビット（メニューのスレッドが書く）
+volatile u32 s_dpadHeld;    // kDpad* のビット（メニューのスレッドが書く）
 u32 s_dpadPrev;
 u32 s_dpadFrames;           // 押し続けているフレーム数
 Dir s_frameDir = Dir::None;
@@ -199,6 +201,9 @@ inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
 inline s32 &S(void *p, u32 off) { return *reinterpret_cast<s32 *>(P(p, off)); }
 inline float &F(void *p, u32 off) { return *reinterpret_cast<float *>(P(p, off)); }
 inline u8 &B(void *p, u32 off) { return *P(p, off); }
+inline u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
+inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
+inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 // ---- 自前の仮想関数（ゲームが BLX で呼ぶ）-----------------------------------------------------
 // vt[13]: 一覧を作る。件数を +2500 に置いて 1 を返す（0 だと組み立てが次の段へ進まない）。
@@ -296,9 +301,6 @@ void DestroyAll(void) {
 }
 
 // ★0 ではなく 1 がアイドル。村の屋外で 1 / フラグ 0x2（実機）。以前は「0 以外 = 開いている」と取り違え、一度も組み立てなかった。
-inline u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
-inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
-inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 u32 RoomId(void) {
     return reinterpret_cast<u32 (*)(void)>(kRoomIdFn)();
@@ -498,6 +500,50 @@ void ApplySelect(s32 index) {
     s_lastSelected = S(s_list, kListSelected);
 }
 
+// 選択を index へ動かす。見えていなければ 1 行ずつスクロールして端に入れる（上なら先頭、下なら末尾の行）
+void MoveSelect(s32 index) {
+    const s32 top = S(s_list, kListTop);
+    s32 want = top;
+    if (index < top)
+        want = index;
+    else if (index >= top + (s32)kListRows)
+        want = index - ((s32)kListRows - 1);
+    if (want != top)
+        ScrollTo(P(s_list, kListScroll), want);
+    u32 *vt = *reinterpret_cast<u32 **>(s_list);
+    reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
+    s_lastSelected = S(s_list, kListSelected);
+    s_decided = index;
+}
+
+void StepDpad(void) {
+    const u32 hold = s_dpadHeld;
+    if (B(s_list, kListInputLock) != 0 || s_count == 0) {
+        s_dpadPrev = hold;
+        s_dpadFrames = 0;
+        return;
+    }
+    const u32 trig = hold & ~s_dpadPrev;
+    s_dpadFrames = (hold != 0 && hold == s_dpadPrev) ? s_dpadFrames + 1 : 0;
+    const bool rep = trig != 0 || (s_dpadFrames >= kRepeatDelay && ((s_dpadFrames - kRepeatDelay) % kRepeatEvery) == 0);
+    s_dpadPrev = hold;
+    if (!rep)
+        return;
+    s32 step = 0;
+    if (hold & kDpadUp) step = -1;
+    else if (hold & kDpadDown) step = 1;
+    else if (hold & kDpadLeft) step = -(s32)kListRows;
+    else if (hold & kDpadRight) step = (s32)kListRows;
+    if (step == 0)
+        return;
+    const s32 cur = S(s_list, kListSelected) < 0 ? 0 : S(s_list, kListSelected);
+    s32 next = cur + step;
+    if (next < 0) next = 0;
+    if (next >= (s32)s_count) next = (s32)s_count - 1;
+    if (next != cur)
+        MoveSelect(next);
+}
+
 void EnterBoth(void) {
     SwitchAnim(s_frame, s_frameOut, s_frameIn);
     s_frameDir = Dir::In;
@@ -557,10 +603,10 @@ bool SetItems(const char *const *items, u32 count) {
 void FeedDpad(u32 heldKeys) {
     // CTRPF の Key: DPadRight 0x10 / DPadLeft 0x20 / DPadUp 0x40 / DPadDown 0x80（HID と同じ並び）
     u32 s = 0;
-    if (heldKeys & 0x40u) s |= kSeadUp;
-    if (heldKeys & 0x80u) s |= kSeadDown;
-    if (heldKeys & 0x20u) s |= kSeadLeft;
-    if (heldKeys & 0x10u) s |= kSeadRight;
+    if (heldKeys & 0x40u) s |= kDpadUp;
+    if (heldKeys & 0x80u) s |= kDpadDown;
+    if (heldKeys & 0x20u) s |= kDpadLeft;
+    if (heldKeys & 0x10u) s |= kDpadRight;
     s_dpadHeld = s;
 }
 
@@ -688,34 +734,8 @@ void FrameStep(void) {
     // 入力はアニメ中は止める。中身の状態機械は vt[4] が進める（入場・退場・待機）。
     B(s_list, kListInputLock) = (s_frameDir != Dir::None || B(s_list, kListAnimating) != 0 || !show) ? 1 : 0;
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
-    // 十字キーを一覧にだけ渡す（入力を止めていない間だけ）
-    const u32 menuMgr = R32(kMenuMgrPtr);
-    const bool feed = menuMgr != 0 && B(s_list, kListInputLock) == 0;
-    u32 saved[4] = {};
-    if (feed) {
-        const u32 pad = menuMgr + kMgrPad;
-        const u32 hold = s_dpadHeld;
-        const u32 trig = hold & ~s_dpadPrev;
-        s_dpadFrames = (hold != 0 && hold == s_dpadPrev) ? s_dpadFrames + 1 : 0;
-        const bool rep = trig != 0 || (s_dpadFrames >= kRepeatDelay && ((s_dpadFrames - kRepeatDelay) % kRepeatEvery) == 0);
-        saved[0] = W(reinterpret_cast<void *>(pad), kPadTrig);
-        saved[1] = W(reinterpret_cast<void *>(pad), kPadRelease);
-        saved[2] = W(reinterpret_cast<void *>(pad), kPadRepeat);
-        saved[3] = W(reinterpret_cast<void *>(pad), kPadHold);
-        W(reinterpret_cast<void *>(pad), kPadTrig) = saved[0] | trig;
-        W(reinterpret_cast<void *>(pad), kPadRelease) = saved[1] | (s_dpadPrev & ~hold);
-        W(reinterpret_cast<void *>(pad), kPadRepeat) = saved[2] | (rep ? hold : 0);
-        W(reinterpret_cast<void *>(pad), kPadHold) = saved[3] | hold;
-        s_dpadPrev = hold;
-    }
     reinterpret_cast<ListFn>(vt[4])(s_list);            // SelectBase_Update
-    if (feed) {
-        const u32 pad = menuMgr + kMgrPad;
-        W(reinterpret_cast<void *>(pad), kPadTrig) = saved[0];
-        W(reinterpret_cast<void *>(pad), kPadRelease) = saved[1];
-        W(reinterpret_cast<void *>(pad), kPadRepeat) = saved[2];
-        W(reinterpret_cast<void *>(pad), kPadHold) = saved[3];
-    }
+    StepDpad();
     if (s_listDir != Dir::None && B(s_list, kListAnimating) == 0)
         s_listDir = Dir::None;
     StepFrameAnim();

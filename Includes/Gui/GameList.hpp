@@ -29,9 +29,8 @@ namespace GameList
     bool        Present(void);          // 下画面に出ている（アニメ中も含む）
     void        Select(s32 index);      // 選択の見た目を動かす（決定にはしない）
     s32         TakeDecided(void);      // 選ばれた行（タッチ・十字）。無ければ -1。取ったら消える
-    // 十字キーの押し下げ（CTRPF の Key の DPad ビット）を毎ティック渡す。リストの更新の間だけゲームの
-    // メニュー管理の入力（BsMenuMgr+68 の sead::ControllerWrapper）へ入れ、終わったら戻す。ゲームのほかの部分には届かない。
-    // スライドパッドは入れない。
+    // 十字キーの押し下げ（CTRPF の Key の DPad ビット）を毎ティック渡す。上下で 1 行、左右で 8 行、押し続けで連続。
+    // 一覧自身の関数（選択の見た目 vt[16]・スクロール）で動かす。ゲームの入力には触らない。スライドパッドは使わない。
     void        FeedDpad(u32 heldKeys);
     const char *LastError(void);
 
