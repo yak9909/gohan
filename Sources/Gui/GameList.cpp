@@ -101,10 +101,14 @@ const RegisterTexFn  RegisterTex    = reinterpret_cast<RegisterTexFn>(0x00568CFC
 const u32            kHolderAccessor = 12;
 // ゲームのメッセージから文字列を引く（vc_NPC_2_SETUP 0x75B8A8 の中身）。WordRes = {0x904954, UTF-16*, 0x3FFFFFFF}。
 //   成功で 1、+4 はメッセージデータの中の 0 終端 UTF-16（失敗なら空文字）。ロックを取るのでゲームのスレッドで呼ぶ。
-typedef int (*MsgLookupFn)(u32 msgData, void *wordRes, const char *label, u32 index);
-const MsgLookupFn    MsgLookup      = reinterpret_cast<MsgLookupFn>(0x0075BBBC);
+// ★名前はゲームの一覧と同じく script::WordFix<38>（100 B、ctor 0x56CE48）に vc_NPC_2_SETUP 0x75B8A8 で入れ、
+//   その WordFix を行の語にする（PWorkList vt[13] 0x6EDEE0 → sub_56CDEC と同じ）。以前は WordRes の文字列を
+//   0 で打ち切って写しており、メッセージの制御タグ（0x000E …、引数に 0 を含む）で切れて「モダンな」だけ・空欄になった。
+typedef int (*MsgSetupFn)(u32 msgData, void *word, const char *label, u32 index);
+const MsgSetupFn     MsgSetup       = reinterpret_cast<MsgSetupFn>(0x0075B8A8);     // 成功で真
+const CtorFn         WordFixCtor    = reinterpret_cast<CtorFn>(0x0056CE48);         // script::WordFix<38>
+const u32            kWordFixBytes  = 100;
 const u32            kMsgDataPtr    = 0x00957ED4;                                    // u32: vc_DATAPOINTER
-const u32            kWordResVtbl   = 0x00904954;
 
 const u32 kInstSelectVtbl = 0x008E54B4;     // InstSelect<8> の vtable（26 語）
 const u32 kVtblWords = 26;
@@ -150,6 +154,8 @@ u8 *s_list;                                 // ゲームのヒープ
 
 u16 s_text[kMaxItems][kMaxChars + 1];
 WordPtr s_words[kMaxItems];
+alignas(8) u8 s_fix[kMaxItems][kWordFixBytes];     // ゲームの名前を入れた WordFix<38>
+bool s_useFix[kMaxItems];
 u32 s_count;
 
 // プラグイン側の要求（メニューのスレッドが書き、FrameStep が読む）
@@ -206,7 +212,7 @@ void *ListWordAt(u8 *self, s32 index) {
     (void)self;
     if (index < 0 || (u32)index >= s_count)
         index = 0;
-    return &s_words[index];
+    return s_useFix[index] ? static_cast<void *>(s_fix[index]) : static_cast<void *>(&s_words[index]);
 }
 
 // ---- UTF-8 → UTF-16（BMP だけ。範囲外は '?'）--------------------------------------------------
@@ -433,21 +439,11 @@ bool BuildStep(void) {
         const u32 msgData = label != nullptr ? *reinterpret_cast<const volatile u32 *>(kMsgDataPtr) : 0;
         for (u32 i = 0; i < count; ++i) {
             std::memcpy(s_text[i], s_pendText[i], sizeof(s_text[i]));
+            s_useFix[i] = false;
             if (msgData != 0 && s_pendMsg[i] >= 0) {
                 // ゲームの名前があればそちら（STR_Fobj_name など）。引けなければ渡された文字列のまま
-                u32 res[3] = { kWordResVtbl, 0, 0 };
-                if (MsgLookup(msgData, res, label, (u32)s_pendMsg[i]) != 0 && res[1] != 0) {
-                    const u16 *src = reinterpret_cast<const u16 *>(res[1]);
-                    u32 n = 0;
-                    while (n < kMaxChars && src[n] != 0) {
-                        s_text[i][n] = src[n];
-                        ++n;
-                    }
-                    if (n > 0)
-                        s_text[i][n] = 0;
-                    else
-                        std::memcpy(s_text[i], s_pendText[i], sizeof(s_text[i]));
-                }
+                WordFixCtor(s_fix[i]);
+                s_useFix[i] = MsgSetup(msgData, s_fix[i], label, (u32)s_pendMsg[i]) != 0;
             }
             s_words[i].vtbl = kWordPtrVtbl;
             s_words[i].text = s_text[i];
