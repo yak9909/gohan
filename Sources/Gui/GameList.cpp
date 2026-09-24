@@ -34,6 +34,9 @@ typedef void (*ScrollToFn)(void *scroll, s32 top);
 typedef void (*ListFn)(void *list);
 typedef void (*SetSelectFn)(void *list, s32 now, s32 before);
 typedef void (*AddLayoutFn)(void *mgr, void *layout, u32 screen);
+typedef void *(*FontSlotFn)(void *fontMgr, u32 kind);
+typedef void (*RegisterFontFn)(void *accessor, const char *name, void *font);
+typedef int (*RegisterTexFn)(void *holder);
 
 const HeapAllocFn    HeapAlloc      = reinterpret_cast<HeapAllocFn>(0x002FD0CC);    // operator new(size, heap, align)
 const CtorFn         InstSelectCtor = reinterpret_cast<CtorFn>(0x007C6EB0);         // InstSelect<8>（4,812 B）
@@ -60,6 +63,14 @@ const ScrollToFn     ScrollTo       = reinterpret_cast<ScrollToFn>(0x002987A8);
 const ListFn         StartEnter     = reinterpret_cast<ListFn>(0x001C58F4);         // 状態「入場処理」へ
 const ListFn         StartLeave     = reinterpret_cast<ListFn>(0x001C5A34);         // 状態「退場処理」へ
 const AddLayoutFn    AddLayout      = reinterpret_cast<AddLayoutFn>(0x0056928C);
+// ★書体とテクスチャの登録（BsMenuCatalog_Init の case 0 と同じ）。無いと行の TextBox の書体（+0xE0）が 0 のままで、
+//   文字箱を結ぶ vc_ACMESSAGEBOX_FUNC1 0x5E20A8 が SIGSEGV（実機 2026-09-25）。
+const u32            kFontMgrPtr    = 0x0094C9C8;                                    // u32: font::Mgr
+const FontSlotFn     FontName       = reinterpret_cast<FontSlotFn>(0x00747528);     // 名前（SafeString。+4 = char*）
+const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8);     // 読み込み済みなら ResFont、まだなら 0
+const RegisterFontFn RegisterFont   = reinterpret_cast<RegisterFontFn>(0x004B3FD4); // (holder+12, 名前, 書体)
+const RegisterTexFn  RegisterTex    = reinterpret_cast<RegisterTexFn>(0x00568CFC);  // arc の .bclim を全部
+const u32            kHolderAccessor = 12;
 
 const u32 kInstSelectVtbl = 0x008E54B4;     // InstSelect<8> の vtable（26 語）
 const u32 kVtblWords = 26;
@@ -256,6 +267,17 @@ bool BuildStep(void) {
     if (s_stage == Stage::Loading) {
         if (ArcLoadStep(s_holder, kArcPath) == 0)
             return false;
+        // 書体 0 番（実機: "Garden_msg_size16.bcfnt"）とテクスチャを保持体へ登録する
+        void *fontMgr = *reinterpret_cast<void *const *>(kFontMgrPtr);
+        void *font = fontMgr != nullptr ? FontGet(fontMgr, 0) : nullptr;
+        if (font == nullptr) {
+            s_error = "ゲームの書体が取れない";
+            return false;
+        }
+        u32 *nameObj = reinterpret_cast<u32 *>(FontName(fontMgr, 0));
+        reinterpret_cast<void (*)(u32 *)>(reinterpret_cast<u32 *>(nameObj[0])[2])(nameObj);   // 終端をそろえる（ゲームと同じ）
+        RegisterFont(P(s_holder, kHolderAccessor), reinterpret_cast<const char *>(nameObj[1]), font);
+        RegisterTex(s_holder);
         s_stage = Stage::Building;
         return false;
     }
