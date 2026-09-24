@@ -83,7 +83,6 @@ u32 s_kind;
 s32 s_selected = -1;
 u32 s_prevKeys;
 u32 s_hold[4];                  // スライドパッド 上下左右の押し続けティック
-u32 s_dpadHold[2];              // 十字 左右（建物の切り替え）
 
 u8 s_footprint[kFootprintBytes];   // 足元データを読む置き場
 
@@ -467,6 +466,13 @@ void ShowKindList(void) {
         for (u32 k = 0; k < s_kindCount; ++k)
             names[k] = PublicWorks::NameOf(s_kinds[k]);
         s_listGiven = GameList::SetItems(names, s_kindCount);
+        // 名前はゲームの「STR_Fobj_name」があればそれ（公共事業の一覧と同じ引き方: 建物 ID → byte_887B94 → 番号、
+        //   sub_56CDEC / sub_5C97B8）。0xFF（名前なし）はモデル名のまま。
+        static s16 msg[sizeof(s_kinds)];
+        const u8 *table = reinterpret_cast<const u8 *>(0x00887B94);    // 0xFC 個
+        for (u32 k = 0; k < s_kindCount; ++k)
+            msg[k] = (s_kinds[k] < 0xFC && table[s_kinds[k]] != 0xFF) ? (s16)table[s_kinds[k]] : (s16)-1;
+        GameList::SetItemMessages("STR_Fobj_name", msg, s_kindCount);
     }
     if (s_listGiven)
         GameList::Show((s32)s_kind);
@@ -526,7 +532,6 @@ bool Start(bool quiet) {
     s_selected = -1;
     s_prevKeys = 0xFFFFFFFFu;                       // 押しっぱなしのボタンを最初の押下にしない
     std::memset(s_hold, 0, sizeof(s_hold));
-    std::memset(s_dpadHold, 0, sizeof(s_dpadHold));
     PublicWorks::Unhighlight();
     UpdateTiles();
     if (!GridCursor::ShowTiles()) {
@@ -788,23 +793,9 @@ void Tick(u32 keys) {
         NotifyMode();
     }
 
-    if (s_mode == Mode::Place && s_kindCount > 0) {
-        bool changed = false;
-        if (Repeat(s_dpadHold[0], (keys & (u32)Key::DPadLeft) != 0)) {
-            s_kind = (s_kind + s_kindCount - 1) % s_kindCount;
-            changed = true;
-        }
-        if (Repeat(s_dpadHold[1], (keys & (u32)Key::DPadRight) != 0)) {
-            s_kind = (s_kind + 1) % s_kindCount;
-            changed = true;
-        }
-        if (changed) {
-            // 形は 1 回読めば残る。モデルの読み込みは描画スレッドが押す手が止まってから始める（待たない）
-            UpdateTiles();
-            NotifyKind(ModeName(s_mode));
-            GameList::Select((s32)s_kind);
-        }
-    }
+    // 配置する種類は下画面のリストで選ぶ（十字キーはリスト自体の操作。利用者指示で十字左右の順送りはやめた）。
+    //   十字はゲームの入力を止めたまま、リストの更新の間だけリストへ渡す（GameList::FeedDpad）。
+    GameList::FeedDpad(keys & ((u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight));
     TakeListChoice();
 
     if (pressed & (u32)Key::A)

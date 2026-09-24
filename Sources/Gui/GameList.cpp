@@ -36,6 +36,14 @@ const u32 kMapCommand = 0x00949D25;         // u8: 2 = 何もしない
 const u32 kOtherCommand = 0x00949D29;       // u8: 2 = 何もしない
 const u8 kCmdNone = 11, kCmdAllTabsOut = 7, kCmdRestoreField = 2, kMapIdle = 2, kMapOut = 0;
 const u32 kRoomIdFn = 0x002F75CC;           // Room_GetCurrentId
+// ---- 十字キーをリストにだけ渡す -------------------------------------------------------------------
+//   一覧（ButtonActionControl・スクロール）は十字を BsMenuMgr の sead::ControllerWrapper（mgr+68、vtbl 0x8FF31C）から読む
+//   （sub_6D33F0 = mgr+72 & マスク = wrapper の trig）。建物エディターはゲームの入力を丸ごと止めているので、
+//   一覧の更新の直前だけ十字を書き、直後に元へ戻す。欄は旧 input_block.md: +4 trig / +8 release / +0xC repeat / +0x110 hold。
+const u32 kMgrPad = 68;
+const u32 kPadTrig = 0x04, kPadRelease = 0x08, kPadRepeat = 0x0C, kPadHold = 0x110;
+const u32 kSeadUp = 0x00010000u, kSeadDown = 0x00020000u, kSeadLeft = 0x00040000u, kSeadRight = 0x00080000u;
+const u32 kRepeatDelay = 15, kRepeatEvery = 4;  // フレーム（30fps）
 
 typedef void *(*HeapAllocFn)(u32 size, void *heap, s32 align);
 typedef void *(*CtorFn)(void *self);
@@ -91,6 +99,12 @@ const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8); 
 const RegisterFontFn RegisterFont   = reinterpret_cast<RegisterFontFn>(0x004B3FD4); // (holder+12, 名前, 書体)
 const RegisterTexFn  RegisterTex    = reinterpret_cast<RegisterTexFn>(0x00568CFC);  // arc の .bclim を全部
 const u32            kHolderAccessor = 12;
+// ゲームのメッセージから文字列を引く（vc_NPC_2_SETUP 0x75B8A8 の中身）。WordRes = {0x904954, UTF-16*, 0x3FFFFFFF}。
+//   成功で 1、+4 はメッセージデータの中の 0 終端 UTF-16（失敗なら空文字）。ロックを取るのでゲームのスレッドで呼ぶ。
+typedef int (*MsgLookupFn)(u32 msgData, void *wordRes, const char *label, u32 index);
+const MsgLookupFn    MsgLookup      = reinterpret_cast<MsgLookupFn>(0x0075BBBC);
+const u32            kMsgDataPtr    = 0x00957ED4;                                    // u32: vc_DATAPOINTER
+const u32            kWordResVtbl   = 0x00904954;
 
 const u32 kInstSelectVtbl = 0x008E54B4;     // InstSelect<8> の vtable（26 語）
 const u32 kVtblWords = 26;
@@ -141,6 +155,8 @@ u32 s_count;
 // プラグイン側の要求（メニューのスレッドが書き、FrameStep が読む）
 u16 s_pendText[kMaxItems][kMaxChars + 1];
 volatile u32 s_pendCount;
+const char *volatile s_pendLabel;           // メッセージのラベル（nullptr = 使わない）
+s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わない）
 volatile u32 s_itemsSeq;                    // SetItems のたびに増える
 u32 s_builtSeq;
 volatile bool s_want;
@@ -163,6 +179,9 @@ enum class Field : u8 { Shown, Exiting, Hidden, Restoring };
 volatile Field s_field = Field::Shown;
 u32 s_fieldFrames;          // 今の段に入ってからのフレーム数
 u32 s_fieldRoom;            // 退場させたときの部屋
+volatile u32 s_dpadHeld;    // sead のビット（メニューのスレッドが書く）
+u32 s_dpadPrev;
+u32 s_dpadFrames;           // 押し続けているフレーム数
 Dir s_frameDir = Dir::None;
 Dir s_listDir = Dir::None;
 bool s_hookReady;
@@ -410,8 +429,26 @@ bool BuildStep(void) {
         const u32 count = s_pendCount;
         s_builtSeq = s_itemsSeq;
         s_count = count;
+        const char *label = s_pendLabel;
+        const u32 msgData = label != nullptr ? *reinterpret_cast<const volatile u32 *>(kMsgDataPtr) : 0;
         for (u32 i = 0; i < count; ++i) {
             std::memcpy(s_text[i], s_pendText[i], sizeof(s_text[i]));
+            if (msgData != 0 && s_pendMsg[i] >= 0) {
+                // ゲームの名前があればそちら（STR_Fobj_name など）。引けなければ渡された文字列のまま
+                u32 res[3] = { kWordResVtbl, 0, 0 };
+                if (MsgLookup(msgData, res, label, (u32)s_pendMsg[i]) != 0 && res[1] != 0) {
+                    const u16 *src = reinterpret_cast<const u16 *>(res[1]);
+                    u32 n = 0;
+                    while (n < kMaxChars && src[n] != 0) {
+                        s_text[i][n] = src[n];
+                        ++n;
+                    }
+                    if (n > 0)
+                        s_text[i][n] = 0;
+                    else
+                        std::memcpy(s_text[i], s_pendText[i], sizeof(s_text[i]));
+                }
+            }
             s_words[i].vtbl = kWordPtrVtbl;
             s_words[i].text = s_text[i];
             s_words[i].cap = kMaxChars + 1;
@@ -491,16 +528,19 @@ void LeaveBoth(void) {
     s_listDir = Dir::Out;
 }
 
+// ★枠は毎フレーム計算する（BsMenuCatalog の一覧操作中の状態 sub_21B26C と同じ）。スクロールバーは一覧の別の
+//   Layout（スクロール部品 +588）のペイン木を枠の N_scrl_pos_00 へ付け替えたもので、枠を計算しないと
+//   つまみの位置が画面に反映されない（以前はアニメ中だけ計算していて、利用者報告「スクロールバーが同期していない」）。
 void StepFrameAnim(void) {
     void *anim = s_frameDir == Dir::In ? s_frameIn : s_frameDir == Dir::Out ? s_frameOut : nullptr;
-    if (anim == nullptr)
-        return;
-    if (AnimFinished(anim)) {
-        AnimUnbind(s_frame, anim);
-        s_frameDir = Dir::None;
-        return;
+    if (anim != nullptr) {
+        if (AnimFinished(anim)) {
+            AnimUnbind(s_frame, anim);
+            s_frameDir = Dir::None;
+        } else {
+            AnimStep(anim);
+        }
     }
-    AnimStep(anim);
     LayoutCalc(s_frame);
 }
 
@@ -513,8 +553,28 @@ bool SetItems(const char *const *items, u32 count) {
     for (u32 i = 0; i < count; ++i)
         Utf8To16(items[i], s_pendText[i], kMaxChars);
     s_pendCount = count;
+    s_pendLabel = nullptr;                  // メッセージは SetItemMessages で改めて渡す
     s_itemsSeq = s_itemsSeq + 1;
     return count > 0;
+}
+
+void FeedDpad(u32 heldKeys) {
+    // CTRPF の Key: DPadRight 0x10 / DPadLeft 0x20 / DPadUp 0x40 / DPadDown 0x80（HID と同じ並び）
+    u32 s = 0;
+    if (heldKeys & 0x40u) s |= kSeadUp;
+    if (heldKeys & 0x80u) s |= kSeadDown;
+    if (heldKeys & 0x20u) s |= kSeadLeft;
+    if (heldKeys & 0x10u) s |= kSeadRight;
+    s_dpadHeld = s;
+}
+
+void SetItemMessages(const char *label, const s16 *indices, u32 count) {
+    if (count > kMaxItems)
+        count = kMaxItems;
+    for (u32 i = 0; i < kMaxItems; ++i)
+        s_pendMsg[i] = (indices != nullptr && i < count) ? indices[i] : (s16)-1;
+    s_pendLabel = label;
+    s_itemsSeq = s_itemsSeq + 1;
 }
 
 void Show(s32 selected) {
@@ -632,7 +692,34 @@ void FrameStep(void) {
     // 入力はアニメ中は止める。中身の状態機械は vt[4] が進める（入場・退場・待機）。
     B(s_list, kListInputLock) = (s_frameDir != Dir::None || B(s_list, kListAnimating) != 0 || !show) ? 1 : 0;
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
+    // 十字キーを一覧にだけ渡す（入力を止めていない間だけ）
+    const u32 menuMgr = R32(kMenuMgrPtr);
+    const bool feed = menuMgr != 0 && B(s_list, kListInputLock) == 0;
+    u32 saved[4] = {};
+    if (feed) {
+        const u32 pad = menuMgr + kMgrPad;
+        const u32 hold = s_dpadHeld;
+        const u32 trig = hold & ~s_dpadPrev;
+        s_dpadFrames = (hold != 0 && hold == s_dpadPrev) ? s_dpadFrames + 1 : 0;
+        const bool rep = trig != 0 || (s_dpadFrames >= kRepeatDelay && ((s_dpadFrames - kRepeatDelay) % kRepeatEvery) == 0);
+        saved[0] = W(reinterpret_cast<void *>(pad), kPadTrig);
+        saved[1] = W(reinterpret_cast<void *>(pad), kPadRelease);
+        saved[2] = W(reinterpret_cast<void *>(pad), kPadRepeat);
+        saved[3] = W(reinterpret_cast<void *>(pad), kPadHold);
+        W(reinterpret_cast<void *>(pad), kPadTrig) = saved[0] | trig;
+        W(reinterpret_cast<void *>(pad), kPadRelease) = saved[1] | (s_dpadPrev & ~hold);
+        W(reinterpret_cast<void *>(pad), kPadRepeat) = saved[2] | (rep ? hold : 0);
+        W(reinterpret_cast<void *>(pad), kPadHold) = saved[3] | hold;
+        s_dpadPrev = hold;
+    }
     reinterpret_cast<ListFn>(vt[4])(s_list);            // SelectBase_Update
+    if (feed) {
+        const u32 pad = menuMgr + kMgrPad;
+        W(reinterpret_cast<void *>(pad), kPadTrig) = saved[0];
+        W(reinterpret_cast<void *>(pad), kPadRelease) = saved[1];
+        W(reinterpret_cast<void *>(pad), kPadRepeat) = saved[2];
+        W(reinterpret_cast<void *>(pad), kPadHold) = saved[3];
+    }
     if (s_listDir != Dir::None && B(s_list, kListAnimating) == 0)
         s_listDir = Dir::None;
     StepFrameAnim();
