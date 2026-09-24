@@ -34,7 +34,12 @@ const u32 kTabIdleCalc = 0x006D474C;        // 「タブ選択」
 const u32 kTabCommand = 0x00949D24;         // u8: 11 = 何もしない
 const u32 kMapCommand = 0x00949D25;         // u8: 2 = 何もしない
 const u32 kOtherCommand = 0x00949D29;       // u8: 2 = 何もしない
-const u8 kCmdNone = 11, kCmdAllTabsOut = 7, kCmdRestoreField = 2, kMapIdle = 2, kMapOut = 0;
+const u8 kCmdNone = 11, kCmdAllTabsOut = 7, kCmdRestoreField = 2, kCmdMenuOut = 3, kMapIdle = 2, kMapOut = 0;
+// 命令 3 = 状態 6「メニューアウト」（enter 0x6D4EE8 が MENU_FLAGS|=0x20 で下画面メニューへ閉じる通知 → 状態 18 で地図とタブを戻す）。
+//   持ち物などの下画面メニューを開いたままエディターを起動したときに使う（利用者報告: メニューが退場せずリストも出ない）。
+const u32 kMenuShownFlag = 0x10;            // MENU_FLAGS: 通常の下メニューの入場完了（BsMenuItem_OpenUpdate）
+const u32 kSndListActive = 0x010003B0;     // SE_SYS_SCROLL_LIST_ACTIVE（行ボタンのフォーカス音。InstSetupRows が +208 に置く）
+const u32 kPlaySoundFn = 0x0058C7D4;       // Game_PlaySound(id)
 const u32 kRoomIdFn = 0x002F75CC;           // Room_GetCurrentId
 // ---- 十字キーで一覧を動かす -----------------------------------------------------------------------
 //   ★ゲームの一覧の十字操作は「手カーソル」（BsMenuMgr+500 の BsHandCursor）を動かし、その下の行にフォーカスして
@@ -190,6 +195,7 @@ enum class Field : u8 { Shown, Exiting, Hidden, Restoring };
 volatile Field s_field = Field::Shown;
 u32 s_fieldFrames;          // 今の段に入ってからのフレーム数
 u32 s_fieldRoom;            // 退場させたときの部屋
+bool s_menuCloseSent;      // 開いていた下画面メニューに閉じる命令を出した
 volatile u32 s_dpadHeld;    // kDpad* のビット（メニューのスレッドが書く）
 u32 s_dpadPrev;
 u32 s_dpadFrames;           // 押し続けているフレーム数
@@ -309,6 +315,8 @@ u32 RoomId(void) {
     return reinterpret_cast<u32 (*)(void)>(kRoomIdFn)();
 }
 
+bool MenuOpen(void);
+
 // タブが「タブ選択」で、命令バイトがどれも消費済み
 bool FieldIdle(void) {
     const u32 mgr = R32(kMenuMgrPtr);
@@ -331,6 +339,16 @@ bool StepField(bool hide) {
     }
     switch (s_field) {
     case Field::Shown:
+        if (hide && MenuOpen()) {
+            // 下画面メニューが出きっていれば、ゲームの「メニューアウト」で閉じさせる（1 回だけ）。閉じ終わるまで待つ
+            if (!s_menuCloseSent && R8(kMenuOpenState) == 3 && (R32(kMenuFlags) & kMenuShownFlag) != 0
+                && R8(kTabCommand) == kCmdNone) {
+                W8(kTabCommand, kCmdMenuOut);
+                s_menuCloseSent = true;
+            }
+            return false;
+        }
+        s_menuCloseSent = false;
         if (hide && FieldIdle()) {
             s_fieldRoom = RoomId();
             if (R32(mgr + kMgrMap) != 0)
@@ -553,8 +571,10 @@ void StepDpad(void) {
     s32 next = cur + step;
     if (next < 0) next = 0;
     if (next >= (s32)s_count) next = (s32)s_count - 1;
-    if (next != cur)
+    if (next != cur) {
         MoveSelect(next);
+        reinterpret_cast<void (*)(u32)>(kPlaySoundFn)(kSndListActive);
+    }
 }
 
 void EnterBoth(void) {
@@ -688,7 +708,9 @@ void FrameStep(void) {
     const bool want = s_want && !s_shutdown && !MenuOpen() && s_pendCount > 0;
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
-    const bool fieldHidden = StepField((want && s_error[0] == 0) || s_stage == Stage::Live);
+    //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
+    const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
+    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live);
 
     switch (s_stage) {
     case Stage::Off:

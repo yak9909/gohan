@@ -69,8 +69,18 @@ const u32 kPaneX = 40, kPaneY = 44;
 const u32 kTextFont = 224;                  // TextBox の書体
 const u32 kAnimTotal = 4, kAnimCur = 8;
 // 箱（P_bell_base、N_bell の子で (-59,-6)、98x32 を横 1.3 倍）の中心を置く位置（上画面 400x240、中心が原点・上が +y）。
-// 左上の時計（約 128x64）の下。
-const float kBoxX = -128.0f, kBoxY = 36.0f;
+// 上画面の左上の端（左右とも 8px 空ける）。★時計は左上ではなく左下にある（実機の画面。最初の版は時計の下のつもりで
+//   y=36 に置き「下すぎる」と言われた）。
+const float kBoxX = -128.0f, kBoxY = 96.0f;
+// 文字: T_bell_00 は基準点 8（右下）・文字の配置 5（右・上下中央）で右寄せだった。基準点 4・配置 4（中央）にして、
+//   箱の中心に置く。子の位置は親（N_bell_00、N_bell の子で (-16,-18)）の平行移動から測る。
+const u32 kPaneBase = 0xB6;                 // 下位 4 ビット = 基準点（横 + 縦×3。nwlyt_Pane_GetAnchorOffset 0x73B5C4）
+const u32 kTextPosition = 252, kTextDirty = 254;   // TextBox: 文字の配置（横 + 縦×3）/ bit0 = 作り直し
+const float kTextX = -59.0f - (-16.0f), kTextY = -6.0f - (-18.0f);
+// 箱の色（利用者: 水色）。マテリアル（Picture+0x13C、80 B）の色 [0] と [1]（+0x10 / +0x14、bclyt の res+20 の写し）を
+//   テクスチャ（LA4）の明るさで混ぜて塗る。素の値は e1b90f00 / fffabeff（山吹・クリーム）。アルファの byte はそのまま。
+const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
+const u8 kBlueDark[3] = { 0x5A, 0xAA, 0xE6 }, kBlueLight[3] = { 0xD2, 0xF0, 0xFF };
 const float kBoxOffX = -59.0f, kBoxOffY = -6.0f;
 const u32 kTeardownWaitFrames = 3;
 
@@ -208,6 +218,19 @@ bool Build(void) {
         for (u32 i = 0; i < sizeof(kIcons) / sizeof(kIcons[0]); ++i)
             Hide(FindPane(s_layout, kIcons[i]));
         W(s_text, kTextFont) = reinterpret_cast<u32>(FontGet(fontMgr, 0));
+        B(s_text, kPaneBase) = (u8)((B(s_text, kPaneBase) & 0xF0u) | 4u);
+        B(s_text, kTextPosition) = 4;
+        B(s_text, kTextDirty) |= 1u;
+        MovePane(s_text, kTextX, kTextY);
+        void *base = FindPane(s_layout, "P_bell_base");
+        if (base != nullptr && W(base, kPicMaterial) != 0) {
+            u8 *mat = reinterpret_cast<u8 *>(W(base, kPicMaterial));
+            for (u32 k = 0; k < 3; ++k) {
+                mat[kMatColor0 + k] = kBlueDark[k];
+                mat[kMatColor1 + k] = kBlueLight[k];
+            }
+            mat[kMatFlags] &= ~4u;          // GPU へ送り直させる
+        }
         // 登場し終えたときの N_bell の位置から、箱の中心が kBox に来るよう N_all をずらす
         GroupBind(s_layout, s_in, s_group, 0);
         AnimSetFrame(s_in, F(s_in, kAnimTotal) - 1.0f);
