@@ -89,6 +89,11 @@ const u32 kResLayer = 32;
 // 世界の物に隠れないようにする（係数 0.01 で複製の深度は -0.006 前後＝ゲームのカメラから約 50.3 より手前）。
 const float kDepthSqueeze = 0.01f;
 const float kCameraHeight = 12.0f;          // 複製の原点から見る高さ
+// ★画面に固定でも Scene 0 へは積む（IDA-opus-5.5-F032）。部品の骨格のワールド姿勢とスキニング行列は Scene の更新
+//   （nwgfx_SceneUpdater_UpdateAll 0x490818 → sub_7375A8 / sub_49009C → sub_737378）が計算するので、積まないとズボン（膝で曲がる
+//   スムーズスキニング）が止まる（実機 2026-09-24）。ゲームのカメラの far（1750）より遠くに置いて世界では見えないようにし、
+//   同じ位置を late pass の専用カメラから見て描く。
+const float kHideDepth = -5000.0f;
 const float kCameraDistance = 120.0f;       // 複製までの距離（near 50 より遠いこと）
 const u32 kCameraBytes = 488;               // view +328（48 B）と projection +424（64 B）が収まる大きさ
 
@@ -154,6 +159,7 @@ bool s_hooked;
 // 画面に固定
 volatile bool s_screen;                     // メニュー: 画面に固定する
 volatile s32 s_yaw;                         // 度
+volatile s32 s_pitch = 10;                  // 度（X 軸まわり。利用者: 上を向きすぎなので少し前へ）
 volatile s32 s_pixelX = 330;                // 上画面のピクセル（400x240）。複製の足元付近が来る位置ではなく、カメラの中心
 volatile s32 s_pixelY = 150;
 volatile s32 s_zoom = 60;                   // 百分率
@@ -229,37 +235,41 @@ void Abandon(u32 reason) {
     s_frames = 0;
 }
 
+// -1 は「本物のまま」: 本物のプレイヤーの PlayerModel の値を毎フレーム写す（以前は最後に書いた値が残った。利用者報告）
 void ApplyHair(void) {
-    const s32 style = s_hairStyle;
-    const s32 color = s_hairColor;
+    const u32 real = s_player + kActorModel;
+    const s32 style = s_hairStyle >= 0 ? s_hairStyle : (s32)R8(real + kModelHair);
+    const s32 color = s_hairColor >= 0 ? s_hairColor : (s32)R32(real + kModelHairColor);
     if (style >= 0 && style < 0x22 && R8(Model() + kModelHair) != (u8)style)
         *reinterpret_cast<volatile u8 *>(Model() + kModelHair) = (u8)style;
     if (color >= 0 && color < 0x10 && R32(Model() + kModelHairColor) != (u32)color)
         *reinterpret_cast<volatile u32 *>(Model() + kModelHairColor) = (u32)color;
 }
 
-// 画面に固定のとき: 原点に置き、Y 軸まわりに回すだけ（Scene 0 へは積まないので、ワールドのどこでもよい）
+// 画面に固定のとき: (0, kHideDepth, 0) に置き、RotX(傾き) * RotY(向き)。傾きが正だと頭が専用カメラ（+Z）のほうへ倒れる
 void PoseScreen(void) {
-    const float r = (float)s_yaw * (3.14159265f / 180.0f);
-    const float c = std::cos(r), s = std::sin(r);
-    const float m[12] = { c, 0.0f, s, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -s, 0.0f, c, 0.0f };
+    const float y = (float)s_yaw * (3.14159265f / 180.0f);
+    const float x = (float)s_pitch * (3.14159265f / 180.0f);
+    const float cy = std::cos(y), sy = std::sin(y), cx = std::cos(x), sx = std::sin(x);
+    // RotX = [1 0 0; 0 cx -sx; 0 sx cx]、RotY = [cy 0 sy; 0 1 0; -sy 0 cy]
+    const float m[12] = {
+        cy, 0.0f, sy, 0.0f,
+        sx * sy, cx, -sx * cy, kHideDepth,
+        -cx * sy, sx, cx * cy, 0.0f,
+    };
     SetMatrix(s_model, m);
 }
 
-// vtbl[5] が管理役の部品の表へ積んだ分を抜き取って s_parts へ移す（Scene 0 で描かせない）
-void TakeParts(const u32 *before) {
+// vtbl[5] が管理役の部品の表へ積んだ分を読んで s_parts へ写す（表には残す。Scene 0 の更新で骨格とスキニングを計算させる）
+void ReadParts(const u32 *before) {
     const u32 lists = R32(kPlayerMgrPtr) + kPartListBase;
     u32 n = 0;
     for (u32 k = 0; k < kPartLists; ++k) {
         const u32 list = lists + kPartListStride * k;
         const u32 count = R32(list + kPartListCount);
-        for (u32 i = before[k]; i < count && i < kPartListMax; ++i) {
+        for (u32 i = before[k]; i < count && i < kPartListMax; ++i)
             if (n < kMaxParts)
                 s_parts[n++] = R32(list + 4 * i);
-            *reinterpret_cast<volatile u32 *>(list + 4 * i) = 0;
-        }
-        if (count > before[k])
-            *reinterpret_cast<volatile u32 *>(list + kPartListCount) = before[k];
     }
     s_partCount = n;
 }
@@ -354,7 +364,8 @@ void StepLive(void) {
             before[k] = R32(lists + kPartListStride * k + kPartListCount);
         s_lateReady = false;
         StepParts(s_model);
-        TakeParts(before);
+        ReadParts(before);
+        Submit(reinterpret_cast<void *>(Model() + kModelBody), 0);
         s_lateReady = true;
     } else {
         s_lateReady = false;
@@ -449,7 +460,8 @@ bool BuildCamera(u32 gameCamera) {
     const float ox = 1.0f - (float)s_pixelY / 120.0f;
     const float oy = 1.0f - (float)s_pixelX / 200.0f;
     float *view = reinterpret_cast<float *>(s_camera + kCameraView);
-    const float v[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -kCameraHeight, 0.0f, 0.0f, 1.0f, -kCameraDistance };
+    const float v[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -(kHideDepth + kCameraHeight),
+                          0.0f, 0.0f, 1.0f, -kCameraDistance };
     std::memcpy(view, v, sizeof(v));
     float *proj = reinterpret_cast<float *>(s_camera + kCameraProjection);
     // 行 3 = [0, 0, -1, 0]（clip.w = -view.z）。行 0/1 に w の行を足すと中心がずれる
@@ -571,8 +583,9 @@ bool IsShown(void) {
     return s_want;
 }
 
-void SetScreen(bool on, s32 yaw, s32 x, s32 y, s32 zoom) {
+void SetScreen(bool on, s32 yaw, s32 pitch, s32 x, s32 y, s32 zoom) {
     s_yaw = yaw;
+    s_pitch = pitch;
     s_pixelX = x;
     s_pixelY = y;
     s_zoom = zoom;
@@ -650,6 +663,7 @@ namespace CTRPluginFramework
             int             g_pcColorIndex = -1;
             int             g_pcScreenIndex = -1;
             int             g_pcYawIndex = -1;
+            int             g_pcPitchIndex = -1;
             int             g_pcXIndex = -1;
             int             g_pcYIndex = -1;
             int             g_pcZoomIndex = -1;
@@ -664,8 +678,8 @@ namespace CTRPluginFramework
             {
                 (void)index;
                 (void)value;
-                PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcXIndex, 330),
-                                       Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
+                PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcPitchIndex, 10),
+                                       Applied(g_pcXIndex, 330), Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
             }
 
             bool    ScreenIsActive(int index)
@@ -746,12 +760,13 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterExecute(statIndex, CloneStatus);
             g_pcScreenIndex = GuiMenu::FindItem(kPcScreen);
             g_pcYawIndex = GuiMenu::FindItem(kPcYaw);
+            g_pcPitchIndex = GuiMenu::FindItem(kPcPitch);
             g_pcXIndex = GuiMenu::FindItem(kPcX);
             g_pcYIndex = GuiMenu::FindItem(kPcY);
             g_pcZoomIndex = GuiMenu::FindItem(kPcZoom);
             if (g_pcScreenIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_pcScreenIndex, &kScreenFuncs);
-            const int values[] = { g_pcYawIndex, g_pcXIndex, g_pcYIndex, g_pcZoomIndex };
+            const int values[] = { g_pcYawIndex, g_pcPitchIndex, g_pcXIndex, g_pcYIndex, g_pcZoomIndex };
             for (int v : values)
                 if (v >= 0)
                     GuiMenu::RegisterApply(v, ScreenApplied);

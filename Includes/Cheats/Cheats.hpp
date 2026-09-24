@@ -75,6 +75,7 @@ namespace CTRPluginFramework
         static const char kPcStat[]  = u8"複製の状態";
         static const char kPcScreen[] = u8"画面に固定";
         static const char kPcYaw[]    = u8"複製の向き";
+        static const char kPcPitch[]  = u8"複製の傾き";
         static const char kPcX[]      = u8"画面の X";
         static const char kPcY[]      = u8"画面の Y";
         static const char kPcZoom[]   = u8"複製の大きさ";
