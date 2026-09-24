@@ -315,7 +315,7 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 60, 10, 300, 5);
                 i = AddItem(ITEM_VALUE, kPcLight,
                             u8"画面に固定したときの複製のライトの明るさです。百分率。周りの光には左右されません。");
-                SetValue(i, FMT_DEC, 130, 30, 200, 10);
+                SetValue(i, FMT_DEC, 100, 30, 200, 10);
                 i = AddItem(ITEM_VALUE, kPcLitX, u8"複製に当てる光の来る向き（横）です。負で左、正で右から。縦・手前と合わせて向きになります。");
                 SetValue(i, FMT_DEC, -30, -200, 200, 10);
                 i = AddItem(ITEM_VALUE, kPcLitY, u8"複製に当てる光の来る向き（縦）です。負で下、正で上から。");

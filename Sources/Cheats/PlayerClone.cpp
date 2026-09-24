@@ -234,7 +234,7 @@ volatile u32 s_partCount;
 volatile bool s_lateReady;                  // s_parts が今の複製のもの
 volatile u32 s_lateDraws;
 bool s_lateHooked;
-volatile s32 s_bright = 130;                // 複製のライトの明るさ（百分率。利用者: 130 がちょうど良い）
+volatile s32 s_bright = 100;                // 複製のライトの明るさ（百分率。利用者: 法線の直し後は 100 が良い）
 volatile s32 s_light[kLpCount] = { -30, -40, 100, 35, 15, 50, 15, 20 };    // kLightDefaults と同じ（検査で突き合わせる）
 volatile u32 s_litTemplates;                // 最後に写し元にできたライト（1 アンビエント・2 半球・4 方向光。0 = 全部一から）
 u32 s_litSets[kLightSetCount];
@@ -971,7 +971,7 @@ namespace CTRPluginFramework
                 (void)value;
                 PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcPitchIndex, 45),
                                        Applied(g_pcXIndex, 330), Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
-                PlayerClone::SetBrightness(Applied(g_pcLightIndex, 130));
+                PlayerClone::SetBrightness(Applied(g_pcLightIndex, 100));
                 for (u32 k = 0; k < 8; ++k)
                     PlayerClone::SetLight(k, Applied(g_pcLightItems[k], kPcLightFallback[k]));
             }
