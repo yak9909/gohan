@@ -14,7 +14,8 @@ namespace {
 // ---- ゲーム側 ------------------------------------------------------------------------------
 const u32 kLayoutMgrPtr = 0x0096FC38;       // u32: ssys::ma::lyt::LayoutMgr
 const u32 kLytAllocatorPtr = 0x0096FC3C;    // u32: ssys::ma::Allocator（+4 = sead::ExpHeap）
-const u32 kMenuOpenState = 0x00949D1E;      // u8: g_MenuOpenState（0 = メニュー無し）
+const u32 kMenuOpenState = 0x00949D1E;      // u8: g_MenuOpenState。1 = アイドル / 2 = 開き要求 / 3 = 開いている（旧 menu_system.md）
+const u32 kMenuFlags = 0x00949D68;          // u32: vc_MENU_FLAGS。bit 0x08 = 通常の下メニューが出ている
 
 typedef void *(*HeapAllocFn)(u32 size, void *heap, s32 align);
 typedef void *(*CtorFn)(void *self);
@@ -234,8 +235,10 @@ void DestroyAll(void) {
     s_stage = Stage::Off;
 }
 
+// ★0 ではなく 1 がアイドル。村の屋外で 1 / フラグ 0x2（実機）。以前は「0 以外 = 開いている」と取り違え、一度も組み立てなかった。
 bool MenuOpen(void) {
-    return *reinterpret_cast<const volatile u8 *>(kMenuOpenState) != 0;
+    return *reinterpret_cast<const volatile u8 *>(kMenuOpenState) != 1
+        || (*reinterpret_cast<const volatile u32 *>(kMenuFlags) & 0x08u) != 0;
 }
 
 void *LytHeap(void) {
