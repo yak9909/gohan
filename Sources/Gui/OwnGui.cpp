@@ -175,81 +175,6 @@ namespace CTRPluginFramework
             return true;
         }
 
-        // ------------------------------------------------------------------
-        // ★GPU 可視メモリを自前で確保する（IDA-opus-5.5-F035）
-        // ------------------------------------------------------------------
-        //   svcControlMemory / Luma の svcControlMemoryEx の LINEAR はプロセスの資源上限で全滅（0xD86007F3）。
-        //   Luma の svcControlMemoryUnsafe(0xA3) は上限を見ずに SYSTEM 領域から取り、**addr0 に貼る**（0 だと番地 0 に貼る）。
-        //   貼り先は svcQueryMemory でたどった [0x0E000000, 0x14000000) の空き区画（実機では 0x10003000〜0x11000000 が空き）。
-        //   PA は svcConvertVAToPA（FCRAM なので GPU が読める）。解放は同じ svc の MEMOP_FREE で、使用量が戻ることを実機で確認。
-        //   取れなければ従来の nw::lyt ヒープ借用（BorrowHeap）へ戻す。
-        u32     g_ownGpuVa = 0;         // 0 = 自前確保していない（借用か未確保）
-        u32     g_ownGpuSize = 0;
-
-        u32     FindFreeVa(u32 need)
-        {
-            u32 addr = 0x0E000000;
-
-            while (addr < 0x14000000)
-            {
-                MemInfo     mi;
-                PageInfo    pi;
-
-                if (R_FAILED(svcQueryMemory(&mi, &pi, addr)) || mi.size == 0)
-                    return 0;
-                if (mi.state == MEMSTATE_FREE && mi.base_addr + mi.size >= addr + need && addr + need <= 0x14000000)
-                    return addr;
-                addr = mi.base_addr + mi.size;
-            }
-            return 0;
-        }
-
-        bool    AllocOwnGpu(u32 size)
-        {
-            u32 cur = 0;
-
-            Process::Read32(kGuiHeapSlot, cur);
-            if (cur != 0)
-            {
-                Log("GPU 用メモリは既にある: 0x%08X", (unsigned int)cur);
-                return true;
-            }
-            size = (size + 0xFFF) & ~0xFFFu;
-            const u32 va = FindFreeVa(size);
-
-            if (va == 0)
-            {
-                Log("[!] 自前確保: 空き番地が見つからない");
-                return false;
-            }
-            u32     out = 0;
-            Result  res = svcControlMemoryUnsafe(&out, va, size,
-                                                 (MemOp)(MEMOP_ALLOC_LINEAR | MEMOP_REGION_SYSTEM), MEMPERM_READWRITE);
-
-            if (R_FAILED(res) || out != va)
-            {
-                Log("[!] 自前確保: 失敗 res=0x%08X out=0x%08X", (unsigned int)res, (unsigned int)out);
-                return false;
-            }
-            const u32 pa = svcConvertVAToPA((void *)va, false);
-
-            if (pa < 0x20000000 || pa >= 0x30000000)
-            {
-                u32 dummy = 0;
-
-                svcControlMemoryUnsafe(&dummy, va, size, MEMOP_FREE, (MemPerm)0);
-                Log("[!] 自前確保: PA 0x%08X が FCRAM ではない。返した。", (unsigned int)pa);
-                return false;
-            }
-            g_ownGpuVa = va;
-            g_ownGpuSize = size;
-            Process::Patch(kGuiHeapSlot, va);
-            Process::Patch(kGuiHeapSlot + 4, size);
-            Log("自前確保 VA 0x%08X PA 0x%08X (0x%X)  ※svcControlMemoryUnsafe / SYSTEM",
-                (unsigned int)va, (unsigned int)pa, (unsigned int)size);
-            return true;
-        }
-
         bool    BorrowHeap(u32 size)
         {
             u32 cur = 0;
@@ -376,20 +301,6 @@ namespace CTRPluginFramework
             Process::Read32(kGuiHeapSlot, cur);
             if (cur == 0)
                 return true;
-            if (g_ownGpuVa != 0)
-            {
-                u32     dummy = 0;
-                Result  res = svcControlMemoryUnsafe(&dummy, g_ownGpuVa, g_ownGpuSize, MEMOP_FREE, (MemPerm)0);
-
-                Log("自前確保を返す VA 0x%08X res=0x%08X", (unsigned int)g_ownGpuVa, (unsigned int)res);
-                if (R_FAILED(res))
-                    return false;
-                g_ownGpuVa = 0;
-                g_ownGpuSize = 0;
-                Process::Patch(kGuiHeapSlot, 0);
-                Process::Patch(kGuiHeapSlot + 4, 0);
-                return true;
-            }
             return RunHeapCave(kFreeCave, kFreeCaveCount, 0xFFFFFFFF, 0, false, "解放");
         }
 
@@ -657,8 +568,7 @@ namespace CTRPluginFramework
             // 1. ヒープを借りる
             // ★大きさは GuiRenderer が持つ（以前ここに 0x30000 が直書きされていて、
             //   GuiRenderer の kBorrowBytes と食い違っていた）。
-            // ★まず自前確保（F035）。取れなければ従来の借用へ戻す。
-            if (!AllocOwnGpu(GuiRenderer::BorrowBytes()) && !BorrowHeap(GuiRenderer::BorrowBytes()))
+            if (!BorrowHeap(GuiRenderer::BorrowBytes()))
             {
                 LogFlush();
                 return false;

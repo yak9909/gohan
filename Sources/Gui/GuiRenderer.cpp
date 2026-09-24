@@ -27,7 +27,6 @@
 #include <string>
 
 #include "GuiRenderer.hpp"
-#include "csvc.h"   // svcConvertVAToPA（F035: 自前確保のアトラスの PA）
 #include "GuiCaves.h"
 #include "GuiFontUi.h"
 #include "ChatKanji.hpp"
@@ -539,21 +538,12 @@ namespace CTRPluginFramework
             // ------------------------------------------------------------------
             // 共有 Material と texMap（Picture が全部これを指す）
             // ------------------------------------------------------------------
-            // アトラスの物理アドレス。★F035: 自前確保（svcControlMemoryUnsafe）の番地は 0x1000xxxx などで、
-            //   以前の決め打ち「VA - 0x10000000」（ゲームの linear の窓でだけ正しい）は使えない。Luma の svcConvertVAToPA で引く。
-            u32     AtlasPa(u32 va)
-            {
-                const u32 pa = svcConvertVAToPA((void *)va, false);
-
-                return pa != 0 ? pa : va - 0x10000000;
-            }
-
             void    WriteSharedMaterial(void)
             {
                 const u32   mat = g_base;
                 const u32   blk = g_base + 0x80;
                 const u32   atlas = g_gpuBase + g_offAtlas;
-                const u32   pa = AtlasPa(atlas);
+                const u32   pa = atlas - 0x10000000;
                 int         k;
 
                 std::memset((void *)mat, 0, kShared);
@@ -771,7 +761,7 @@ namespace CTRPluginFramework
                 // ---- シート記述子 ----
                 W32(desc + 0x00, 0);
                 W32(desc + 0x04, rf);                       // ★ResFont 自身
-                W32(desc + 0x08, AtlasPa(atlas) >> 3);       // reg 0x085
+                W32(desc + 0x08, (atlas - 0x10000000) >> 3); // reg 0x085
                 // ★★F-316: **(幅<<16) | 高さ**。逆だと非正方形のシートで文字化けする。
                 //   128x128 では同じ値になるので気付けない。256x128 を実機に載せて判明した。
                 W32(desc + 0x0C, (kUiSheetW << 16) | kUiSheetH);
