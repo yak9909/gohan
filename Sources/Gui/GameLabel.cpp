@@ -7,7 +7,7 @@
 // ゲームの所持ベルの箱を上画面に借りる（IDA-opus-5.5-F036、docs/topics/game_list.md）。
 // 手本は BsTimeBelWindow の組み立て sub_2939C8: 書体 0/1/3 を保持体へ登録 → time_bel_win.bclyt を 0x5510 で組む
 // → 優先度 0x80 → time_bel_win_in/out を G_clock / G_bell_00 のグループに結ぶ（vc_ACSYSTEM_DATA1）。
-// 部品の関数は GameList と同じもの（番地は GameList.cpp と docs を参照）。
+// 保持体（arc）は全部の箱で 1 つ、レイアウトとアニメは箱ごと。
 
 namespace GameLabel {
 
@@ -32,6 +32,7 @@ typedef void *(*FontSlotFn)(void *fontMgr, u32 kind);
 typedef void (*RegisterFontFn)(void *accessor, const char *name, void *font);
 typedef int (*RegisterTexFn)(void *holder);
 typedef int (*SetStringFn)(void *textBox, const u16 *str, u32 dst, u32 len);
+typedef void (*AllocBufFn)(void *textBox, u32 chars, u32 flags);
 
 const CtorFn         ArcCtor        = reinterpret_cast<CtorFn>(0x00120D54);
 const CtorFn         ArcDtor        = reinterpret_cast<CtorFn>(0x00567310);
@@ -58,6 +59,7 @@ const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8);
 const RegisterFontFn RegisterFont   = reinterpret_cast<RegisterFontFn>(0x004B3FD4);
 const RegisterTexFn  RegisterTex    = reinterpret_cast<RegisterTexFn>(0x00568CFC);
 const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);    // nwlyt_TextBox_SetString
+const u32 kTextBoxAllocSlot = 28;           // TextBox vt[28] 0x13B9A8 = 器の確保 (箱, 文字数, 旗)。旧い器は vt[29] で返す
 
 const char kArcPath[] = "Layout/Menu/time_bel_win.arc";
 const u32 kCmdBytes = 0x5510;               // BsTimeBelWindow と同じ
@@ -65,44 +67,48 @@ const u8 kPriority = 0x80;                  // 同上（上画面）
 const u32 kHolderAccessor = 12;
 const u32 kLayoutPriority = 12, kLayoutHolder = 236;
 const u32 kPaneFlags = 183;                 // bit0 = 見える、bit4-5 = 行列の更新済み（0 にすると計算し直す）
-const u32 kPaneX = 40, kPaneY = 44;
-const u32 kTextFont = 224;                  // TextBox の書体
-const u32 kAnimTotal = 4, kAnimCur = 8;
-// 箱（P_bell_base、N_bell の子で (-59,-6)、98x32 を横 1.3 倍）の中心を置く位置（上画面 400x240、中心が原点・上が +y）。
-// 上画面の左上の端（左右とも 8px 空ける）。★時計は左上ではなく左下にある（実機の画面。最初の版は時計の下のつもりで
-//   y=36 に置き「下すぎる」と言われた）。
-const float kBoxX = -128.0f, kBoxY = 96.0f;
-// 文字: T_bell_00 は基準点 8（右下）・文字の配置 5（右・上下中央）で右寄せだった。基準点 4・配置 4（中央）にして、
-//   箱の中心に置く。子の位置は親（N_bell_00、N_bell の子で (-16,-18)）の平行移動から測る。
+const u32 kPaneX = 40, kPaneY = 44, kPaneScaleX = 64, kPaneWidth = 72;
 const u32 kPaneBase = 0xB6;                 // 下位 4 ビット = 基準点（横 + 縦×3。nwlyt_Pane_GetAnchorOffset 0x73B5C4）
-const u32 kTextPosition = 252, kTextDirty = 254;   // TextBox: 文字の配置（横 + 縦×3）/ bit0 = 作り直し
-const float kTextX = -59.0f - (-16.0f), kTextY = -6.0f - (-18.0f);
-// 箱の色（利用者: 水色）。マテリアル（Picture+0x13C、80 B）の色 [0] と [1]（+0x10 / +0x14、bclyt の res+20 の写し）を
-//   テクスチャ（LA4）の明るさで混ぜて塗る。素の値は e1b90f00 / fffabeff（山吹・クリーム）。アルファの byte はそのまま。
+const u32 kTextFont = 224;                  // TextBox の書体
+const u32 kTextDraw = 260;                  // TextBox の描画用の器（+9 の byte が器の確保の旗）
+const u32 kTextPosition = 252, kTextDirty = 254;   // 文字の配置（横 + 縦×3）/ bit0 = 作り直し
+const u32 kAnimTotal = 4, kAnimCur = 8;
 const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
+
+// ---- 見た目（利用者の指示）----
+// 箱: 上画面（400x240、中心が原点・上が +y）の左上の端から下へ。左端 x = -192、1 段目の中心 y = 96、36px ごと。
+//   ★時計は左上ではなく左下にある（最初の版は時計の下のつもりで y=36 に置き「下すぎる」と言われた）。
+// 箱の元の幅は 98 を横 1.3 倍（127px）。文字の幅（全角 15px・半角 9px の見積もり。「配置モード」5 文字 ≒ 75px を実機で確認）
+//   に左右 16px を足した幅がこれより広ければ横に伸ばす。
+const float kLeft = -192.0f, kTop = 96.0f, kPitch = 36.0f;
+const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 32.0f, kWide = 15.0f, kNarrow = 9.0f;
+// 箱（P_bell_base、N_bell の子で (-59,-6)）と影（P_bell_sh、(-57,-8)）。文字は N_bell_00（(-16,-18)）の子。
+const float kBoxOffX = -59.0f, kBoxOffY = -6.0f, kTextParentX = -16.0f, kTextParentY = -18.0f;
+// 色（利用者: 水色）。マテリアル色 [0]/[1] を LA4 の明るさで混ぜる。素は e1b90f / fffabe（山吹・クリーム）。
 const u8 kBlueDark[3] = { 0x5A, 0xAA, 0xE6 }, kBlueLight[3] = { 0xD2, 0xF0, 0xFF };
-const float kBoxOffX = -59.0f, kBoxOffY = -6.0f;
 const u32 kTeardownWaitFrames = 3;
 
-alignas(8) u8 s_holder[584];
-alignas(8) u8 s_layout[332];
-alignas(8) u8 s_in[40];
-alignas(8) u8 s_out[40];
-void *s_group;
-void *s_text;
-
-volatile bool s_want;
-u16 s_pend[kMaxChars + 1];
-volatile u32 s_textSeq;
-u32 s_textDone;
-const char *volatile s_error = "";
-
-enum class Stage : u8 { Off, Loading, Live, Waiting };
-volatile Stage s_stage = Stage::Off;
-bool s_holderMade, s_layoutMade, s_layoutBuilt, s_animsMade, s_hookReady;
-bool s_entered;            // 組み立ててから一度でも登場させた
 enum class Dir : u8 { None, In, Out };
-Dir s_dir = Dir::None;
+
+struct Label {
+    alignas(8) u8 layout[332];
+    alignas(8) u8 in[40];
+    alignas(8) u8 out[40];
+    void *group, *text, *base, *shadow, *all;
+    bool made, built, anims, entered, live;
+    Dir dir;
+    u32 textDone;
+    float bellX, bellY;                     // 登場し終えたときの N_bell の位置
+    // メニューのスレッドが書く
+    volatile bool want;
+    u16 pend[kMaxChars + 1];
+    volatile u32 textSeq;
+};
+
+alignas(8) u8 s_holder[584];
+bool s_holderMade, s_holderReady, s_hookReady;
+Label s_labels[kSlots];
+const char *volatile s_error = "";
 u32 s_waitFrames;
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
@@ -110,15 +116,19 @@ inline float &F(void *p, u32 off) { return *reinterpret_cast<float *>(P(p, off))
 inline u8 &B(void *p, u32 off) { return *P(p, off); }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
 
-void Hide(void *pane) {
+void HidePane(void *pane) {
     if (pane != nullptr)
         B(pane, kPaneFlags) &= ~1u;
+}
+
+void Touch(void *pane) {
+    B(pane, kPaneFlags) &= 0xCFu;
 }
 
 void MovePane(void *pane, float x, float y) {
     F(pane, kPaneX) = x;
     F(pane, kPaneY) = y;
-    B(pane, kPaneFlags) &= 0xCFu;
+    Touch(pane);
 }
 
 float Progress(void *anim) {
@@ -129,40 +139,53 @@ float Progress(void *anim) {
     return p < 0.0f ? 0.0f : (p > 1.0f ? 1.0f : p);
 }
 
-void Switch(void *from, void *to) {
+void Switch(Label &l, void *from, void *to) {
     float start = 0.0f;
-    if (s_dir != Dir::None) {
+    if (l.dir != Dir::None) {
         start = (1.0f - Progress(from)) * (F(to, kAnimTotal) - 1.0f);
-        GroupUnbind(s_layout, from, s_group, 0);
+        GroupUnbind(l.layout, from, l.group, 0);
     }
-    GroupBind(s_layout, to, s_group, 0);
+    GroupBind(l.layout, to, l.group, 0);
     AnimSetFrame(to, start);
 }
 
-void DestroyAll(void) {
-    if (s_layoutMade) {
-        if (s_layoutBuilt)
-            LayoutFinalize(s_layout);
-        LayoutDtor(s_layout);
+void DestroyLabel(Label &l) {
+    if (l.made) {
+        if (l.built)
+            LayoutFinalize(l.layout);
+        LayoutDtor(l.layout);
     }
-    s_layoutMade = s_layoutBuilt = false;
-    if (s_animsMade) {
-        AnimDtor(s_in);
-        AnimDtor(s_out);
+    if (l.anims) {
+        AnimDtor(l.in);
+        AnimDtor(l.out);
     }
-    s_animsMade = false;
-    if (s_holderMade)
-        ArcDtor(s_holder);
-    s_holderMade = false;
-    s_group = s_text = nullptr;
-    s_dir = Dir::None;
-    s_entered = false;
-    s_stage = Stage::Off;
+    l.made = l.built = l.anims = l.entered = l.live = false;
+    l.group = l.text = l.base = l.shadow = l.all = nullptr;
+    l.dir = Dir::None;
 }
 
-void RegisterFonts(void) {
+void DestroyHolder(void) {
+    if (s_holderMade)
+        ArcDtor(s_holder);
+    s_holderMade = s_holderReady = false;
+}
+
+// arc を読み、書体（BsTimeBelWindow と同じ 0/1/3）とテクスチャを登録する。真 = 使える
+bool HolderStep(void) {
+    if (s_holderReady)
+        return true;
+    if (!s_holderMade) {
+        ArcCtor(s_holder);
+        s_holderMade = true;
+    }
+    if (ArcLoadStep(s_holder, kArcPath) == 0)
+        return false;
     void *fontMgr = *reinterpret_cast<void *const *>(kFontMgrPtr);
-    static const u32 kKinds[] = { 0, 1, 3 };        // BsTimeBelWindow と同じ 3 つ
+    if (fontMgr == nullptr || FontGet(fontMgr, 0) == nullptr) {
+        s_error = "ゲームの書体が取れない";
+        return false;
+    }
+    static const u32 kKinds[] = { 0, 1, 3 };
     for (u32 i = 0; i < 3; ++i) {
         void *font = FontGet(fontMgr, kKinds[i]);
         if (font == nullptr)
@@ -171,83 +194,163 @@ void RegisterFonts(void) {
         reinterpret_cast<void (*)(u32 *)>(reinterpret_cast<u32 *>(name[0])[2])(name);
         RegisterFont(P(s_holder, kHolderAccessor), reinterpret_cast<const char *>(name[1]), font);
     }
+    RegisterTex(s_holder);
+    s_holderReady = true;
+    return true;
 }
 
-// 1 フレームに 1 段。真 = 組み上がった
-bool Build(void) {
-    if (!s_holderMade) {
-        ArcCtor(s_holder);
-        s_holderMade = true;
+bool BuildLabel(Label &l) {
+    void *fontMgr = *reinterpret_cast<void *const *>(kFontMgrPtr);
+    LayoutCtor(l.layout);
+    l.made = true;
+    W(l.layout, kLayoutHolder) = reinterpret_cast<u32>(s_holder);
+    if (LayoutBuild(l.layout, "time_bel_win.bclyt", nullptr, kCmdBytes) == 0) {
+        s_error = "time_bel_win.bclyt を組めない";
+        return false;
     }
-    if (!s_layoutBuilt) {
-        if (ArcLoadStep(s_holder, kArcPath) == 0)
-            return false;
-        void *fontMgr = *reinterpret_cast<void *const *>(kFontMgrPtr);
-        if (fontMgr == nullptr || FontGet(fontMgr, 0) == nullptr) {
-            s_error = "ゲームの書体が取れない";
+    l.built = true;
+    B(l.layout, kLayoutPriority) = kPriority;
+    AnimCtor(l.in);
+    AnimCtor(l.out);
+    l.anims = true;
+    AnimLoad(l.in, "time_bel_win_in.bclan", s_holder);
+    AnimLoad(l.out, "time_bel_win_out.bclan", s_holder);
+    l.group = FindGroup(l.layout, "G_bell_00", 1);
+    l.text = FindTextBox(l.layout, "T_bell_00");
+    l.base = FindPane(l.layout, "P_bell_base");
+    l.shadow = FindPane(l.layout, "P_bell_sh");
+    l.all = FindPane(l.layout, "N_all");
+    void *bell = FindPane(l.layout, "N_bell");
+    if (l.group == nullptr || l.text == nullptr || l.base == nullptr || l.shadow == nullptr || l.all == nullptr
+        || bell == nullptr) {
+        s_error = "time_bel_win の部品が見つからない";
+        return false;
+    }
+    // 時計・アイコンを隠す
+    HidePane(FindPane(l.layout, "N_time"));
+    static const char *const kIcons[] = { "P_bell_icn_sh", "P_bell_icon", "P_mld_icn_sh", "P_mdl_icon",
+                                          "P_cin_icn_sh", "P_cin_icon", "P_ticket_ico_sh", "P_ticket_icon" };
+    for (u32 i = 0; i < sizeof(kIcons) / sizeof(kIcons[0]); ++i)
+        HidePane(FindPane(l.layout, kIcons[i]));
+    // 文字: 通常の書体、器を広げる、基準点と配置を中央に
+    W(l.text, kTextFont) = reinterpret_cast<u32>(FontGet(fontMgr, 0));
+    const u32 draw = W(l.text, kTextDraw);
+    const u32 flags = draw != 0 ? *reinterpret_cast<const u8 *>(draw + 9) : 0;
+    u32 *tvt = *reinterpret_cast<u32 **>(l.text);
+    reinterpret_cast<AllocBufFn>(tvt[kTextBoxAllocSlot])(l.text, kMaxChars, flags);
+    B(l.text, kPaneBase) = (u8)((B(l.text, kPaneBase) & 0xF0u) | 4u);
+    B(l.text, kTextPosition) = 4;
+    B(l.text, kTextDirty) |= 1u;
+    MovePane(l.text, kBoxOffX - kTextParentX, kBoxOffY - kTextParentY);
+    // 色
+    if (W(l.base, kPicMaterial) != 0) {
+        u8 *mat = reinterpret_cast<u8 *>(W(l.base, kPicMaterial));
+        for (u32 k = 0; k < 3; ++k) {
+            mat[kMatColor0 + k] = kBlueDark[k];
+            mat[kMatColor1 + k] = kBlueLight[k];
+        }
+        mat[kMatFlags] &= ~4u;              // GPU へ送り直させる
+    }
+    // 登場し終えたときの N_bell の位置（箱を置くときの基準）
+    GroupBind(l.layout, l.in, l.group, 0);
+    AnimSetFrame(l.in, F(l.in, kAnimTotal) - 1.0f);
+    LayoutCalc(l.layout);
+    l.bellX = F(bell, kPaneX);
+    l.bellY = F(bell, kPaneY);
+    GroupUnbind(l.layout, l.in, l.group, 0);
+    l.textDone = l.textSeq - 1;             // 文字を必ず一度書く
+    l.entered = false;
+    l.live = true;
+    return true;
+}
+
+// 文字を書き、幅を合わせ、左端をそろえて置く
+void ApplyText(Label &l, u32 slot) {
+    u32 len = 0;
+    float width = 0.0f;
+    while (len < kMaxChars && l.pend[len] != 0) {
+        width += l.pend[len] < 0x100 ? kNarrow : kWide;
+        ++len;
+    }
+    SetString(l.text, l.pend, 0, len);
+    float scale = (width + kPad) / kBaseW;
+    if (scale < kMinScale)
+        scale = kMinScale;
+    const float w = kBaseW * scale;
+    F(l.base, kPaneScaleX) = scale;
+    F(l.shadow, kPaneScaleX) = scale;
+    F(l.text, kPaneWidth) = w - 16.0f;
+    Touch(l.base);
+    Touch(l.shadow);
+    Touch(l.text);
+    // 箱の中心 = (kLeft + w/2, kTop - 段 × kPitch)。N_all をずらして合わせる
+    const float cx = kLeft + w * 0.5f;
+    const float cy = kTop - (float)slot * kPitch;
+    MovePane(l.all, cx - (l.bellX + kBoxOffX), cy - (l.bellY + kBoxOffY));
+}
+
+// 1 つの箱の 1 フレーム。戻り値: 描いた（出ている・アニメ中）
+bool StepLabel(Label &l, u32 slot, void *mgr) {
+    const bool want = l.want;
+    if (!l.live) {
+        if (!want || !s_holderReady || s_error[0] != 0 || l.made)
+            return false;                   // l.made: 退場し終えて壊すのを待っている
+        if (!BuildLabel(l)) {
+            DestroyLabel(l);
             return false;
         }
-        RegisterFonts();
-        RegisterTex(s_holder);
-        LayoutCtor(s_layout);
-        s_layoutMade = true;
-        W(s_layout, kLayoutHolder) = reinterpret_cast<u32>(s_holder);
-        if (LayoutBuild(s_layout, "time_bel_win.bclyt", nullptr, kCmdBytes) == 0) {
-            s_error = "time_bel_win.bclyt を組めない";
+    }
+    if (l.textDone != l.textSeq) {
+        l.textDone = l.textSeq;
+        ApplyText(l, slot);
+    }
+    if (want) {
+        if (!l.entered) {
+            Switch(l, l.out, l.in);         // dir が None なので 0 から
+            l.dir = Dir::In;
+            l.entered = true;
+        } else if (l.dir == Dir::Out) {
+            Switch(l, l.out, l.in);
+            l.dir = Dir::In;
+        }
+    } else {
+        if (!l.entered) {
+            l.live = false;                 // 一度も出していない: そのまま片付けへ
             return false;
         }
-        s_layoutBuilt = true;
-        B(s_layout, kLayoutPriority) = kPriority;
-        AnimCtor(s_in);
-        AnimCtor(s_out);
-        s_animsMade = true;
-        AnimLoad(s_in, "time_bel_win_in.bclan", s_holder);
-        AnimLoad(s_out, "time_bel_win_out.bclan", s_holder);
-        s_group = FindGroup(s_layout, "G_bell_00", 1);
-        s_text = FindTextBox(s_layout, "T_bell_00");
-        void *bell = FindPane(s_layout, "N_bell");
-        void *all = FindPane(s_layout, "N_all");
-        if (s_group == nullptr || s_text == nullptr || bell == nullptr || all == nullptr) {
-            s_error = "time_bel_win の部品が見つからない";
-            return false;
+        if (l.dir != Dir::Out) {
+            Switch(l, l.in, l.out);
+            l.dir = Dir::Out;
         }
-        // 時計と、ベル以外のアイコン・ベルのアイコンを隠す。文字は通常の書体にする
-        Hide(FindPane(s_layout, "N_time"));
-        static const char *const kIcons[] = { "P_bell_icn_sh", "P_bell_icon", "P_mld_icn_sh", "P_mdl_icon",
-                                              "P_cin_icn_sh", "P_cin_icon", "P_ticket_ico_sh", "P_ticket_icon" };
-        for (u32 i = 0; i < sizeof(kIcons) / sizeof(kIcons[0]); ++i)
-            Hide(FindPane(s_layout, kIcons[i]));
-        W(s_text, kTextFont) = reinterpret_cast<u32>(FontGet(fontMgr, 0));
-        B(s_text, kPaneBase) = (u8)((B(s_text, kPaneBase) & 0xF0u) | 4u);
-        B(s_text, kTextPosition) = 4;
-        B(s_text, kTextDirty) |= 1u;
-        MovePane(s_text, kTextX, kTextY);
-        void *base = FindPane(s_layout, "P_bell_base");
-        if (base != nullptr && W(base, kPicMaterial) != 0) {
-            u8 *mat = reinterpret_cast<u8 *>(W(base, kPicMaterial));
-            for (u32 k = 0; k < 3; ++k) {
-                mat[kMatColor0 + k] = kBlueDark[k];
-                mat[kMatColor1 + k] = kBlueLight[k];
+    }
+    void *anim = l.dir == Dir::In ? l.in : l.dir == Dir::Out ? l.out : nullptr;
+    if (anim != nullptr) {
+        if (AnimFinished(anim)) {
+            GroupUnbind(l.layout, anim, l.group, 0);
+            const Dir done = l.dir;
+            l.dir = Dir::None;
+            if (done == Dir::Out) {
+                // 退場し終えた: このフレームから描かない。壊すのは数フレーム後
+                l.live = false;
+                l.entered = false;
+                return false;
             }
-            mat[kMatFlags] &= ~4u;          // GPU へ送り直させる
+        } else {
+            AnimStep(anim);
         }
-        // 登場し終えたときの N_bell の位置から、箱の中心が kBox に来るよう N_all をずらす
-        GroupBind(s_layout, s_in, s_group, 0);
-        AnimSetFrame(s_in, F(s_in, kAnimTotal) - 1.0f);
-        LayoutCalc(s_layout);
-        const float bx = F(bell, kPaneX), by = F(bell, kPaneY);
-        GroupUnbind(s_layout, s_in, s_group, 0);
-        MovePane(all, kBoxX - (bx + kBoxOffX), kBoxY - (by + kBoxOffY));
-        s_textDone = s_textSeq - 1;         // 文字を必ず一度書く
-        s_entered = false;
-        return true;
     }
+    LayoutCalc(l.layout);
+    if (mgr != nullptr)
+        AddLayout(mgr, l.layout, 0);
     return true;
 }
 
 }  // namespace
 
-void SetText(const char *utf8) {
+void SetText(u32 slot, const char *utf8) {
+    if (slot >= kSlots)
+        return;
+    Label &l = s_labels[slot];
     u32 n = 0;
     const u8 *s = reinterpret_cast<const u8 *>(utf8 != nullptr ? utf8 : "");
     while (*s != 0 && n < kMaxChars) {
@@ -262,13 +365,15 @@ void SetText(const char *utf8) {
         } else if (c >= 0x80) {
             c = '?';
         }
-        s_pend[n++] = (u16)c;
+        l.pend[n++] = (u16)c;
     }
-    s_pend[n] = 0;
-    s_textSeq = s_textSeq + 1;
+    l.pend[n] = 0;
+    l.textSeq = l.textSeq + 1;
 }
 
-void Show(void) {
+void Show(u32 slot) {
+    if (slot >= kSlots)
+        return;
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {
             s_error = "フレームフックを入れられない";
@@ -277,15 +382,16 @@ void Show(void) {
         s_hookReady = true;
     }
     s_error = "";
-    s_want = true;
+    s_labels[slot].want = true;
 }
 
-void Hide(void) {
-    s_want = false;
+void Hide(u32 slot) {
+    if (slot < kSlots)
+        s_labels[slot].want = false;
 }
 
 bool Present(void) {
-    return s_stage != Stage::Off;
+    return s_holderMade;
 }
 
 const char *LastError(void) {
@@ -293,77 +399,35 @@ const char *LastError(void) {
 }
 
 void FrameStep(void) {
-    const bool want = s_want;
-    switch (s_stage) {
-    case Stage::Off:
-        if (!want || s_error[0] != 0)
-            return;
-        s_stage = Stage::Loading;
-        // 続けて組み立てへ
-    case Stage::Loading:
-        if (!Build()) {
-            if (s_error[0] != 0)
-                DestroyAll();
-            return;
-        }
-        s_stage = Stage::Live;
-        break;
-    case Stage::Live:
-        break;
-    case Stage::Waiting:
-        if (++s_waitFrames >= kTeardownWaitFrames)
-            DestroyAll();
+    bool anyWant = false;
+    for (u32 i = 0; i < kSlots; ++i)
+        anyWant = anyWant || s_labels[i].want;
+    if (anyWant && s_error[0] == 0 && !HolderStep()) {
+        if (s_error[0] != 0)
+            DestroyHolder();
         return;
     }
-
-    // 文字（出ている間でも差し替えられる）
-    if (s_textDone != s_textSeq) {
-        s_textDone = s_textSeq;
-        u32 len = 0;
-        while (len < kMaxChars && s_pend[len] != 0)
-            ++len;
-        SetString(s_text, s_pend, 0, len);
-    }
-    // 登場・退場（途中で逆向きにできる。Switch は今のアニメの進みから逆側の位置を決める）
-    if (want) {
-        if (!s_entered) {
-            Switch(s_out, s_in);            // s_dir が None なので 0 から
-            s_dir = Dir::In;
-            s_entered = true;
-        } else if (s_dir == Dir::Out) {
-            Switch(s_out, s_in);
-            s_dir = Dir::In;
-        }
-    } else {
-        if (!s_entered) {                   // 一度も出していない: そのまま片付け
-            s_stage = Stage::Waiting;
-            s_waitFrames = 0;
-            return;
-        }
-        if (s_dir != Dir::Out) {
-            Switch(s_in, s_out);
-            s_dir = Dir::Out;
-        }
-    }
-    void *anim = s_dir == Dir::In ? s_in : s_dir == Dir::Out ? s_out : nullptr;
-    if (anim != nullptr) {
-        if (AnimFinished(anim)) {
-            GroupUnbind(s_layout, anim, s_group, 0);
-            const Dir done = s_dir;
-            s_dir = Dir::None;
-            if (done == Dir::Out) {
-                s_stage = Stage::Waiting;   // 退場し終えた: この フレームから描かない
-                s_waitFrames = 0;
-                return;
-            }
-        } else {
-            AnimStep(anim);
-        }
-    }
-    LayoutCalc(s_layout);
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
-    if (mgr != nullptr)
-        AddLayout(mgr, s_layout, 0);
+    for (u32 i = 0; i < kSlots; ++i)
+        StepLabel(s_labels[i], i, mgr);
+    // 退場し終えた箱を壊す（描くのをやめてから数フレーム後。GPU がまだ読んでいるかもしれない）
+    bool pending = false;
+    for (u32 i = 0; i < kSlots; ++i)
+        pending = pending || (!s_labels[i].live && s_labels[i].made);
+    if (!pending) {
+        s_waitFrames = 0;
+    } else if (++s_waitFrames >= kTeardownWaitFrames) {
+        for (u32 i = 0; i < kSlots; ++i)
+            if (!s_labels[i].live && s_labels[i].made)
+                DestroyLabel(s_labels[i]);
+        s_waitFrames = 0;
+    }
+    // どの箱も出しておらず組んでもいなければ arc も返す
+    bool made = false;
+    for (u32 i = 0; i < kSlots; ++i)
+        made = made || s_labels[i].made;
+    if (!anyWant && !made && s_holderMade)
+        DestroyHolder();
 }
 
 }  // namespace GameLabel

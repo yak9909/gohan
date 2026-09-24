@@ -449,8 +449,34 @@ void NotifyKind(const char *prefix) {
 void ShowModeLabel(void) {
     static const char *const kLabel[] = { u8"配置モード", u8"移動モード", u8"削除モード" };
     const u32 m = (u32)s_mode;
-    GameLabel::SetText(m < 3 ? kLabel[m] : "");
-    GameLabel::Show();
+    GameLabel::SetText(0, m < 3 ? kLabel[m] : "");
+    GameLabel::Show(0);
+}
+
+// 箱 1・2: 設置の余裕（PublicWorks::GetCapacity。ゲームのスレッドが約 0.5 秒ごとに数え直す）。変わったときだけ書く
+//   箱 1「設置上限 使用/枠」: 建物表（56 枠。埋まると置けない）。公共事業以外の建物も入る
+//   箱 2「新しい種類 あと N」: 普通の公共事業・橋などが使う共有の資源枠で、あと何種類の新しい建物を置けるか
+//     （同じ種類ならメモリは増えない。役場・店などは親ヒープで別に判定される）
+u32 s_capShown = 0xFFFFFFFFu;
+
+void UpdateCapacityLabels(bool force) {
+    const PublicWorks::Capacity c = PublicWorks::GetCapacity();
+    const u32 key = c.valid ? ((u32)c.used | ((u32)c.slots << 8) | ((u32)c.kindsLeft << 16) | (1u << 24)) : 0u;
+    if (!force && key == s_capShown)
+        return;
+    s_capShown = key;
+    static char line1[48], line2[48];
+    if (c.valid) {
+        std::snprintf(line1, sizeof(line1), u8"設置上限 %u/%u", (unsigned)c.used, (unsigned)c.slots);
+        std::snprintf(line2, sizeof(line2), u8"新しい種類 あと%u", (unsigned)c.kindsLeft);
+    } else {
+        std::snprintf(line1, sizeof(line1), u8"設置上限 -");
+        std::snprintf(line2, sizeof(line2), u8"新しい種類 -");
+    }
+    GameLabel::SetText(1, line1);
+    GameLabel::SetText(2, line2);
+    GameLabel::Show(1);
+    GameLabel::Show(2);
 }
 
 void NotifyMode(void) {
@@ -756,7 +782,9 @@ void Stop(void) {
     GridCursor::Hide();
     BuildingPreview::Hide();
     GameList::Hide();
-    GameLabel::Hide();
+    for (u32 i = 0; i < GameLabel::kSlots; ++i)
+        GameLabel::Hide(i);
+    s_capShown = 0xFFFFFFFFu;
     PublicWorks::Unhighlight();
     s_selected = -1;
 }
@@ -823,6 +851,7 @@ void Tick(u32 keys) {
     //   十字はゲームの入力を止めたまま、リストの更新の間だけリストへ渡す（GameList::FeedDpad）。
     GameList::FeedDpad(keys & ((u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight));
     TakeListChoice();
+    UpdateCapacityLabels(false);
 
     if (pressed & (u32)Key::A)
         Execute();

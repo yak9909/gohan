@@ -53,6 +53,13 @@ namespace PublicWorks
         u8  y;
     };
 
+    // ---- 設置の余裕（ゲームのスレッドが約 0.5 秒ごとに数え直した写し）----
+    //   used / slots: 建物表の使用数 / 枠数（56。埋まると設置は NoFreeSlot）。公共事業以外（役場・店など）も含む。
+    //   kindsLeft: 共有の資源枠を使う建物（普通の公共事業・橋など 7 クラス）の、新しい種類をあと何種類置けるか
+    //     （上限 kMaxSharedKinds = 30。同じ種類を増やしてもメモリは増えない。IDA-opus-5.5-F008）。
+    struct Capacity { u16 used; u16 slots; u16 kindsLeft; bool valid; };
+    Capacity        GetCapacity(void);
+
     // ---- 読むだけ（メニュースレッド）----
     bool            ReadSlot(u32 index, Slot &out);
     const char *    NameOf(u16 id);                 // ゲームの表の名前。無ければ ""

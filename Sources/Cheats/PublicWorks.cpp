@@ -705,7 +705,41 @@ Result Request(Op op) {
 
 }  // namespace
 
+namespace {
+volatile u32 s_capWord;             // used | slots << 8 | kindsLeft << 16 | 1 << 24（1 語で書く: 読む側が途中の値を見ない）
+u32 s_capFrames;
+
+void UpdateCapacity(void) {
+    if (++s_capFrames % 15 != 0)
+        return;
+    if (*reinterpret_cast<volatile u8 *>(kCurrentRoom) != 0 || BuildingData() == nullptr) {
+        s_capWord = 0;
+        return;
+    }
+    u32 used = 0;
+    for (u32 i = 0; i < kSlots; ++i) {
+        const Slot *slot = SlotAt(i);
+        if (slot != nullptr && IsBuilding(slot->id))
+            ++used;
+    }
+    const u32 kinds = SharedKinds(kEmptyId);
+    const u32 left = kinds < kMaxSharedKinds ? kMaxSharedKinds - kinds : 0;
+    s_capWord = (used & 0xFFu) | ((kSlots & 0xFFu) << 8) | ((left & 0xFFu) << 16) | (1u << 24);
+}
+}  // namespace
+
+Capacity GetCapacity(void) {
+    const u32 w = s_capWord;
+    Capacity c;
+    c.used = (u16)(w & 0xFFu);
+    c.slots = (u16)((w >> 8) & 0xFFu);
+    c.kindsLeft = (u16)((w >> 16) & 0xFFu);
+    c.valid = (w >> 24) != 0;
+    return c;
+}
+
 void FrameStep(void) {
+    UpdateCapacity();
     const Op op = s_op;
     if (op != Op::None) {
         s_result = Execute(op);
