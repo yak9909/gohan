@@ -348,8 +348,8 @@ void PutShape(u16 id, s32 ax, s32 ay, u32 color, u8 strength) {
     }
     GridCursor::SetTint(color, strength);
     // 高さは全部そろえる（PublicWorks::CursorHeight）。橋以外は基点の地面（建てたときの高さと同じ）。
-    // ★橋はどこでも一定の高さ（利用者 2026-09-24）＝ゲームの橋の計算（川底 + flt_6DE560）を最寄りの川底で行った値
-    //   （IDA-opus-5.5-F027）。カメラも同じ高さ。
+    // ★橋はどこでも一定の高さ（利用者 2026-09-24）＝ゲームの橋の計算（川底 + flt_6DE560）を、村の川底で一番多い
+    //   高さ（橋を架ける川の段）で行った値（IDA-opus-5.5-F027）。最寄りの川底だと河口で浜の高さになった。カメラも同じ高さ。
     const s32 cx = ax < 0 ? 0 : (ax >= kTilesX ? kTilesX - 1 : ax);
     const s32 cy = ay < 0 ? 0 : (ay >= kTilesY ? kTilesY - 1 : ay);
     s_bridgeAnchor = PublicWorks::IsBridgeId(id) ? PackAnchor((u32)cx, (u32)cy) : 0u;
