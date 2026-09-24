@@ -2,11 +2,13 @@
 
 #include "Cheats.hpp"
 #include "GridCursor.hpp"
+#include "LatePassStub.h"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
 
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -24,6 +26,8 @@ typedef void (*CalcAnimFn)(void *pm, u32 a2, u32 a3);
 typedef u32 (*ProfileFn)(u32 index);
 typedef void (*SubmitFn)(void *holder, u32 scene);
 typedef u32 (*ReleaseFn)(u32 table, u32 *handle);
+typedef void (*CameraBindFn)(u32 context, u32 camera, u32 force);
+typedef void (*DrawMeshFn)(u32 drawContext, u32 mesh, u32 node);
 typedef void (*EntryFn)(u32 entry);
 
 const CtorFn PlayerModelCtor = reinterpret_cast<CtorFn>(0x001D3854);
@@ -42,6 +46,51 @@ const SubmitFn Submit = reinterpret_cast<SubmitFn>(0x004ED630);                 
 const ReleaseFn BankRelease = reinterpret_cast<ReleaseFn>(0x002138FC);
 const EntryFn FaceCancel = reinterpret_cast<EntryFn>(0x002711A4);              // PlayerModel_DestroyStep が顔の枠に先に呼ぶ
 const ModelStepFn DestroyBody = reinterpret_cast<ModelStepFn>(0x001AC1E8);      // 体のインスタンスを消す（DestroyStep が体の枠の前に呼ぶ）
+
+// ---- 画面に固定（late pass。IDA-opus-5.5-F031）-------------------------------------------------------
+// Render_DrawSceneIndexed 0x4EEDD8 の記録リスト再生の直後（0x4EF1B0 の NOP）で、専用のカメラを結んで複製のメッシュを描き、
+// 元のカメラへ戻す（IDA-gpt-6-astra-F003 の木 1 体と同じ手順）。Scene 1 へ積む案は、記録の格納先が Scene で共有
+// （dword_94CA54 はフレームごとの 0/1）なので右目が壊れるため採らない。
+// CameraBind 0x494D3C は view（+328、3x4）と projection（+424、4x4）を頂点シェーダの定数へ送るだけ。深度の変換は触らない。
+const CameraBindFn CameraBind = reinterpret_cast<CameraBindFn>(0x00494D3C);
+const DrawMeshFn DrawMesh = reinterpret_cast<DrawMeshFn>(0x0048D26C);           // Scene_DrawLayers が使う sub_48D26C
+const u32 kSceneContexts = 0x009C3098;      // g_SceneContexts[3]
+const u32 kSceneMode = 0x0094CA2C;          // 0 = Scene 0 を描く（1 はメニューの Scene 1）
+const u32 kDrawContext = 0x0094CA48;        // g_DrawContext（DrawMesh の R0。+8 が描画の文脈）
+const u32 kRenderContext = 0x0094CA44;      // 描画の文脈（+40 が今のカメラ）
+const u32 kCurrentCamera = 0x0094CA58;      // Render_DrawSceneIndexed が結んだカメラ
+const u32 kContextCamera = 40;
+const u32 kContextCacheA = 28;              // 木の late pass と同じく、描く前に材質・モデルのキャッシュを消す
+const u32 kContextCacheB = 36;
+const u32 kCameraView = 328;
+const u32 kCameraProjection = 424;
+const u32 kPartListBase = 76768;            // BsPlayerMgr の部品の表 8 本（生の管理役から。各 7 件 + 数 +28）
+const u32 kPartListStride = 32;
+const u32 kPartLists = 8;
+const u32 kPartListMax = 7;
+const u32 kPartListCount = 28;
+const u32 kMaxParts = 16;
+// ノードの欄（Scene_DrawLayers 0x4EB840 と同じ読み方）
+const u32 kNodeRes = 8;                     // ResModel
+const u32 kNodeMaterials = 0x164;
+const u32 kNodeMeshBegin = 0x170;
+const u32 kNodeMeshEnd = 0x174;
+const u32 kNodeVisBegin = 0x17C;
+const u32 kNodeVisEnd = 0x180;
+const u32 kResMeshCount = 180;
+const u32 kResMeshes = 184;
+const u32 kResVis = 208;
+const u32 kMeshMaterial = 28;
+const u32 kMeshVisible = 36;
+const u32 kMeshVisIndex = 38;
+const u32 kMatResource = 8;
+const u32 kResLayer = 32;
+// 深度: ゲームの projection は z/w が near(50) で 0、far(1750) で -1。z の行に小さい係数を掛けて複製を near のすぐ前に寄せ、
+// 世界の物に隠れないようにする（係数 0.01 で複製の深度は -0.006 前後＝ゲームのカメラから約 50.3 より手前）。
+const float kDepthSqueeze = 0.01f;
+const float kCameraHeight = 12.0f;          // 複製の原点から見る高さ
+const float kCameraDistance = 120.0f;       // 複製までの距離（near 50 より遠いこと）
+const u32 kCameraBytes = 488;               // view +328（48 B）と projection +424（64 B）が収まる大きさ
 
 const u32 kPlayerPtr = 0x00AA7994;          // AcPlayer*
 const u32 kPlayerMgrPtr = 0x0094A374;       // BsPlayerMgr*（部品バンクの管理役 = +24）
@@ -101,6 +150,19 @@ volatile u32 s_submits;
 volatile s32 s_hairStyle = -1;
 volatile s32 s_hairColor = -1;
 bool s_hooked;
+
+// 画面に固定
+volatile bool s_screen;                     // メニュー: 画面に固定する
+volatile s32 s_yaw;                         // 度
+volatile s32 s_pixelX = 330;                // 上画面のピクセル（400x240）。複製の足元付近が来る位置ではなく、カメラの中心
+volatile s32 s_pixelY = 150;
+volatile s32 s_zoom = 60;                   // 百分率
+u8 s_camera[kCameraBytes] __attribute__((aligned(8)));
+u32 s_parts[kMaxParts];                     // このフレームに部品の表から抜き取った holder（+4 がノード）
+volatile u32 s_partCount;
+volatile bool s_lateReady;                  // s_parts が今の複製のもの
+volatile u32 s_lateDraws;
+bool s_lateHooked;
 
 u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 u16 R16(u32 a) { return *reinterpret_cast<const volatile u16 *>(a); }
@@ -176,6 +238,32 @@ void ApplyHair(void) {
         *reinterpret_cast<volatile u32 *>(Model() + kModelHairColor) = (u32)color;
 }
 
+// 画面に固定のとき: 原点に置き、Y 軸まわりに回すだけ（Scene 0 へは積まないので、ワールドのどこでもよい）
+void PoseScreen(void) {
+    const float r = (float)s_yaw * (3.14159265f / 180.0f);
+    const float c = std::cos(r), s = std::sin(r);
+    const float m[12] = { c, 0.0f, s, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -s, 0.0f, c, 0.0f };
+    SetMatrix(s_model, m);
+}
+
+// vtbl[5] が管理役の部品の表へ積んだ分を抜き取って s_parts へ移す（Scene 0 で描かせない）
+void TakeParts(const u32 *before) {
+    const u32 lists = R32(kPlayerMgrPtr) + kPartListBase;
+    u32 n = 0;
+    for (u32 k = 0; k < kPartLists; ++k) {
+        const u32 list = lists + kPartListStride * k;
+        const u32 count = R32(list + kPartListCount);
+        for (u32 i = before[k]; i < count && i < kPartListMax; ++i) {
+            if (n < kMaxParts)
+                s_parts[n++] = R32(list + 4 * i);
+            *reinterpret_cast<volatile u32 *>(list + 4 * i) = 0;
+        }
+        if (count > before[k])
+            *reinterpret_cast<volatile u32 *>(list + kPartListCount) = before[k];
+    }
+    s_partCount = n;
+}
+
 // 本物の体の行列を、その X 軸の向きへずらす
 void Pose(void) {
     const u32 node = R32(s_player + kActorModel + kModelBody + kHolderNode);
@@ -243,6 +331,7 @@ void StepCreate(void) {
 
 void StepLive(void) {
     if (SceneChanged()) {
+        s_lateReady = false;
         s_fail = 4;
         s_stage = kDestroying;                      // 取った枠を返す（手放すと無限ロード）
         s_frames = 0;
@@ -250,12 +339,28 @@ void StepLive(void) {
         return;
     }
     ApplyHair();
-    Pose();
+    const bool screen = s_screen;
+    if (screen)
+        PoseScreen();
+    else
+        Pose();
     StepFaceTool(s_model);
     CalcAnim(s_model, 1, 1);
     StepAttach(s_model);
-    StepParts(s_model);
-    Submit(reinterpret_cast<void *>(Model() + kModelBody), 0);
+    if (screen) {
+        const u32 lists = R32(kPlayerMgrPtr) + kPartListBase;
+        u32 before[kPartLists];
+        for (u32 k = 0; k < kPartLists; ++k)
+            before[k] = R32(lists + kPartListStride * k + kPartListCount);
+        s_lateReady = false;
+        StepParts(s_model);
+        TakeParts(before);
+        s_lateReady = true;
+    } else {
+        s_lateReady = false;
+        StepParts(s_model);
+        Submit(reinterpret_cast<void *>(Model() + kModelBody), 0);
+    }
     ++s_submits;
     ++s_frames;
 }
@@ -267,6 +372,7 @@ void StepDestroy(void) {
         s_stage = s_fail != 0u ? kFailed : kOff;
         return;
     }
+    s_lateReady = false;
     if (++s_frames <= kQuietFrames)
         return;
     if (!ReleaseStep())
@@ -276,6 +382,135 @@ void StepDestroy(void) {
     s_constructed = false;
     s_stage = s_fail != 0u ? kFailed : kOff;
     s_frames = 0;
+}
+
+// ---- late pass（描画スレッド。Render_DrawSceneIndexed の再生直後から）----------------------------------
+
+// Scene_DrawLayers 0x4EB840 と同じ判定で、node のうち層 layer のメッシュを描く
+void DrawNodeLayer(u32 node, u32 layer, u32 drawContext) {
+    if (!IsHeap(node))
+        return;
+    u32 begin = R32(node + kNodeMeshBegin), end = R32(node + kNodeMeshEnd);
+    if (begin == end) {
+        const u32 res = R32(node + kNodeRes);
+        const u32 rel = R32(res + kResMeshes);
+        begin = rel ? res + kResMeshes + rel : 0u;
+        end = begin + 4u * R32(res + kResMeshCount);
+    }
+    const u32 materials = R32(node + kNodeMaterials);
+    for (u32 p = begin; p != 0u && p < end; p += 4) {
+        const u32 off = R32(p);
+        if (off == 0u)
+            continue;
+        const u32 mesh = p + off;
+        const s16 vis = *reinterpret_cast<const volatile s16 *>(mesh + kMeshVisIndex);
+        if (vis >= 0) {
+            u32 entry;
+            const u32 vb = R32(node + kNodeVisBegin);
+            if (vb == R32(node + kNodeVisEnd)) {
+                const u32 res = R32(node + kNodeRes);
+                const u32 rel = R32(res + kResVis);
+                u32 table = rel ? res + kResVis + rel : 0u;
+                if (table == 0u)
+                    continue;
+                const u32 slot = table + 16u * (u32)vis + 40u;
+                const u32 rel2 = R32(slot);
+                entry = rel2 ? slot + rel2 : 0u;
+                if (entry == 0u)
+                    continue;
+            } else {
+                entry = vb + 8u * (u32)vis;
+            }
+            if (R8(entry + 4) == 0u)
+                continue;
+        }
+        if (R8(mesh + kMeshVisible) == 0u)
+            continue;
+        const u32 material = R32(materials + 4u * R32(mesh + kMeshMaterial));
+        if (!IsHeap(material))
+            continue;
+        if ((R32(R32(material + kMatResource) + kResLayer) & 0xFFu) != layer)
+            continue;
+        DrawMesh(drawContext, mesh, node);
+        ++s_lateDraws;
+    }
+}
+
+// ゲームのカメラの projection から倍率と z の行を取り、画面の位置・大きさ・深度の寄せを掛けた専用カメラを作る。
+// LCD は 90 度回っているので、画面 x = 200 * (1 - clip.y / w)、画面 y = 120 * (1 - clip.x / w)（IDA-gpt-6-astra-F003）。
+bool BuildCamera(u32 gameCamera) {
+    const float *g = reinterpret_cast<const float *>(gameCamera + kCameraProjection);
+    const float sy = g[1];                      // 行 0 = [0, sy, *, *]（画面の縦）
+    const float sx = -g[4];                     // 行 1 = [-sx, 0, *, *]（画面の横）
+    const float zz = g[10], zw = g[11];         // 行 2 = [0, 0, zz, zw]
+    if (!(sy > 0.1f && sx > 0.1f && zw > 0.0f))
+        return false;
+    const float zoom = (float)s_zoom / 100.0f;
+    const float ox = 1.0f - (float)s_pixelY / 120.0f;
+    const float oy = 1.0f - (float)s_pixelX / 200.0f;
+    float *view = reinterpret_cast<float *>(s_camera + kCameraView);
+    const float v[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -kCameraHeight, 0.0f, 0.0f, 1.0f, -kCameraDistance };
+    std::memcpy(view, v, sizeof(v));
+    float *proj = reinterpret_cast<float *>(s_camera + kCameraProjection);
+    // 行 3 = [0, 0, -1, 0]（clip.w = -view.z）。行 0/1 に w の行を足すと中心がずれる
+    const float p[16] = {
+        0.0f, zoom * sy, -ox, 0.0f,
+        -zoom * sx, 0.0f, -oy, 0.0f,
+        0.0f, 0.0f, kDepthSqueeze * zz, kDepthSqueeze * zw,
+        0.0f, 0.0f, -1.0f, 0.0f,
+    };
+    std::memcpy(proj, p, sizeof(p));
+    return true;
+}
+
+extern "C" void PlayerCloneLatePass(u32 sceneContext) {
+    if (s_stage != kLive || !s_screen || !s_lateReady)
+        return;
+    if (sceneContext != R32(kSceneContexts) || R8(kSceneMode) != 0u)
+        return;
+    const u32 drawContext = R32(kDrawContext);
+    if (!IsHeap(drawContext))
+        return;
+    const u32 context = R32(drawContext + 8);
+    if (!IsHeap(context) || context != R32(kRenderContext))
+        return;
+    const u32 camera = R32(context + kContextCamera);
+    if (!IsHeap(camera) || camera != R32(kCurrentCamera))
+        return;
+    if (!BuildCamera(camera))
+        return;
+    const u32 body = R32(Model() + kModelBody + kHolderNode);
+    const u32 count = s_partCount;
+    CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
+    *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
+    *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
+    for (u32 layer = 0; layer <= 3; ++layer) {
+        DrawNodeLayer(body, layer, drawContext);
+        for (u32 i = 0; i < count && i < kMaxParts; ++i) {
+            const u32 holder = s_parts[i];
+            if (IsHeap(holder))
+                DrawNodeLayer(R32(holder + kHolderNode), layer, drawContext);
+        }
+    }
+    CameraBind(context, camera, 1);
+}
+
+bool InstallLateHook(void) {
+    if (s_lateHooked)
+        return true;
+    u8 *stub = reinterpret_cast<u8 *>(LateStub::kAddress);
+    for (u32 i = 0; i < LateStub::kSize; ++i)
+        if (stub[i] != 0)
+            return false;                           // 置き場がふさがっている
+    if (R32(LateStub::kHookAddress) != LateStub::kHookOriginal)
+        return false;
+    std::memcpy(stub, LateStub::kBytes, LateStub::kSize);
+    *reinterpret_cast<u32 *>(stub + LateStub::kCallbackOffset) = reinterpret_cast<u32>(&PlayerCloneLatePass);
+    CTRPluginFramework::GuiMenu::FlushMemory(LateStub::kAddress, LateStub::kSize);
+    *reinterpret_cast<u32 *>(LateStub::kHookAddress) = LateStub::kHookWord;
+    CTRPluginFramework::GuiMenu::FlushMemory(LateStub::kHookAddress, 4);
+    s_lateHooked = true;
+    return true;
 }
 
 }  // namespace
@@ -318,6 +553,8 @@ bool Show(void) {
             return false;
         s_hooked = true;
     }
+    if (!InstallLateHook())
+        return false;
     if (s_stage == kFailed && !s_constructed)
         s_stage = kOff;
     s_want = true;
@@ -334,6 +571,28 @@ bool IsShown(void) {
     return s_want;
 }
 
+void SetScreen(bool on, s32 yaw, s32 x, s32 y, s32 zoom) {
+    s_yaw = yaw;
+    s_pixelX = x;
+    s_pixelY = y;
+    s_zoom = zoom;
+    s_screen = on;
+}
+
+void Shutdown(void) {
+    if (!s_lateHooked)
+        return;
+    // コールバックを先に 0 にし、フックを戻してから置き場を消す（描画スレッドが中にいるかもしれない）
+    *reinterpret_cast<u32 *>(LateStub::kAddress + LateStub::kCallbackOffset) = 0;
+    CTRPluginFramework::GuiMenu::FlushMemory(LateStub::kAddress + LateStub::kCallbackOffset, 4);
+    *reinterpret_cast<u32 *>(LateStub::kHookAddress) = LateStub::kHookOriginal;
+    CTRPluginFramework::GuiMenu::FlushMemory(LateStub::kHookAddress, 4);
+    svcSleepThread(100000000ull);
+    std::memset(reinterpret_cast<void *>(LateStub::kAddress), 0, LateStub::kSize);
+    CTRPluginFramework::GuiMenu::FlushMemory(LateStub::kAddress, LateStub::kSize);
+    s_lateHooked = false;
+}
+
 void SetHair(s32 style, s32 color) {
     s_hairStyle = style;
     s_hairColor = color;
@@ -347,6 +606,8 @@ Status Read(void) {
     s.submits = s_submits;
     s.hair = s_constructed ? R8(Model() + kModelHair) : 0;
     s.hairColor = s_constructed ? R32(Model() + kModelHairColor) : 0;
+    s.lateDraws = s_lateDraws;
+    s.parts = s_partCount;
     return s;
 }
 
@@ -387,6 +648,39 @@ namespace CTRPluginFramework
             int             g_pcShowIndex = -1;
             int             g_pcHairIndex = -1;
             int             g_pcColorIndex = -1;
+            int             g_pcScreenIndex = -1;
+            int             g_pcYawIndex = -1;
+            int             g_pcXIndex = -1;
+            int             g_pcYIndex = -1;
+            int             g_pcZoomIndex = -1;
+            bool            g_pcScreenOn;
+
+            s32     Applied(int index, s32 fallback)
+            {
+                return index >= 0 ? GuiMenu::ItemApplied(index) : fallback;
+            }
+
+            void    ScreenApplied(int index, s32 value)
+            {
+                (void)index;
+                (void)value;
+                PlayerClone::SetScreen(g_pcScreenOn, Applied(g_pcYawIndex, 0), Applied(g_pcXIndex, 330),
+                                       Applied(g_pcYIndex, 150), Applied(g_pcZoomIndex, 60));
+            }
+
+            bool    ScreenIsActive(int index)
+            {
+                (void)index;
+                return g_pcScreenOn;
+            }
+
+            void    ScreenSetActive(int index, bool active)
+            {
+                g_pcScreenOn = active;
+                ScreenApplied(index, 0);
+            }
+
+            const GuiMenu::ToggleEffectFuncs kScreenFuncs = { ScreenIsActive, ScreenSetActive };
 
             void    HairApplied(int index, s32 value)
             {
@@ -411,6 +705,7 @@ namespace CTRPluginFramework
                     return;
                 }
                 HairApplied(0, 0);
+                ScreenApplied(0, 0);
                 if (!PlayerClone::Show())
                     GuiNotification::NotifyRed(kPcShow, u8"フックを入れられない");
             }
@@ -427,9 +722,9 @@ namespace CTRPluginFramework
                     std::snprintf(message, sizeof(message), u8"%s: %s", PlayerClone::StageName(s.stage),
                                   PlayerClone::FailName(s.failReason));
                 else
-                    std::snprintf(message, sizeof(message), u8"%s %luF 提%lu 髪%u/%lu", PlayerClone::StageName(s.stage),
-                                  (unsigned long)s.frames, (unsigned long)s.submits, (unsigned)s.hair,
-                                  (unsigned long)s.hairColor);
+                    std::snprintf(message, sizeof(message), u8"%s %luF 髪%u/%lu 部品%lu 描%lu", PlayerClone::StageName(s.stage),
+                                  (unsigned long)s.frames, (unsigned)s.hair, (unsigned long)s.hairColor,
+                                  (unsigned long)s.parts, (unsigned long)s.lateDraws);
                 GuiNotification::Notify(kPcStat, message);
             }
         }
@@ -449,6 +744,17 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterApply(g_pcColorIndex, HairApplied);
             if (statIndex >= 0)
                 GuiMenu::RegisterExecute(statIndex, CloneStatus);
+            g_pcScreenIndex = GuiMenu::FindItem(kPcScreen);
+            g_pcYawIndex = GuiMenu::FindItem(kPcYaw);
+            g_pcXIndex = GuiMenu::FindItem(kPcX);
+            g_pcYIndex = GuiMenu::FindItem(kPcY);
+            g_pcZoomIndex = GuiMenu::FindItem(kPcZoom);
+            if (g_pcScreenIndex >= 0)
+                GuiMenu::RegisterToggleEffect(g_pcScreenIndex, &kScreenFuncs);
+            const int values[] = { g_pcYawIndex, g_pcXIndex, g_pcYIndex, g_pcZoomIndex };
+            for (int v : values)
+                if (v >= 0)
+                    GuiMenu::RegisterApply(v, ScreenApplied);
         }
     }
 }

@@ -21,6 +21,10 @@ namespace PlayerClone
     bool            IsShown(void);
     // 髪型（0..33、-1 = 本物のまま）と髪色（0..15、-1 = 本物のまま）。作ったあとも効く
     void            SetHair(s32 style, s32 color);
+    // 画面に固定（late pass で専用カメラ）。yaw は度、x/y は上画面のピクセル（カメラの中心）、zoom は百分率
+    void            SetScreen(bool on, s32 yaw, s32 x, s32 y, s32 zoom);
+    // プロセス終了時に 1 回。late pass のフックを戻して置き場を消す
+    void            Shutdown(void);
     struct Status
     {
         u32     stage;          // 0 = 無し、1 = 作成中、2 = 表示中、3 = 片付け中、4 = 失敗
@@ -29,6 +33,8 @@ namespace PlayerClone
         u32     submits;
         u8      hair;           // 複製の pm+548
         u32     hairColor;      // 複製の pm+552
+        u32     lateDraws;      // late pass で描いたメッシュの累計
+        u32     parts;          // 部品の表から抜き取った数（画面に固定のとき）
     };
     Status          Read(void);
     const char *    StageName(u32 stage);

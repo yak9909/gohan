@@ -73,6 +73,11 @@ namespace CTRPluginFramework
         static const char kPcHair[]  = u8"複製の髪型";
         static const char kPcColor[] = u8"複製の髪色";
         static const char kPcStat[]  = u8"複製の状態";
+        static const char kPcScreen[] = u8"画面に固定";
+        static const char kPcYaw[]    = u8"複製の向き";
+        static const char kPcX[]      = u8"画面の X";
+        static const char kPcY[]      = u8"画面の Y";
+        static const char kPcZoom[]   = u8"複製の大きさ";
 
         // ---- root/テスト／公共事業 ----
         static const char kPwPick[]    = u8"公共事業";
