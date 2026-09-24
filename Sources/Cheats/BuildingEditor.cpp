@@ -150,10 +150,13 @@ void FrameStep(void) {
             return;
         }
         // 基準位置とプレイヤーのずれを控えて、カーソルへ同じずれで付ける。
+        // ★横（x）と奥行き（z）のずれは使わない。歩いた直後のカメラはプレイヤーから遅れていて、そのずれまで引き継ぐと
+        //   カーソルが画面の中央から偏った（利用者報告: カメラがプレイヤーより右にあるとカーソルが左に偏る）。
+        //   落ち着いたカメラと同じく、カーソルを基準位置（注視点側）に置く。高さのずれだけ残す。
         const float *base = reinterpret_cast<const float *>(camera + kCameraBase);
         const float *pos = reinterpret_cast<const float *>(player + kPlayerPosition);
         for (u32 i = 0; i < 3; ++i) {
-            s_offset[i] = base[i] - pos[i];
+            s_offset[i] = i == 1 ? base[i] - pos[i] : 0.0f;
             s_current[i] = base[i];
         }
         if (s_snapCamera) {
@@ -377,10 +380,15 @@ void UpdateTiles(void) {
         return;
     case Mode::Move:
         BuildingPreview::Hide();
-        if (s_selected >= 0 && PublicWorks::ReadSlot((u32)s_selected, slot))
+        if (s_selected >= 0 && PublicWorks::ReadSlot((u32)s_selected, slot)) {
             PutShape(slot.id, s_cx, s_cy, BuildingHighlight::kBlue, kCursorTint);
-        else
+        } else {
             PutSingle(BuildingHighlight::kBlue, kCursorTint);
+            // 合わせた建物が橋なら、削除モードと同じくカメラを橋の高さへ（利用者指示）
+            const s32 hovered = Hovered();
+            if (hovered >= 0 && PublicWorks::ReadSlot((u32)hovered, slot) && PublicWorks::IsBridgeId(slot.id))
+                s_bridgeAnchor = PackAnchor(slot.x, slot.y);
+        }
         return;
     case Mode::Remove:
         BuildingPreview::Hide();
@@ -632,8 +640,15 @@ void Execute(void) {
     case Mode::Move: {
         // 選べるのは何も選んでいないときだけ（利用者指示）。選んでいる間の A は、ほかの建物の上でも必ず動かす
         if (s_selected < 0) {
-            if (hovered >= 0)
+            if (hovered >= 0) {
+                // 選んだ建物の基点へカーソルを合わせる（利用者指示）。形はその位置で出す
+                PublicWorks::Slot slot;
+                if (PublicWorks::ReadSlot((u32)hovered, slot)) {
+                    s_cx = (s32)slot.x;
+                    s_cy = (s32)slot.y;
+                }
                 Select(hovered);
+            }
             return;
         }
         const PublicWorks::Result result = PublicWorks::MoveTo((u32)s_selected, (u32)s_cx, (u32)s_cy);
