@@ -38,6 +38,7 @@ namespace PlayerClone
         u32     lateDraws;      // late pass で描いたメッシュの累計
         u32     parts;          // 部品の表から読んだ数（画面に固定のとき）
         u32     litDraws;       // 複製だけのライトに差し替えて描いた回数
+        u32     litTemplates;   // 写し元にできたゲームのライト（1 アンビエント・2 半球・4 方向光。0 = 全部一から作った）
     };
     Status          Read(void);
     const char *    StageName(u32 stage);

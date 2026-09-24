@@ -315,7 +315,7 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 60, 10, 300, 5);
                 i = AddItem(ITEM_VALUE, kPcLight,
                             u8"画面に固定したときの複製のライトの明るさです。百分率。周りの光には左右されません。");
-                SetValue(i, FMT_DEC, 100, 30, 200, 10);
+                SetValue(i, FMT_DEC, 130, 30, 200, 10);
                 AddItem(ITEM_ACTION, kPcStat,
                         u8"複製がいまどこで止まっているかを通知で出します。");
                 const int cloneCount = g_itemCount - cloneFirst;
