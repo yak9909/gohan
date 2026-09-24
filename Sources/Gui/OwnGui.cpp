@@ -250,6 +250,58 @@ namespace CTRPluginFramework
             return true;
         }
 
+        // ★F035: HOME の前後で自前確保を返す・取り直す。
+        //   svcControlMemoryUnsafe は資源上限の勘定の外で SYSTEM 領域を使うので、持ったまま HOME へ行くと
+        //   HOME メニューが確保に失敗して落ちた（実機: menu 0004003000008202、0xD8C3FBF3 = OutOfMemory）。
+        //   New 3DS では Luma が HOME_ENTER / HOME_EXIT をプラグインへ送り、返事を待つ（plgloader.c）。
+        //   CTRPF は起動時にヘッダー +0x20（notifyHomeEvent）を 1 にしている（pluginInit.o の __entrypoint）。
+        bool    g_gpuReleasedForHome = false;
+
+        void    ReleaseOwnGpu(const char *why)
+        {
+            if (g_ownGpuVa == 0)
+                return;
+            u32     dummy = 0;
+            Result  res = svcControlMemoryUnsafe(&dummy, g_ownGpuVa, g_ownGpuSize, MEMOP_FREE, (MemPerm)0);
+
+            Log("%s: 自前確保を返す VA 0x%08X res=0x%08X", why, (unsigned int)g_ownGpuVa, (unsigned int)res);
+            if (R_FAILED(res))
+                return;
+            g_ownGpuVa = 0;
+            g_ownGpuSize = 0;
+            Process::Patch(kGuiHeapSlot, 0);
+            Process::Patch(kGuiHeapSlot + 4, 0);
+        }
+
+        void    OnProcessEvent(Process::Event event)
+        {
+            if (event == Process::Event::HOME_ENTER || event == Process::Event::SWAP_ENTER)
+            {
+                if (g_ownGpuVa != 0)
+                {
+                    ReleaseOwnGpu("HOME へ");
+                    g_gpuReleasedForHome = (g_ownGpuVa == 0);
+                }
+            }
+            else if (event == Process::Event::HOME_EXIT || event == Process::Event::SWAP_EXIT)
+            {
+                if (!g_gpuReleasedForHome)
+                    return;
+                g_gpuReleasedForHome = false;
+                if (AllocOwnGpu(GuiRenderer::BorrowBytes()) && GuiRenderer::RelocateAtlas(R32(kGuiHeapSlot)))
+                    Log("HOME から戻った: アトラスを取り直した");
+                else
+                {
+                    // 取れなければ描画を止める（返したメモリを GPU に読ませない）
+                    GuiRenderer::Uninstall();
+                    Log("[!] HOME から戻った: GPU 用メモリを取り直せない。自前 GUI の描画を止めた。");
+                }
+                LogFlush();
+            }
+            else if (event == Process::Event::EXIT)
+                ReleaseOwnGpu("終了");
+        }
+
         bool    BorrowHeap(u32 size)
         {
             u32 cur = 0;
@@ -657,6 +709,8 @@ namespace CTRPluginFramework
             // 1. ヒープを借りる
             // ★大きさは GuiRenderer が持つ（以前ここに 0x30000 が直書きされていて、
             //   GuiRenderer の kBorrowBytes と食い違っていた）。
+            // ★HOME の前後で自前確保を返す・取り直す（F035）
+            Process::SetProcessEventCallback(OnProcessEvent);
             // ★まず自前確保（F035）。取れなければ従来の借用へ戻す。
             if (!AllocOwnGpu(GuiRenderer::BorrowBytes()) && !BorrowHeap(GuiRenderer::BorrowBytes()))
             {
