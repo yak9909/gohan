@@ -331,6 +331,81 @@ bool FieldIdle(void) {
         && R8(kTabCommand) == kCmdNone && R8(kMapCommand) == kMapIdle;
 }
 
+// ---- 開いていた下画面メニューを閉じさせる（ゲームの状態 6「メニューアウト」と 7 の後始末を、地図とタブの出し直しを抜いて行う）----
+//   状態 6 enter 0x6D4EE8: 選択中のタブボタンを外す（+217 = 1、vt+28(ボタン, 0) = sub_2E016C）、+6427 = 10、
+//     手カーソルを隠す、MENU_FLAGS |= 0x20（下メニューへ閉じる通知）、+6576 |= 1、+6422 = 0。
+//   状態 6 calc 0x6D4E5C: 閉じるボタンの退場（sub_6D5110）とメニューが消える（sub_6D1074）のを待ち、byte_949D88 = 0、
+//     sub_693EE8(dword_949718, 10) → 状態 18（地図を作り直す）。
+//   状態 7 calc 0x6D67F0: +4493 = +4881 = 1、音の再開、MENU_FLAGS の 0x20 を消す、+6422 = 1、+6427 = -1 → タブ選択。
+//   ★持ち物を X で開いたときは +6427 が -1 のままで、状態 6 がタブボタンを外さず、次に開くと「閉じる音」
+//   （SE_SYS_MAIN_TAB_SELECTED_OFF）が鳴った（利用者報告。実機の差分: タブボタン 0 の +204 が 0x10003F3、+384/+385 = 1）。
+//   → 選択されたまま（+384 が 0 でない）のボタンは番号に関係なく外す。
+const u32 kTabButtons = 1948, kTabButtonStride = 388, kTabButtonCount = 11;
+const u32 kTabButtonSelected = 384, kTabButtonDirty = 217;
+const u32 kTabSelectedIndex = 6427, kTabFlags6576 = 6576, kTabActive6422 = 6422, kTab4493 = 4493, kTab4881 = 4881;
+const u32 kTabStateMachine = 20;
+const u32 kTabWaitCalc = 0x006D4444;        // 状態 0「待機」の calc（何もしない）
+const u32 kChangeStateFn = 0x0081B41C;      // BsMenuTab の状態切替 (sm, calc, 0)。enter をその場で呼ぶ
+const u32 kInvMenuPtr = 0x00986500;         // vc_INVMENU（0 = 持ち物などの画面が無い）
+const u32 kMenuBgPtr = 0x00949718, kMenuBgFn = 0x00693EE8;
+const u32 kMenuFlagByte88 = 0x00949D88;
+const u32 kSoundStateFn = 0x00316E7C, kSoundResumeA = 0x0052B678, kSoundResumeB = 0x0052B644;
+const u32 kMgrCursorOn = 64, kMgrHand = 500, kHandHideFn = 0x001FA86C;
+
+void ChangeTabState(u32 tab, u32 calc) {
+    reinterpret_cast<void (*)(u32, u32, u32)>(kChangeStateFn)(tab + kTabStateMachine, calc, 0);
+}
+
+void DeselectTabButton(u32 tab, u32 index) {
+    const u32 b = tab + kTabButtons + kTabButtonStride * index;
+    *reinterpret_cast<volatile u8 *>(b + kTabButtonDirty) = 1;
+    const u32 vt = R32(b);
+    reinterpret_cast<void (*)(u32, u32)>(R32(vt + 28))(b, 0);
+}
+
+void BeginMenuClose(u32 mgr, u32 tab) {
+    FrameTrace::Mark(FrameTrace::ListFieldCmd, 0x100 | kCmdMenuOut);
+    const s8 sel = (s8)R8(tab + kTabSelectedIndex);
+    for (u32 i = 0; i < kTabButtonCount; ++i) {
+        const u32 b = tab + kTabButtons + kTabButtonStride * i;
+        if ((s32)i == sel || R8(b + kTabButtonSelected) != 0)
+            DeselectTabButton(tab, i);
+    }
+    W8(tab + kTabSelectedIndex, 10);
+    if (R8(mgr + kMgrCursorOn) == 1) {
+        const u32 hand = R32(mgr + kMgrHand);
+        if (hand != 0)
+            reinterpret_cast<void (*)(u32)>(kHandHideFn)(hand);
+        W8(mgr + kMgrCursorOn, 0);
+    }
+    *reinterpret_cast<volatile u32 *>(kMenuFlags) = R32(kMenuFlags) | 0x20u;
+    *reinterpret_cast<volatile u16 *>(tab + kTabFlags6576) = (u16)(*reinterpret_cast<volatile u16 *>(tab + kTabFlags6576) | 1u);
+    W8(tab + kTabActive6422, 0);
+    ChangeTabState(tab, kTabWaitCalc);      // 地図同期へ進まないよう、閉じ終わるまで何もしない状態に置く
+}
+
+bool MenuGone(void) {
+    return R8(kMenuOpenState) == 1 && R32(kInvMenuPtr) == 0 && (R32(kMenuFlags) & 0x08u) == 0;
+}
+
+void FinishMenuClose(u32 mgr, u32 tab) {
+    (void)mgr;
+    FrameTrace::Mark(FrameTrace::ListFieldCmd, 0x200 | kCmdMenuOut);
+    W8(kMenuFlagByte88, 0);
+    reinterpret_cast<void (*)(u32, u32)>(kMenuBgFn)(R32(kMenuBgPtr), 10);
+    W8(tab + kTab4493, 1);
+    W8(tab + kTab4881, 1);
+    if (reinterpret_cast<u32 (*)(u32, u32)>(kSoundStateFn)(7, 0))
+        reinterpret_cast<void (*)(void)>(kSoundResumeA)();
+    else if (reinterpret_cast<u32 (*)(u32, u32)>(kSoundStateFn)(13, 0))
+        reinterpret_cast<void (*)(void)>(kSoundResumeB)();
+    // 0x20（閉じる通知）を消し、地図なし（持ち物を開いたとき「メニューイン」が地図を片付けている）の印 0x4 にする
+    *reinterpret_cast<volatile u32 *>(kMenuFlags) = (R32(kMenuFlags) & ~0x27u) | 0x04u;
+    W8(tab + kTabActive6422, 1);
+    W8(tab + kTabSelectedIndex, 0xFF);
+    ChangeTabState(tab, kTabIdleCalc);      // タブ選択へ（出ているタブは続く全タブ退場で引っ込める）
+}
+
 // 元の下画面 UI を hide に合わせて動かす。戻り値: 隠れきっている
 bool StepField(bool hide) {
     const u32 mgr = R32(kMenuMgrPtr);
@@ -342,19 +417,25 @@ bool StepField(bool hide) {
     }
     switch (s_field) {
     case Field::Shown:
+        // ★開いていた下画面メニュー（持ち物など）を、地図とタブを出し直さずに閉じさせる（利用者指示 2026-09-25:
+        //   閉じたら即リスト。以前は命令 3 = 状態 6「メニューアウト」→ 18「地図同期」で地図とタブを出し直していた）。
+        //   閉じ始めたら、途中でエディターが切られても最後（後始末）まで行う。
+        if (s_menuCloseSent) {
+            if (MenuGone()) {
+                FinishMenuClose(mgr, tab);
+                s_menuCloseSent = false;
+            }
+            return false;
+        }
         if (hide && MenuOpen()) {
-            // 下画面メニューが出きっていれば、ゲームの「メニューアウト」で閉じさせる（1 回だけ）。閉じ終わるまで待つ
-            // ★g_MenuOpenState は開いたあと 1 に戻ることがある（カタログ表示中も 1 だった）ので条件にしない。
-            //   下メニューが入場し終えた（MENU_FLAGS 0x08|0x10）ことだけを見る（利用者報告: 持ち物欄が閉じない）。
-            if (!s_menuCloseSent && (R32(kMenuFlags) & (0x08u | kMenuShownFlag)) == (0x08u | kMenuShownFlag)
-                && R8(kTabCommand) == kCmdNone) {
-                W8(kTabCommand, kCmdMenuOut);
-                FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdMenuOut);
+            // 下メニューが入場し終えた（MENU_FLAGS 0x08|0x10）ときだけ閉じ始める。★g_MenuOpenState は条件にしない（1 に戻ることがある）
+            if ((R32(kMenuFlags) & (0x08u | kMenuShownFlag)) == (0x08u | kMenuShownFlag) && R8(kTabCommand) == kCmdNone
+                && tab != 0) {
+                BeginMenuClose(mgr, tab);
                 s_menuCloseSent = true;
             }
             return false;
         }
-        s_menuCloseSent = false;
         if (hide && FieldIdle()) {
             s_fieldRoom = RoomId();
             if (R32(mgr + kMgrMap) != 0)
