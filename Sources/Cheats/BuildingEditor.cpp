@@ -463,8 +463,11 @@ void UpdateCapacityLabels(bool force) {
     s_memShown = memKey;
     static char line1[48], line2[48], line3[48];
     // 3 つ目（左下、値だけ。利用者指示）: 建物用の親ヒープの空き / 大きさ（KB）。重なるゲームの時計は隠す
+    // ★値は「使える分」= 空き − 256KB（gohan の安全の余裕。PublicWorks の kSpawnParentFree と同じ値。利用者の選択で
+    //   余裕は残し、表示だけ分かりやすく）。0 以上なら役場・店などをあと 1 棟置ける（1 棟で約 70〜90KB 減る）、負なら置けない。
+    const s32 kReserveKB = (s32)(PublicWorks::kParentReserveBytes / 1024u);
     if (c.memTotalKB != 0)
-        std::snprintf(line3, sizeof(line3), u8"%u/%uKB", (unsigned)c.memFreeKB, (unsigned)c.memTotalKB);
+        std::snprintf(line3, sizeof(line3), u8"%d/%dKB", (int)c.memFreeKB - kReserveKB, (int)c.memTotalKB - kReserveKB);
     else
         std::snprintf(line3, sizeof(line3), u8"-");
     GameLabel::SetText(2, line3);

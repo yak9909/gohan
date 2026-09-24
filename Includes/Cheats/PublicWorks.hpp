@@ -25,6 +25,8 @@ namespace PublicWorks
     static const u8  kLastId = 0xFB;
     static const u8  kEmptyId = 0xFC;       // これ未満は全部「建物」。役場・店・家も扱う
     static const u32 kSlots = 56;
+    // 役場・店などを置く前に建物用の親ヒープ *(0x94CC68) に残す空き（gohan の安全の余裕。1 棟は約 70〜90 KB。F009）
+    static const u32 kParentReserveBytes = 0x40000;
     static const u32 kStands = 8;           // マイデザインの看板・顔出し看板
 
     enum class Result : u32

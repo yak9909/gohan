@@ -197,7 +197,7 @@ const u32 kMaxSharedKinds = kResourceEntries / kEntriesPerKind - 2;
 // 役場・店などは実体ごとに専用の ExpHeap（実測 69,632〜82,420 B）を親ヒープから借りる
 // （実体 +0xFC の専用置き場、読み込みは 0xB47474）。親は BsStrcMgr の親 *(0x94CC68)（村で 5 MB）。
 const u32 kStrcParentHeap = 0x0094CC68;     // u32: sead::ExpHeap*
-const u32 kSpawnParentFree = 0x40000;       // 実測の最大 82,420 B の 3 倍強
+const u32 kSpawnParentFree = kParentReserveBytes;  // 実測の最大 82,420 B の 3 倍強（建物エディターの箱もこの値を引いて出す）
 const IconPool kMapBuildingPools[] = {
     { 0x0004, 14 },                         // 家（0〜3）と住民の家（8〜17）の固定枠
     { 0x2B1C, 10 },                         // 役場・店などの割り当て枠（カウンタ +46000）
