@@ -130,11 +130,10 @@ static u8 s_pendY[kMaxCursors];
 static volatile u32 s_pendCount;
 static volatile u32 s_pendSeq;
 static u32 s_takenSeq;
-// ★高さはマスごとの地面ではなく、全部を 1 つの高さ（設置プレビューの高さ = PublicWorks::SpawnHeight）に揃える
-//   （利用者指示）。s_pendHeightId < 0 のときだけマスごとの地面。
-static volatile s32 s_pendHeightId = -1;
-static volatile u8 s_pendAnchorX;
-static volatile u8 s_pendAnchorY;
+// ★高さはマスごとの地面ではなく、全部を 1 つの高さ（四角 [l,r]x[t,b] の中の地面の最大 = PublicWorks::LandHeight）に
+//   揃える（利用者指示）。建物は基点 1 マスの四角、橋は足元の四角（岸まで）。s_pendShared が偽のときだけマスごとの地面。
+static volatile bool s_pendShared;
+static volatile u8 s_pendBox[4];
 typedef float (*GroundHeightFn)(const float* pos, u32 zero);    // 0x006C69C0（S0 で返る）
 static const GroundHeightFn GroundHeight = reinterpret_cast<GroundHeightFn>(0x006C69C0);
 
@@ -247,9 +246,8 @@ static void ComputeOrigin() {
 
 static void PoseTiles() {
     const u32 seq = s_pendSeq;
-    const s32 heightId = s_pendHeightId;
-    const u32 anchorX = s_pendAnchorX;
-    const u32 anchorY = s_pendAnchorY;
+    const bool sharedHeight = s_pendShared;
+    const u32 boxL = s_pendBox[0], boxT = s_pendBox[1], boxR = s_pendBox[2], boxB = s_pendBox[3];
     u32 count = s_pendCount;
     if (count > kMaxCursors)
         count = kMaxCursors;
@@ -259,10 +257,10 @@ static void PoseTiles() {
     }
     s_tileCount = count;
     s_takenSeq = seq;                    // 写している間に書き換わっていれば次のフレームでもう一度
-    const float shared = heightId >= 0 ? PublicWorks::SpawnHeight((u16)heightId, anchorX, anchorY) : 0.0f;
+    const float shared = sharedHeight ? PublicWorks::LandHeight(boxL, boxT, boxR, boxB) : 0.0f;
     for (u32 i = 0; i < s_cursorCount && i < s_tileCount; ++i) {
         float pos[3] = { (float)(32 * s_tileX[i] + 16), 0.0f, (float)(32 * s_tileY[i] + 16) };
-        pos[1] = heightId >= 0 ? shared : GroundHeight(pos, 0);
+        pos[1] = sharedHeight ? shared : GroundHeight(pos, 0);
         PoseCursor(i, pos[0], pos[1], pos[2]);
     }
 }
@@ -808,12 +806,14 @@ bool ShowTiles(void) {
     return Show();
 }
 
-void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY) {
+void SetTiles(const u8* xs, const u8* ys, u32 count, bool shared, u8 l, u8 t, u8 r, u8 b) {
     if (count > kMaxCursors)
         count = kMaxCursors;
-    s_pendHeightId = heightId;
-    s_pendAnchorX = anchorX;
-    s_pendAnchorY = anchorY;
+    s_pendShared = shared;
+    s_pendBox[0] = l;
+    s_pendBox[1] = t;
+    s_pendBox[2] = r;
+    s_pendBox[3] = b;
     for (u32 i = 0; i < count; ++i) {
         s_pendX[i] = xs[i];
         s_pendY[i] = ys[i];

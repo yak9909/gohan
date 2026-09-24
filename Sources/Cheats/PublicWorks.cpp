@@ -717,6 +717,21 @@ float SpawnHeight(u16 id, u32 x, u32 y) {
     return h;
 }
 
+float LandHeight(u32 l, u32 t, u32 r, u32 b) {
+    float best = 0.0f;
+    bool any = false;
+    for (u32 y = t; y <= b && y < 256u; ++y) {
+        for (u32 x = l; x <= r && x < 256u; ++x) {
+            float pos[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
+            const float h = GroundHeight(pos, 0);
+            if (!any || h > best)
+                best = h;
+            any = true;
+        }
+    }
+    return best;
+}
+
 bool IsBridgeId(u16 id) {
     return id < kEmptyId && IsBridge(id);
 }

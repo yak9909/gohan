@@ -62,6 +62,10 @@ volatile bool s_lost;           // 描画: 場面が変わった／カメラが�
 volatile s32 s_cx, s_cy;        // カーソルのマス
 volatile u32 s_lostReason;
 volatile bool s_snapCamera;     // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
+// 橋を出しているとき: カメラの高さもカーソルと同じ「四角の中の地面の最大」にする（0 = カーソルのマスの地面）。
+// 1 語に l | 有効 0x80 | t<<8 | r<<16 | b<<24 で詰めて、スレッド間で 1 回で読み書きする（l < 0x80）。
+volatile u32 s_heightBox;
+u32 PackBox(u32 l, u32 t, u32 r, u32 b) { return 0x80u | l | (t << 8) | (r << 16) | (b << 24); }
 
 // ---- 描画スレッドだけ ---------------------------------------------------------------------------
 u32 s_camera;
@@ -102,6 +106,13 @@ void Unpatch(void) {
     if (R32(kCameraPatch) == kCameraPatchPop)
         WriteCode(kCameraPatch, kCameraPatchOrig);
     s_patched = false;
+}
+
+float CameraHeight(float *at) {
+    const u32 box = s_heightBox;
+    if (box == 0)
+        return GroundHeight(at, 0);
+    return PublicWorks::LandHeight(box & 0x7Fu, (box >> 8) & 0xFFu, (box >> 16) & 0xFFu, box >> 24);
 }
 
 void Lose(u32 reason) {
@@ -146,7 +157,7 @@ void FrameStep(void) {
         }
         if (s_snapCamera) {
             float at[3] = { (float)(32 * s_cx + 16), 0.0f, (float)(32 * s_cy + 16) };
-            at[1] = GroundHeight(at, 0);
+            at[1] = CameraHeight(at);
             for (u32 i = 0; i < 3; ++i)
                 s_current[i] = at[i] + s_offset[i];
             s_snapCamera = false;
@@ -165,7 +176,7 @@ void FrameStep(void) {
         return;
     }
     float target[3] = { (float)(32 * s_cx + 16), 0.0f, (float)(32 * s_cy + 16) };
-    target[1] = GroundHeight(target, 0);
+    target[1] = CameraHeight(target);
     float *base = reinterpret_cast<float *>(s_camera + kCameraBase);
     for (u32 i = 0; i < 3; ++i) {
         s_current[i] += (target[i] + s_offset[i] - s_current[i]) * kCameraFollow;
@@ -202,6 +213,9 @@ struct Shape {
     u8 count;
     s8 dx[kMaxCells];
     s8 dy[kMaxCells];
+    // 足元データの全マス（属性 0 以外）の外接の四角（基点からの相対）。橋ではこの四角が岸まで届くので、
+    // この中の地面の高さの最大が「岸の高さ」（IDA-opus-5.5-F025）
+    s8 left, top, right, bottom;
 };
 Shape s_shapes[256];
 
@@ -275,6 +289,12 @@ const Shape &ShapeOf(u16 id) {
                     Push(s, c, r);
             }
         }
+        if (bottom >= 0) {
+            s.left = (s8)(left - kFootprintOrigin);
+            s.top = (s8)(top - kFootprintOrigin);
+            s.right = (s8)(right - kFootprintOrigin);
+            s.bottom = (s8)(bottom - kFootprintOrigin);
+        }
         if (s.count == 0 && bottom >= 0) {           // 置けない・植えられないマスが無い: 範囲を一回り削る
             for (s32 r = top + 1; r <= bottom - 1; ++r)
                 for (s32 c = left + 1; c <= right - 1; ++c)
@@ -336,15 +356,30 @@ void PutShape(u16 id, s32 ax, s32 ay, u32 color, u8 strength) {
         ++n;
     }
     GridCursor::SetTint(color, strength);
-    // 高さは全部そろえて、その建物をそこへ建てたときの高さ（設置プレビューと同じ）
-    GridCursor::SetTiles(xs, ys, n, id, (u8)ax, (u8)ay);
+    // 高さは全部そろえる。橋以外は基点の地面（建てたときの高さと同じ）。
+    // ★橋は足元の四角（岸まで）の地面の最大＝岸の高さ。川の上でも陸の上でも同じ高さに出す。
+    //   ゲームの建て方（地面 + 32）をカーソルに使うと、陸の上で 1 マス高くなっていた（利用者指示 2026-09-24）。
+    s32 l = ax, t = ay, r = ax, b = ay;
+    if (PublicWorks::IsBridgeId(id)) {
+        l = ax + s.left;
+        t = ay + s.top;
+        r = ax + s.right;
+        b = ay + s.bottom;
+    }
+    l = l < 0 ? 0 : (l >= kTilesX ? kTilesX - 1 : l);
+    r = r < 0 ? 0 : (r >= kTilesX ? kTilesX - 1 : r);
+    t = t < 0 ? 0 : (t >= kTilesY ? kTilesY - 1 : t);
+    b = b < 0 ? 0 : (b >= kTilesY ? kTilesY - 1 : b);
+    s_heightBox = PublicWorks::IsBridgeId(id) ? PackBox((u32)l, (u32)t, (u32)r, (u32)b) : 0u;
+    GridCursor::SetTiles(xs, ys, n, true, (u8)l, (u8)t, (u8)r, (u8)b);
 }
 
 void PutSingle(u32 color, u8 strength) {
     const u8 x = (u8)s_cx;
     const u8 y = (u8)s_cy;
     GridCursor::SetTint(color, strength);
-    GridCursor::SetTiles(&x, &y, 1, -1, x, y);
+    s_heightBox = 0;
+    GridCursor::SetTiles(&x, &y, 1, false, x, y, x, y);
 }
 
 // いまのモードで、UnitCursor と設置プレビューを置き直す。
@@ -498,6 +533,19 @@ bool Repeat(u32 &counter, bool held) {
     }
     ++counter;
     return counter == 1 || (counter > 12 && ((counter - 12) % 4) == 0);
+}
+
+// スライドパッド: どれかの向きが連続移動に入っている間（離して kPadGrace ティック以内も含む）に
+// 別の向きを入れたら、その向きは待たずに連続移動にする（押した瞬間に 1 マス、以後 4 ティックごと。利用者指示）。
+const u32 kPadGrace = 3;
+u32 s_padRepeatingAgo = 0xFFFFu;
+
+bool PadRepeat(u32 &counter, bool held, bool fast) {
+    if (held && counter == 0 && fast) {
+        counter = 12;
+        return true;
+    }
+    return Repeat(counter, held);
 }
 
 void MoveCursor(s32 dx, s32 dy) {
@@ -698,10 +746,18 @@ void Tick(u32 keys) {
     s_prevKeys = keys;
 
     // スライドパッド（画面の上 = マスの -y）
-    if (Repeat(s_hold[0], (keys & (u32)Key::CPadUp) != 0)) MoveCursor(0, -1);
-    if (Repeat(s_hold[1], (keys & (u32)Key::CPadDown) != 0)) MoveCursor(0, +1);
-    if (Repeat(s_hold[2], (keys & (u32)Key::CPadLeft) != 0)) MoveCursor(-1, 0);
-    if (Repeat(s_hold[3], (keys & (u32)Key::CPadRight) != 0)) MoveCursor(+1, 0);
+    bool repeating = false;
+    for (u32 i = 0; i < 4; ++i)
+        repeating = repeating || s_hold[i] > 12;
+    if (repeating)
+        s_padRepeatingAgo = 0;
+    else if (s_padRepeatingAgo < 0xFFFFu)
+        ++s_padRepeatingAgo;
+    const bool fast = s_padRepeatingAgo <= kPadGrace;
+    if (PadRepeat(s_hold[0], (keys & (u32)Key::CPadUp) != 0, fast)) MoveCursor(0, -1);
+    if (PadRepeat(s_hold[1], (keys & (u32)Key::CPadDown) != 0, fast)) MoveCursor(0, +1);
+    if (PadRepeat(s_hold[2], (keys & (u32)Key::CPadLeft) != 0, fast)) MoveCursor(-1, 0);
+    if (PadRepeat(s_hold[3], (keys & (u32)Key::CPadRight) != 0, fast)) MoveCursor(+1, 0);
 
     if (pressed & ((u32)Key::L | (u32)Key::R)) {
         const u32 count = (u32)Mode::Count;
