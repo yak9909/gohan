@@ -128,7 +128,10 @@ const u32 kListTextCap = 2504;              // 文字箱の容量
 const u32 kListAnimating = 2512;            // u8
 const u32 kListInputLock = 2513;            // u8: 1 = ButtonActionControl の入力を止める
 const u32 kListSelected = 2792;             // s32: -1 = なし
-const u32 kListRows = 8;
+const u32 kListRows = 8;                    // 行の部品の数（見える行数ではない）
+const u32 kScrollMaxTop = 1824;             // スクロール部品の欄: 先頭にできる最大の行番号
+//   = 件数 - (+1868) + 1（sub_299910）。組み立ては +1868 に 行数-1 = 7 を渡すので、見える行は 6。
+//   残りの 2 行はスクロールの途中を埋める余分（利用者報告「十字で下へ行くと 2 つ分はみ出す」）。
 // Layout / UiAnim の欄
 const u32 kLayoutPriority = 12;             // u8: 下画面の並び（枠と中身は 2）
 const u32 kLayoutHolder = 236;              // ArcResAccReader*
@@ -479,6 +482,15 @@ bool BuildStep(void) {
     return true;
 }
 
+// 見える行数 = 件数 - スクロールの最大値（件数が少なくスクロールしないときは件数）
+s32 VisibleRows(void) {
+    const s32 maxTop = S(s_list, kListScroll + kScrollMaxTop);
+    s32 v = maxTop > 0 ? (s32)s_count - maxTop : (s32)s_count;
+    if (v < 1) v = 1;
+    if (v > (s32)kListRows) v = (s32)kListRows;
+    return v;
+}
+
 void ApplySelect(s32 index) {
     if (s_list == nullptr || !s_listSetup || s_count == 0)
         return;
@@ -488,11 +500,11 @@ void ApplySelect(s32 index) {
         index = (s32)s_count - 1;
     // 見えていなければスクロールする（先頭 = index、ただし末尾で 8 行が埋まるように）
     const s32 top = S(s_list, kListTop);
-    if (index < top || index >= top + (s32)kListRows) {
+    if (index < top || index >= top + VisibleRows()) {
         s32 want = index;
-        const s32 maxTop = (s32)s_count > (s32)kListRows ? (s32)s_count - (s32)kListRows : 0;
+        const s32 maxTop = S(s_list, kListScroll + kScrollMaxTop);
         if (want > maxTop)
-            want = maxTop;
+            want = maxTop > 0 ? maxTop : 0;
         ScrollTo(P(s_list, kListScroll), want);
     }
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -503,11 +515,12 @@ void ApplySelect(s32 index) {
 // 選択を index へ動かす。見えていなければ 1 行ずつスクロールして端に入れる（上なら先頭、下なら末尾の行）
 void MoveSelect(s32 index) {
     const s32 top = S(s_list, kListTop);
+    const s32 rows = VisibleRows();
     s32 want = top;
     if (index < top)
         want = index;
-    else if (index >= top + (s32)kListRows)
-        want = index - ((s32)kListRows - 1);
+    else if (index >= top + rows)
+        want = index - (rows - 1);
     if (want != top)
         ScrollTo(P(s_list, kListScroll), want);
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -532,8 +545,8 @@ void StepDpad(void) {
     s32 step = 0;
     if (hold & kDpadUp) step = -1;
     else if (hold & kDpadDown) step = 1;
-    else if (hold & kDpadLeft) step = -(s32)kListRows;
-    else if (hold & kDpadRight) step = (s32)kListRows;
+    else if (hold & kDpadLeft) step = -VisibleRows();
+    else if (hold & kDpadRight) step = VisibleRows();
     if (step == 0)
         return;
     const s32 cur = S(s_list, kListSelected) < 0 ? 0 : S(s_list, kListSelected);
