@@ -151,7 +151,7 @@ static const unsigned long kGuiListSize   = 0x8000;   // ケーブに焼いて�
 static const unsigned long kGuiListQCount = 16;
 // ★実行時に画面ごとの値へ差し替える語の位置（A1 / A2 で同じ索引）
 static const unsigned long kGuiListSizeIndex = 86;
-static const unsigned long kGuiListSizeTop   = 0x28000;   // 上画面。F-343 で通知を 7 件にして記録の最悪値が 107,200 B に なったため 0x20000（131,072 B・81.8%）から引き上げた。 追加ぶんは nngx ヒープから 32,768 B（空きは 1,220,172 B。F-318）。
+static const unsigned long kGuiListSizeTop   = 0x30000;   // 上画面。F-343 で通知を 7 件にして 0x20000 から 0x28000 へ、 2026-09-25 に Simulator 670e44f（F 印・操作の文字・複数行の通知で上画面の枠 117 本、 記録の最悪値 150,000 B）で 0x30000 へ引き上げた。 追加ぶんは nngx ヒープからさらに 32,768 B（空きは 1,220,172 B。F-318）。
 static const unsigned long kGuiListSizeBot   = 0x2D000;    // 下画面は表示物が少ない
 
 // ---- ヒープの借用（基準仕様 v2 §4.1 / §4.7）----

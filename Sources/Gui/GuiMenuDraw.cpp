@@ -9,6 +9,9 @@
 //   1. 切り抜き（clip）が無い。窓からはみ出す行は描かない。
 //   2. 角丸が無い（キーの角は四角い）。
 //   3. 枠線は内地と重ねずに描く（F-323。フェード途中で縁だけ濃く残らない）。
+//   4. issue-overlay.js（F 印・値の固定の印・説明欄の操作の文字・長押しの灰）は app.js の上に重ね描きする
+//      作りだが、ここでは行や欄を描くときに一緒に描く。見た目は同じで、ダイアログや通知の上に印が
+//      重なる（重ね描きの副作用）ところだけ写さない。
 
 #include "GuiMenuInternal.hpp"
 #include "GuiKeyboard.hpp"
@@ -34,6 +37,13 @@ namespace CTRPluginFramework
                 char    g_buf[kTextBytes];
                 char    g_buf2[kTextBytes];
                 char    g_lines[kDescLines][kWrapBytes];
+                char    g_noticeLines[8][kWrapBytes];
+
+                // issue-overlay.js の色
+                const u32   kColFavorite  = 0xFF8AC9D6; // #d6c98a（F 印）
+                const u32   kColValueLock = 0xFFFFC85C; // #5cc8ff（値の固定の線と値）
+                const u32   kColHoldMuted = 0xFF767B74; // #747b76（長押し 2/5 未満）
+                const u32   kColCtrlBg    = 0xFA0B0D0A; // rgba(10,13,11,.98)（説明欄の操作の文字の下地）
 
                 int     Round(float v) { return (int)std::floor(v + 0.5f); }
 
@@ -269,12 +279,37 @@ namespace CTRPluginFramework
                     GuiRenderer::DrawText(TOP, x, y, ItemIcon(it), ItemIconColor(it, color));
                 }
 
+                // issue-overlay.js の操作の文字（説明欄の 3 行目。app.js の FAVORITE / START:FAVORITES を上書きする）
+                const char *ControlText(char *buf, unsigned cap)
+                {
+                    int settings = -1;
+
+                    for (int d = 0; d < g_depth; d++)
+                        if (g_frames[d].kind == FR_SETTINGS)
+                        {
+                            settings = d;
+                            break;
+                        }
+                    if (Cur().kind == FR_SETTINGS)
+                        std::snprintf(buf, cap, "START:CLOSE  A:SELECT");
+                    else if (settings >= 0)
+                        std::snprintf(buf, cap, "R:FAV  START:CLOSE");
+                    else
+                    {
+                        const Item &sel = Sel();
+                        const bool  fixed = !IsSettingsItem(sel) && IsFixed(ItemIndex(sel));
+
+                        std::snprintf(buf, cap, "%sR:FAV", fixed ? u8"値を固定:ON  " : "");
+                    }
+                    return buf;
+                }
+
                 void    DrawDescription(float amount)
                 {
                     const Item &it = Sel();
                     const int   x = 168, y = 8, w = 224;
                     const int   n = Wrap(it.desc, w - 16, kDescLines, g_lines);
-                    const int   h = 35 + n * 11;
+                    const int   h = 46 + n * 11;
 
                     Frame1px(TOP, x, y, w, h, Fade(kColPanelEdge, amount), Fade(kColBoxBg, amount));
                     GuiRenderer::DrawText(TOP, x + 8, y + 7, Trim(it.label, w - 16, g_buf, sizeof(g_buf)),
@@ -288,8 +323,10 @@ namespace CTRPluginFramework
 
                         GuiRenderer::DrawText(TOP, x + w - 8 - bw, y + 18, "SYNC", Fade(kColLinked, amount));
                     }
+                    GuiRenderer::FillRect(TOP, 174, 35, 211, 11, Fade(kColCtrlBg, amount));
+                    GuiRenderer::DrawText(TOP, 176, 37, ControlText(g_buf, sizeof(g_buf)), Fade(kColHint, amount));
                     for (int i = 0; i < n; i++)
-                        GuiRenderer::DrawText(TOP, x + 8, y + 31 + i * 11, g_lines[i],
+                        GuiRenderer::DrawText(TOP, x + 8, y + 42 + i * 11, g_lines[i],
                                               Fade(it.disabled ? kColDescOff : kColBody, amount));
                 }
 
@@ -301,12 +338,14 @@ namespace CTRPluginFramework
                     if (!HoldProgress(now, progress, label))
                         return;
 
-                    const int x = menuX + 5, y = 201, w = kMenuW - 12;
+                    const int   x = menuX + 5, y = 201, w = kMenuW - 12;
+                    // 2/5 未満は進んだ部分と枠を灰色（issue-overlay.js）。2/5 以降は黄色のまま、二色に分けない
+                    const u32   col = HoldMuted(now) ? kColHoldMuted : kColDirty;
 
-                    Frame1px(TOP, x, y, w, 14, kColDirty, kColHoldBg);
+                    Frame1px(TOP, x, y, w, 14, col, kColHoldBg);
                     GuiRenderer::DrawText(TOP, x + 5, y + 2, label, kColWhite);
                     GuiRenderer::FillRect(TOP, x + 5, y + 10, w - 10, 2, kColHoldTrack);
-                    GuiRenderer::FillRect(TOP, x + 5, y + 10, Round((float)(w - 10) * progress), 2, kColDirty);
+                    GuiRenderer::FillRect(TOP, x + 5, y + 10, Round((float)(w - 10) * progress), 2, col);
                 }
 
                 void    DrawInlineList(int menuX, float start, u32 now)
@@ -566,15 +605,16 @@ namespace CTRPluginFramework
 
                         const int x = Round(NoticeX(nt, now));
                         const int y = Round(NoticeY(nt, now));
+                        const int h = nt.height > 0 ? nt.height : kNoticeH;
+                        int       row = 0;
 
-                        Frame1px(TOP, x, y, kNoticeW, kNoticeH, nt.red ? kColDangerEdge : kColPanelEdge,
-                                 kColNoticeBg);
-                        GuiRenderer::FillRect(TOP, x + 1, y + 1, 2, kNoticeH - 2, nt.red ? kColDanger : kColAccent);
-                        std::snprintf(g_buf2, sizeof(g_buf2), "%s", nt.title);
-                        GuiRenderer::DrawText(TOP, x + 7, y + 4, Trim(g_buf2, kNoticeW - 20, g_buf, sizeof(g_buf)),
-                                              kColWhite);
-                        GuiRenderer::DrawText(TOP, x + 7, y + 14, Trim(nt.msg, kNoticeW - 14, g_buf, sizeof(g_buf)),
-                                              kColNoticeMsg);
+                        Frame1px(TOP, x, y, kNoticeW, h, nt.red ? kColDangerEdge : kColPanelEdge, kColNoticeBg);
+                        GuiRenderer::FillRect(TOP, x + 1, y + 1, 2, h - 2, nt.red ? kColDanger : kColAccent);
+                        // drawBrowserNotices: 題は幅 - 20、本文は幅 - 14 で折り、10px ずつ下げる
+                        for (int n = WrapNotice(nt.title, kNoticeW - 20, g_noticeLines, 8), k = 0; k < n; k++)
+                            GuiRenderer::DrawText(TOP, x + 7, y + 4 + row++ * kNoticeLineH, g_noticeLines[k], kColWhite);
+                        for (int n = WrapNotice(nt.msg, kNoticeW - 14, g_noticeLines, 8), k = 0; k < n; k++)
+                            GuiRenderer::DrawText(TOP, x + 7, y + 4 + row++ * kNoticeLineH, g_noticeLines[k], kColNoticeMsg);
                     }
                 }
             }
@@ -645,7 +685,10 @@ namespace CTRPluginFramework
                         last = fr.count - 1;
                     for (int i = first; i <= last; i++)
                     {
-                        const Item &it = g_items[fr.first + i];
+                        const Item &it = FrameItem(fr, i);
+                        const bool  real = !IsSettingsItem(it);
+                        const int   idx = real ? ItemIndex(it) : -1;
+                        const bool  fixed = real && IsFixed(idx);
                         const int   y = Round(28.0f + ((float)i - start) * (float)kItemH);
                         const bool  selected = i == fr.selection;
                         const int   off = selected ? Round(actOff) : 0;
@@ -664,9 +707,17 @@ namespace CTRPluginFramework
                         GuiRenderer::DrawText(TOP, menuX + 27 + off, y,
                                               Trim(it.label, kMenuW - 33 - vw, g_buf, sizeof(g_buf)), col);
                         if (g_buf2[0] != '\0')
-                            GuiRenderer::DrawText(TOP, menuX + kMenuW - 8 - vw + off, y, g_buf2, col, 1, vf);
+                            GuiRenderer::DrawText(TOP, menuX + kMenuW - 8 - vw + off, y, g_buf2,
+                                                  fixed ? kColValueLock : col, 1, vf);
                         if (it.type != ITEM_FOLDER && it.hotkey != 0)
                             GuiRenderer::DrawText(TOP, menuX + 147 + off, y + 8, "H", kColHotkey);
+                        // issue-overlay.js: F は H と右寄せの組（H があれば x+140、無ければ x+147）。設定画面には出さない
+                        if (real && fr.kind != FR_SETTINGS && IsFavorite(idx))
+                            GuiRenderer::DrawText(TOP, menuX + (it.type != ITEM_FOLDER && it.hotkey != 0 ? 140 : 147) + off,
+                                                  y + 8, "F", kColFavorite);
+                        // 値の固定: 行の左端に 1px の縦線（項目の色は変えない）
+                        if (fixed)
+                            GuiRenderer::FillRect(TOP, menuX + 4, y - 2, 1, 12, kColValueLock);
                     }
                 }
                 ScrollBar(TOP, menuX + 154, 28, 176, kVisibleRows, fr.count, start, 1.0f);
@@ -675,7 +726,7 @@ namespace CTRPluginFramework
                 GuiRenderer::DrawText(TOP, menuX + 6, 220, u8"A決定 X適用 Y HOTKEY", kColFootTxt);
                 std::snprintf(g_buf, sizeof(g_buf), u8"%d変更", changed);
                 GuiRenderer::DrawText(TOP, menuX + 6, 230, g_buf, changed ? kColDirty : kColFootOff);
-                GuiRenderer::DrawText(TOP, menuX + 72, 230, u8"B戻る L変更戻し", kColFootTxt);
+                GuiRenderer::DrawText(TOP, menuX + 59, 230, u8"B戻る L戻し R FAV", kColFootTxt);
                 DrawHoldProgress(menuX, now);
 
                 if (g_inline.active)

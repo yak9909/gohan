@@ -114,14 +114,36 @@ namespace CTRPluginFramework
                 GuiRenderer::Commit();
             }
 
+            // ---- 保持（GohanCTRPFData.bin の gohan の欄。同梱 libctrpf の GohanData）----
+            //   書き出しは CTRPF のメニューを閉じたときの保存でも呼ばれる（CTRPF のスレッドから）。
+            void    PersistWrite(std::vector<u8> &out)      { SerializePersist(out); }
+            void    PersistRead(const u8 *data, u32 size)   { RestorePersist(data, size); }
+
+            // 中身が前回の保存と違えば書く（メニューを閉じ切ったとき・終了時）
+            void    SaveIfChanged(void)
+            {
+                if (!PersistChanged())
+                    return;
+                GohanData::Save();
+                MarkPersistSaved();
+            }
+
             void    ThreadMain(void *)
             {
+                bool wasVisible = g_visible;
+
                 while (g_run)
                 {
                     if (GuiRenderer::IsReady())
                     {
                         const u32   now = NowMs();
                         const Input in = SampleInput();
+
+                        // メニューを閉じ切った（見えなくなった）フレームで保存する。
+                        // Simulator は操作のたびに localStorage へ書くが、SD へ毎回は書かない。
+                        if (wasVisible && !g_visible)
+                            SaveIfChanged();
+                        wasVisible = g_visible;
 
                         if (g_reqOpen)
                         {
@@ -209,6 +231,9 @@ namespace CTRPluginFramework
             ResetState();
             // ★ResetState が ToggleHandlers を消すので、振る舞いの登録はその後
             WireBehaviors();
+            // ★保持の復元は各チートの登録（Cheats::Wire）の後。効果・適用の関数が要る
+            GohanData::SetHandlers(PersistWrite, PersistRead);
+            GohanData::Load();
             // ★開いた瞬間に押されているボタン（Select など）を立ち上がりとして拾わない
             PrimeInput(SampleInput().held);
             g_reqOpen = false;
@@ -228,6 +253,7 @@ namespace CTRPluginFramework
             g_run = false;
             svcSleepThread(50000000LL);
             g_thread = nullptr;
+            SaveIfChanged();
             ChatKanji::Dismiss();
             g_visible = false;
             g_openTarget = 0.0f;

@@ -46,6 +46,15 @@ namespace CTRPluginFramework
             const char *g_longOpts[kLongList];
             void      (*g_noticeHook)(const char *title, const char *msg) = nullptr;
             ToggleHandlers g_toggleHdl;
+            bool        g_favorite[kMaxItems];
+            u8          g_favList[kMaxItems];
+            int         g_favCount = 0;
+            Item        g_settingsItems[kSettingsItems];
+            int         g_settingsTarget = -1;
+            bool        g_fixed[kMaxItems];
+            s32         g_fixedValue[kMaxItems];
+            Persistence g_persist = { true, false, false };     // DEFAULT_PERSISTENCE_SETTINGS
+            void      (*g_requestSave)(void) = nullptr;
 
             namespace
             {
@@ -84,6 +93,9 @@ namespace CTRPluginFramework
                 // 最後に観測した効果（関数内定義）の ON/OFF。変化したときだけ通知する。
                 bool    g_effectSeen[kMaxItems];
                 bool    g_kbHandled = false;    // このフレームで GuiKeyboard::Handle を呼んだか
+                // お気に入りのフレームは開いた時点の並びを持つ（Simulator の frame.items と同じく、
+                // 下の段のお気に入りフレームは後から登録を変えても並びが変わらない）
+                u8      g_frameList[kMaxDepth][kMaxItems];
 
                 bool    IsDir(int bit)
                 {
@@ -142,7 +154,10 @@ namespace CTRPluginFramework
                 a.from = cur;
                 a.target = 0.0f;
                 a.start = now;
-                a.ms = (int)((float)ms * cur);
+                // ★切り上げる。Simulator は長さを小数のまま持ち（DIALOG.animationDuration * current）、
+                //   now - start >= 長さ で閉じ切りを判定する。整数ミリ秒の判定で同じ結果になるのは切り上げ
+                //   （切り捨てだと 1 フレーム早く閉じ切る。fuzz seed 2 で 120.9ms を 120 にして発覚）。
+                a.ms = (int)std::ceil((double)ms * (double)cur - 1e-6);
                 a.closing = true;
                 return true;
             }
@@ -270,7 +285,32 @@ namespace CTRPluginFramework
             }
 
             Frame  &Cur(void)   { return g_frames[g_depth - 1]; }
-            Item   &Sel(void)   { return g_items[Cur().first + Cur().selection]; }
+
+            Item   &FrameItem(const Frame &fr, int row)
+            {
+                if (fr.kind == FR_SETTINGS)
+                    return g_settingsItems[row];
+                if (fr.kind == FR_FAVORITES)
+                    return g_items[g_frameList[&fr - &g_frames[0]][row]];
+                return g_items[fr.first + row];
+            }
+
+            Item   &Sel(void)   { return FrameItem(Cur(), Cur().selection); }
+
+            bool    IsSettingsItem(const Item &it)
+            {
+                return &it >= &g_settingsItems[0] && &it < &g_settingsItems[kSettingsItems];
+            }
+
+            bool    IsFavorite(int index)
+            {
+                return index >= 0 && index < g_itemCount && g_favorite[index];
+            }
+
+            bool    IsFixed(int index)
+            {
+                return index >= 0 && index < g_itemCount && g_fixed[index] && IsLinked(g_items[index]);
+            }
 
             // ================================================================
             // アニメーション（CheatMenuModel と同じ式）
@@ -380,11 +420,81 @@ namespace CTRPluginFramework
                            EaseOutCubic(Progress(nt.moveStartedAt, now, kNoticeEnterMs)));
             }
 
+            // notification-layout-fix.js の isAlive: 寿命の内で、かつ画面の上へ出切っていない
             bool    NoticeAlive(const Notice &nt, u32 now)
             {
-                return nt.active
-                       && (s32)(now - nt.createdAt)
-                          < kNoticeEnterMs + kNoticeHoldMs + kNoticeExitMs;
+                const s32 age = (s32)(now - nt.createdAt);
+
+                if (!nt.active)
+                    return false;
+                if (age >= 0 && NoticeY(nt, now) + (float)nt.height <= 0.0f)
+                    return false;
+                return age < kNoticeEnterMs + kNoticeHoldMs + kNoticeExitMs;
+            }
+
+            // wrapNoticeLine の写し（字ごとに足して幅を超えたら折る。改行でも折る）
+            int     WrapNotice(const char *src, int maxWidth, char lines[][kWrapBytes], int maxLines)
+            {
+                int         n = 0, i = 0;
+                unsigned    out = 0;
+
+                if (maxLines <= 0)
+                    return 0;
+                lines[0][0] = '\0';
+                if (src == nullptr || src[0] == '\0')
+                    return 1;       // 空の段落も 1 行
+                while (src[i] != '\0')
+                {
+                    if (src[i] == '\n')
+                    {
+                        i++;
+                        if (n + 1 >= maxLines)
+                            return n + 1;
+                        lines[++n][0] = '\0';
+                        out = 0;
+                        continue;
+                    }
+
+                    const int       start = i;
+                    int             j = i;
+                    GuiRenderer::NextCharWidth(src, j);
+
+                    const unsigned  len = (unsigned)(j - start);
+
+                    if (out > 0)
+                    {
+                        char    probe[kWrapBytes];
+
+                        std::memcpy(probe, lines[n], out);
+                        std::memcpy(probe + out, src + start, len < kWrapBytes - out - 1 ? len : kWrapBytes - out - 1);
+                        probe[out + len < (unsigned)kWrapBytes ? out + len : kWrapBytes - 1] = '\0';
+                        if (GuiRenderer::MeasureText(probe) > maxWidth)
+                        {
+                            if (n + 1 >= maxLines)
+                                return n + 1;
+                            lines[++n][0] = '\0';
+                            out = 0;
+                        }
+                    }
+                    i = j;
+                    if (out + len + 1 >= (unsigned)kWrapBytes)
+                        continue;
+                    std::memcpy(lines[n] + out, src + start, len);
+                    out += len;
+                    lines[n][out] = '\0';
+                }
+                return n + 1;
+            }
+
+            // noticeHeight（notification-layout-fix.js）: 題は幅 - 20、本文は幅 - 14 で折る
+            int     NoticeHeight(const char *title, const char *msg)
+            {
+                char    lines[8][kWrapBytes];
+                int     rows = WrapNotice(title, kNoticeW - 20, lines, 8) + WrapNotice(msg, kNoticeW - 14, lines, 8);
+
+                if (rows < 2)
+                    rows = 2;
+                return kNoticeH + (rows - 2) * kNoticeLineH;
             }
 
             void    AddNotice(const char *title, const char *msg, u32 now, bool red)
@@ -401,7 +511,10 @@ namespace CTRPluginFramework
                 g_noticeEver = true;
                 g_noticeLastAt = at;
 
-                // 生きている順（古い順）に前へ詰め、満杯なら一番古いものを押し出す
+                const int height = NoticeHeight(title, msg);
+
+                // 生きている順（古い順）に前へ詰める。件数の上限は無く、画面の上へ出たものから消える
+                // （notification-layout-fix.js）。固定長の配列が満杯のときだけ一番古いものを落とす。
                 {
                     int n = 0;
 
@@ -424,7 +537,7 @@ namespace CTRPluginFramework
                     if (!ex.active)
                         continue;
                     ex.moveFromY = NoticeY(ex, at);
-                    ex.targetY -= (float)(kNoticeH + kNoticeGap);
+                    ex.targetY -= (float)(height + kNoticeGap);
                     ex.moveStartedAt = at;
                 }
                 for (int i = 0; i < kNoticeMax; i++)
@@ -439,7 +552,8 @@ namespace CTRPluginFramework
                     std::snprintf(nt.msg, sizeof(nt.msg), "%s", msg);
                     nt.red = red;
                     nt.createdAt = at;
-                    nt.moveFromY = (float)(240 - kNoticeMargin - kNoticeH);
+                    nt.height = height;
+                    nt.moveFromY = (float)(240 - kNoticeMargin - height);
                     nt.targetY = nt.moveFromY;
                     nt.moveStartedAt = at;
                     break;
@@ -507,6 +621,286 @@ namespace CTRPluginFramework
                 g_selTo = (float)next;
                 g_selStart = now;
                 fr.selection = next;
+                return true;
+            }
+
+            // ================================================================
+            // お気に入り（ui-model.js favoriteItems / toggleFavorite / openFavorites）
+            // ================================================================
+            static void RebuildFavList(void)
+            {
+                struct { void operator()(Item &it) { const int idx = ItemIndex(it); if (g_favorite[idx]) g_favList[g_favCount++] = (u8)idx; } } fn;
+
+                g_favCount = 0;
+                WalkItems(fn);
+            }
+
+            static void RefreshFavoritesFrame(u32 now)
+            {
+                Frame &fr = Cur();
+
+                if (fr.kind != FR_FAVORITES)
+                    return;
+                if (g_favCount == 0 && g_depth > 1)
+                    g_depth--;
+                else
+                {
+                    const int d = g_depth - 1;
+
+                    for (int i = 0; i < g_favCount; i++)
+                        g_frameList[d][i] = g_favList[i];
+                    fr.count = g_favCount;
+                    fr.selection = ClampI(fr.selection, 0, g_favCount > 0 ? g_favCount - 1 : 0);
+                }
+                ResetSelectionAnimation(now);
+            }
+
+            bool    ToggleFavorite(int index, u32 now)
+            {
+                if (index < 0 || index >= g_itemCount)
+                    return false;
+
+                const bool removing = g_favorite[index];
+
+                g_favorite[index] = !removing;
+                RebuildFavList();
+                std::snprintf(g_msg, sizeof(g_msg), "%s: %s", removing ? "REMOVE" : "ADD", g_items[index].label);
+                AddNotice("FAVORITES", g_msg, now);
+                RefreshFavoritesFrame(now);
+                if (g_requestSave != nullptr)
+                    g_requestSave();
+                return true;
+            }
+
+            bool    OpenFavorites(u32 now)
+            {
+                RebuildFavList();
+                if (g_favCount == 0)
+                {
+                    AddNotice("FAVORITES", "NO ITEMS", now);
+                    return false;
+                }
+                if (g_depth >= kMaxDepth)
+                    return false;
+
+                Frame &fr = g_frames[g_depth];
+
+                for (int i = 0; i < g_favCount; i++)
+                    g_frameList[g_depth][i] = g_favList[i];
+                fr.title = "FAVORITES";
+                fr.first = 0;
+                fr.count = g_favCount;
+                fr.selection = 0;
+                fr.kind = FR_FAVORITES;
+                g_depth++;
+                ResetSelectionAnimation(now);
+                return true;
+            }
+
+            // ================================================================
+            // 値の固定（issue-fixes.js setItemFixed / updateFixedLinkedItems）
+            // ================================================================
+            static void ExecuteValue(Item &it);
+
+            bool    SetItemFixed(int index, bool fixed, u32 now)
+            {
+                if (index < 0 || index >= g_itemCount || !IsLinked(g_items[index]))
+                    return false;
+
+                Item &it = g_items[index];
+
+                if (fixed)
+                {
+                    if (it.disabled)
+                        return false;
+                    g_fixed[index] = true;
+                    g_fixedValue[index] = it.value;
+                    it.applied = it.value;
+                    ExecuteValue(it);
+                    std::snprintf(g_msg, sizeof(g_msg), "%s: ON", it.label);
+                    AddNotice(u8"値を固定", g_msg, now);
+                }
+                else
+                {
+                    if (!g_fixed[index])
+                        return false;
+                    g_fixed[index] = false;
+                    std::snprintf(g_msg, sizeof(g_msg), "%s: OFF", it.label);
+                    AddNotice(u8"値を固定", g_msg, now);
+                }
+                if (g_requestSave != nullptr)
+                    g_requestSave();
+                return true;
+            }
+
+            // 表示の値を固定した値に合わせる（読めない＝disabled の間は触らない）
+            static void UpdateFixedLinkedItems(void)
+            {
+                for (int i = 0; i < g_itemCount; i++)
+                {
+                    if (!IsFixed(i) || g_items[i].disabled)
+                        continue;
+                    g_items[i].value = g_fixedValue[i];
+                    g_items[i].applied = g_fixedValue[i];
+                }
+            }
+
+            // ゲームへの書き戻し（gohan-menu.md §5.6 の駆動）: 読めて、かつ固定値と違うときだけ書く。
+            // 読めないフレームは何も書かない（セーブ未ロード・場面転換中）。メニューの開閉に関係なく動く。
+            static void DriveFixedItems(void)
+            {
+                for (int i = 0; i < g_itemCount; i++)
+                {
+                    if (!IsFixed(i))
+                        continue;
+
+                    const Behavior &b = g_behavior[i];
+                    s32             v = 0;
+
+                    if (b.LinkedRead == nullptr || b.LinkedWrite == nullptr || !b.LinkedRead(i, &v))
+                        continue;
+                    if (v != g_fixedValue[i])
+                        b.LinkedWrite(i, g_fixedValue[i]);
+                }
+            }
+
+            // refreshDisabledItems の連動型の規則: 読めなくなったら即 disabled（読めるようになっても
+            // 次に開くまで戻さない。開いたときの SyncLinkedItems が戻す）
+            static void RefreshLinkedDisabled(void)
+            {
+                for (int i = 0; i < g_itemCount; i++)
+                {
+                    Item &it = g_items[i];
+
+                    if (!IsLinked(it))
+                        continue;
+
+                    s32         v = 0;
+                    const bool  ok = g_behavior[i].LinkedRead != nullptr && g_behavior[i].LinkedRead(i, &v);
+
+                    if (!ok || (it.type == ITEM_LINKED_LIST && (v < 0 || v >= (s32)it.optionCount)))
+                        it.disabled = true;
+                }
+            }
+
+            // ================================================================
+            // 設定画面（issue-fixes.js buildSettingsItems / openSettings / closeSettings）
+            // ================================================================
+            static void SettingsItem(int i, u8 type, u8 action, const char *label, const char *desc,
+                                     bool value, bool disabled)
+            {
+                Item &it = g_settingsItems[i];
+
+                std::memset(&it, 0, sizeof(it));
+                it.type = type;
+                it.action = action;
+                it.label = label;
+                it.desc = desc;
+                it.value = value ? 1 : 0;
+                it.applied = it.value;
+                it.disabled = disabled;
+            }
+
+            static void BuildSettingsItems(int target)
+            {
+                const bool linked = target >= 0 && target < g_itemCount && IsLinked(g_items[target]);
+                const bool fixed = IsFixed(target);
+
+                RebuildFavList();
+                SettingsItem(0, ITEM_ACTION, ACT_SET_FAVORITES, "FAVORITES", u8"お気に入り項目を表示します。",
+                             false, g_favCount == 0);
+                SettingsItem(1, ITEM_CHECKBOX, ACT_SET_VALUE_LOCK, u8"値を固定", u8"選択中の連動型の値を固定します。",
+                             fixed, !linked || (g_items[target].disabled && !fixed));
+                SettingsItem(2, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITES, u8"お気に入りを保持",
+                             u8"お気に入り登録を次回も保持します。", g_persist.keepFavorites, false);
+                SettingsItem(3, ITEM_CHECKBOX, ACT_SET_KEEP_ITEMS, u8"オンにした項目を保持",
+                             u8"適用済みの項目設定を次回も保持します。", g_persist.keepEnabledItems, false);
+                SettingsItem(4, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_ITEMS, u8"オンにしたお気に入りを保持",
+                             u8"お気に入り項目の適用済み設定を次回も保持します。", g_persist.keepEnabledFavorites, false);
+            }
+
+            static int SettingsFrameIndex(void)
+            {
+                for (int d = 0; d < g_depth; d++)
+                    if (g_frames[d].kind == FR_SETTINGS)
+                        return d;
+                return -1;
+            }
+
+            static bool OpenSettings(u32 now)
+            {
+                if (SettingsFrameIndex() >= 0)
+                    return true;
+                if (g_depth >= kMaxDepth)
+                    return false;
+
+                const Item &target = Sel();
+                const int   targetIndex = IsSettingsItem(target) ? -1 : ItemIndex(target);
+                Frame      &fr = g_frames[g_depth];
+
+                g_settingsTarget = targetIndex;
+                BuildSettingsItems(targetIndex);
+                fr.title = "SETTINGS";
+                fr.first = 0;
+                fr.count = kSettingsItems;
+                fr.selection = 0;
+                fr.kind = FR_SETTINGS;
+                g_depth++;
+                ResetSelectionAnimation(now);
+                return true;
+            }
+
+            static bool CloseSettings(u32 now)
+            {
+                const int index = SettingsFrameIndex();
+
+                if (index < 0)
+                    return false;
+                g_depth = index;        // frames.splice(index): 設定画面より上（お気に入りなど）もまとめて閉じる
+                g_settingsTarget = -1;
+                ResetSelectionAnimation(now);
+                return true;
+            }
+
+            bool    ToggleSettings(u32 now)
+            {
+                return SettingsFrameIndex() >= 0 ? CloseSettings(now) : OpenSettings(now);
+            }
+
+            static bool ActivateSettingsItem(Item &e, u32 now)
+            {
+                if (e.disabled)
+                    return false;
+                g_actAt = now;
+                g_actOn = true;
+                if (e.action == ACT_SET_FAVORITES)
+                    return OpenFavorites(now);
+                if (e.action == ACT_SET_VALUE_LOCK)
+                {
+                    const int   t = g_settingsTarget;
+                    const bool  next = !IsFixed(t);
+
+                    if (!SetItemFixed(t, next, now))
+                        return false;
+                    e.value = IsFixed(t) ? 1 : 0;
+                    e.applied = e.value;
+                    e.disabled = !(t >= 0 && t < g_itemCount && IsLinked(g_items[t]))
+                                 || (g_items[t].disabled && e.value == 0);
+                    return true;
+                }
+
+                bool *setting = e.action == ACT_SET_KEEP_FAVORITES ? &g_persist.keepFavorites
+                              : e.action == ACT_SET_KEEP_ITEMS ? &g_persist.keepEnabledItems
+                              : e.action == ACT_SET_KEEP_FAVORITE_ITEMS ? &g_persist.keepEnabledFavorites
+                              : nullptr;
+
+                if (setting == nullptr)
+                    return false;
+                *setting = !*setting;
+                e.value = *setting ? 1 : 0;
+                e.applied = e.value;
+                if (g_requestSave != nullptr)
+                    g_requestSave();
                 return true;
             }
 
@@ -615,16 +1009,36 @@ namespace CTRPluginFramework
 
             static bool CommitHotkeyValue(Item &it, s32 value)
             {
+                if (it.disabled)
+                    return false;
+
                 const bool changed = it.applied != value;
 
                 it.value = value;
                 it.applied = value;
                 if (changed)
                     ExecuteValue(it);
+                if (changed && IsFixed(ItemIndex(it)))
+                    g_fixedValue[ItemIndex(it)] = it.applied;
                 return changed;
             }
 
+            static bool CommitItemBody(Item &it, u32 now);
+
+            // issue-fixes.js commitItem: 無効な項目は適用しない。固定中の連動型は固定値も新しい適用値へ
             static bool CommitItem(Item &it, u32 now)
+            {
+                if (it.disabled)
+                    return false;
+
+                const bool changed = CommitItemBody(it, now);
+
+                if (changed && IsLinked(it) && IsFixed(ItemIndex(it)))
+                    g_fixedValue[ItemIndex(it)] = it.applied;
+                return changed;
+            }
+
+            static bool CommitItemBody(Item &it, u32 now)
             {
                 if (!IsDirtyItem(it))
                     return false;
@@ -715,6 +1129,12 @@ namespace CTRPluginFramework
                 return true;
             }
 
+            bool    HoldMuted(u32 now)
+            {
+                return g_hold.active
+                       && (now - g_hold.start) * (u32)kHoldCancelDen < (u32)kHoldMs * (u32)kHoldCancelNum;
+            }
+
             static bool BeginHoldAction(int bit, u32 now)
             {
                 if ((bit != HB_X && bit != HB_L) || DirtyCount() == 0)
@@ -752,6 +1172,12 @@ namespace CTRPluginFramework
                 g_hold.active = false;
                 if (elapsed >= (u32)kHoldMs)
                     return TriggerLongHold(bit, now);
+                // 2/5 以上・満了前で離した: 単体の操作もせず長押しだけを取り消す（issue-fixes.js finishHoldAction）
+                if (elapsed * (u32)kHoldCancelDen >= (u32)kHoldMs * (u32)kHoldCancelNum)
+                {
+                    AddNotice("HOLD", bit == HB_X ? u8"全適用をキャンセルしました" : u8"全戻しをキャンセルしました", now);
+                    return true;
+                }
                 if (bit == HB_X)
                     CommitItem(Sel(), now);
                 else if (bit == HB_L)
@@ -851,6 +1277,8 @@ namespace CTRPluginFramework
             {
                 Item &it = Sel();
 
+                if (Cur().kind == FR_SETTINGS && IsSettingsItem(it))
+                    return ActivateSettingsItem(it, now);
                 if (it.disabled)
                     return false;
                 g_actAt = now;
@@ -863,6 +1291,7 @@ namespace CTRPluginFramework
                     g_frames[g_depth].first = (int)it.childFirst;
                     g_frames[g_depth].count = (int)it.childCount;
                     g_frames[g_depth].selection = 0;
+                    g_frames[g_depth].kind = FR_NORMAL;
                     g_depth++;
                     ResetSelectionAnimation(now);
                 }
@@ -959,7 +1388,7 @@ namespace CTRPluginFramework
             {
                 Item &it = Sel();
 
-                if (it.type == ITEM_FOLDER || it.disabled)
+                if (it.type == ITEM_FOLDER || it.disabled || IsSettingsItem(it))
                     return;
                 CloseOtherOverlays();
                 g_capture.active = true;
@@ -1126,7 +1555,25 @@ namespace CTRPluginFramework
             {
                 // 退場アニメーション中のメニューは閉じたものとして扱う（gohan issue #1）
                 const bool  menuOpen = g_visible && g_openTarget != 0.0f;
+                const bool  modal = g_dialog.type != DLG_NONE || OverlayActive() || g_inline.active;
 
+                // issue-fixes.js handle: START で設定画面を開閉（モーダル中は通常の処理へ）
+                if (bit == HB_START && pressed && !repeated && menuOpen && !modal)
+                {
+                    ReleaseInactiveHotkeys();
+                    ToggleSettings(now);
+                    return;
+                }
+                // 設定画面では X Y L R SELECT 左右を飲む。
+                // ★gohan の意図した差: メニューが開いている間だけ（Simulator はメニューを閉じても設定画面が
+                //   残っていると飲むので、閉じた後のホットキーが効かなくなる）
+                if (Cur().kind == FR_SETTINGS && pressed && !repeated && !modal && menuOpen
+                    && (bit == HB_X || bit == HB_Y || bit == HB_L || bit == HB_R || bit == HB_SELECT
+                        || bit == HB_LEFT || bit == HB_RIGHT))
+                {
+                    ReleaseInactiveHotkeys();
+                    return;
+                }
                 if (g_capture.active)
                 {
                     HandleHotkeyCapture(bit, pressed, repeated, now);
@@ -1192,6 +1639,11 @@ namespace CTRPluginFramework
                     BeginHoldAction(bit, now);
                 else if (bit == HB_Y)
                     OpenHotkeyPicker(now);
+                else if (bit == HB_R && !repeated)
+                {
+                    if (!IsSettingsItem(Sel()))
+                        ToggleFavorite(ItemIndex(Sel()), now);
+                }
                 else if ((bit == HB_LEFT || bit == HB_RIGHT) && IsNumericItem(Sel()))
                     ChangeValue(Sel(), bit == HB_RIGHT ? 1 : -1, now);
             }
@@ -1237,6 +1689,8 @@ namespace CTRPluginFramework
             // ================================================================
             static void SyncLinkedItems(void)
             {
+                // 保持した値を戻す書き込みを先に済ませる（読み直しで上書きしないように）
+                DrivePendingRestores();
                 for (int i = 0; i < g_itemCount; i++)
                 {
                     Item &it = g_items[i];
@@ -1258,6 +1712,7 @@ namespace CTRPluginFramework
                     it.value = v;
                     it.applied = v;
                 }
+                UpdateFixedLinkedItems();
             }
 
             void    OpenMenu(u32 now)
@@ -1527,6 +1982,8 @@ namespace CTRPluginFramework
                     g_prevHeld = in.held;
                     g_held = in.held;
                     g_prevTouch = in.touch;
+                    DriveFixedItems();
+                    DrivePendingRestores();
                     Update(now);
                     DriveToggleHandlers();
                     PollEffects(now);
@@ -1578,6 +2035,11 @@ namespace CTRPluginFramework
 
                 // 操作で値が変わったフレームのうちに無効状態も追従させる（描画が 1 フレーム遅れないように）
                 SyncDisabledItems();
+                // issue-fixes.js update: refreshDisabledItems -> updateFixedLinkedItems -> update
+                RefreshLinkedDisabled();
+                UpdateFixedLinkedItems();
+                DriveFixedItems();
+                DrivePendingRestores();
                 Update(now);
                 DriveToggleHandlers();
                 PollEffects(now);
@@ -1637,6 +2099,13 @@ namespace CTRPluginFramework
                 std::memset(g_hotActive, 0, sizeof(g_hotActive));
                 std::memset(g_repAt, 0, sizeof(g_repAt));
                 std::memset(&g_toggleHdl, 0, sizeof(g_toggleHdl));
+                // お気に入り・値の固定・保持の設定は ResetState で既定へ戻す（保存から戻すのは RestorePersist）
+                std::memset(g_favorite, 0, sizeof(g_favorite));
+                std::memset(g_fixed, 0, sizeof(g_fixed));
+                std::memset(g_fixedValue, 0, sizeof(g_fixedValue));
+                g_persist.keepFavorites = true;
+                g_persist.keepEnabledItems = false;
+                g_persist.keepEnabledFavorites = false;
                 for (int i = 0; i < kMaxItems; i++)
                     g_effectSeen[i] = EffectActive(i);
                 g_noticeNextId = 1;
@@ -1661,6 +2130,9 @@ namespace CTRPluginFramework
                 g_frames[0].first = g_rootFirst;
                 g_frames[0].count = g_rootCount;
                 g_frames[0].selection = 0;
+                g_frames[0].kind = FR_NORMAL;
+                g_settingsTarget = -1;
+                RebuildFavList();
                 ResetSelectionAnimation(0);
             }
 

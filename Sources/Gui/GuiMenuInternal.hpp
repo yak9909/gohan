@@ -17,6 +17,8 @@
 #include "GuiMenu.hpp"
 #include "GuiRenderer.hpp"
 
+#include <vector>
+
 namespace CTRPluginFramework
 {
     namespace GuiMenu
@@ -46,7 +48,10 @@ namespace CTRPluginFramework
             const int   kScreenRows  = 8;       // LISTBOX.screenVisibleRows
             const int   kBottomAnimMs = 180;    // BOTTOM_OVERLAY.animationDuration
             const int   kDialogMs    = 160;     // DIALOG.animationDuration
-            const int   kNoticeMax   = 7;       // NOTICE.maximum
+            // ★通知は高さで押し上げ、画面の上へ出たものから消す（notification-layout-fix.js）。件数の上限は無い。
+            //   固定長の配列なので、最も低い通知（27px + 間 4px）が 240px に積める数より多めに持つ。
+            const int   kNoticeMax   = 12;
+            const int   kNoticeLineH = 10;      // NOTICE_LINE_HEIGHT（issue-fixes.js）
             const int   kNoticeW     = 144;     // NOTICE.width
             const int   kNoticeH     = 27;      // NOTICE.height
             const int   kNoticeGap   = 4;       // NOTICE.gap
@@ -119,12 +124,15 @@ namespace CTRPluginFramework
             enum ActionId
             {
                 ACT_NONE = 0, ACT_SAVE, ACT_TOP_LIST, ACT_BOTTOM_LIST,
-                ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI
+                ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI,
+                // 設定画面（START）の項目（issue-fixes.js の settingsAction）
+                ACT_SET_FAVORITES, ACT_SET_VALUE_LOCK, ACT_SET_KEEP_FAVORITES,
+                ACT_SET_KEEP_ITEMS, ACT_SET_KEEP_FAVORITE_ITEMS
             };
 
             const int   kMaxItems   = 128;     // 子の番号は u8（childFirst）なので 255 まで
             const int   kLongList   = 30;
-            const int   kMaxDepth   = 4;
+            const int   kMaxDepth   = 8;       // ルート / フォルダ / 設定 / お気に入り / その中のフォルダ …
             const int   kNameBytes  = 28;
             const int   kWrapBytes  = 96;
             const int   kTextBytes  = 96;
@@ -155,12 +163,16 @@ namespace CTRPluginFramework
                 u32         feedbackUntil;
             };
 
+            // フレームの種類（issue-fixes.js / ui-model.js の frame.kind）
+            enum FrameKind { FR_NORMAL = 0, FR_FAVORITES, FR_SETTINGS };
+
             struct Frame
             {
                 const char *title;
-                int         first;
+                int         first;          // FR_NORMAL: g_items の先頭
                 int         count;
                 int         selection;
+                u8          kind;           // FrameKind。FR_FAVORITES は g_favList、FR_SETTINGS は g_settingsItems を並べる
             };
 
             // 開閉のアニメーション（createListboxAnimation 等の共通部）
@@ -226,6 +238,10 @@ namespace CTRPluginFramework
                 int     bit;            // HB_X / HB_L
                 u32     start;
             };
+            // 長押しの取り消しの境目（issue-fixes.js の HOLD_CANCEL_THRESHOLD = 2 / 5）。
+            //   2/5 未満で離す -> 単体の操作 / 2/5 以上・満了前で離す -> 何もせず取り消し / 満了 -> 確認
+            const int   kHoldCancelNum = 2;
+            const int   kHoldCancelDen = 5;
 
             struct Notice
             {
@@ -237,6 +253,7 @@ namespace CTRPluginFramework
                 u32     createdAt;
                 float   moveFromY, targetY;
                 u32     moveStartedAt;
+                int     height;         // 行数で伸びる（27 + (行数 - 2) x 10。2 行未満でも 27）
             };
 
             // 関数側の登録（振る舞い。データではない）
@@ -289,6 +306,28 @@ namespace CTRPluginFramework
             extern Slider       g_slider;
             extern Hold         g_hold;
             extern Notice       g_notices[kNoticeMax];
+
+            // ---- お気に入り（ui-model.js の favoriteKeys。鍵は項目の階層パス）----
+            extern bool         g_favorite[kMaxItems];
+            extern u8           g_favList[kMaxItems];   // walkItems の順に並べたお気に入り
+            extern int          g_favCount;
+            // ---- 設定画面の項目（issue-fixes.js の buildSettingsItems）----
+            const int   kSettingsItems = 5;
+            extern Item         g_settingsItems[kSettingsItems];
+            extern int          g_settingsTarget;       // 設定画面を開いたときに選んでいた項目（-1 = なし）
+            // ---- 値の固定（連動型だけ。issue-fixes.js の fixed / fixedValue）----
+            extern bool         g_fixed[kMaxItems];
+            extern s32          g_fixedValue[kMaxItems];
+            // ---- 保持の設定（issue-fixes.js の persistenceSettings）----
+            struct Persistence
+            {
+                bool    keepFavorites;          // 既定 true
+                bool    keepEnabledItems;       // 既定 false
+                bool    keepEnabledFavorites;   // 既定 false
+            };
+            extern Persistence  g_persist;
+            // 保存を頼む（GuiMenu.cpp が GohanData::Save を繋ぐ。試験では空）
+            extern void       (*g_requestSave)(void);
             extern bool         g_visible;
             extern float        g_openFrom, g_openTarget;
             extern u32          g_openStart;
@@ -319,6 +358,22 @@ namespace CTRPluginFramework
             bool    EffectActive(int index);
             Frame  &Cur(void);
             Item   &Sel(void);
+            Item   &FrameItem(const Frame &fr, int row);  // フレームの row 行目の項目
+            bool    IsFavorite(int index);
+            bool    IsFixed(int index);
+            bool    IsSettingsItem(const Item &it);
+            // 設定画面・お気に入りの操作（外から呼ぶのは試験だけ）
+            bool    ToggleFavorite(int index, u32 now);
+            bool    OpenFavorites(u32 now);
+            bool    ToggleSettings(u32 now);
+            bool    SetItemFixed(int index, bool fixed, u32 now);
+            bool    HoldMuted(u32 now);                    // 長押しの進捗が 2/5 未満（灰色で描く）
+            // 保持（GuiMenuPersist.cpp）。書き出しは GohanCTRPFData.bin の gohan の欄
+            void    SerializePersist(std::vector<u8> &out);
+            void    RestorePersist(const u8 *data, u32 size);
+            void    DrivePendingRestores(void);            // 連動型の復元はゲームが読めるようになってから書く
+            bool    PersistChanged(void);                  // 最後に保存した中身と違うか
+            void    MarkPersistSaved(void);
             float   OpenAmount(u32 now);
             float   SelectionPosition(u32 now);
             float   ViewportStart(u32 now);
@@ -332,6 +387,8 @@ namespace CTRPluginFramework
             float   NoticeY(const Notice &nt, u32 now);
             bool    NoticeAlive(const Notice &nt, u32 now);
             void    AddNotice(const char *title, const char *msg, u32 now, bool red = false);
+            int     WrapNotice(const char *src, int maxWidth, char lines[][kWrapBytes], int maxLines);
+            int     NoticeHeight(const char *title, const char *msg);
             void    OpenMenu(u32 now);
             void    CloseMenu(u32 now);
             void    Step(u32 now, const Input &in);
