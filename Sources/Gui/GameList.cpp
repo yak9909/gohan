@@ -53,7 +53,11 @@ const u32 kRoomIdFn = 0x002F75CC;           // Room_GetCurrentId
 //   そこで十字は自分で読み、一覧自身の関数で動かす: 選択の見た目 = vt[16]、スクロール = sub_2987A8。
 //   上下 = 1 行、左右 = 8 行。押し続けると連続。スライドパッドは使わない。
 const u32 kDpadUp = 1u, kDpadDown = 2u, kDpadLeft = 4u, kDpadRight = 8u;
-const u32 kRepeatDelay = 12, kRepeatEvery = 3;  // フレーム（30fps）
+// ★押し下げと押し続けの判定はメニューのスレッドで実時間で行う（利用者報告 2026-09-25: 単押しの連打がとても遅い・
+//   長押しを離してもすぐ止まらない）。ゲームのフレームで数えていたので、プレビューのモデルを読む間（ゲームのフレームが
+//   止まる）押下を取りこぼし、離しても次のフレームまで送りが続いた。移動量は溜めておき、ゲームのスレッドが
+//   次のフレームでまとめて反映する（行の送り = s_dpadRowsSent、ページ送り = s_dpadPagesSent。書く側は 1 つだけ）。
+const u32 kRepeatDelayMs = 400, kRepeatEveryMs = 100;  // 以前の 12 / 3 フレーム（30fps）と同じ長さ
 
 typedef void *(*HeapAllocFn)(u32 size, void *heap, s32 align);
 typedef void *(*CtorFn)(void *self);
@@ -180,8 +184,12 @@ u8 *s_list;                                 // ゲームのヒープ
 //   毎フレーム T_itm_XX の Material の色 7 個（+0x10..）を T_id_XX へ写して合わせる。
 const u32 kPrefixChars = 6;
 const float kIdScale = 0.65f;               // 名前の文字（14.4 x 19.2）に対する大きさ
-const float kIdRight = -6.0f;               // ID の欄の右端（N_list_XX から。名前の左端 = 0、選択の帯の左端 = -6）
-const float kIdWidth = 36.0f;
+// ID の欄は「枠の内側の左端 〜 名前の左端」いっぱいにして中央寄せ（利用者 2026-09-25: 項目側に寄りすぎ → 空きの真ん中に）。
+//   Chokistream の下画面（work/evidence/screens/gamelist_20260925/list_id_v1.png、tools/dynamic/png_pixels.py で測定）:
+//   枠の内側の左端 = 下画面 x 29、名前の字の左端 = x 76 → N_list_XX から -47 〜 0。
+const float kIdRight = 0.0f;                // ID の欄の右端（N_list_XX から。名前の左端 = 0）
+const float kIdWidth = 47.0f;
+const u8 kIdTextPosition = 1 + 1 * 3;       // 横中央・縦中央（横 + 縦×3）
 const float kClipGrow = 26.0f;              // 切り抜きを左へ広げる量（左端 62.5 → 36.5。枠の内側 ≒ 35）
 const u32 kLytBytes = 12288;                // 写した bclyt の置き場（元は 5,780 B + 8 × 116 B）
 const u32 kRows = 8;
@@ -251,9 +259,12 @@ volatile Field s_field = Field::Shown;
 u32 s_fieldFrames;          // 今の段に入ってからのフレーム数
 u32 s_fieldRoom;            // 退場させたときの部屋
 bool s_menuCloseSent;      // 開いていた下画面メニューに閉じる命令を出した
-volatile u32 s_dpadHeld;    // kDpad* のビット（メニューのスレッドが書く）
-u32 s_dpadPrev;
-u32 s_dpadFrames;           // 押し続けているフレーム数
+u32 s_dpadPrev;             // メニューのスレッド: 前回の kDpad* のビット
+u32 s_dpadNextMs;           // メニューのスレッド: 次に送る時刻
+volatile s32 s_dpadRowsSent;    // メニューのスレッドだけが書く（通算）
+volatile s32 s_dpadPagesSent;
+s32 s_dpadRowsDone;             // ゲームのスレッドだけが書く（反映した通算）
+s32 s_dpadPagesDone;
 Dir s_frameDir = Dir::None;
 Dir s_listDir = Dir::None;
 bool s_hookReady;
@@ -334,7 +345,7 @@ u32 MakeIdLayout(const u8 *src) {
             std::memcpy(id + kSecName, name, 16);
             SecF(id, kSecX) = kIdRight - kIdWidth;      // 基準は左端・上下中央（origin 0x3。T_itm と同じ）
             SecF(id, kSecW) = kIdWidth;
-            id[kTxtPosition] = 2 + 1 * 3;              // 右寄せ・上下中央
+            id[kTxtPosition] = kIdTextPosition;
             SecF(id, kTxtFontX) *= kIdScale;
             SecF(id, kTxtFontY) *= kIdScale;
             ++added;
@@ -805,6 +816,8 @@ bool BuildStep(void) {
             return false;
         }
         s_list = reinterpret_cast<u8 *>(InstSelectCtor(mem));
+        s_dpadRowsDone = s_dpadRowsSent;    // 出す前の十字は反映しない
+        s_dpadPagesDone = s_dpadPagesSent;
         const u32 *base = reinterpret_cast<const u32 *>(kInstSelectVtbl);
         s_vtblStore[0] = base[-1];
         for (u32 i = 0; i < kVtblWords; ++i)
@@ -883,27 +896,14 @@ void MoveSelect(s32 index) {
 }
 
 void StepDpad(void) {
-    const u32 hold = s_dpadHeld;
-    if (B(s_list, kListInputLock) != 0 || s_count == 0) {
-        s_dpadPrev = hold;
-        s_dpadFrames = 0;
-        return;
-    }
-    const u32 trig = hold & ~s_dpadPrev;
-    s_dpadFrames = (hold != 0 && hold == s_dpadPrev) ? s_dpadFrames + 1 : 0;
-    const bool rep = trig != 0 || (s_dpadFrames >= kRepeatDelay && ((s_dpadFrames - kRepeatDelay) % kRepeatEvery) == 0);
-    s_dpadPrev = hold;
-    if (!rep)
-        return;
-    s32 step = 0;
-    if (hold & kDpadUp) step = -1;
-    else if (hold & kDpadDown) step = 1;
-    else if (hold & kDpadLeft) step = -VisibleRows();
-    else if (hold & kDpadRight) step = VisibleRows();
-    if (step == 0)
-        return;
+    const s32 rows = s_dpadRowsSent, pages = s_dpadPagesSent;
+    const s32 dRows = rows - s_dpadRowsDone, dPages = pages - s_dpadPagesDone;
+    s_dpadRowsDone = rows;
+    s_dpadPagesDone = pages;
+    if (B(s_list, kListInputLock) != 0 || s_count == 0 || (dRows == 0 && dPages == 0))
+        return;                             // 止めている間の押下は捨てる
     const s32 cur = S(s_list, kListSelected) < 0 ? 0 : S(s_list, kListSelected);
-    s32 next = cur + step;
+    s32 next = cur + dRows + dPages * VisibleRows();
     if (next < 0) next = 0;
     if (next >= (s32)s_count) next = (s32)s_count - 1;
     if (next != cur) {
@@ -990,7 +990,30 @@ void FeedDpad(u32 heldKeys) {
     if (heldKeys & 0x80u) s |= kDpadDown;
     if (heldKeys & 0x20u) s |= kDpadLeft;
     if (heldKeys & 0x10u) s |= kDpadRight;
-    s_dpadHeld = s;
+    // 押し下げ・押し続けをここ（メニューのスレッド）で実時間で判定し、移動量を溜める（上の説明）
+    const u32 now = (u32)(svcGetSystemTick() / (u64)(SYSCLOCK_ARM11 / 1000));
+    const u32 trig = s & ~s_dpadPrev;
+    bool send = false;
+    if (s == 0) {
+        s_dpadPrev = 0;
+        return;
+    }
+    if (trig != 0 || s != s_dpadPrev) {
+        s_dpadNextMs = now + kRepeatDelayMs;
+        send = trig != 0;
+    } else if ((s32)(now - s_dpadNextMs) >= 0) {
+        s_dpadNextMs = s_dpadNextMs + kRepeatEveryMs;
+        if ((s32)(now - s_dpadNextMs) >= 0)     // 大きく遅れたら追いつかせない（1 回だけ送る）
+            s_dpadNextMs = now + kRepeatEveryMs;
+        send = true;
+    }
+    s_dpadPrev = s;
+    if (!send)
+        return;
+    if (s & kDpadUp) s_dpadRowsSent = s_dpadRowsSent - 1;
+    else if (s & kDpadDown) s_dpadRowsSent = s_dpadRowsSent + 1;
+    else if (s & kDpadLeft) s_dpadPagesSent = s_dpadPagesSent - 1;
+    else if (s & kDpadRight) s_dpadPagesSent = s_dpadPagesSent + 1;
 }
 
 void SetItemMessages(const char *label, const s16 *indices, u32 count) {

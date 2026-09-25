@@ -528,6 +528,27 @@ void ShowKindList(void) {
         GameList::Show((s32)s_kind);
 }
 
+// リストの選択で種類が変わったとき、形とプレビューは選択が kKindSettleMs 止まってから置き直す（利用者報告 2026-09-25:
+//   十字の連打がとても遅い。1 回ごとにプレビューのモデルを読み、ゲームのフレームが止まっていた）。
+const u32 kKindSettleMs = 250;
+bool s_tilesPending;
+u32 s_tilesAt;
+u32 NowMs(void) { return (u32)(svcGetSystemTick() / (u64)(SYSCLOCK_ARM11 / 1000)); }
+
+void StepPendingTiles(u32 dpadHeld) {
+    if (!s_tilesPending)
+        return;
+    if (dpadHeld != 0) {                        // 押している間は待つ
+        s_tilesAt = NowMs() + kKindSettleMs;
+        return;
+    }
+    if ((s32)(NowMs() - s_tilesAt) < 0)
+        return;
+    s_tilesPending = false;
+    if (s_mode == Mode::Place)
+        UpdateTiles();
+}
+
 // リストで選ばれた種類を配置する種類にする（ほかのモードなら配置へ切り替える）
 void TakeListChoice(void) {
     const s32 chosen = GameList::TakeDecided();
@@ -541,7 +562,8 @@ void TakeListChoice(void) {
         s_mode = Mode::Place;
         Select(-1);
     } else {
-        UpdateTiles();
+        s_tilesPending = true;                  // 選択が止まってから置き直す（上の説明）
+        s_tilesAt = NowMs() + kKindSettleMs;
     }
 }
 
@@ -657,6 +679,10 @@ void Execute(void) {
     case Mode::Place: {
         if (s_kindCount == 0)
             return;
+        if (s_tilesPending) {                   // 形とプレビューを今の種類へ合わせてから置く
+            s_tilesPending = false;
+            UpdateTiles();
+        }
         const PublicWorks::Result result = PublicWorks::PlaceAt(s_kinds[s_kind], (u32)s_cx, (u32)s_cy);
         Report(result);
         AfterChange(result);
@@ -747,7 +773,8 @@ void Watch(void) {
     const BuildingPreview::Status ps = BuildingPreview::GetStatus();
     if (s_mode == Mode::Place && ps.shownId >= 0 && ps.shownId != s_previewNotifiedId) {
         if (!ps.available) {
-            GuiDialog::ShowMessage(Cheats::kBeOn, u8"この建物にはプレビューがありません");
+            // これだけは通知（利用者指示 2026-09-25。ほかの警告・エラーはダイアログ）
+            GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物にはプレビューがありません");
             s_previewNotifiedId = ps.shownId;
         } else if (ps.failed) {
             GuiDialog::ShowMessage(Cheats::kBeOn, (ps.failReason == 10 || ps.failReason == 2 || ps.failReason == 3)
@@ -848,8 +875,10 @@ void Tick(u32 keys) {
 
     // 配置する種類は下画面のリストで選ぶ（十字キーはリスト自体の操作。利用者指示で十字左右の順送りはやめた）。
     //   十字はゲームの入力を止めたまま、リストの更新の間だけリストへ渡す（GameList::FeedDpad）。
-    GameList::FeedDpad(keys & ((u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight));
+    const u32 dpad = keys & ((u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight);
+    GameList::FeedDpad(dpad);
     TakeListChoice();
+    StepPendingTiles(dpad);
     UpdateCapacityLabels(false);
 
     if (pressed & (u32)Key::A)
