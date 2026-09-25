@@ -81,6 +81,26 @@ namespace CTRPluginFramework
             const u32   kKanaCall[3]    = { 0x004F5654, 0x004F56A4, 0x004F57A4 };
             const u32   kKanaCallWord[3] = { 0xEB00B028, 0xEB00B014, 0xEB00AFD4 };   // BL 0x5216FC
 
+            // ---- キーの入力の待ち（IDA-opus-5.5-F046。利用者の指示 2026-09-26: 次の入力までの待ちを無くす）----
+            //   キーボードの部品の更新 gui_UpdateButtons(0x4FD7B0) は、まず一覧（0xAD0630）の部品のどれかが +12（押さえている）なら
+            //   忙しい旗 0x9580E6 を立て、立っていれば +12 の部品以外の更新を飛ばす。字のキー gui::InputButton は
+            //   押した瞬間（状態 0）に入力し +12 を立て、離すと状態 2、次のフレームで状態 0、そのまた次のフレームで +12 を落とす
+            //   → 離したあと 2 フレームは他のキーの「押した瞬間」を取りこぼす。更新の前に、その 2 フレーム分の後片付けを前倒しする。
+            const u32   kKeyUpdate      = 0x004FD7B0;   // gui_UpdateButtons(flags)（BsSkb の calc 0x57F744 から 1 回/フレーム）
+            const u32   kKeyUpdateOrig  = 0xE92D47F0;   // PUSH {R4-R10,LR}
+            const u32   kKeyList        = 0x00AD0630;   // 部品の一覧の番兵（次 = [番兵]、部品 = 節 - 4）
+            const u32   kVtInputButton  = 0x008FD060;   // gui::InputButton（字・Enter・濁点のキー）
+            const u32   kVtRepeatInput  = 0x008FD2F0;   // gui::RepeatInputButton（消去など長押しで繰り返すキー）
+            const u32   kButtonAnimDone = 0x004FD9C8;   // gui_Button_AnimsDone(button, 段) = 状態 2 の「待ち」の判定
+            const u32   kButtonAnimDoneOrig = 0xE92D4010;
+            // 状態ごとの処理（vt+0x28 / +0x2C / +0x30）が F046 で読んだものと同じかを確かめる
+            const u32   kKeyVtCheck[][2] = {
+                { kVtInputButton + 0x28, 0x004F6264 }, { kVtInputButton + 0x2C, 0x004F62F0 }, { kVtInputButton + 0x30, 0x004F6A8C },
+                { kVtRepeatInput + 0x28, 0x004FCB50 }, { kVtRepeatInput + 0x2C, 0x004FCBEC },
+            };
+            const u32   kKeyUpdateOff   = 0x0095819C;   // 0 でないと元の処理は部品を更新しない（意味は未確定。条件だけ写す）
+            const u32   BTN_HOLD = 0x0C, BTN_STATE = 0x10, BTN_TOGGLE = 0x119;
+
             const u32   TM_LEN = 0x08, TM_MAX = 0x0C, TM_BUF = 0x10, TM_CURSOR = 0x14, TM_18 = 0x18;
             const u32   TM_ANCHOR = 0x1C, TM_SEL = 0x20, TM_PEND = 0x24, TM_EXTRA = 0x28, TM_90 = 0x90;
             const int   kReadingMax = 32;               // ChatKanji::RequestText の上限（普通のチャットの最大字数）
@@ -181,6 +201,14 @@ namespace CTRPluginFramework
             // 写し（2026-09-26）: 最初に取ったテクスチャを借りたヒープへ写し、以後はそれを使う（キー配列を切り替えても剥がれない）
             bool            g_texCopied = false;
             u32             g_texCopyGen = 0;           // 写したときの GuiRenderer::Generation()
+            // ★写すのは取ってから kTexCopyDelay 回あと（2026-09-26。押下のテクスチャが乱れた）:
+            //   初めて取るテクスチャはその場で VRAM への読み込みが始まり、転送は GPU の DMA 要求として積まれるだけ
+            //   （ssys_LoadBclimToVram 0x5676C8 → 0x7B0044 が g_GpuCmdListMgr の列へ積む）。取った直後に写すと転送前の中身を写す。
+            //   それまでは VRAM のものをそのまま使う（写しを入れる前はこれで押下の見た目も PASS だった）。
+            const u32       kTexCopyDelay = 10;         // BsSkb の calc の回数（1 回/フレーム）
+            u32             g_texInfo[2][5];            // 取ったテクスチャ（TextureInfo）
+            u32             g_texAge = 0;               // 取ってからの回数
+            bool            g_texCopyTried = false;     // 写そうとした（写せなくても繰り返さない）
             volatile u32    g_texSeq = 0;               // 取り直すたびに増える（奇数 = 書いている途中）
             volatile bool   g_texOk = false;
 
@@ -396,6 +424,7 @@ namespace CTRPluginFramework
             Hook        g_hWait;
             Hook        g_hWindowIn;
             Hook        g_hKeysetLoad;
+            Hook        g_hKeyUpdate;
 
             inline u32  R32(u32 a)          { return *(volatile u32 *)a; }
             inline void W32(u32 a, u32 v)   { *(volatile u32 *)a = v; }
@@ -567,11 +596,12 @@ namespace CTRPluginFramework
                 g_state = S_ACTIVE;
             }
 
-            // 今のキー配列の「空白」キーのテクスチャを、そのキー配列の arc のアクセサから取る（読み込み済みの控えが返る）
+            void    SetKeyTexMaps(const u32 *copyPa);
+
+            // 今のキー配列の「空白」キーのテクスチャを、そのキー配列の arc のアクセサから取る（初めてなら読み込みが始まる）
             bool    CaptureKeyTextures(u32 bsskb, u32 kind)
             {
                 typedef void (*GetTextureFn)(u32 *out, u32 accessor, const char *name);
-                typedef void (*UpdateFn)(u32 *texMap);
                 const u32   acc = bsskb + kBsSkbKeysetAcc;
                 const char *names[2];
                 u32         info[2][5];
@@ -595,6 +625,44 @@ namespace CTRPluginFramework
                     if (info[i][1] == 0 || (info[i][2] & 0xFFFF) == 0 || (info[i][3] & 0xFFFF) == 0)
                         return false;
                 }
+                std::memcpy(g_texInfo, info, sizeof(g_texInfo));
+                g_texAge = 0;
+                g_texCopyTried = false;
+                SetKeyTexMaps(nullptr);                 // まずは VRAM のものを使う（写すのは転送が済んでから）
+                return true;
+            }
+
+            // TexMap を組み直して公開する（copyPa が null なら VRAM のもの）
+            void    SetKeyTexMaps(const u32 *copyPa)
+            {
+                typedef void (*UpdateFn)(u32 *texMap);
+                const u32   (&info)[2][5] = g_texInfo;
+
+                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 奇数: 書いている途中
+                for (int i = 0; i < 2; i++)
+                {
+                    // Material の ctor と同じ組み方（0x4BCEA8）: 番地・大きさ・書式、ラップ = クランプ、
+                    //   フィルタ = 資源の rawS/rawT 4（KeytopModeSelect の material）→ bits4-6 = 1 / bit7 = 1
+                    std::memset(g_texMap[i], 0, sizeof(g_texMap[i]));
+                    g_texMap[i][0] = info[i][0];
+                    g_texMap[i][1] = copyPa != nullptr ? copyPa[i] : info[i][1];
+                    g_texMap[i][2] = info[i][2];
+                    g_texMap[i][3] = info[i][3];
+                    g_texMap[i][4] = ((info[i][4] & 0xFFu) << 8 & 0xF00u) | 0x10u | 0x80u;
+                    ((UpdateFn)kTexMapUpdate)(g_texMap[i]);
+                }
+                g_texOk = true;
+                g_texCopied = copyPa != nullptr;
+                g_texCopyGen = GuiRenderer::Generation();
+                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 偶数: 揃った
+            }
+
+            // 取ったテクスチャを借りたヒープへ写し、以後はそれを使う（キー配列を切り替えても剥がれない）。ゲームのスレッド
+            void    CopyKeyTextures(void)
+            {
+                const u32   (&info)[2][5] = g_texInfo;
+
+                g_texCopyTried = true;
                 // VRAM（PA 0x18000000..0x18600000、VA = PA + 0x07000000）にあり、読めるなら、借りたヒープへ写す
                 u32         copyPa[2] = { 0, 0 };
                 {
@@ -625,26 +693,9 @@ namespace CTRPluginFramework
                         at = (at + bytes + 0x7Fu) & ~0x7Fu;
                     }
                     if (!ok)
-                        copyPa[0] = copyPa[1] = 0;
+                        return;                         // 写せない: VRAM のものを使い続ける
                 }
-                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 奇数: 書いている途中
-                for (int i = 0; i < 2; i++)
-                {
-                    // Material の ctor と同じ組み方（0x4BCEA8）: 番地・大きさ・書式、ラップ = クランプ、
-                    //   フィルタ = 資源の rawS/rawT 4（KeytopModeSelect の material）→ bits4-6 = 1 / bit7 = 1
-                    std::memset(g_texMap[i], 0, sizeof(g_texMap[i]));
-                    g_texMap[i][0] = info[i][0];
-                    g_texMap[i][1] = copyPa[i] != 0 ? copyPa[i] : info[i][1];
-                    g_texMap[i][2] = info[i][2];
-                    g_texMap[i][3] = info[i][3];
-                    g_texMap[i][4] = ((info[i][4] & 0xFFu) << 8 & 0xF00u) | 0x10u | 0x80u;
-                    ((UpdateFn)kTexMapUpdate)(g_texMap[i]);
-                }
-                g_texOk = true;
-                g_texCopied = copyPa[0] != 0 && copyPa[1] != 0;
-                g_texCopyGen = GuiRenderer::Generation();
-                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 偶数: 揃った
-                return true;
+                SetKeyTexMaps(copyPa);
             }
 
             inline float RF(u32 a)
@@ -709,11 +760,18 @@ namespace CTRPluginFramework
                 const u32   keyset = R32(bsskb + kBsSkbKeyset);
                 const u32   kind = R32(kKeysetKind);
 
-                // 写しがあれば取り直さない（描画器が組み直されていれば写しも無効）
+                // 写しがあれば取り直さない（描画器が組み直されていれば写しも無効 → 取り直して、また数回あとに写す）
                 if (g_texCopied && g_texOk && g_texCopyGen == GuiRenderer::Generation())
                     return;
+                if (g_texOk && g_texCopyGen != GuiRenderer::Generation())
+                    g_texOwner = 0;
                 if (bsskb == g_texOwner && keyset == g_texKeyset && kind == g_texKind)
+                {
+                    // 同じキー配列のまま kTexCopyDelay 回たったら写す（VRAM への転送はとうに済んでいる）
+                    if (g_texOk && !g_texCopied && !g_texCopyTried && ++g_texAge >= kTexCopyDelay)
+                        CopyKeyTextures();
                     return;
+                }
                 g_texOk = false;
                 __atomic_add_fetch(&g_texSeq, 2u, __ATOMIC_ACQ_REL);   // 前の分はもう使わない（偶数のまま進める）
                 if (keyset != 0)
@@ -804,6 +862,9 @@ namespace CTRPluginFramework
                 int         r;
                 const bool  compose = g_compOn && kana && g_chatOpen && ch != 0x20 && ch != 0x3000 && ch != 10;
 
+                // 元の処理に渡す直前の未確定の長さ（Enter はここを 0 にして確定する。文字列は変わらない）
+                const int   pendIn = RI(tm, TM_PEND);
+
                 if (!compose)
                     r = ctx.OriginalFunction<int>(tm, ch, romaji, combine);
                 else
@@ -830,7 +891,9 @@ namespace CTRPluginFramework
 
                 // ★字が入らなかった（文字数の上限など）: 何も変わっていないので、未確定と変換の区切りを元に戻す
                 //   （以前は入らなくても変換を終え、選択中の候補が消えた。利用者の報告 2026-09-26）
-                if (SameText(before, Snap(tm)))
+                //   ★未確定の長さが元の処理で変わったとき（Enter の確定など）は「入らなかった」ではない（2026-09-26 利用者の報告:
+                //   未変換のまま Enter で確定されなかった）。合成の経路は未確定を自分で書くので、文字列だけで見る。
+                if (SameText(before, Snap(tm)) && (compose || RI(tm, TM_PEND) == pendIn))
                 {
                     WI(tm, TM_PEND, before.pend);
                     if (session)
@@ -942,6 +1005,39 @@ namespace CTRPluginFramework
                 return r;
             }
 
+            // キーの入力の待ちを無くす（F046）。ゲームが次の 2 フレームでやる後片付けを、この回の更新の前にやる:
+            //   InputButton の状態 2（離すアニメの待ち）は、ゲームの判定 gui_Button_AnimsDone(button, 2) が真なら状態 0 へ（状態 2 の処理と同じ）。
+            //   状態 0 に戻った字のキー・繰り返しキーの +12 を落とす（状態 0 の処理の最初と同じ）。これで忙しい旗が立たず、どのキーもすぐ押せる。
+            void    SkipKeyWait(void)
+            {
+                typedef int (*AnimDoneFn)(u32 button, int phase);
+                u32         node = R32(kKeyList);
+
+                for (int n = 0; n < 1024 && node != kKeyList && node >= 0x08000000u && node < 0x40000000u; n++, node = R32(node))
+                {
+                    const u32   b = node - 4;
+                    const u32   vt = R32(b);
+
+                    if (vt != kVtInputButton && vt != kVtRepeatInput)
+                        continue;
+                    if (vt == kVtInputButton && R32(b + BTN_STATE) == 2 && R8(b + BTN_TOGGLE) == 0
+                        && ((AnimDoneFn)kButtonAnimDone)(b, 2) != 0)
+                        W32(b + BTN_STATE, 0);
+                    if (R32(b + BTN_STATE) == 0 && R8(b + BTN_HOLD) != 0)
+                        W8(b + BTN_HOLD, 0);
+                }
+            }
+
+            __attribute__((noinline)) int ChatImeKeyUpdate(u32 flags)
+            {
+                HookContext &ctx = HookContext::GetCurrent();
+
+                // 旗 0x107 か 0x95819C があると元の処理は部品を更新しない（そのときは触らない）
+                if (g_convOn && !g_broken && (flags & 0x107u) == 0 && R32(kKeyUpdateOff) == 0)
+                    SkipKeyWait();
+                return ctx.OriginalFunction<int>(flags);
+            }
+
             // ---- メニュースレッド ----
             bool    CodeMatches(void)
             {
@@ -952,11 +1048,15 @@ namespace CTRPluginFramework
                     { kSetCursor, kSetCursorOrig }, { kPlaySound, kPlaySoundOrig }, { kTexMapUpdate, kTexMapUpdateOrig },
                     { kGetTexture, kGetTextureOrig }, { kVtAccessorVram + 0x10, kGetTexture },
                     { kWindowInCalc, kWindowInCalcOrig }, { kKeysetLoadCalc, kKeysetLoadCalcOrig }, { kFindPane, kFindPaneOrig }, { kSetTranslate, kSetTranslateOrig },
+                    { kKeyUpdate, kKeyUpdateOrig }, { kButtonAnimDone, kButtonAnimDoneOrig },
                 };
 
                 if (Process::GetTitleID() != 0x0004000000086200ULL)
                     return false;
                 for (const auto &w : words)
+                    if (R32(w[0]) != w[1])
+                        return false;
+                for (const auto &w : kKeyVtCheck)
                     if (R32(w[0]) != w[1])
                         return false;
                 return true;
@@ -979,9 +1079,10 @@ namespace CTRPluginFramework
                 g_hWait.InitializeForMitm(kWaitCalc, (u32)ChatImeWaitCalc);
                 g_hWindowIn.InitializeForMitm(kWindowInCalc, (u32)ChatImeWindowInCalc);
                 g_hKeysetLoad.InitializeForMitm(kKeysetLoadCalc, (u32)ChatImeKeysetLoadCalc);
+                g_hKeyUpdate.InitializeForMitm(kKeyUpdate, (u32)ChatImeKeyUpdate);
                 if (g_hInput.Enable() != HookResult::Success || g_hBack.Enable() != HookResult::Success
                     || g_hWait.Enable() != HookResult::Success || g_hWindowIn.Enable() != HookResult::Success
-                    || g_hKeysetLoad.Enable() != HookResult::Success)
+                    || g_hKeysetLoad.Enable() != HookResult::Success || g_hKeyUpdate.Enable() != HookResult::Success)
                 {
                     // 入った分は外す（まだ何も走っていない。旗も立てていない）
                     g_hInput.Disable();
@@ -989,6 +1090,7 @@ namespace CTRPluginFramework
                     g_hWait.Disable();
                     g_hWindowIn.Disable();
                     g_hKeysetLoad.Disable();
+                    g_hKeyUpdate.Disable();
                     m_hookFailed = true;
                     GuiMenu::NotifyRed(kKanji, u8"フックを入れられません。");
                     return false;
