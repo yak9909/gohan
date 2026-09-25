@@ -103,11 +103,14 @@ namespace CTRPluginFramework
             //   文字は横も縦もキーの中央（字幅は GPU の送りで測る）。
             struct KeyRect { int x, y, w, h; const char *label; float scale; };
             enum { KEY_SELECT_ALL = 0, KEY_LEFT, KEY_RIGHT, KEY_COUNT };
+            //   2026-09-26（利用者の指示）: 全選択は幅を 1px 縮める（左に揃える）。左右は 2 つ合わせて全選択と同じ幅・X、間は 1px、前より 1px 下げる。
             const KeyRect kKeys[KEY_COUNT] = {
-                { 279, 49, 40, 19, u8"全選択", 0.72f },
-                { 275,  1, 22, 19, u8"←",     0.8f },
-                { 297,  1, 22, 19, u8"→",     0.8f },
+                { 279, 49, 39, 19, u8"全選択", 0.72f },
+                { 279,  2, 19, 19, u8"←",     0.8f },
+                { 299,  2, 19, 19, u8"→",     0.8f },
             };
+            // 左右キーの背面の地（変換欄と同じ色）。キーを 1px ずつ囲む
+            const int   kArrowBackX = 278, kArrowBackY = 1, kArrowBackW = 41, kArrowBackH = 21;
             const char  kLabelDeselect[] = u8"解除";         // 全体が選択されている間の全選択キー
             // 空白キー（どのキー配列も P_key_Spc / T_key_Spc と *_n0s1 の値が同じ。フレーム 0 = 通常、1 = 押下）
             const u32   kKeyColor0     = 0x0023418C;    // material 色[0] (140,65,35,0)
@@ -146,6 +149,9 @@ namespace CTRPluginFramework
             u32             g_texKeyset = 0;            //        キー配列
             u32             g_texKind = 0xFFFFFFFF;     //        キー配列の種類
             u32             g_texMap[2][8];             // [0] 空白キー / [1] その押下（…on）の TexMap（32 B）
+            // 写し（2026-09-26）: 最初に取ったテクスチャを借りたヒープへ写し、以後はそれを使う（キー配列を切り替えても剥がれない）
+            bool            g_texCopied = false;
+            u32             g_texCopyGen = 0;           // 写したときの GuiRenderer::Generation()
             volatile u32    g_texSeq = 0;               // 取り直すたびに増える（奇数 = 書いている途中）
             volatile bool   g_texOk = false;
 
@@ -348,6 +354,8 @@ namespace CTRPluginFramework
             int         m_wantKey = -1;                 // 離したキー。依頼の枠が空いたら出す
             int         m_dy = 0;                       // 開閉アニメ（BG の N_All の平行移動）ぶんのずれ
             u32         m_texSeqSeen = 0;
+            u32         m_texGen = 0;
+            u64         m_keyRepeatAt = 0;              // 左右キーの長押しの次の時刻
             bool        m_texReady = false;
             u64         m_repeatAt = 0;                 // 十字キー左右の長押しの次の時刻
             u16         m_repeatBit = 0;
@@ -369,6 +377,25 @@ namespace CTRPluginFramework
             u32     ThreadTag(void)
             {
                 return (u32)getThreadLocalStorage();
+            }
+
+            // 読める番地か（svcQueryMemory。VRAM の写しの前に）
+            bool    ReadableRange(u32 address, u32 bytes)
+            {
+                u64 cursor = address;
+                const u64 end = (u64)address + bytes;
+
+                while (cursor < end)
+                {
+                    MemInfo     info;
+                    PageInfo    page;
+
+                    if (R_FAILED(svcQueryMemory(&info, &page, (u32)cursor)) || !(info.perm & MEMPERM_READ)
+                        || info.base_addr > cursor || (u64)info.base_addr + info.size <= cursor)
+                        return false;
+                    cursor = (u64)info.base_addr + info.size;
+                }
+                return true;
             }
 
             // TextManager の数値が筋の通った範囲か（書き換える前に毎回）
@@ -538,6 +565,38 @@ namespace CTRPluginFramework
                     if (info[i][1] == 0 || (info[i][2] & 0xFFFF) == 0 || (info[i][3] & 0xFFFF) == 0)
                         return false;
                 }
+                // VRAM（PA 0x18000000..0x18600000、VA = PA + 0x07000000）にあり、読めるなら、借りたヒープへ写す
+                u32         copyPa[2] = { 0, 0 };
+                {
+                    u32         spare = 0;
+                    const u32   va = GuiRenderer::GpuSpare(spare);
+                    u32         at = 0;
+                    bool        ok = va != 0;
+
+                    for (int i = 0; i < 2 && ok; i++)
+                    {
+                        // nw::lyt の書式 → 1 画素のビット数（F291 の写像表: 0 L8 / 1 A8 / 2 LA4 / 3 LA8 / 4 HILO8 / 5 RGB565 /
+                        //   6 RGB8 / 7 RGBA5551 / 8 RGBA4 / 9 RGBA8 / 10 ETC1 / 11 ETC1A4 / 12 L4 / 13 A4）
+                        static const u8 kBits[14] = { 8, 8, 8, 16, 16, 16, 24, 16, 16, 32, 4, 8, 4, 4 };
+                        const u32   fmt = info[i][4] & 0xFFu;
+                        const u32   w = info[i][3] & 0xFFFFu, h = info[i][3] >> 16;
+                        const u32   src = info[i][1];
+                        const u32   bytes = fmt < 14 ? w * h * kBits[fmt] / 8 : 0;
+
+                        if (bytes == 0 || src < 0x18000000u || src + bytes > 0x18600000u || at + bytes > spare
+                            || !ReadableRange(src + 0x07000000u, bytes))
+                        {
+                            ok = false;
+                            break;
+                        }
+                        std::memcpy((void *)(va + at), (const void *)(src + 0x07000000u), bytes);
+                        svcFlushProcessDataCache(CUR_PROCESS_HANDLE, va + at, bytes);   // GPU は D-cache を見ない
+                        copyPa[i] = va + at - 0x10000000u;
+                        at = (at + bytes + 0x7Fu) & ~0x7Fu;
+                    }
+                    if (!ok)
+                        copyPa[0] = copyPa[1] = 0;
+                }
                 __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 奇数: 書いている途中
                 for (int i = 0; i < 2; i++)
                 {
@@ -545,13 +604,15 @@ namespace CTRPluginFramework
                     //   フィルタ = 資源の rawS/rawT 4（KeytopModeSelect の material）→ bits4-6 = 1 / bit7 = 1
                     std::memset(g_texMap[i], 0, sizeof(g_texMap[i]));
                     g_texMap[i][0] = info[i][0];
-                    g_texMap[i][1] = info[i][1];
+                    g_texMap[i][1] = copyPa[i] != 0 ? copyPa[i] : info[i][1];
                     g_texMap[i][2] = info[i][2];
                     g_texMap[i][3] = info[i][3];
                     g_texMap[i][4] = ((info[i][4] & 0xFFu) << 8 & 0xF00u) | 0x10u | 0x80u;
                     ((UpdateFn)kTexMapUpdate)(g_texMap[i]);
                 }
                 g_texOk = true;
+                g_texCopied = copyPa[0] != 0 && copyPa[1] != 0;
+                g_texCopyGen = GuiRenderer::Generation();
                 __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 偶数: 揃った
                 return true;
             }
@@ -567,6 +628,9 @@ namespace CTRPluginFramework
                 const u32   keyset = R32(bsskb + kBsSkbKeyset);
                 const u32   kind = R32(kKeysetKind);
 
+                // 写しがあれば取り直さない（描画器が組み直されていれば写しも無効）
+                if (g_texCopied && g_texOk && g_texCopyGen == GuiRenderer::Generation())
+                    return;
                 if (bsskb == g_texOwner && keyset == g_texKeyset && kind == g_texKind)
                     return;
                 g_texOk = false;
@@ -1047,6 +1111,8 @@ namespace CTRPluginFramework
                 const int   x = (int)pos.x, y = (int)pos.y;
 
                 // 自前キー: 押している間は押下の見た目、キーの上で離したら実行（音もゲームの処理から鳴らす）
+                const u64   now = svcGetSystemTick();
+
                 if (down && !m_touchPrev)
                 {
                     const int k = KeyAt(x, y);
@@ -1055,16 +1121,29 @@ namespace CTRPluginFramework
                     {
                         m_keyDown = k;
                         m_keyInside = true;
+                        // 左右は押した瞬間に 1 回、押し続けると 200ms 後から 60ms ごと（利用者の指示 2026-09-26）
+                        if (k == KEY_LEFT || k == KEY_RIGHT)
+                        {
+                            m_wantKey = k;
+                            m_keyRepeatAt = now + kRepeatDelayTicks;
+                        }
                     }
                 }
                 if (m_keyDown >= 0)
                 {
                     if (down)
+                    {
                         m_keyInside = KeyAt(x, y) == m_keyDown;
+                        if ((m_keyDown == KEY_LEFT || m_keyDown == KEY_RIGHT) && m_keyInside && now >= m_keyRepeatAt)
+                        {
+                            m_wantKey = m_keyDown;
+                            m_keyRepeatAt = now + kRepeatEveryTicks;
+                        }
+                    }
                     else
                     {
-                        if (m_keyInside)
-                            m_wantKey = m_keyDown;
+                        if (m_keyInside && m_keyDown == KEY_SELECT_ALL)
+                            m_wantKey = m_keyDown;      // 全選択は離したときに
                         m_keyDown = -1;
                         m_keyInside = false;
                     }
@@ -1130,14 +1209,21 @@ namespace CTRPluginFramework
                 {
                     const u32 seq = __atomic_load_n(&g_texSeq, __ATOMIC_ACQUIRE);
 
+                    if (m_texGen != GuiRenderer::Generation())
+                    {
+                        m_texGen = GuiRenderer::Generation();
+                        m_texSeqSeen = 0xFFFFFFFFu;     // 組み直された: 登録し直す（写しは無効なので次の取得を待つ）
+                        m_texReady = false;
+                    }
                     if ((seq & 1u) == 0 && seq != m_texSeqSeen)
                     {
                         m_texSeqSeen = seq;
-                        m_texReady = g_texOk && GuiRenderer::SetGameTexture(1, g_texMap[0], kKeyColor0)
+                        m_texReady = g_texOk && g_texCopyGen == GuiRenderer::Generation()
+                                     && GuiRenderer::SetGameTexture(1, g_texMap[0], kKeyColor0)
                                      && GuiRenderer::SetGameTexture(2, g_texMap[1], kKeyColor0);
                     }
                     // キー配列が切り替わった（テクスチャはそのキー配列の資源）: 取り直されるまで使わない
-                    if (m_texReady)
+                    if (m_texReady && !(g_texCopied && g_texCopyGen == GuiRenderer::Generation()))
                     {
                         const u32 bsskb = R32(kBsSkbPtr);
 
@@ -1350,13 +1436,13 @@ namespace CTRPluginFramework
                 // チャットが無い間はゲームのスレッドが依頼を受け取らない。残すと次に開いたときに古い依頼が走る
                 __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
                 g_state = S_IDLE;
-                // キーのテクスチャはキーボードの資源。閉じたら使わない（次に開いたらゲームのスレッドが取り直す）
-                if (m_texReady)
+                // キーのテクスチャ: 写しなら残す。キーボードの資源のままなら閉じたら使わない（次に開いたらゲームのスレッドが取り直す）
+                if (m_texReady && !(g_texCopied && g_texCopyGen == GuiRenderer::Generation()))
                 {
                     GuiRenderer::ClearGameTextures();
                     m_texReady = false;
+                    g_texOwner = 0;
                 }
-                g_texOwner = 0;
                 m_keyDown = -1;
                 m_wantKey = -1;
                 m_dy = 0;
@@ -1418,6 +1504,8 @@ namespace CTRPluginFramework
             GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, 1, kRowH, kColRowEdge);
             GuiRenderer::FillRect(BOT, kRowX + kRowW - 1, kRowY + dy, 1, kRowH, kColRowEdge);
             GuiRenderer::FillRect(BOT, kRowX, kRowY + kRowH - 1 + dy, kRowW, 1, kColRowEdge);
+            // 左右キーの背面の地（変換欄と同じ色。利用者の指示 2026-09-26）
+            GuiRenderer::FillRect(BOT, kArrowBackX, kArrowBackY + dy, kArrowBackW, kArrowBackH, kColBarPanel);
             for (int i = 0; i < KEY_COUNT; i++)
             {
                 const KeyRect  &k = kKeys[i];

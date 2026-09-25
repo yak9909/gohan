@@ -75,6 +75,10 @@ namespace CTRPluginFramework
 
         // ---- 状態の問い合わせ（診断用）----
         u32         BorrowBytes(void);  // ★借りる大きさの正本。OwnGui はこれを使う
+        u32         Generation(void);   // Install のたびに増える（借りた領域の番地が変わりうる）
+        // 借りたヒープ（GPU から読める）のアトラスの後ろの空き。VA を返し、大きさを bytes に入れる。PA = VA - 0x10000000。
+        //   チャットの自前キーのテクスチャの写しに使う（2026-09-26）。書いたら svcFlushProcessDataCache すること。
+        u32         GpuSpare(u32 &bytes);
         u32         HeapBase(void);
         u32         HeapSize(void);
         u32         AtlasVa(void);      // CAVE_N のキャッシュ吐き出し先に使う

@@ -129,7 +129,9 @@ namespace CTRPluginFramework
             //   300KB の目安をわずかに割るので、場面転換の soak で見ること。
             //   ★この値は OwnGui::Enable() が GuiRenderer::BorrowBytes() で読む。
             //     以前は OwnGui 側に 0x30000 が直書きされていて食い違っていた。
-            const u32   kBorrowBytes = 0x11000; // 69,632 B（★アトラスぶんだけ）
+            // ★2026-09-26: 0x11000 -> 0x13000。アトラスの後ろに、チャットの自前キーのテクスチャ（ゲームの空白キーの写し。
+            //   通常と押下の 2 枚で最大 8,192 B = 記号の 256x32 L4 x 2）を置く。キー配列を切り替えても剥がれないように。
+            const u32   kBorrowBytes = 0x13000; // 77,824 B（アトラス + キーのテクスチャの写し）
             // ★2026-09-17: アトラスを 256x128 -> 256x256（65,536 B）に広げたので 0x9000 から増やした。
             //   手紙の場面の空きは 0x9000 のとき約 457,000 B なので、増分 32,768 B を引いても約 424,000 B 残る。
             //   ★実機では未確認（手紙を開いて落ちないかを確かめること）。
@@ -216,6 +218,7 @@ namespace CTRPluginFramework
             bool        g_ready   = false;
             u32         g_base    = 0;          // ★プラグイン側の置き場（g_mem）
             u32         g_gpuBase = 0;          // ★借りたヒープの先頭（アトラス専用）
+            u32         g_generation = 0;       // Install のたびに増える（借りた領域の番地が変わりうる）
             u32         g_size    = 0;
             ScreenState g_scr[2];
             bool        g_dirty[2] = { true, true };
@@ -1164,6 +1167,22 @@ namespace CTRPluginFramework
         }
 
         u32     BorrowBytes(void)   { return kBorrowBytes; }
+        u32     Generation(void)    { return g_generation; }
+
+        u32     GpuSpare(u32 &bytes)
+        {
+            bytes = 0;
+            if (!g_ready || g_gpuBase == 0)
+                return 0;
+
+            const u32   start = AlignUp(g_gpuBase + g_offAtlas + kUiSheetBytes, 0x80);
+            const u32   end = g_gpuBase + g_size;
+
+            if (start >= end)
+                return 0;
+            bytes = end - start;
+            return start;
+        }
 
         // UTF-8 の 1 文字を読み進め、その送り幅（画素）を返す。
         // ★字形が無い文字は 0 を返す（FillSlot も書かずに飛ばすので勘定が合う）。
@@ -1605,6 +1624,7 @@ namespace CTRPluginFramework
             g_base = (u32)g_mem;
             g_gpuBase = gpuBase;
             g_size = cap;
+            g_generation++;
 
             if (!Layout(gpuBase, cap))
                 return false;
