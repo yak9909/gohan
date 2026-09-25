@@ -19,6 +19,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "ChatIme.hpp"
 #include "ChatKanji.hpp"
@@ -57,6 +58,7 @@ namespace CTRPluginFramework
             const u32   TM_LEN = 0x08, TM_MAX = 0x0C, TM_BUF = 0x10, TM_CURSOR = 0x14, TM_18 = 0x18;
             const u32   TM_ANCHOR = 0x1C, TM_SEL = 0x20, TM_PEND = 0x24, TM_EXTRA = 0x28, TM_90 = 0x90;
             const int   kReadingMax = 32;               // ChatKanji::RequestText の上限（普通のチャットの最大字数）
+#define SWKBD_TEXT_UNITS 56                             // SwkbdEngine::TextUnits（候補は 55 字まで + 終端）
 
             typedef int     (*InsertCharFn)(u32 tm, u32 ch, int pos, int romaji, float f);
             typedef void    (*DeleteRangeFn)(u32 tm, int pos, int n);
@@ -86,9 +88,12 @@ namespace CTRPluginFramework
             volatile bool   g_reverted = false; // Backspace で読みへ戻した（ゲーム -> メニュー。同じ読みでも取り直す）
 
             // ---- 依頼（メニュー -> ゲーム）----
-            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT };
+            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER };
             volatile u32    g_reqKind = R_NONE;
             volatile s32    g_reqArg = 0;
+            // R_APPLY で入れる文字列（メニューが写してから依頼する。ゲームのスレッドはキャッシュを読まない）
+            u16             g_applyText[SWKBD_TEXT_UNITS];
+            int             g_applyLen = 0;
             enum { START_OK = 0, START_NO_TARGET, START_TOO_LONG, START_NO_TM };
             volatile u32    g_startResult = START_OK;
 
@@ -115,6 +120,146 @@ namespace CTRPluginFramework
             volatile u32    g_threadInput = 0;
             volatile u32    g_threadWait = 0;
 
+            // ---- 変換の対象とその候補のキャッシュ（メニュースレッドだけ。利用者の指示 2026-09-26）----
+            //   255 件まで。溢れたら一番長く使っていないものから消す。当たったら「いま使った」にする（よく使うものを残す）。
+            //   件数とは別に、合計の大きさでも抑える（候補は最大 300 件 x 55 字。普段は 1 件数百バイト）。
+            const int   kCacheMax = 255;
+            const u32   kCacheBytesMax = 1024 * 1024;
+            struct CacheEntry
+            {
+                bool                used;
+                u32                 stamp;              // 最後に使った順（大きいほど新しい）
+                u16                 reading[kReadingMax + 1];
+                int                 readingLen;
+                std::vector<u16>    text;               // 候補を続けて並べたもの
+                std::vector<u16>    start;              // 候補 i は text[start[i] .. start[i+1])（要素数は候補数 + 1）
+            };
+            CacheEntry  m_cache[kCacheMax];
+            u32         m_cacheClock = 0;
+            u32         m_cacheBytes = 0;
+            int         m_entry = -1;                   // いま候補欄に出しているもの
+
+            u32     EntryBytes(const CacheEntry &e)
+            {
+                return (u32)(e.text.size() + e.start.size()) * 2 + (u32)sizeof(CacheEntry);
+            }
+
+            int     CacheFind(const u16 *reading, int n)
+            {
+                for (int i = 0; i < kCacheMax; i++)
+                    if (m_cache[i].used && m_cache[i].readingLen == n
+                        && std::memcmp(m_cache[i].reading, reading, (size_t)n * 2) == 0)
+                    {
+                        m_cache[i].stamp = ++m_cacheClock;
+                        return i;
+                    }
+                return -1;
+            }
+
+            void    CacheDrop(int i)
+            {
+                m_cacheBytes -= EntryBytes(m_cache[i]);
+                m_cache[i].used = false;
+                std::vector<u16>().swap(m_cache[i].text);
+                std::vector<u16>().swap(m_cache[i].start);
+                if (m_entry == i)
+                    m_entry = -1;
+            }
+
+            int     CacheOldest(void)
+            {
+                int best = -1;
+
+                for (int i = 0; i < kCacheMax; i++)
+                    if (m_cache[i].used && (best < 0 || m_cache[i].stamp < m_cache[best].stamp))
+                        best = i;
+                return best;
+            }
+
+            // ChatKanji の結果を入れる（同じ読みがあれば置き換える）。入れた番号を返す
+            int     CacheInsert(const u16 *reading, int n)
+            {
+                const int   count = ChatKanji::CandidateCount();
+                int         slot = -1;
+                u32         total = 0;
+
+                for (int i = 0; i < count; i++)
+                {
+                    int len = 0;
+
+                    ChatKanji::Candidate(i, len);
+                    total += (u32)len;
+                }
+                for (int i = 0; i < kCacheMax; i++)
+                    if (m_cache[i].used && m_cache[i].readingLen == n
+                        && std::memcmp(m_cache[i].reading, reading, (size_t)n * 2) == 0)
+                        CacheDrop(i);
+
+                const u32   need = (total + (u32)count + 1) * 2 + (u32)sizeof(CacheEntry);
+
+                for (;;)
+                {
+                    int free = -1;
+
+                    for (int i = 0; i < kCacheMax && free < 0; i++)
+                        if (!m_cache[i].used)
+                            free = i;
+                    if (free >= 0 && m_cacheBytes + need <= kCacheBytesMax)
+                    {
+                        slot = free;
+                        break;
+                    }
+                    const int old = CacheOldest();
+
+                    if (old < 0)
+                        break;
+                    CacheDrop(old);
+                }
+                if (slot < 0)
+                    return -1;
+
+                CacheEntry &e = m_cache[slot];
+
+                e.text.clear();
+                e.start.clear();
+                e.text.reserve(total);
+                e.start.reserve((size_t)count + 1);
+                for (int i = 0; i < count; i++)
+                {
+                    int         len = 0;
+                    const u16  *c = ChatKanji::Candidate(i, len);
+
+                    e.start.push_back((u16)e.text.size());
+                    for (int k = 0; c != nullptr && k < len; k++)
+                        e.text.push_back(c[k]);
+                }
+                e.start.push_back((u16)e.text.size());
+                std::memcpy(e.reading, reading, (size_t)n * 2);
+                e.reading[n] = 0;
+                e.readingLen = n;
+                e.used = true;
+                e.stamp = ++m_cacheClock;
+                m_cacheBytes += EntryBytes(e);
+                return slot;
+            }
+
+            int     EntryCount(void)
+            {
+                return m_entry >= 0 && m_cache[m_entry].used ? (int)m_cache[m_entry].start.size() - 1 : 0;
+            }
+
+            const u16 *EntryCandidate(int i, int &len)
+            {
+                len = 0;
+                if (i < 0 || i >= EntryCount())
+                    return nullptr;
+
+                const CacheEntry &e = m_cache[m_entry];
+
+                len = (int)e.start[(size_t)i + 1] - (int)e.start[(size_t)i];
+                return e.text.data() + e.start[(size_t)i];
+            }
+
             // ---- メニュースレッド側 ----
             enum { M_IDLE = 0, M_STARTING, M_ENGINE, M_SHOW };
             int         m_phase = M_IDLE;
@@ -129,6 +274,10 @@ namespace CTRPluginFramework
             bool        m_hooked = false;
             bool        m_hookFailed = false;
             u16         m_heldPrev = 0;
+            bool        m_hotPrev = false;
+            bool        m_wantEnter = false;            // ホットキー（Enter の代わり）。依頼の枠が空いたら出す
+            int         m_wantApply = -1;               // 選んだ候補。依頼の枠が空いたら出す
+            bool        m_preloadTried = false;         // このチャットで下準備を始めた
             int         m_sel = -1;
             float       m_scroll = 0.0f;
             int         m_count = 0;
@@ -275,13 +424,12 @@ namespace CTRPluginFramework
 
             void    ApplyCandidate(u32 tm, int index)
             {
-                int         len = 0;
-                const u16   *cand;
+                const int   len = g_applyLen;
+                const u16   *cand = g_applyText;
 
                 if (g_state == S_IDLE || !Consistent(tm))
                     return;
-                cand = ChatKanji::Candidate(index, len);
-                if (cand == nullptr || len <= 0)
+                if (len <= 0 || len >= SWKBD_TEXT_UNITS)
                     return;
                 if (g_sessionSel)
                     SelectionToPending(tm);
@@ -388,6 +536,8 @@ namespace CTRPluginFramework
                         ApplyCandidate(tm, (int)g_reqArg);
                     else if (kind == R_ABORT)
                         g_state = S_IDLE;
+                    else if (kind == R_ENTER && TmSane(tm))
+                        ((int (*)(u32, u32, u32, u32))kInputChar)(tm, 10, 0, 0);   // フック経由。字 10 は素通しでゲームが確定する
                     if (kind != R_NONE)
                         __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
                     // Enter・送信・カーソル移動で未確定が確定したら終わり
@@ -452,10 +602,12 @@ namespace CTRPluginFramework
 
             void    Reset(void)
             {
-                if (m_phase == M_SHOW || m_phase == M_ENGINE)
+                if (m_phase == M_ENGINE)
                     ChatKanji::Dismiss();
                 m_phase = M_IDLE;
                 m_count = 0;
+                m_entry = -1;
+                m_wantApply = -1;
                 m_sel = -1;
                 m_scroll = 0.0f;
                 m_dragging = false;
@@ -532,7 +684,7 @@ namespace CTRPluginFramework
             bool    CandidateUtf8(int i, char *out, unsigned cap)
             {
                 int         len = 0;
-                const u16   *c = ChatKanji::Candidate(i, len);
+                const u16   *c = EntryCandidate(i, len);
 
                 return c != nullptr && ChatKanjiText::Utf8(c, (size_t)len, out, cap);
             }
@@ -543,7 +695,7 @@ namespace CTRPluginFramework
                 char    buf[200];
                 float   x = 0.0f;
 
-                m_count = ChatKanji::CandidateCount();
+                m_count = EntryCount();
                 if (m_count > kMaxCand)
                     m_count = kMaxCand;
                 for (int i = 0; i < m_count; i++)
@@ -565,7 +717,43 @@ namespace CTRPluginFramework
                     return;
                 m_sel = ((i % m_count) + m_count) % m_count;     // 未選択（-1）から左で最後、右で最初
                 EnsureVisible(m_sel);
-                Post(R_APPLY, m_sel);
+                m_wantApply = m_sel;                    // 依頼の枠が空いたら写して出す（FlushWants）
+            }
+
+            // 依頼の枠が空いているときだけ出す（ゲームのスレッドが読んでいる文字列を書き換えない）
+            void    FlushWants(void)
+            {
+                if (__atomic_load_n(&g_reqKind, __ATOMIC_ACQUIRE) != R_NONE)
+                    return;
+                if (m_wantApply >= 0 && m_phase == M_SHOW)
+                {
+                    int         len = 0;
+                    const u16   *c = EntryCandidate(m_wantApply, len);
+
+                    if (c != nullptr && len > 0 && len < SWKBD_TEXT_UNITS)
+                    {
+                        std::memcpy(g_applyText, c, (size_t)len * 2);
+                        g_applyLen = len;
+                        Post(R_APPLY, m_wantApply);
+                    }
+                    m_wantApply = -1;
+                    return;
+                }
+                if (m_wantEnter)
+                {
+                    m_wantEnter = false;
+                    Post(R_ENTER, 0);
+                }
+            }
+
+            // 対象が決まった（R_START を受け取った）あと: キャッシュにあればすぐ出す、無ければエンジンへ
+            void    ShowEntry(int entry)
+            {
+                m_entry = entry;
+                BuildLayout();
+                m_scroll = 0.0f;
+                m_sel = -1;                             // まだ入力欄には入れない（選んだときに入れる）
+                m_phase = m_count > 0 ? M_SHOW : M_IDLE;
             }
 
             int     CandidateAt(int x)
@@ -621,9 +809,19 @@ namespace CTRPluginFramework
                 const u16   pressed = (u16)(held & ~m_heldPrev);
                 const u64   now = svcGetSystemTick();
                 const u32   key = TargetKey();
+                const u16   hk = GuiMenu::ItemAppliedHotkey(index);
+                const bool  hot = hk != 0 && (held & hk) == hk;
 
-                (void)index;
                 m_heldPrev = held;
+                // ホットキーは Enter の代わり（利用者の指示 2026-09-26）。ゲームの Enter と同じ処理（字 10 の入力）を呼ぶ
+                if (hot && !m_hotPrev)
+                    m_wantEnter = true;
+                m_hotPrev = hot;
+                // エンジンの下準備（辞書・コードの読み込みと初期化）をチャットを開いたときに裏で済ませておく
+                if (!m_preloadTried && !ChatKanji::Busy() && !ChatKanji::EngineResident())
+                    m_preloadTried = ChatKanji::Preload();
+                if (m_phase != M_ENGINE)
+                    ChatKanji::Poll();                  // 下準備だけの仕事を片付ける（公開するものは無い）
                 if (key != m_key)
                 {
                     m_key = key;
@@ -631,9 +829,10 @@ namespace CTRPluginFramework
                 }
                 if (g_reverted)
                 {
+                    // Backspace で読みへ戻した: 同じ読みはキャッシュにあるので待たずに出す
                     g_reverted = false;
                     m_doneKey = 0;
-                    m_keySince = now;
+                    m_keySince = now - kSettleTicks;
                 }
 
                 if (m_phase == M_IDLE)
@@ -660,8 +859,12 @@ namespace CTRPluginFramework
                     {
                         const u32 r = g_startResult;
 
+                        const int hit = r == START_OK ? CacheFind(g_reading, g_readingLen) : -1;
+
                         if (r != START_OK)
                             m_phase = M_IDLE;           // 自動で取るので通知しない（打ち終わる前に消えた等）
+                        else if (hit >= 0)
+                            ShowEntry(hit);             // キャッシュにある（エンジンを呼ばない）
                         else
                         {
                             const ChatKanji::RequestResult rr =
@@ -669,6 +872,14 @@ namespace CTRPluginFramework
 
                             if (rr == ChatKanji::REQUEST_OK)
                                 m_phase = M_ENGINE;
+                            else if (rr == ChatKanji::REQUEST_BUSY)
+                            {
+                                // 下準備の途中など。少し後で取り直す
+                                Post(R_ABORT, 0);
+                                m_doneKey = 0;
+                                m_keySince = now;
+                                m_phase = M_IDLE;
+                            }
                             else
                             {
                                 // 変換できない文字（記号など）は通知せず、同じ対象では取り直さない（m_doneKey）
@@ -699,15 +910,24 @@ namespace CTRPluginFramework
                         }
                         else if (ChatKanji::CandidateCount() <= 0 || g_state == S_IDLE)
                         {
-                            Post(R_ABORT, 0);           // 候補なし、または待っている間に読みが変わった
+                            // 候補なし、または待っている間に読みが変わった。取れた候補はキャッシュには入れておく
+                            if (ChatKanji::CandidateCount() > 0)
+                                CacheInsert(g_reading, g_readingLen);
+                            Post(R_ABORT, 0);
                             Reset();
                         }
                         else
                         {
-                            BuildLayout();
-                            m_scroll = 0.0f;
-                            m_sel = -1;                 // まだ入力欄には入れない（選んだときに入れる）
-                            m_phase = M_SHOW;
+                            const int entry = CacheInsert(g_reading, g_readingLen);
+
+                            ChatKanji::Dismiss();       // 結果はキャッシュへ写した。次の依頼を受けられるようにする
+                            if (entry < 0)
+                            {
+                                Post(R_ABORT, 0);
+                                Reset();
+                            }
+                            else
+                                ShowEntry(entry);
                         }
                     }
                 }
@@ -729,6 +949,7 @@ namespace CTRPluginFramework
                 if (m_phase == M_SHOW)
                     GuiMenu::BlockGameDpad();
                 HandleTouch();
+                FlushWants();
             }
         }
 
@@ -768,6 +989,13 @@ namespace CTRPluginFramework
                 }
                 m_key = 0;
                 m_doneKey = 0;
+                m_wantEnter = false;
+                m_hotPrev = false;
+                // チャットが無い間はゲームのスレッドが依頼を受け取らない。残すと次に開いたときに古い依頼が走る
+                __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
+                g_state = S_IDLE;
+                if (ChatKanji::ReleaseEngine())         // エンジンの下準備（5 MiB）を返す。動いている間は次の周期で
+                    m_preloadTried = false;
                 m_touchPrev = Touch::IsDown();
                 return true;
             }
@@ -790,6 +1018,10 @@ namespace CTRPluginFramework
             Reset();
             m_key = 0;
             m_doneKey = 0;
+            m_wantEnter = false;
+            // 走っているエンジンは止めない。止まってから返す（Tick が来ないので、ここで返せなければ次に ON にしたとき）
+            if (ChatKanji::ReleaseEngine())
+                m_preloadTried = false;
             return true;
         }
 

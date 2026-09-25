@@ -25,6 +25,10 @@ alignas(4) uint32_t fontObject[6]={}; // private MapCharToGlyph cache; game tabl
 GameFontView fontView;
 uint32_t fontManager=0, fontResource=0;
 bool fontReady=false;
+// Resident engine (2026-09-26): prepared once (dictionary/code read, relocation, init), then only converted.
+// Written by the worker, read by GuiMenu's thread only while no worker exists (after join).
+uint8_t *resident=nullptr;
+bool loadOnly=false;     // current worker only prepares (Preload)
 
 bool Readable(uint32_t address,size_t bytes) {
     const uint64_t end=uint64_t(address)+bytes;
@@ -106,9 +110,9 @@ RequestResult Start() {
     return worker ? REQUEST_OK : REQUEST_NO_THREAD;
 }
 void Work(void*) {
-    SwkbdEngine::Reset(report);
     NativeFsApi api;
-    SwkbdEngine::Run(api,true,input,report);
+    if(!resident) {SwkbdEngine::Reset(report);resident=SwkbdEngine::Load(api,report);}
+    if(resident && !loadOnly)SwkbdEngine::Convert(resident,input,report);
     __atomic_store_n(&done,1u,__ATOMIC_RELEASE);
 }
 } // namespace
@@ -139,8 +143,9 @@ bool Poll() {
     // Result timeouts can be positive informational codes: only exact success permits freeing.
     if(!worker || !__atomic_load_n(&done,__ATOMIC_ACQUIRE) || threadJoin(worker,0)!=0)return false;
     threadFree(worker);worker=nullptr;
+    if(loadOnly) {loadOnly=false;return false;}   // Preload: nothing to publish (a failed load retries on the next request)
     if(discard)return false;
-    if(report.state!=2 || !report.executed || !report.freed || !report.stackGuard) {
+    if(report.state!=2 || !report.executed || !resident || !report.stackGuard) {
         std::snprintf(error,sizeof(error),"ERROR %lu / STAGE %lu",static_cast<unsigned long>(report.failure),static_cast<unsigned long>(report.stage));
         return true;
     }
@@ -162,9 +167,28 @@ bool Poll() {
     owned=true;return true;
 }
 void Dismiss() {discard=true;owned=false;}
+bool Preload() {
+    if(worker || resident || owned || !BuildMatches())return false;
+    loadOnly=true;discard=false;
+    __atomic_store_n(&done,0u,__ATOMIC_RELEASE);
+    worker=threadCreate(Work,nullptr,0x8000,0x31,-2,false);
+    if(!worker)loadOnly=false;
+    return worker!=nullptr;
+}
+bool EngineResident() {return worker==nullptr && resident!=nullptr;}
+bool ReleaseEngine() {
+    if(worker) {
+        if(!__atomic_load_n(&done,__ATOMIC_ACQUIRE) || threadJoin(worker,0)!=0)return false;   // never interrupt the engine
+        threadFree(worker);worker=nullptr;loadOnly=false;
+    }
+    discard=true;owned=false;
+    if(resident) {NativeFsApi api;SwkbdEngine::Unload(api,resident);resident=nullptr;}
+    return true;
+}
 void Shutdown() {
     discard=true;owned=false;
     if(worker) {threadJoin(worker,U64_MAX);threadFree(worker);worker=nullptr;}
+    if(resident) {NativeFsApi api;SwkbdEngine::Unload(api,resident);resident=nullptr;}
 }
 const char *const *Rows() {return rowPointers;}
 int CandidateCount() {return owned?rowCount:0;}

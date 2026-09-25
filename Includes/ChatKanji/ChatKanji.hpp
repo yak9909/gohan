@@ -9,6 +9,10 @@ RequestResult Request(); // called only by GuiMenu's thread; snapshots current u
 RequestResult RequestText(const uint16_t *text, size_t length);
 bool Poll();             // called only by GuiMenu's thread; joins a finished worker and publishes immutable rows
 void Dismiss();          // discard display ownership; never interrupts an engine call
+// The engine stays prepared between conversions (only conversion runs per request).
+bool Preload();          // GuiMenu's thread: prepare in the background if nothing is running and nothing is prepared
+bool EngineResident();   // prepared and idle
+bool ReleaseEngine();    // free the prepared engine (5 MiB). False while a worker is still running (try again later)
 void Shutdown();         // joins worker before plugin exit
 bool Busy();
 const char *const *Rows();

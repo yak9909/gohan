@@ -28,7 +28,15 @@ struct Report {
 bool Decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity);
 void Reset(Report &r);
 void Run(SwkbdProbe::Api &api, bool execute, const uint16_t *input, Report &r);
+// Resident use (2026-09-26, gohan ChatIme): stages 1-7 once, then stages 8-9 per reading.
+// Load allocates and keeps the arena (returns nullptr on failure; the arena is freed then).
+// Convert reuses the prepared context. Unload frees the arena. Run above is unchanged.
+uint8_t *Load(SwkbdProbe::Api &api, Report &r);
+void Convert(uint8_t *arena, const uint16_t *input, Report &r);
+void Unload(SwkbdProbe::Api &api, uint8_t *arena);
 }
 extern "C" void SwkbdEngine_Process(uint8_t *arena, uint32_t execute, SwkbdEngine::Report *report);
+extern "C" void SwkbdEngine_Prepare(uint8_t *arena, SwkbdEngine::Report *report);  // stages 4-7 of Process
+extern "C" void SwkbdEngine_Convert(uint8_t *arena, SwkbdEngine::Report *report);  // stages 8-9 of Process
 extern "C" int32_t SwkbdEngine_Call(uint32_t entry, void *stackTop, const uint32_t *args);
 extern "C" void SwkbdEngine_SyncCode();

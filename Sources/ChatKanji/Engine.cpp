@@ -186,6 +186,41 @@ void Run(SwkbdProbe::Api &api, bool execute, const uint16_t *input, Report &r) {
     }
     api.Free(arena); r.freed=1; r.state=r.failure ? 3 : 2;
 }
+// ---- Resident use: the same steps as Run/Process, split so the prepared context is reused ----
+uint8_t *Load(SwkbdProbe::Api &api, Report &r) {
+    r.state=1; r.stage=1;
+    uint8_t *arena=static_cast<uint8_t*>(api.Allocate(SwkbdProbe::ArenaSize));
+    r.arena=VA(arena);
+    if (!arena) { r.failure=2; r.state=3; return nullptr; }
+    if (!api.Validate(arena,SwkbdProbe::ArenaSize)) r.failure=3;
+    else {
+        r.stage=2;
+        if (!SwkbdProbe::Acquire(api,false,arena,r.dictionary)) r.failure=4;
+        else {
+            r.stage=3;
+            if (!SwkbdProbe::Acquire(api,true,arena+SourceOffset,r.code)) r.failure=5;
+            else SwkbdEngine_Prepare(arena,&r);
+        }
+    }
+    if (r.failure) { api.Free(arena); r.freed=1; r.state=3; return nullptr; }
+    r.state=2;
+    return arena;
+}
+void Convert(uint8_t *arena, const uint16_t *input, Report &r) {
+    r.state=1; r.failure=0; r.executed=0; r.count=0; r.exhausted=0; r.stackGuard=0;
+    r.conversionResult=0; r.stage=8;
+    bool valid=false;
+    for (uint32_t i=0;i<TextUnits;++i) {
+        r.input[i]=input[i];
+        if (!input[i]) { valid=i>0; break; }
+    }
+    if (!valid || !arena) { r.failure=6; r.state=3; return; }
+    SwkbdEngine_Convert(arena,&r);
+    r.state=r.failure ? 3 : 2;
+}
+void Unload(SwkbdProbe::Api &api, uint8_t *arena) {
+    if (arena) api.Free(arena);
+}
 }
 
 extern "C" void SwkbdEngine_Process(uint8_t *arena, uint32_t execute, SwkbdEngine::Report *report) {
@@ -216,6 +251,61 @@ extern "C" void SwkbdEngine_Process(uint8_t *arena, uint32_t execute, SwkbdEngin
     r.stage=7; args[1]=1;
     r.initResult=SwkbdEngine_Call(0x18C628+delta,stackTop,args);
     if (r.initResult<0) { r.failure=12; return; }
+    r.stage=8; args[1]=0; args[2]=VA(r.input); args[3]=0; args[4]=0; args[5]=55;
+    r.conversionResult=SwkbdEngine_Call(0x111FD4+delta,stackTop,args);
+    if (r.conversionResult<0) { r.failure=13; return; }
+    r.stage=9;
+    for (uint32_t i=0;i<MaxCandidates;++i) {
+        args[1]=VA(r.candidates[i]); args[2]=0; args[3]=i; args[4]=112; args[5]=0;
+        const int32_t n=SwkbdEngine_Call(0x1181D0+delta,stackTop,args);
+        if (n<0 || n>55) { r.failure=13; return; }
+        if (n==0) { r.exhausted=1; break; }
+        r.lengths[i]=static_cast<uint16_t>(n); r.candidates[i][n]=0; ++r.count;
+    }
+    r.stackGuard=1;
+    for (uint32_t i=0;i<0x1000;++i) if (stack[i]!=0xA7) r.stackGuard=0;
+    if (!r.stackGuard) { r.failure=14; return; }
+    r.executed=1; r.stage=10;
+}
+
+// Stages 4-7 of SwkbdEngine_Process (decompress, verify, pack, relocate, init, bind, Japanese init).
+extern "C" void SwkbdEngine_Prepare(uint8_t *arena, SwkbdEngine::Report *report) {
+    using namespace SwkbdEngine;
+    Report &r=*report; r.stage=4;
+    uint8_t *image=arena+ImageOffset, *ctx=arena+ContextOffset, *stack=arena+StackOffset;
+    memset(image,0,ImageSize);
+    if (!Decompress(arena+SourceOffset,SwkbdProbe::CompressedSize,image,ImageSize)) { r.failure=7; return; }
+    r.codeCrc=SwkbdProbe::Crc32(image,CodeSize);
+    if (r.codeCrc!=0x423DC1C2) { r.failure=8; return; }
+    File files[6]={}; uint32_t used=0;
+    if (!PackDictionaries(arena,files,used)) { r.failure=9; return; }
+    const uint32_t delta=VA(image)-0x100000;
+    for (const Relocation &f : Relocations) {
+        if (!Range(f.site-0x100000,4,CodeSize) || U32(image+f.site-0x100000)!=f.value ||
+            f.value<0x100000 || f.value>=0x100000+ImageSize) { r.failure=11; return; }
+    }
+    for (const Relocation &f : Relocations) { W32(image+f.site-0x100000,f.value+delta); ++r.relocationCount; }
+    r.dictionaryUsed=used; r.prepared=1;
+    memset(ctx,0,ContextSize); memset(stack,0xA7,StackSize);
+    SwkbdEngine_SyncCode();
+    uint32_t args[6]={VA(ctx),0,0,0,0,0};
+    void *stackTop=stack+StackSize;
+    r.stage=5; SwkbdEngine_Call(0x190408+delta,stackTop,args);
+    r.stage=6; Bind(arena,files,used); r.dictionaryUsed=used;
+    r.stage=7; args[1]=1;
+    r.initResult=SwkbdEngine_Call(0x18C628+delta,stackTop,args);
+    if (r.initResult<0) { r.failure=12; return; }
+}
+
+// Stages 8-9 of SwkbdEngine_Process on a context prepared by SwkbdEngine_Prepare.
+extern "C" void SwkbdEngine_Convert(uint8_t *arena, SwkbdEngine::Report *report) {
+    using namespace SwkbdEngine;
+    Report &r=*report;
+    uint8_t *image=arena+ImageOffset, *ctx=arena+ContextOffset, *stack=arena+StackOffset;
+    const uint32_t delta=VA(image)-0x100000;
+    memset(stack,0xA7,StackSize);
+    uint32_t args[6]={VA(ctx),0,0,0,0,0};
+    void *stackTop=stack+StackSize;
     r.stage=8; args[1]=0; args[2]=VA(r.input); args[3]=0; args[4]=0; args[5]=55;
     r.conversionResult=SwkbdEngine_Call(0x111FD4+delta,stackTop,args);
     if (r.conversionResult<0) { r.failure=13; return; }
