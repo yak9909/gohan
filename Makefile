@@ -7,7 +7,9 @@ endif
 TOPDIR 		?= 	$(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-CTRPFLIB	?=	$(DEVKITPRO)/libctrpf
+# ★libctrpf は gohan に同梱した v0.8.0 を改造して使う（devkitPro の $(DEVKITPRO)/libctrpf は使わない）。
+#   出所は libctrpf/Makefile の先頭。ビルド済みの lib/libctrpf.a は Git に入れず、ここから作る。
+CTRPFLIB	:=	$(TOPDIR)/libctrpf
 
 # ★3gx の名前は gohan で固定する。フォルダ名に依存させない
 #   （フォルダ名は CTRPluginFramework-BlankTemplate-0.8.0 のままなので、
@@ -63,12 +65,16 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I $(CURDIR)/$(dir) ) \
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L $(dir)/lib)
 
-.PHONY: $(BUILD) clean all
+.PHONY: $(BUILD) clean all libctrpf clean-all
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
 
-$(BUILD):
+# 同梱 libctrpf を先に作る（ソースを直していなければ中身は作り直さない。版の文字列を持つ 1 ファイルだけは毎回作り直す）
+libctrpf:
+	@$(MAKE) --no-print-directory -C $(CTRPFLIB) lib/libctrpf.a
+
+$(BUILD): libctrpf
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
@@ -78,6 +84,10 @@ clean:
 	@rm -fr $(BUILD) $(OUTPUT).3gx $(OUTPUT).elf
 
 re: clean all
+
+# 同梱 libctrpf の生成物も消す（ソースは消さない）
+clean-all: clean
+	@$(MAKE) --no-print-directory -C $(CTRPFLIB) clean
 
 #---------------------------------------------------------------------------------
 
@@ -96,7 +106,7 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #   ★.3gx を先に書くこと。最初のルールが既定ターゲットになるので、
 #     .elf を先に書くと make が .elf までしか作らない。
 $(OUTPUT).3gx : $(OUTPUT).elf
-$(OUTPUT).elf : $(OFILES)
+$(OUTPUT).elf : $(OFILES) $(CTRPFLIB)/lib/libctrpf.a
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data

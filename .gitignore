@@ -5,3 +5,12 @@ __pycache__/
 /reference/
 /_v1_retired/
 /.github/templates/
+# 同梱 libctrpf / libcwav のビルド生成物（ソースだけを Git に入れる）
+/libctrpf/lib/
+/libctrpf/release/
+/libctrpf/debug/
+/libctrpf/*.tar.bz2
+/libctrpf/libcwav/build/
+/libctrpf/libcwav/lib/
+/libctrpf/libcwav/libncsnd/build/
+/libctrpf/libcwav/libncsnd/lib/
