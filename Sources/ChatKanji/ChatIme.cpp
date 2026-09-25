@@ -65,6 +65,8 @@ namespace CTRPluginFramework
             const u32   kBsSkbKeyset    = 4416;         // BsSkb+4416 = 今のキー配列（gui::*KeySet）
             const u32   kKeysetKind     = 0x00AD0544;   // 0 qwerty / 1 かな / 2・3 grid / 4 ケータイ（BsSkb_InitStep）
             const u32   kWindowInCalc   = 0x0057CB20;   // BsSkb 状態 #0 "window in" の calc（開くアニメの間）
+            const u32   kKeysetLoadCalc = 0x0057D444;   // BsSkb 状態 #25 "keyset load" の calc（キー配列の切り替え）
+            const u32   kKeysetLoadCalcOrig = 0xE92D47F0;
             const u32   kFindPane       = 0x007461D0;   // lyt_Object_FindPane(object, name) = (*(object+72))->vt+44(name, 1)
             const u32   kFindPaneOrig   = 0xE5900048;
             const u32   kSetTranslate   = 0x004B6530;   // nw::lyt::Pane の平行移動を書き、+0xB7 bit4-5 を落とす
@@ -174,10 +176,7 @@ namespace CTRPluginFramework
             u32             g_texKeyset = 0;            //        キー配列
             u32             g_texKind = 0xFFFFFFFF;     //        キー配列の種類
             u32             g_texMap[2][8];             // [0] 空白キー / [1] その押下（…on）の TexMap（32 B）
-            // キー配列の背面（ゲームのスレッドだけが触る。g_shadeOn はメニューも読む）
-            u32             g_shadePane = 0;
-            u32             g_shadeKeyset = 0;
-            float           g_shadeTx = 0.0f, g_shadeTz = 0.0f;
+            // キー配列の背面（ゲームのスレッドが決める。メニューは読むだけ）
             volatile bool   g_shadeOn = false;          // 伸ばしてある（メニューは変換行の地と縁を塗らない）
             // 写し（2026-09-26）: 最初に取ったテクスチャを借りたヒープへ写し、以後はそれを使う（キー配列を切り替えても剥がれない）
             bool            g_texCopied = false;
@@ -396,6 +395,7 @@ namespace CTRPluginFramework
             Hook        g_hBack;
             Hook        g_hWait;
             Hook        g_hWindowIn;
+            Hook        g_hKeysetLoad;
 
             inline u32  R32(u32 a)          { return *(volatile u32 *)a; }
             inline void W32(u32 a, u32 v)   { *(volatile u32 *)a = v; }
@@ -656,49 +656,46 @@ namespace CTRPluginFramework
             }
 
             // キー配列の背面 W_ktpShade を変換行の上まで伸ばす／戻す（利用者の指示 2026-09-26）。ゲームのスレッド
+            //   ★ペインの番地は覚えない。キー配列を切り替えると作り直され、同じ番地に別のものが来ることがある
+            //   （覚えていると伸ばし直さずに消えた。利用者の報告）。毎回いまのキー配列のレイアウトから探し、
+            //   いまの高さと位置で「元の大きさ／伸ばし済み」を見分け、違うときだけ書く。
             void    AdjustShade(bool want)
             {
                 typedef u32  (*FindPaneFn)(u32 object, const char *name);
                 typedef void (*SetTranslateFn)(u32 pane, const float *v);
                 const u32   bsskb = R32(kBsSkbPtr);
+                bool        on = false;
 
-                if (bsskb < 0x08000000u || bsskb >= 0x40000000u)
-                    return;
-
-                const u32   keyset = R32(bsskb + kBsSkbKeyset);
-
-                if (keyset < 0x08000000u || keyset >= 0x40000000u)
-                    return;
-                if (keyset != g_shadeKeyset)
+                if (bsskb >= 0x08000000u && bsskb < 0x40000000u)
                 {
-                    // キー配列が作り直された: 前のペインはもう無い（元に戻す必要も無い）
-                    const u32 object = R32(keyset + kKeysetLayout);
-                    u32       pane = 0;
+                    const u32   keyset = R32(bsskb + kBsSkbKeyset);
+                    const u32   object = keyset >= 0x08000000u && keyset < 0x40000000u ? R32(keyset + kKeysetLayout) : 0;
+                    u32         pane = 0;
 
-                    g_shadeKeyset = keyset;
-                    g_shadePane = 0;
-                    g_shadeOn = false;
                     if (object >= 0x08000000u && object < 0x40000000u && R32(object + 72) != 0)
                         pane = ((FindPaneFn)kFindPane)(object, "W_ktpShade");
-                    // 名前と元の大きさ・位置を確かめてから使う（違えば触らない）
                     if (pane >= 0x08000000u && pane < 0x40000000u
-                        && std::memcmp((const void *)(pane + 0xB8), "W_ktpShade", 11) == 0
-                        && RF(pane + 0x4C) == kShadeOrigH && RF(pane + 0x2C) == kShadeOrigTy)
+                        && std::memcmp((const void *)(pane + 0xB8), "W_ktpShade", 11) == 0)
                     {
-                        g_shadePane = pane;
-                        g_shadeTx = RF(pane + 0x28);
-                        g_shadeTz = RF(pane + 0x30);
+                        const float h = RF(pane + 0x4C), ty = RF(pane + 0x2C);
+                        const float hx = kShadeOrigH + kShadeGrow, tyx = kShadeOrigTy + kShadeGrow * 0.5f;
+                        const bool  orig = h == kShadeOrigH && ty == kShadeOrigTy;
+                        const bool  ext = h == hx && ty == tyx;
+
+                        if ((orig || ext) && want != ext)
+                        {
+                            const float v[3] = { RF(pane + 0x28), want ? tyx : kShadeOrigTy, RF(pane + 0x30) };
+                            const float nh = want ? hx : kShadeOrigH;
+
+                            std::memcpy((void *)(pane + 0x4C), &nh, 4);
+                            ((SetTranslateFn)kSetTranslate)(pane, v);   // 行列を作り直させる（ゲームの BsSkb_WindowOut_Calc と同じ関数）
+                            on = want;
+                        }
+                        else
+                            on = ext;
                     }
                 }
-                if (g_shadePane == 0 || want == g_shadeOn)
-                    return;
-
-                const float v[3] = { g_shadeTx, want ? kShadeOrigTy + kShadeGrow * 0.5f : kShadeOrigTy, g_shadeTz };
-                const float h = want ? kShadeOrigH + kShadeGrow : kShadeOrigH;
-
-                std::memcpy((void *)(g_shadePane + 0x4C), &h, 4);
-                ((SetTranslateFn)kSetTranslate)(g_shadePane, v);   // 行列を作り直させる（ゲームの BsSkb_WindowOut_Calc と同じ関数）
-                g_shadeOn = want;
+                g_shadeOn = on;
             }
 
             // キー配列が変わっていたら取り直す（開くアニメの間は window in、以後は wait から。ゲームのスレッド）
@@ -869,8 +866,12 @@ namespace CTRPluginFramework
                     if (g_state != S_IDLE && !Consistent(tm))
                         g_state = S_IDLE;
                 }
-                AdjustShade(g_convOn && g_chatOpen && !g_broken);
-                return ctx.OriginalFunction<int>(self);
+                {
+                    const int r = ctx.OriginalFunction<int>(self);
+
+                    AdjustShade(g_convOn && g_chatOpen && !g_broken);
+                    return r;
+                }
             }
 
             // 開くアニメ（BsSkb の window in）の間にもテクスチャを取る（利用者の指示: 開いた段階で読み込みを終わらせる）
@@ -880,8 +881,22 @@ namespace CTRPluginFramework
 
                 if (g_convOn && !g_broken)
                     RefreshKeyTextures();
+
+                const int r = ctx.OriginalFunction<int>(self);
+
                 AdjustShade(g_convOn && g_chatOpen && !g_broken);
-                return ctx.OriginalFunction<int>(self);
+                return r;
+            }
+
+            // キー配列の切り替え（BsSkb の keyset load）: 元の処理が arc を読み終えた回に新しいキー配列を作るので、
+            //   その直後（同じフレーム、描く前）に背面を伸ばす（切り替えでちらつかないように）
+            __attribute__((noinline)) int ChatImeKeysetLoadCalc(u32 self)
+            {
+                HookContext &ctx = HookContext::GetCurrent();
+                const int   r = ctx.OriginalFunction<int>(self);
+
+                AdjustShade(g_convOn && g_chatOpen && !g_broken);
+                return r;
             }
 
             // ---- メニュースレッド ----
@@ -893,7 +908,7 @@ namespace CTRPluginFramework
                     { kKanaCall[0], kKanaCallWord[0] }, { kKanaCall[1], kKanaCallWord[1] }, { kKanaCall[2], kKanaCallWord[2] },
                     { kSetCursor, kSetCursorOrig }, { kPlaySound, kPlaySoundOrig }, { kTexMapUpdate, kTexMapUpdateOrig },
                     { kGetTexture, kGetTextureOrig }, { kVtAccessorVram + 0x10, kGetTexture },
-                    { kWindowInCalc, kWindowInCalcOrig }, { kFindPane, kFindPaneOrig }, { kSetTranslate, kSetTranslateOrig },
+                    { kWindowInCalc, kWindowInCalcOrig }, { kKeysetLoadCalc, kKeysetLoadCalcOrig }, { kFindPane, kFindPaneOrig }, { kSetTranslate, kSetTranslateOrig },
                 };
 
                 if (Process::GetTitleID() != 0x0004000000086200ULL)
@@ -920,14 +935,17 @@ namespace CTRPluginFramework
                 g_hBack.InitializeForMitm(kBackspace, (u32)ChatImeBackspace);
                 g_hWait.InitializeForMitm(kWaitCalc, (u32)ChatImeWaitCalc);
                 g_hWindowIn.InitializeForMitm(kWindowInCalc, (u32)ChatImeWindowInCalc);
+                g_hKeysetLoad.InitializeForMitm(kKeysetLoadCalc, (u32)ChatImeKeysetLoadCalc);
                 if (g_hInput.Enable() != HookResult::Success || g_hBack.Enable() != HookResult::Success
-                    || g_hWait.Enable() != HookResult::Success || g_hWindowIn.Enable() != HookResult::Success)
+                    || g_hWait.Enable() != HookResult::Success || g_hWindowIn.Enable() != HookResult::Success
+                    || g_hKeysetLoad.Enable() != HookResult::Success)
                 {
                     // 入った分は外す（まだ何も走っていない。旗も立てていない）
                     g_hInput.Disable();
                     g_hBack.Disable();
                     g_hWait.Disable();
                     g_hWindowIn.Disable();
+                    g_hKeysetLoad.Disable();
                     m_hookFailed = true;
                     GuiMenu::NotifyRed(kKanji, u8"フックを入れられません。");
                     return false;
