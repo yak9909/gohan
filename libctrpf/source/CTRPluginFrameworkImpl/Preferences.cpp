@@ -37,6 +37,9 @@ namespace CTRPluginFramework
     static Mutex                g_fileLock;
     static const u32            g_gohanSectionVersion = 1;
 
+    // 今のファイルにある gohan の欄を読む（無ければ偽）
+    static bool     ReadGohanSection(std::vector<u8> &section);
+
     BMPImage *RegionFromCenter(BMPImage *img, int maxX, int maxY)
     {
         BMPImage *temp = new BMPImage(maxX, maxY);
@@ -301,6 +304,12 @@ namespace CTRPluginFramework
         int     mode = File::READ | File::WRITE | File::CREATE | File::TRUNCATE | File::SYNC;
         Header  header = { 0 };
 
+        // ★gohan の書き出し関数がまだ登録されていない（自前 GUI の起動前に CTRPF のメニューを閉じた）ときは、
+        //   今のファイルにある gohan の欄をそのまま書き戻す。書き戻さないと、起動のたびに「CTRPF のメニューで
+        //   自前 GUI を ON にして閉じる」保存で gohan の欄が消え、自前メニューの設定が戻らない（2026-09-25 利用者報告）。
+        std::vector<u8>     preserved;
+        const bool          havePreserved = g_gohanWriter == nullptr && ReadGohanSection(preserved);
+
         std::copy(g_signature, g_signature + 8, header.sig);
         header.version = SETTINGS_VERSION;
         header.hotkeys = MenuHotkeys;
@@ -319,11 +328,14 @@ namespace CTRPluginFramework
             PluginMenuImpl::WriteHotkeysToFile(header, settings);
 
             // gohan section: reserved[0] magic, [1] version, [2] offset, [3] size
-            if (g_gohanWriter != nullptr)
+            if (g_gohanWriter != nullptr || havePreserved)
             {
                 std::vector<u8>     section;
 
-                g_gohanWriter(section);
+                if (g_gohanWriter != nullptr)
+                    g_gohanWriter(section);
+                else
+                    section.swap(preserved);
                 header.reserved[0] = GohanData::Magic;
                 header.reserved[1] = g_gohanSectionVersion;
                 header.reserved[2] = static_cast<u32>(settings.Tell());
@@ -352,25 +364,30 @@ namespace CTRPluginFramework
         g_gohanReader = reader;
     }
 
-    bool    GohanData::Load(void)
+    static bool     ReadGohanSection(std::vector<u8> &section)
     {
-        Lock                lock(g_fileLock);
         File                settings;
         Preferences::Header header = { 0 };
-        std::vector<u8>     section;
-        bool                found = false;
 
+        section.clear();
         if (Preferences::OpenConfigFile(settings, header) == 0
-            && header.reserved[0] == Magic && header.reserved[1] == g_gohanSectionVersion
+            && header.reserved[0] == GohanData::Magic && header.reserved[1] == g_gohanSectionVersion
             && static_cast<u64>(header.reserved[2]) + header.reserved[3] <= settings.GetSize())
         {
             section.resize(header.reserved[3]);
             if (section.empty()
                 || (settings.Seek(header.reserved[2], File::SET) == 0 && settings.Read(section.data(), section.size()) == 0))
-                found = true;
-            else
-                section.clear();
+                return true;
+            section.clear();
         }
+        return false;
+    }
+
+    bool    GohanData::Load(void)
+    {
+        Lock                lock(g_fileLock);
+        std::vector<u8>     section;
+        const bool          found = ReadGohanSection(section);
 
         if (g_gohanReader != nullptr)
             g_gohanReader(found ? section.data() : nullptr, found ? static_cast<u32>(section.size()) : 0);

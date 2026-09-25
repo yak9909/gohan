@@ -13,8 +13,9 @@
 // 階層パスは項目のラベルを "/" で連結したもの（ui-model.js の assignFavoriteKeys と同じ鍵）。
 //
 // ★Simulator との意図した差
-//   1. 保持した連動型の値（固定していないもの）は、起動直後はゲームが読めない（セーブ未ロード）ので、
-//      読めるようになった最初のフレームで書く（DrivePendingRestores）。
+//   1. ★固定していない連動型は保持しない（利用者の決定 2026-09-25）。Simulator は連動型の適用値も保持するので、
+//      起動のたびにゲームの値（所持金など）が前回の値へ書き戻されてしまう。固定している連動型は固定値を保持する
+//      （固定の駆動が、ゲームが読めるようになってから書く）。
 //   2. チェック項目の効果は、適用のときと同じ規則で戻す（ON かつホットキーの束縛なしのときだけ効果 ON。
 //      gohan-menu.md §4.3）。Simulator は保持した値をそのまま effectActive に入れる。
 //   3. 戻したときは通知しない（登録しただけで通知しない、という PollEffects の方針と同じ）。
@@ -165,6 +166,8 @@ namespace CTRPluginFramework
 
                             if (!Retainable(it) || (favoritesOnly && !g_favorite[idx]))
                                 return;
+                            if (IsLinked(it) && !IsFixed(idx))
+                                return;         // 固定していない連動型は保持しない（利用者の決定）
                             PutStr(body, p);
                             Put8(body, it.type);
                             Put8(body, IsFixed(idx) ? 1u : 0u);
@@ -234,21 +237,20 @@ namespace CTRPluginFramework
                     if (it.type != type || !Retainable(it))
                         continue;
 
+                    // 固定していない連動型は保持しない（古い保存に入っていても戻さない。利用者の決定）
+                    if (IsLinked(it) && (rflags & 1u) == 0)
+                        continue;
+
                     const s32 v = Normalize(it, value);
 
                     it.value = v;
                     it.applied = v;
                     if (IsLinked(it))
                     {
-                        g_fixed[idx] = (rflags & 1u) != 0;
-                        if (g_fixed[idx])
-                        {
-                            g_fixedValue[idx] = Normalize(it, fixedValue);
-                            it.value = g_fixedValue[idx];
-                            it.applied = g_fixedValue[idx];
-                        }
-                        else
-                            g_pendingRestore[idx] = true;       // 読めるようになったら書く
+                        g_fixed[idx] = true;
+                        g_fixedValue[idx] = Normalize(it, fixedValue);
+                        it.value = g_fixedValue[idx];
+                        it.applied = g_fixedValue[idx];
                     }
                     else if (it.type == ITEM_CHECKBOX)
                     {
