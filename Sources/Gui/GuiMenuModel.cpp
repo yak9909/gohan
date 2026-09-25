@@ -34,6 +34,7 @@ namespace CTRPluginFramework
             Listbox     g_inline;
             Listbox     g_overlay;
             Dialog      g_dialog;
+            MessageDialog g_message;
             Capture     g_capture;
             Slider      g_slider;
             Hold        g_hold;
@@ -341,7 +342,7 @@ namespace CTRPluginFramework
                 if (ValueBounce(now) != 0.0f || ActBounce(now) != 0.0f
                     || EdgeBounce(now) != 0.0f)
                     return true;
-                if (g_inline.active || g_dialog.type != DLG_NONE || g_hold.active)
+                if (g_inline.active || g_dialog.type != DLG_NONE || g_hold.active || g_message.active)
                     return true;
                 if (OverlayActive())
                     return true;
@@ -1490,11 +1491,47 @@ namespace CTRPluginFramework
                         g_items[i].disabled = g_behavior[i].IsDisabled(i);
             }
 
+            void    OpenMessage(const char *title, const char *body, bool error, u32 now)
+            {
+                std::snprintf(g_message.title, sizeof(g_message.title), "%s", title != nullptr ? title : "");
+                std::snprintf(g_message.body, sizeof(g_message.body), "%s", body != nullptr ? body : "");
+                g_message.error = error;
+                g_message.active = true;
+                AnimOpen(g_message.anim, now, kMessageMs);
+            }
+
+            // OK だけのダイアログが出ている間: A・B・OK のタッチで閉じ、ほかの入力はメニューへ渡さない
+            static void StepMessage(u32 now, const Input &in)
+            {
+                const u16   pressed = (u16)(in.held & ~g_prevHeld);
+                const bool  close = (pressed & ((1u << HB_A) | (1u << HB_B))) != 0;
+
+                if (close)
+                    AnimClose(g_message.anim, now, kMessageMs);
+                if (g_message.anim.closing && AnimExitComplete(g_message.anim, now))
+                {
+                    g_message.active = false;
+                    g_needFinal = true;     // 閉じ切ったら 1 回だけ空で描く
+                }
+            }
+
             void    Step(u32 now, const Input &in)
             {
                 const u16   released = (u16)(g_prevHeld & ~in.held);
                 const u16   pressed = (u16)(in.held & ~g_prevHeld);
                 const bool  touchDown = in.touch && !g_prevTouch;
+
+                if (g_message.active)
+                {
+                    StepMessage(now, in);
+                    g_prevHeld = in.held;
+                    g_held = in.held;
+                    g_prevTouch = in.touch;
+                    Update(now);
+                    DriveToggleHandlers();
+                    PollEffects(now);
+                    return;
+                }
 
                 g_kbHandled = false;
                 SyncDisabledItems();
@@ -1549,7 +1586,8 @@ namespace CTRPluginFramework
             // gameInputCaptureState
             bool    ButtonBlock(void)
             {
-                return g_visible || g_dialog.type != DLG_NONE || OverlayActive() || g_inline.active;
+                return g_visible || g_dialog.type != DLG_NONE || OverlayActive() || g_inline.active
+                       || g_message.active;
             }
 
             // gameInputCaptureState の blockGameTouch（下画面の overlay。退場中も含む）

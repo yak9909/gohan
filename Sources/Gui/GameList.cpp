@@ -118,7 +118,6 @@ typedef int (*MsgSetupFn)(u32 msgData, void *word, const char *label, u32 index)
 const MsgSetupFn     MsgSetup       = reinterpret_cast<MsgSetupFn>(0x0075B8A8);     // 成功で真
 const CtorFn         WordFixCtor    = reinterpret_cast<CtorFn>(0x0056CE48);         // script::WordFix<38>
 const u32            kWordFixBytes  = 100;
-const u32            kWordFixText   = 4;    // u16*（vc_SETUPSTACK(this, this+24, 38) が +4 に文字の器 this+24 を置く）
 const u32            kMsgDataPtr    = 0x00957ED4;                                    // u32: vc_DATAPOINTER
 
 const u32 kInstSelectVtbl = 0x008E54B4;     // InstSelect<8> の vtable（26 語）
@@ -166,27 +165,55 @@ u32 s_vtblStore[1 + kVtblWords];           // [0] = TypeInfo（ゲームの vtab
 u32 *const s_vtbl = s_vtblStore + 1;
 u8 *s_list;                                 // ゲームのヒープ
 
-// ---- 行の前置き（名前の左の空きに小さく出す文字。例: アイテム ID「0x5C」。利用者指示 2026-09-25）----
-// ★上から重ねず、行の文字そのものに入れる（項目名と同じ TextBox なので、枠に半分隠れる 7 行目も同じに隠れる）。
-//   行の文字 = [大きさ kPrefixPercent%] 前置き [タブ] [大きさ 100%] 名前
-//   行の TagProcessor は script::RenderMain（vt[2] 0x5D58C8）。タグ 0x000E のグループ 0・種類 2（sub_5D55E8）は
-//   writer の横 +0x24・縦 +0x28 の拡大率を「行の元の拡大率 × 値/100」にする（縦横とも縮む）。
-//   タブ（9）は「行の原点 + 4 × 書体の幅 × 今の横の拡大率」の倍数へ進む（4 = TextWriter の既定のタブ幅 writer+88）。
-//   書体の幅 × 元の拡大率 = 行の TextBox の文字の大きさ X = 14.4（ctlg_cntnt_00 の T_itm_XX。書体 Garden_msg_size16 の幅 18 × 0.8）。
-//   → タブを小さい大きさのまま置くと、名前は原点から 4 × 14.4 × 0.65 = 37.44 px で始まる。前置きは「0x」＋ 2 桁で
-//     16 px の書体の送り 46〜50 × 0.8 × 0.65 = 24〜26 px なので、次のタブ位置を越えない（越えると名前がずれる）。
-//   行の TextBox（T_itm_XX。左端・上下中央を基準・左詰め）を左へ 37.44 px 動かして同じだけ広げ、名前の位置を元のままにする。
+// ---- 行の前置き（名前の左に小さく出す文字。例: アイテム ID「0x5C」。利用者指示 2026-09-25）----------------
+// ★名前とは別の TextBox に描く（利用者指示: 同じ文字列にしない）。一覧の Layout（ctlg_cntnt_00）の中に置くので、
+//   名前と同じ切り抜きがかかる（7 行目が半分隠れるのと同じ）。
+//   切り抜き: 一覧は N_frame_00 の位置と大きさから Layout の切り抜き矩形（Layout+312.. = 一覧+356..）を作る
+//   （sub_1C55F8。組み立て段 2）。名前の左の空きはこの矩形の外なので、そのままでは描いても見えない（利用者報告:
+//   「リストの上にシェイプが描かれて隠れている」ように見えた。実際は切り抜き。IDA-opus-5.5-F039）。
+//   作り方: 一覧の Layout をゲームより先に自前で組み立てる（ssys_ma_lyt_Layout_Build 0x5685A4 と同じ手順。
+//   組み立て段 0 は Layout+32 が 0 でなければ組み立てを飛ばす）。そのとき arc の ctlg_cntnt_00.bclyt を写して
+//     - 各行の T_itm_XX（txt1）の直後に、同じ物を名前 T_id_XX・位置・幅・文字の大きさだけ変えて足す（N_list_XX の子）
+//     - N_frame_00（pan1）を左へ kClipGrow 広げる（右端は同じ。切り抜きが ID の場所まで届く）
+//   にしたデータを nw::lyt::Layout::Build（sub_4B9474）へ渡す。マテリアルは T_itm_XX と同じ番号を使う（ペインごとに
+//   別の Material ができる）。選択中の色（アニメ ctlg_cntnt_00_select = マテリアル T_itm_XX の色 CLMC）は
+//   毎フレーム T_itm_XX の Material の色 7 個（+0x10..）を T_id_XX へ写して合わせる。
 const u32 kPrefixChars = 6;
-const u16 kPrefixPercent = 65;
-const float kRowFontSizeX = 14.4f;          // T_itm_XX の文字の大きさ X（bclyt）
-const float kTabChars = 4.0f;               // TextWriter の既定のタブ幅（文字数）
-const float kPrefixShift = kTabChars * kRowFontSizeX * (float)kPrefixPercent / 100.0f;
-const u32 kTagWords = 5;                    // 0x000E, グループ, 種類, 引数の byte 数 2, 値
-// 行の文字の器（UTF-16 の単位）: タグ 2 つ + 前置き + タブ + 名前 38
-const u32 kRowChars = kTagWords * 2 + kPrefixChars + 1 + kMaxChars;
-const u32 kPaneTranslateX = 40, kPaneSizeW = 72, kPaneFlagsByte = 183;
+const float kIdScale = 0.65f;               // 名前の文字（14.4 x 19.2）に対する大きさ
+const float kIdRight = -6.0f;               // ID の欄の右端（N_list_XX から。名前の左端 = 0、選択の帯の左端 = -6）
+const float kIdWidth = 36.0f;
+const float kClipGrow = 26.0f;              // 切り抜きを左へ広げる量（左端 62.5 → 36.5。枠の内側 ≒ 35）
+const u32 kLytBytes = 12288;                // 写した bclyt の置き場（元は 5,780 B + 8 × 116 B）
+const u32 kRows = 8;
+const u32 kPaneTranslateX = 40, kPaneTranslateY = 44, kPaneScaleX = 64, kPaneScaleY = 68, kPaneFlagsByte = 183;
+const u32 kTextColorTop = 216, kTextColorBottom = 220, kTextMaterial = 256, kTextDirty = 254, kTextDraw = 260;
+const u32 kMatColors = 0x10, kMatColorBytes = 28, kMatFlags = 0x4D;
+const u32 kTextBoxAllocSlot = 28;           // TextBox vt[28] 0x13B9A8 = 器の確保 (箱, 文字数, 旗)
+typedef void (*AllocBufFn)(void *textBox, u32 chars, u32 flags);
+typedef void (*SetStringFn)(void *textBox, const u16 *str, u32 start, u32 len);
+const SetStringFn SetString = reinterpret_cast<SetStringFn>(0x004BACBC);    // nwlyt_TextBox_SetString
+// Layout を組み立てる（0x5685A4 の中身）
+typedef void *(*GetResourceFn)(void *accessor, u32 type, const char *name, u32 *size);
+typedef void (*GetPropertyFn)(u32 id, u32 *out);
+typedef void (*GenCmdlistsFn)(u32 count, void *out);
+typedef void (*SelectListFn)(u32 list);
+typedef void (*CmdlistStorageFn)(u32 bytes, u32 count);
+typedef int (*NwLayoutBuildFn)(void *nwLayout, const void *data, void *accessor);
+const GetPropertyFn    GetProperty    = reinterpret_cast<GetPropertyFn>(0x00127EDC);
+const GenCmdlistsFn    GenCmdlists    = reinterpret_cast<GenCmdlistsFn>(0x00121B34);
+const SelectListFn     SelectList     = reinterpret_cast<SelectListFn>(0x001216BC);
+const CmdlistStorageFn CmdlistStorage = reinterpret_cast<CmdlistStorageFn>(0x00121988);
+const NwLayoutBuildFn  NwLayoutBuild  = reinterpret_cast<NwLayoutBuildFn>(0x004B9474);
+const u32 kResBlyt = 0x626C7974;            // 'blyt'（0x568698）
+const u32 kPropCmdlist = 519;               // 0x56869C
+const u32 kListCmdBytes = 0xB000;           // 組み立て段 0 が渡す大きさ（45,056）
+const u32 kLytBuilt = 32, kLytCmdlist = 256, kLytCmdlistZero = 276, kLytCmdBytes = 280, kLytCmdFlag = 284, kLytNw = 16;
 
-u16 s_text[kMaxItems][kRowChars + 1];
+u16 s_text[kMaxItems][kMaxChars + 1];
+alignas(4) u8 s_lyt[kLytBytes];             // 写して書き換えた ctlg_cntnt_00.bclyt（一覧がある間は Layout が参照する）
+struct IdRow { void *box; void *name; float baseX, baseY, nameX, nameY; s32 shown; };
+IdRow s_idRows[kRows];
+bool s_idReady;                             // T_id_XX を見つけて器を取った
 WordPtr s_words[kMaxItems];
 alignas(8) u8 s_fix[kMaxItems][kWordFixBytes];     // ゲームの名前を入れた WordFix<38>
 bool s_useFix[kMaxItems];
@@ -196,7 +223,8 @@ u32 s_count;
 u16 s_pendText[kMaxItems][kMaxChars + 1];
 u16 s_pendPrefix[kMaxItems][kPrefixChars + 1];
 volatile bool s_pendHasPrefix;
-bool s_hasPrefix;                           // 組み立てた一覧が前置きを持つ（行の TextBox を左へ広げた）
+bool s_hasPrefix;                           // 組み立てた一覧が前置き（T_id_XX）を持つ
+u16 s_prefix[kMaxItems][kPrefixChars + 1];  // 組み立てたときの前置き
 volatile u32 s_pendCount;
 const char *volatile s_pendLabel;           // メッセージのラベル（nullptr = 使わない）
 s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わない）
@@ -257,53 +285,174 @@ void *ListWordAt(u8 *self, s32 index) {
 }
 
 // ---- 行の前置き（上の説明）--------------------------------------------------------------------
-// 名前の長さ: 0 まで。ただしタグ（0x000E, グループ, 種類, 引数の byte 数, 引数…）の中の 0 では止まらない
-u32 TaggedLength(const u16 *s, u32 cap) {
-    u32 n = 0;
-    while (n < cap && s[n] != 0) {
-        if (s[n] == 0x000E && n + 3 < cap) {
-            n += 4 + (s[n + 3] + 1u) / 2u;
-            continue;
+inline u16 RdU16(const u8 *p) { return (u16)(p[0] | (p[1] << 8)); }
+inline u32 RdU32(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24); }
+inline void WrU32(u8 *p, u32 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); p[2] = (u8)(v >> 16); p[3] = (u8)(v >> 24); }
+inline float &SecF(u8 *sec, u32 off) { return *reinterpret_cast<float *>(sec + off); }
+
+// bclyt の節（txt1 / pan1）: +12 名前 16 B、+36 位置 x,y,z、+48 回転、+60 拡大、+68 幅、+72 高さ。
+//   txt1: +84 文字の配置（横 + 縦×3）、+100 文字の大きさ x,y（tools/layout/lyt_dump.py と同じ読み方）
+const u32 kSecName = 12, kSecX = 36, kSecW = 68, kTxtPosition = 84, kTxtFontX = 100, kTxtFontY = 104;
+
+bool SecNameIs(const u8 *sec, const char *name) {
+    return std::strncmp(reinterpret_cast<const char *>(sec + kSecName), name, 16) == 0;
+}
+
+// 元の bclyt から T_id_XX を足した物を s_lyt に作る。戻り値: 大きさ（失敗で 0）
+u32 MakeIdLayout(const u8 *src) {
+    if (src == nullptr || std::memcmp(src, "CLYT", 4) != 0)
+        return 0;
+    const u32 headerLen = RdU16(src + 6);
+    const u32 total = RdU32(src + 12);
+    const u32 sections = RdU32(src + 16);
+    if (headerLen < 20 || total > kLytBytes || headerLen > total)
+        return 0;
+    std::memcpy(s_lyt, src, headerLen);
+    u32 in = headerLen, out = headerLen, added = 0;
+    for (u32 k = 0; k < sections; ++k) {
+        if (in + 8 > total)
+            return 0;
+        const u32 size = RdU32(src + in + 4);
+        if (size < 8 || in + size > total || out + size > kLytBytes)
+            return 0;
+        u8 *sec = s_lyt + out;
+        std::memcpy(sec, src + in, size);
+        out += size;
+        if (std::memcmp(sec, "pan1", 4) == 0 && size >= 76 && SecNameIs(sec, "N_frame_00")) {
+            SecF(sec, kSecX) -= kClipGrow * 0.5f;       // 基準は中央（origin 0x4）。右端を変えずに左へ広げる
+            SecF(sec, kSecW) += kClipGrow;
         }
-        ++n;
+        if (std::memcmp(sec, "txt1", 4) == 0 && size >= 108
+            && std::strncmp(reinterpret_cast<const char *>(sec + kSecName), "T_itm_", 6) == 0) {
+            if (out + size > kLytBytes)
+                return 0;
+            u8 *id = s_lyt + out;
+            std::memcpy(id, sec, size);
+            out += size;
+            char name[16] = {};
+            std::snprintf(name, sizeof(name), "T_id_%.2s", reinterpret_cast<const char *>(sec + kSecName) + 6);
+            std::memcpy(id + kSecName, name, 16);
+            SecF(id, kSecX) = kIdRight - kIdWidth;      // 基準は左端・上下中央（origin 0x3。T_itm と同じ）
+            SecF(id, kSecW) = kIdWidth;
+            id[kTxtPosition] = 2 + 1 * 3;              // 右寄せ・上下中央
+            SecF(id, kTxtFontX) *= kIdScale;
+            SecF(id, kTxtFontY) *= kIdScale;
+            ++added;
+        }
+        in += size;
     }
-    return n < cap ? n : cap;
+    if (added != kRows)
+        return 0;
+    WrU32(s_lyt + 12, out);
+    WrU32(s_lyt + 16, sections + added);
+    return out;
 }
 
-u32 PutSizeTag(u16 *dst, u16 percent) {
-    dst[0] = 0x000E;
-    dst[1] = 0;                             // グループ 0
-    dst[2] = 2;                             // 種類 2 = 大きさ（%）
-    dst[3] = 2;                             // 引数 2 byte
-    dst[4] = percent;
-    return kTagWords;
+// 一覧の Layout（一覧+44）を ssys_ma_lyt_Layout_Build 0x5685A4 と同じ手順で組み立てる。データだけ s_lyt に差し替える
+bool PrebuildListLayout(void) {
+    u8 *layout = P(s_list, kListLayout);
+    if (W(layout, kLytBuilt) != 0)
+        return false;
+    void *accessor = reinterpret_cast<void *>(W(s_holder, 4));
+    if (accessor == nullptr)
+        return false;
+    const u32 *avt = *reinterpret_cast<u32 *const *>(accessor);
+    const u8 *src = reinterpret_cast<const u8 *>(
+        reinterpret_cast<GetResourceFn>(avt[2])(accessor, kResBlyt, "ctlg_cntnt_00.bclyt", nullptr));
+    if (MakeIdLayout(src) == 0)
+        return false;
+    W(layout, kLytCmdlistZero) = 0;
+    B(layout, kLytCmdFlag) = 1;
+    u32 current = 0;
+    GetProperty(kPropCmdlist, &current);
+    GenCmdlists(1, P(layout, kLytCmdlist));
+    SelectList(W(layout, kLytCmdlist));
+    W(layout, kLytCmdBytes) = kListCmdBytes;
+    CmdlistStorage(kListCmdBytes, 1);
+    SelectList(current);
+    if (NwLayoutBuild(P(layout, kLytNw), s_lyt, accessor) == 0)
+        return false;
+    const u32 *lvt = *reinterpret_cast<u32 *const *>(layout);
+    reinterpret_cast<void (*)(void *)>(lvt[3])(layout);
+    return true;
 }
 
-void ComposeRow(u16 *dst, const u16 *prefix, const u16 *name) {
-    u32 n = 0;
-    n += PutSizeTag(dst + n, kPrefixPercent);
-    for (u32 k = 0; k < kPrefixChars && prefix[k] != 0; ++k)
-        dst[n++] = prefix[k];
-    dst[n++] = 0x0009;                      // タブ（小さい大きさのまま置く）
-    n += PutSizeTag(dst + n, 100);
-    const u32 len = TaggedLength(name, kMaxChars);
-    for (u32 k = 0; k < len && n < kRowChars; ++k)
-        dst[n++] = name[k];
-    dst[n] = 0;
-}
-
-// 行の TextBox（T_itm_00..）を左へ kPrefixShift 動かして同じだけ広げる（右端と名前の位置は元のまま）
-void WidenRowsForPrefix(void) {
+// 組み立てが終わったあと: T_id_XX に文字の器を取り、行の名前の欄と組にする
+void SetupIdRows(void) {
     void *layout = P(s_list, kListLayout);
     char name[16];
-    for (u32 i = 0; i < 8; ++i) {
+    for (u32 i = 0; i < kRows; ++i) {
+        IdRow &r = s_idRows[i];
+        std::snprintf(name, sizeof(name), "T_id_%02u", (unsigned)i);
+        r.box = FindPane(layout, name);
         std::snprintf(name, sizeof(name), "T_itm_%02u", (unsigned)i);
-        void *pane = FindPane(layout, name);
-        if (pane == nullptr)
-            continue;
-        F(pane, kPaneTranslateX) -= kPrefixShift;
-        F(pane, kPaneSizeW) += kPrefixShift;
-        B(pane, kPaneFlagsByte) &= 0xCFu;   // 行列を計算し直させる
+        r.name = FindPane(layout, name);
+        if (r.box == nullptr || r.name == nullptr) {
+            s_idReady = false;
+            return;
+        }
+        const u32 draw = W(r.box, kTextDraw);
+        const u32 flags = draw != 0 ? *reinterpret_cast<const u8 *>(draw + 9) : 0;
+        u32 *vt = *reinterpret_cast<u32 **>(r.box);
+        reinterpret_cast<AllocBufFn>(vt[kTextBoxAllocSlot])(r.box, kPrefixChars, flags);
+        r.baseX = F(r.box, kPaneTranslateX);
+        r.baseY = F(r.box, kPaneTranslateY);
+        r.nameX = F(r.name, kPaneTranslateX);
+        r.nameY = F(r.name, kPaneTranslateY);
+        r.shown = -1;
+    }
+    s_idReady = true;
+}
+
+// 毎フレーム: 行 i に出ている項目の ID を書き、名前の欄の色・動き（選択・タッチのアニメ）を写す
+void StepIdRows(void) {
+    if (!s_idReady || s_list == nullptr)
+        return;
+    const s32 top = S(s_list, kListTop);
+    for (u32 i = 0; i < kRows; ++i) {
+        IdRow &r = s_idRows[i];
+        const s32 index = top + (s32)i;
+        if (index != r.shown) {
+            r.shown = index;
+            const bool valid = index >= 0 && (u32)index < s_count;
+            const u16 *text = valid ? s_prefix[index] : s_prefix[0];
+            u32 len = 0;
+            if (valid)
+                while (len < kPrefixChars && text[len] != 0)
+                    ++len;
+            SetString(r.box, text, 0, len);
+        }
+        // 色: 文字色 2 つと Material の色 7 個
+        bool dirty = false;
+        for (u32 k = 0; k < 4; ++k) {
+            if (B(r.box, kTextColorTop + k) != B(r.name, kTextColorTop + k)
+                || B(r.box, kTextColorBottom + k) != B(r.name, kTextColorBottom + k)) {
+                B(r.box, kTextColorTop + k) = B(r.name, kTextColorTop + k);
+                B(r.box, kTextColorBottom + k) = B(r.name, kTextColorBottom + k);
+                dirty = true;
+            }
+        }
+        if (dirty)
+            B(r.box, kTextDirty) |= 1u;
+        const u32 idMat = W(r.box, kTextMaterial), nameMat = W(r.name, kTextMaterial);
+        if (idMat != 0 && nameMat != 0
+            && std::memcmp(reinterpret_cast<void *>(idMat + kMatColors), reinterpret_cast<void *>(nameMat + kMatColors),
+                           kMatColorBytes) != 0) {
+            std::memcpy(reinterpret_cast<void *>(idMat + kMatColors), reinterpret_cast<void *>(nameMat + kMatColors),
+                        kMatColorBytes);
+            *reinterpret_cast<u8 *>(idMat + kMatFlags) &= ~4u;     // GPU へ送り直させる
+        }
+        // 動き（タッチのアニメは T_itm_XX の位置・拡大を動かす）
+        const float x = r.baseX + (F(r.name, kPaneTranslateX) - r.nameX);
+        const float y = r.baseY + (F(r.name, kPaneTranslateY) - r.nameY);
+        if (x != F(r.box, kPaneTranslateX) || y != F(r.box, kPaneTranslateY)
+            || F(r.box, kPaneScaleX) != F(r.name, kPaneScaleX) || F(r.box, kPaneScaleY) != F(r.name, kPaneScaleY)) {
+            F(r.box, kPaneTranslateX) = x;
+            F(r.box, kPaneTranslateY) = y;
+            F(r.box, kPaneScaleX) = F(r.name, kPaneScaleX);
+            F(r.box, kPaneScaleY) = F(r.name, kPaneScaleY);
+            B(r.box, kPaneFlagsByte) &= 0xCFu;
+        }
     }
 }
 
@@ -357,6 +506,7 @@ void SwitchAnim(void *layout, void *from, void *to) {
 // ---- 片付け ---------------------------------------------------------------------------------
 void DestroyAll(void) {
     FrameTrace::Mark(FrameTrace::ListDestroy, reinterpret_cast<u32>(s_list));
+    s_idReady = false;
     if (s_list != nullptr) {
         if (s_listSetup) {
             u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -635,6 +785,8 @@ bool BuildStep(void) {
         const char *label = s_pendLabel;
         const u32 msgData = label != nullptr ? *reinterpret_cast<const volatile u32 *>(kMsgDataPtr) : 0;
         s_hasPrefix = s_pendHasPrefix;
+        if (s_hasPrefix)
+            std::memcpy(s_prefix, s_pendPrefix, sizeof(s_prefix));
         for (u32 i = 0; i < count; ++i) {
             s_useFix[i] = false;
             if (msgData != 0 && s_pendMsg[i] >= 0) {
@@ -642,17 +794,10 @@ bool BuildStep(void) {
                 WordFixCtor(s_fix[i]);
                 s_useFix[i] = MsgSetup(msgData, s_fix[i], label, (u32)s_pendMsg[i]) != 0;
             }
-            if (s_hasPrefix) {
-                // 前置きがあるときは名前（ゲームの名前ならタグごと）を後ろに付けた自前の文字列を行の語にする
-                const u16 *name = s_useFix[i] ? *reinterpret_cast<u16 *const *>(P(s_fix[i], kWordFixText)) : s_pendText[i];
-                ComposeRow(s_text[i], s_pendPrefix[i], name);
-                s_useFix[i] = false;
-            } else {
-                std::memcpy(s_text[i], s_pendText[i], sizeof(s_pendText[i]));
-            }
+            std::memcpy(s_text[i], s_pendText[i], sizeof(s_pendText[i]));
             s_words[i].vtbl = kWordPtrVtbl;
             s_words[i].text = s_text[i];
-            s_words[i].cap = kRowChars + 1;
+            s_words[i].cap = kMaxChars + 1;
         }
         void *mem = HeapAlloc(kInstSelectBytes, heap, 4);
         if (mem == nullptr) {
@@ -667,7 +812,12 @@ bool BuildStep(void) {
         s_vtbl[13] = reinterpret_cast<u32>(&ListBuildItems);
         s_vtbl[25] = reinterpret_cast<u32>(&ListWordAt);
         W(s_list, 0) = reinterpret_cast<u32>(s_vtbl);
-        W(s_list, kListTextCap) = s_hasPrefix ? kRowChars : kMaxChars;
+        W(s_list, kListTextCap) = kMaxChars;
+        s_idReady = false;
+        if (s_hasPrefix && !PrebuildListLayout()) {
+            s_error = "ID 付きの一覧を組み立てられない";
+            s_hasPrefix = false;            // 素の組み立てに任せる（Layout+32 が 0 のまま）
+        }
         return false;
     }
     if (!s_listSetup) {
@@ -675,7 +825,7 @@ bool BuildStep(void) {
             return false;
         s_listSetup = true;
         if (s_hasPrefix)
-            WidenRowsForPrefix();
+            SetupIdRows();
         void *pane = FindPane(s_frame, "N_scrl_pos_00");
         if (pane != nullptr)
             ScrollBindPane(P(s_list, kListScroll), pane);
@@ -977,6 +1127,7 @@ void FrameStep(void) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<ListFn>(vt[4])(s_list);            // SelectBase_Update
     StepDpad();
+    StepIdRows();                                       // ID の欄（行の前置き）を名前の欄に合わせる
     if (s_listDir != Dir::None && B(s_list, kListAnimating) == 0)
         s_listDir = Dir::None;
     StepFrameAnim();

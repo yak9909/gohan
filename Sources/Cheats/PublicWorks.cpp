@@ -588,6 +588,20 @@ MapState RefreshMap(void) {
     return MapState::Refreshed;
 }
 
+// 移動の置き直し待ち（Op::Move → StepMoveWait）
+// 待つ長さ: 30fps で 20 フレーム（約 0.67 秒）。Request は 1 秒まで待つので、その中に収める。
+const u32 kMoveWaitFrames = 20;
+struct MoveWait { bool active; bool lit; u16 id; u8 oldX, oldY; u32 frames; float stay[3]; };
+MoveWait s_moveWait;
+
+void FinishMove(u16 id, u32 oldX, u32 oldY, bool lit) {
+    RefreshItems(oldX, oldY);
+    RefreshItems(s_argX, s_argY);
+    s_mapState = RefreshMap();
+    if (lit)                                    // 新しい実体を次のフレームで光らせ直す
+        BuildingHighlight::Select(id, (u8)s_argX, (u8)s_argY);
+}
+
 Result Execute(Op op) {
     FrameTrace::Mark(FrameTrace::WorksExecute, (u32)op, (u16)s_argId);
     if (*reinterpret_cast<volatile u8 *>(kCurrentRoom) != 0)
@@ -685,16 +699,31 @@ Result Execute(Op op) {
         slot->y = (u8)s_argY;
         RebuildAttributes();
         RebuildOccupancy();
-        if (!KillVisual(old.id, old.x, old.y) || !SpawnVisual(old.id, s_argX, s_argY)) {
+        if (!KillVisual(old.id, old.x, old.y)) {
             Reload(stay);
             s_reloaded = true;
             return Result::Ok;
         }
-        RefreshItems(old.x, old.y);
-        RefreshItems(s_argX, s_argY);
-        s_mapState = RefreshMap();
-        if (lit)                                    // 新しい実体を次のフレームで光らせ直す
-            BuildingHighlight::Select(old.id, (u8)s_argX, (u8)s_argY);
+        if (!SpawnVisual(old.id, s_argX, s_argY)) {
+            // ★古い実体は削除を要求しただけで、メモリはあとのフレームで返る（AcStrc の破棄は遅れて走る）。
+            //   メモリの余裕で断られたときは、空きが戻るまで数フレーム待って置き直す（利用者指示 2026-09-25:
+            //   消してから置くのだから読み直しは要らないはず）。待っても足りなければ、そのときだけ読み直す。
+            if (s_reloadWhy == ReloadWhy::ParentHeapLow || s_reloadWhy == ReloadWhy::SharedPoolFull) {
+                s_moveWait.active = true;
+                s_moveWait.frames = 0;
+                s_moveWait.id = old.id;
+                s_moveWait.oldX = old.x;
+                s_moveWait.oldY = old.y;
+                s_moveWait.lit = lit;
+                for (u32 k = 0; k < 3; ++k)
+                    s_moveWait.stay[k] = stay[k];
+                return Result::Ok;                  // 結果は StepMoveWait が確定させる
+            }
+            Reload(stay);
+            s_reloaded = true;
+            return Result::Ok;
+        }
+        FinishMove(old.id, old.x, old.y, lit);
         return Result::Ok;
     }
     case Op::Rebuild:
@@ -715,6 +744,24 @@ bool EnsureHook(void) {
     if (!GridCursor::AddExtraFrameStep(FrameStep))
         return false;
     s_hooked = true;
+    return true;
+}
+
+// 移動の置き直しを待つ（上の Op::Move）。真 = 終わった（置けた、または読み直した）
+bool StepMoveWait(void) {
+    ++s_moveWait.frames;
+    s_reloadWhy = ReloadWhy::None;
+    if (SpawnVisual(s_moveWait.id, s_argX, s_argY)) {
+        s_moveWait.active = false;
+        FinishMove(s_moveWait.id, s_moveWait.oldX, s_moveWait.oldY, s_moveWait.lit);
+        return true;
+    }
+    const bool memory = s_reloadWhy == ReloadWhy::ParentHeapLow || s_reloadWhy == ReloadWhy::SharedPoolFull;
+    if (memory && s_moveWait.frames < kMoveWaitFrames)
+        return false;
+    s_moveWait.active = false;
+    Reload(s_moveWait.stay);
+    s_reloaded = true;
     return true;
 }
 
@@ -745,9 +792,12 @@ namespace {
 volatile u32 s_capWord;             // used | slots << 8 | kindsLeft << 16 | 1 << 24（1 語で書く: 読む側が途中の値を見ない）
 volatile u32 s_memWord;             // 親ヒープの空き KB | 大きさ KB << 16
 u32 s_capFrames;
+bool s_capNow;                      // 操作のあと、次のフレームで数え直す
 
 void UpdateCapacity(void) {
-    if (++s_capFrames % 15 != 0)
+    const bool now = s_capNow;
+    s_capNow = false;
+    if (++s_capFrames % 15 != 0 && !now)
         return;
     if (*reinterpret_cast<volatile u8 *>(kCurrentRoom) != 0 || BuildingData() == nullptr) {
         s_capWord = 0;
@@ -790,9 +840,14 @@ void FrameStep(void) {
     UpdateCapacity();
     const Op op = s_op;
     if (op != Op::None) {
-        s_result = Execute(op);
-        s_doneSeq = s_seq;
-        s_op = Op::None;
+        // 移動の置き直しを待っている間は操作を終えない（s_op を残すので次の要求は Busy になる）
+        const bool done = s_moveWait.active ? StepMoveWait() : (s_result = Execute(op), !s_moveWait.active);
+        if (done) {
+            s_capFrames = 0;                    // 箱をすぐ数え直す（利用者指示: 配置・削除のとき即更新）
+            s_capNow = true;
+            s_doneSeq = s_seq;
+            s_op = Op::None;
+        }
     }
     BuildingHighlight::FrameStep();
     BuildingEditor::FrameStep();

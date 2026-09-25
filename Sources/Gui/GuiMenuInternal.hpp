@@ -272,6 +272,19 @@ namespace CTRPluginFramework
             extern Listbox      g_inline;
             extern Listbox      g_overlay;
             extern Dialog       g_dialog;
+
+            // OK だけのダイアログ（GuiDialog。どのスレッドからでも頼める）
+            struct MessageDialog
+            {
+                bool    active;
+                bool    error;
+                char    title[64];
+                char    body[512];
+                Anim    anim;
+            };
+            extern MessageDialog g_message;
+            const int   kMessageMs = 160;       // 出入り（確認ダイアログと同じ）
+            void    OpenMessage(const char *title, const char *body, bool error, u32 now);
             extern Capture      g_capture;
             extern Slider       g_slider;
             extern Hold         g_hold;

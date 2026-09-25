@@ -86,7 +86,8 @@ const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags 
 const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f, kRowPitch = 36.0f;
 // 全体の縮尺（利用者 2026-09-25: 箱と文字を 3/5 くらいに）。N_all の拡大率に入れるので、箱・影・文字・出入りのアニメが一緒に縮む。
 // 画面の端からの距離（上下の端 = kTop ± 箱の高さ/2、左端 = kLeft）は元の大きさのときと同じに保ち、段の間と箱の間も同じ比で縮める。
-const float kScale = 0.6f, kBoxH = 32.0f;   // kBoxH: P_bell_base の高さ（time_bel_win.arc の bclyt。P_bs と同じ 98x32）
+// 利用者 2026-09-25（2 回目）: 今の 1.2 倍 → 0.6 × 1.2
+const float kScale = 0.6f * 1.2f, kBoxH = 32.0f;   // kBoxH: P_bell_base の高さ（time_bel_win.arc の bclyt。P_bs と同じ 98x32）
 // 余白は左右合わせて 60px（利用者: 32px では窮屈。一回り大きく）
 const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 60.0f, kWide = 15.0f, kNarrow = 9.0f;
 // 箱（P_bell_base、N_bell の子で (-59,-6)）と影（P_bell_sh、(-57,-8)）。文字は N_bell_00（(-16,-18)）の子。

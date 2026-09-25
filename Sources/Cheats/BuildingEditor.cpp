@@ -5,6 +5,7 @@
 #include "Cheats.hpp"
 #include "GameLabel.hpp"
 #include "GameList.hpp"
+#include "GuiDialog.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
@@ -456,7 +457,7 @@ void UpdateCapacityLabels(bool force) {
     s_capShown = key;
     s_memShown = memKey;
     static char line1[48], line2[48], line3[48];
-    // 3 つ目（左下、値だけ。利用者指示）: 建物用の親ヒープの空き / 大きさ（KB）。重なるゲームの時計は隠す
+    // 3 つ目（値だけ。利用者指示）: 建物用の親ヒープの空き / 大きさ（KB）
     // ★値は「使える分」= 空き − 256KB（gohan の安全の余裕。PublicWorks の kSpawnParentFree と同じ値。利用者の選択で
     //   余裕は残し、表示だけ分かりやすく）。0 以上なら役場・店などをあと 1 棟置ける（1 棟で約 70〜90KB 減る）、負なら置けない。
     const s32 kReserveKB = (s32)(PublicWorks::kParentReserveBytes / 1024u);
@@ -464,10 +465,11 @@ void UpdateCapacityLabels(bool force) {
         std::snprintf(line3, sizeof(line3), u8"%d/%dKB", (int)c.memFreeKB - kReserveKB, (int)c.memTotalKB - kReserveKB);
     else
         std::snprintf(line3, sizeof(line3), u8"-");
+    // 利用者 2026-09-25（2 回目）: 左下ではなく、設置上限・新しい種類と同じ上の段の右へ。時計とは重ならないので隠さない
     GameLabel::SetText(2, line3);
     GameLabel::SetRow(2, 0);
-    GameLabel::SetBottom(2, true);
-    GameLabel::HideGameClock(true);
+    GameLabel::SetBottom(2, false);
+    GameLabel::HideGameClock(false);
     GameLabel::Show(2);
     if (c.valid) {
         std::snprintf(line1, sizeof(line1), u8"設置上限 %u/%u", (unsigned)c.used, (unsigned)c.slots);
@@ -488,7 +490,7 @@ void UpdateCapacityLabels(bool force) {
 
 void Report(PublicWorks::Result result) {
     if (result != PublicWorks::Result::Ok)
-        GuiNotification::NotifyRed(Cheats::kBeOn, PublicWorks::ResultName(result));
+        GuiDialog::ShowMessage(Cheats::kBeOn, PublicWorks::ResultName(result));
 }
 
 // 村の屋外で、プレイヤーとカメラが取れるか（画面遷移のあとで再開してよいか）
@@ -546,14 +548,14 @@ void TakeListChoice(void) {
 // quiet: 再開のときは失敗を通知しない
 bool Start(bool quiet) {
     if (!PublicWorks::StartFrameHook()) {
-        GuiNotification::NotifyRed(Cheats::kBeOn, u8"フックが入れられません");
+        GuiDialog::ShowMessage(Cheats::kBeOn, u8"フックが入れられません");
         s_failed = true;
         return false;
     }
     u32 x = 0, y = 0;
     if (!ReadyToStart() || !PublicWorks::PlayerTile(x, y)) {
         if (!quiet)
-            GuiNotification::NotifyRed(Cheats::kBeOn, u8"村の屋外で使ってください");
+            GuiDialog::ShowMessage(Cheats::kBeOn, u8"村の屋外で使ってください");
         return false;
     }
     if (s_kindCount == 0) {
@@ -581,7 +583,7 @@ bool Start(bool quiet) {
     PublicWorks::Unhighlight();
     UpdateTiles();
     if (!GridCursor::ShowTiles()) {
-        GuiNotification::NotifyRed(Cheats::kBeOn, u8"グリッドカーソルを先に止めてください");
+        GuiDialog::ShowMessage(Cheats::kBeOn, u8"グリッドカーソルを先に止めてください");
         s_failed = true;
         return false;
     }
@@ -707,7 +709,7 @@ void CopyKind(void) {
         slotIndex = PublicWorks::NearestTo((u32)s_cx, (u32)s_cy);
     PublicWorks::Slot slot;
     if (slotIndex < 0 || !PublicWorks::ReadSlot((u32)slotIndex, slot)) {
-        GuiNotification::NotifyRed(Cheats::kBeOn, u8"近くに建物がありません");
+        GuiDialog::ShowMessage(Cheats::kBeOn, u8"近くに建物がありません");
         return;
     }
     for (u32 k = 0; k < s_kindCount; ++k) {
@@ -718,7 +720,7 @@ void CopyKind(void) {
             return;
         }
     }
-    GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物は配置の一覧にありません");
+    GuiDialog::ShowMessage(Cheats::kBeOn, u8"この建物は配置の一覧にありません");
 }
 
 // 約 0.5 秒ごと: グリッドカーソルが止まっていたら理由を出して組み直し、プレビューが出せない種類なら知らせる
@@ -745,10 +747,10 @@ void Watch(void) {
     const BuildingPreview::Status ps = BuildingPreview::GetStatus();
     if (s_mode == Mode::Place && ps.shownId >= 0 && ps.shownId != s_previewNotifiedId) {
         if (!ps.available) {
-            GuiNotification::NotifyRed(Cheats::kBeOn, u8"この建物にはプレビューがありません");
+            GuiDialog::ShowMessage(Cheats::kBeOn, u8"この建物にはプレビューがありません");
             s_previewNotifiedId = ps.shownId;
         } else if (ps.failed) {
-            GuiNotification::NotifyRed(Cheats::kBeOn, (ps.failReason == 10 || ps.failReason == 2 || ps.failReason == 3)
+            GuiDialog::ShowMessage(Cheats::kBeOn, (ps.failReason == 10 || ps.failReason == 2 || ps.failReason == 3)
                                                           ? u8"メモリの空きが足りないのでプレビューを出しません"
                                                           : u8"プレビューを作れませんでした");
             s_previewNotifiedId = ps.shownId;
@@ -809,7 +811,7 @@ void Tick(u32 keys) {
         } else {
             static const char *const kWhy[] = { "", "", u8"カメラが取れません",
                                                 u8"カメラの関数がほかの改造で書き換わっています" };
-            GuiNotification::NotifyRed(Cheats::kBeOn, kWhy[s_lostReason < 4 ? s_lostReason : 0]);
+            GuiDialog::ShowMessage(Cheats::kBeOn, kWhy[s_lostReason < 4 ? s_lostReason : 0]);
             s_failed = true;
         }
         return;

@@ -12,6 +12,7 @@
 
 #include "GuiMenuInternal.hpp"
 #include "GuiKeyboard.hpp"
+#include "GuiDialog.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -401,6 +402,41 @@ namespace CTRPluginFramework
                     }
                 }
 
+                // OK だけのダイアログ（GuiDialog）。見た目は DrawDialog と同じ部品: 1px の縁・暗い地・選択の帯。
+                //   幅 kMsgW、本文は幅で折り返す。縁と題は error なら赤（kColDanger）、そうでなければ金（kColDirty）。
+                const int   kMsgW = 300, kMsgPad = 12, kMsgLine = 13, kMsgTitleH = 26, kMsgBtnW = 80, kMsgBtnH = 19;
+                char        g_msgLines[GuiDialog::kMaxLines][kWrapBytes];
+                int         g_msgLineCount;
+
+                void    DrawMessageDialog(u32 now)
+                {
+                    const float amount = AnimAmount(g_message.anim, now);
+
+                    if (amount <= 0.0f)
+                        return;
+                    g_msgLineCount = Wrap(g_message.body, kMsgW - 2 * kMsgPad, (int)GuiDialog::kMaxLines, g_msgLines);
+
+                    const int   h = kMsgTitleH + g_msgLineCount * kMsgLine + 10 + kMsgBtnH + 10;
+                    const int   x = (400 - kMsgW) / 2;
+                    const int   y = (240 - h) / 2 + Round((1.0f - amount) * 12.0f);
+                    const u32   edge = g_message.error ? kColDanger : kColDirty;
+
+                    Frame1px(TOP, x, y, kMsgW, h, Fade(edge, amount), Fade(kColDlgBg, amount));
+                    GuiRenderer::DrawText(TOP, x + 10, y + 10,
+                                          Trim(g_message.title, kMsgW - 20, g_buf, sizeof(g_buf)),
+                                          Fade(g_message.error ? kColDanger : kColWhite, amount));
+                    for (int i = 0; i < g_msgLineCount; i++)
+                        GuiRenderer::DrawText(TOP, x + kMsgPad, y + kMsgTitleH + i * kMsgLine, g_msgLines[i],
+                                              Fade(kColWhite, amount));
+
+                    const int   bx = x + (kMsgW - kMsgBtnW) / 2;
+                    const int   by = y + h - 10 - kMsgBtnH;
+                    const int   tw = GuiRenderer::MeasureText("OK");
+
+                    Frame1px(TOP, bx, by, kMsgBtnW, kMsgBtnH, Fade(kColDirty, amount), Fade(kColDlgSel, amount));
+                    GuiRenderer::DrawText(TOP, bx + (kMsgBtnW - tw) / 2, by + 5, "OK", Fade(kColWhite, amount));
+                }
+
                 // drawListbox の写し。上下共用。
                 void    DrawScreenListbox(GuiRenderer::Screen sc, int baseX, int width, int offscreenX, u32 now)
                 {
@@ -568,6 +604,8 @@ namespace CTRPluginFramework
                         DrawScreenListbox(TOP, Round(Mix(98.0f, 178.0f, 0.0f)), 204, 400, now);
                     if (g_dialog.type != DLG_NONE)
                         DrawDialog(now);
+                    if (g_message.active)
+                        DrawMessageDialog(now);
                     DrawNotices(now);
                     return;
                 }
@@ -647,6 +685,8 @@ namespace CTRPluginFramework
                     DrawScreenListbox(TOP, Round(Mix(98.0f, 178.0f, amount)), 204, 400, now);
                 if (g_dialog.type != DLG_NONE)
                     DrawDialog(now);
+                if (g_message.active)
+                    DrawMessageDialog(now);
                 DrawNotices(now);
             }
 

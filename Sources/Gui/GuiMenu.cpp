@@ -20,6 +20,7 @@
 #include <cstring>
 
 #include "GuiMenuInternal.hpp"
+#include "GuiDialog.hpp"
 #include "GuiKeyboard.hpp"
 #include "ChatKanji.hpp"
 #include "csvc.h"   // svcInvalidateEntireInstructionCache
@@ -44,6 +45,13 @@ namespace CTRPluginFramework
             char        g_pendMsg[96];
             bool        g_pendRed = false;
             volatile bool g_pendHave = false;
+
+            // ★GuiDialog の依頼（どのスレッドからでも）。輪に写して、メニューのスレッドが 1 つずつ出す。
+            struct PendingMessage { char title[64]; char body[512]; bool error; };
+            PendingMessage  g_msgQueue[GuiDialog::kQueue];
+            volatile u32    g_msgHead = 0, g_msgTail = 0;     // 書く側 = head、出す側 = tail
+            LightLock       g_msgLock;
+            bool            g_msgLockReady = false;
 
             // HotkeyBit の順（ui-model.js の HOTKEY_BUTTON_ORDER）
             const u32   kHotkeyKeys[HB_COUNT] = {
@@ -130,6 +138,18 @@ namespace CTRPluginFramework
                             AddNotice(g_pendTitle, g_pendMsg, now, g_pendRed);
                             g_pendHave = false;
                         }
+                        if (!g_message.active && g_msgLockReady)
+                        {
+                            LightLock_Lock(&g_msgLock);
+                            if (g_msgTail != g_msgHead)
+                            {
+                                const PendingMessage &m = g_msgQueue[g_msgTail % GuiDialog::kQueue];
+
+                                OpenMessage(m.title, m.body, m.error, now);
+                                g_msgTail = g_msgTail + 1;
+                            }
+                            LightLock_Unlock(&g_msgLock);
+                        }
                         Step(now, in);
                         SyncInputLock(in);
                         if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal)
@@ -179,6 +199,11 @@ namespace CTRPluginFramework
 
             if (g_thread != nullptr)
                 return true;
+            if (!g_msgLockReady)
+            {
+                LightLock_Init(&g_msgLock);
+                g_msgLockReady = true;
+            }
             BuildTree();
             GuiKeyboard::Reset();
             ResetState();
@@ -382,7 +407,30 @@ namespace CTRPluginFramework
 
         bool    IsVisible(void)
         {
-            return g_visible || OverlayActive() || g_dialog.type != DLG_NONE;
+            return g_visible || OverlayActive() || g_dialog.type != DLG_NONE || g_message.active;
+        }
+
+        void    QueueMessage(const char *title, const char *body, bool error)
+        {
+            if (!g_msgLockReady)
+            {
+                LightLock_Init(&g_msgLock);
+                g_msgLockReady = true;
+            }
+            LightLock_Lock(&g_msgLock);
+            if (g_msgHead - g_msgTail >= GuiDialog::kQueue)
+                g_msgTail = g_msgTail + 1;          // あふれたら古い物を捨てる
+            PendingMessage &m = g_msgQueue[g_msgHead % GuiDialog::kQueue];
+            std::snprintf(m.title, sizeof(m.title), "%s", title != nullptr ? title : "");
+            std::snprintf(m.body, sizeof(m.body), "%s", body != nullptr ? body : "");
+            m.error = error;
+            g_msgHead = g_msgHead + 1;
+            LightLock_Unlock(&g_msgLock);
+        }
+
+        bool    MessageOpen(void)
+        {
+            return g_message.active || g_msgHead != g_msgTail;
         }
 
         void    SetToggleHandlers(const ToggleHandlers *handlers)
@@ -428,5 +476,19 @@ namespace CTRPluginFramework
                 return "";
             return FormatHotkey(ItemOk(index) ? g_items[index].hotkey : 0, buf, cap);
         }
+    }
+}
+
+// ---- GuiDialog（Includes/Gui/GuiDialog.hpp）----
+namespace GuiDialog
+{
+    void    ShowMessage(const char *title, const char *message, bool error)
+    {
+        CTRPluginFramework::GuiMenu::QueueMessage(title, message, error);
+    }
+
+    bool    IsOpen(void)
+    {
+        return CTRPluginFramework::GuiMenu::MessageOpen();
     }
 }
