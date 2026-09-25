@@ -61,7 +61,11 @@ namespace CTRPluginFramework
             const u32   kGetTextureOrig = 0xE92D4070;
             const u32   kVtAccessorVram = 0x009005E4;   // ssys::ma::lyt::ArcResourceAccessorVRAM
             const u32   kBsSkbPtr       = 0x0094A654;   // BsSkb（キーボード）
-            const u32   kBsSkbCommonAcc = 800;          // BsSkb+788 の ArcResAccReader（swkbd_common.arc）+12 = アクセサ
+            const u32   kBsSkbKeysetAcc = 1448;         // BsSkb+1436 の ArcResAccReader（今のキー配列の swkbd_*.arc）+12 = アクセサ
+            const u32   kBsSkbKeyset    = 4416;         // BsSkb+4416 = 今のキー配列（gui::*KeySet）
+            const u32   kKeysetKind     = 0x00AD0544;   // 0 qwerty / 1 かな / 2・3 grid / 4 ケータイ（BsSkb_InitStep）
+            const u32   kWindowInCalc   = 0x0057CB20;   // BsSkb 状態 #0 "window in" の calc（開くアニメの間）
+            const u32   kWindowInCalcOrig = 0xE92D41F0;
             const u32   kBsSkbBgLayout  = 1372;         // BsSkb+1372 = BG レイアウト（N_All に BG_in / BG_out が当たる）
             // gui::KanaKeySet の OnKey（0x4F556C）が InputChar を呼ぶ 3 か所（字 x2・濁点キー）
             const u32   kKanaCall[3]    = { 0x004F5654, 0x004F56A4, 0x004F57A4 };
@@ -94,24 +98,27 @@ namespace CTRPluginFramework
             const int   kKeyTexts = 3, kKeyChars = 5;
             const int   kMaxCand = 300;                 // SwkbdEngine::MaxCandidates
 
-            // ---- 自前キー（全選択・左・右）。見た目はゲームのキー（KeytopModeSelect の中央の部品）----
-            //   位置は Simulator の SELECT_ALL_BUTTON / CURSOR_BUTTONS（左右は 24x22、入力欄の上）。
-            struct KeyRect { int x, y, w, h; const char *label; float scale; int textX, textY; };
+            // ---- 自前キー（全選択・左・右）。見た目は今のキー配列の「空白」キー（利用者の指示 2026-09-26）----
+            //   全選択は Simulator の SELECT_ALL_BUTTON（消去の真上）。左右は右上で、24x22 は大きいとの指摘で 22x19（全選択と同じ高さ）。
+            //   文字は横も縦もキーの中央（字幅は GPU の送りで測る）。
+            struct KeyRect { int x, y, w, h; const char *label; float scale; };
             enum { KEY_SELECT_ALL = 0, KEY_LEFT, KEY_RIGHT, KEY_COUNT };
             const KeyRect kKeys[KEY_COUNT] = {
-                { 279, 49, 40, 19, u8"全選択", 0.72f, 281, 48 },    // drawAcNlControlKey: x + floor((w - 36) / 2)、文字セル y 48
-                { 271,  1, 24, 22, u8"←",     1.0f,  275,  0 },    // 同: x + floor((24 - 16) / 2)、y - 1
-                { 295,  1, 24, 22, u8"→",     1.0f,  299,  0 },
+                { 279, 49, 40, 19, u8"全選択", 0.72f },
+                { 275,  1, 22, 19, u8"←",     0.8f },
+                { 297,  1, 22, 19, u8"→",     0.8f },
             };
-            // KeytopModeSelect.bclyt の P_ktpMode_01（KtpModeC）と KeytopModeSelect_n0s1（フレーム 0 = 通常、1 = 押下）
-            const u32   kKeyColor0     = 0x00192D50;    // material 色[0] (80,45,25,0)
-            const u32   kKeyTopNormal  = 0xFF2D69B9;    // 頂点色 上 (185,105,45)
-            const u32   kKeyBotNormal  = 0xFF082852;    //        下 (82,40,8)
-            const u32   kKeyTopPressed = 0xFF66A0FF;    // 押下   上 (255,160,102)
-            const u32   kKeyBotPressed = 0xFFD2EDFF;    //        下 (255,237,210)
-            const u32   kKeyText       = 0xFFB9F0FF;    // T_ktpMode 色[1] (255,240,185)
-            const u32   kKeyTextPressed = 0xFF3A5EB8;   // 押下 (184,94,58)
-            const u32   kSoundChangeKeySet = 0x010003E0;    // SE_SYS_SWK_CHANGE_KEY_SET（「ABC」「あいう」の切り替え）
+            const char  kLabelDeselect[] = u8"解除";         // 全体が選択されている間の全選択キー
+            // 空白キー（どのキー配列も P_key_Spc / T_key_Spc と *_n0s1 の値が同じ。フレーム 0 = 通常、1 = 押下）
+            const u32   kKeyColor0     = 0x0023418C;    // material 色[0] (140,65,35,0)
+            const u32   kKeyTopNormal  = 0xFF468AD2;    // 頂点色 上 (210,138,70)
+            const u32   kKeyBotNormal  = 0xFF2D5F96;    //        下 (150,95,45)
+            const u32   kKeyTopPressed = 0xFF81B1FF;    // 押下   上 (255,177,129)
+            const u32   kKeyBotPressed = 0xFFC3E8FF;    //        下 (255,232,195)
+            const u32   kKeyText       = 0xFF00143C;    // T_key_Spc 色[1] (60,20,0)
+            const u32   kKeyTextPressed = 0xFF3A5EB8;   // 押下 (184,94,58)。文字は右下へ 1px（T_key_Spc の CLPA）
+            const u32   kSoundChangeKeySet = 0x010003E0;    // SE_SYS_SWK_CHANGE_KEY_SET（全選択。「ABC」「あいう」の切り替えの音）
+            const u32   kSoundBackspace    = 0x010003DA;    // SE_SYS_SWK_BACKSPACE（左右。Backspace で消せたときの音）
             const int   kTapSlop = 4;                   // これ以上動いたらスクロール（確定しない）
 
             // HotkeyBit（GuiMenu.cpp の kHotkeyKeys の並び）
@@ -125,7 +132,7 @@ namespace CTRPluginFramework
             volatile bool   g_reverted = false; // Backspace で読みへ戻した（ゲーム -> メニュー。同じ読みでも取り直す）
 
             // ---- 依頼（メニュー -> ゲーム）----
-            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER, R_SELECT_ALL, R_LEFT, R_RIGHT };
+            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER, R_SELECT_ALL, R_LEFT, R_RIGHT, R_DESELECT };
             volatile u32    g_reqKind = R_NONE;
             volatile s32    g_reqArg = 0;
             // R_APPLY で入れる文字列（メニューが写してから依頼する。ゲームのスレッドはキャッシュを読まない）
@@ -136,7 +143,9 @@ namespace CTRPluginFramework
 
             // ---- キーのテクスチャ（ゲームのスレッドが BsSkb ごとに 1 回取り、メニューが描画器へ渡す）----
             u32             g_texOwner = 0;             // 取った BsSkb
-            u32             g_texMap[2][8];             // [0] KtpModeC / [1] KtpModeCon の TexMap（32 B）
+            u32             g_texKeyset = 0;            //        キー配列
+            u32             g_texKind = 0xFFFFFFFF;     //        キー配列の種類
+            u32             g_texMap[2][8];             // [0] 空白キー / [1] その押下（…on）の TexMap（32 B）
             volatile u32    g_texSeq = 0;               // 取り直すたびに増える（奇数 = 書いている途中）
             volatile bool   g_texOk = false;
 
@@ -348,6 +357,7 @@ namespace CTRPluginFramework
             Hook        g_hInput;
             Hook        g_hBack;
             Hook        g_hWait;
+            Hook        g_hWindowIn;
 
             inline u32  R32(u32 a)          { return *(volatile u32 *)a; }
             inline void W32(u32 a, u32 v)   { *(volatile u32 *)a = v; }
@@ -500,18 +510,27 @@ namespace CTRPluginFramework
                 g_state = S_ACTIVE;
             }
 
-            // KeytopModeSelect の部品のテクスチャを swkbd_common.arc のアクセサから取る（読み込み済みの控えが返る）
-            bool    CaptureKeyTextures(u32 bsskb)
+            // 今のキー配列の「空白」キーのテクスチャを、そのキー配列の arc のアクセサから取る（読み込み済みの控えが返る）
+            bool    CaptureKeyTextures(u32 bsskb, u32 kind)
             {
                 typedef void (*GetTextureFn)(u32 *out, u32 accessor, const char *name);
                 typedef void (*UpdateFn)(u32 *texMap);
-                const u32   acc = bsskb + kBsSkbCommonAcc;
-                const char *names[2] = { "KtpModeC.bclim", "KtpModeCon.bclim" };
+                const u32   acc = bsskb + kBsSkbKeysetAcc;
+                const char *names[2];
                 u32         info[2][5];
 
                 if (bsskb < 0x08000000u || bsskb >= 0x40000000u || R32(acc) != kVtAccessorVram
                     || R32(kVtAccessorVram + 0x10) != kGetTexture)
                     return false;
+                switch (kind)
+                {
+                case 0:  names[0] = "KtpQweKeySpc.bclim";        names[1] = "KtpQweKeySpcon.bclim";        break;
+                case 1:  names[0] = "Ktp50onKeySpc.bclim";       names[1] = "Ktp50onKeySpcon.bclim";       break;
+                case 2:
+                case 3:  names[0] = "KtpGrdKeySpc.bclim";        names[1] = "KtpGrdKeySpcon.bclim";        break;
+                case 4:  names[0] = "KtpCellKeyOpt01min1.bclim"; names[1] = "KtpCellKeyOpt01min1on.bclim"; break;
+                default: return false;
+                }
                 for (int i = 0; i < 2; i++)
                 {
                     std::memset(info[i], 0, sizeof(info[i]));
@@ -532,10 +551,31 @@ namespace CTRPluginFramework
                     g_texMap[i][4] = ((info[i][4] & 0xFFu) << 8 & 0xF00u) | 0x10u | 0x80u;
                     ((UpdateFn)kTexMapUpdate)(g_texMap[i]);
                 }
-                g_texOwner = bsskb;
                 g_texOk = true;
                 __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 偶数: 揃った
                 return true;
+            }
+
+            // キー配列が変わっていたら取り直す（開くアニメの間は window in、以後は wait から。ゲームのスレッド）
+            void    RefreshKeyTextures(void)
+            {
+                const u32   bsskb = R32(kBsSkbPtr);
+
+                if (bsskb < 0x08000000u || bsskb >= 0x40000000u)
+                    return;
+
+                const u32   keyset = R32(bsskb + kBsSkbKeyset);
+                const u32   kind = R32(kKeysetKind);
+
+                if (bsskb == g_texOwner && keyset == g_texKeyset && kind == g_texKind)
+                    return;
+                g_texOk = false;
+                __atomic_add_fetch(&g_texSeq, 2u, __ATOMIC_ACQ_REL);   // 前の分はもう使わない（偶数のまま進める）
+                if (keyset != 0)
+                    CaptureKeyTextures(bsskb, kind);    // 取れなければこのキー配列では文字だけのキー
+                g_texOwner = bsskb;
+                g_texKeyset = keyset;
+                g_texKind = kind;
             }
 
             // 全選択（「クリア」キー。利用者の指示で全選択にした）: 起点 0、カーソルを末尾へ（選択中にする）
@@ -547,6 +587,14 @@ namespace CTRPluginFramework
                 set(tm, 0, 1, 1);                       // 途中の入力を確定し、起点 0
                 if (RI(tm, TM_LEN) > 0)
                     set(tm, RI(tm, TM_LEN), 1, 0);      // 起点を残して末尾へ = 全体を選択
+            }
+
+            // 選択を解く（全選択キーが「解除」のとき）: カーソルの位置で解く
+            void    Deselect(u32 tm)
+            {
+                typedef int (*SetCursorFn)(u32 tm, int pos, int clearSel, int moveAnchor);
+
+                ((SetCursorFn)kSetCursor)(tm, RI(tm, TM_CURSOR), 1, 1);
             }
 
             // 左右: 選択中なら選択の端へ寄せて解く。そうでなければ 1 字動かす（途中の入力はゲームの処理で確定）
@@ -644,14 +692,8 @@ namespace CTRPluginFramework
                 if (g_convOn && !g_broken)
                 {
                     const u32   tm = R32(kTmPtr);
-                    const u32   bsskb = R32(kBsSkbPtr);
 
-                    if (bsskb != 0 && bsskb != g_texOwner)
-                    {
-                        g_texOk = false;
-                        if (!CaptureKeyTextures(bsskb))
-                            g_texOwner = bsskb;         // 取れなかった: この BsSkb では描かない（キーは矩形なしで文字だけ）
-                    }
+                    RefreshKeyTextures();
                     const u32   kind = __atomic_load_n(&g_reqKind, __ATOMIC_ACQUIRE);
 
                     if (kind == R_START)
@@ -662,13 +704,16 @@ namespace CTRPluginFramework
                         g_state = S_IDLE;
                     else if (kind == R_ENTER && TmSane(tm))
                         ((int (*)(u32, u32, u32, u32))kInputChar)(tm, 10, 0, 0);   // フック経由。字 10 は素通しでゲームが確定する
-                    else if ((kind == R_SELECT_ALL || kind == R_LEFT || kind == R_RIGHT) && TmSane(tm))
+                    else if ((kind == R_SELECT_ALL || kind == R_DESELECT || kind == R_LEFT || kind == R_RIGHT) && TmSane(tm))
                     {
                         if (kind == R_SELECT_ALL)
                             SelectAll(tm);
+                        else if (kind == R_DESELECT)
+                            Deselect(tm);
                         else
                             MoveCursor(tm, kind == R_LEFT ? -1 : 1);
-                        ((void (*)(u32))kPlaySound)(kSoundChangeKeySet);
+                        // 全選択・解除は切り替えの音、左右は Backspace の音（利用者の指示 2026-09-26）
+                        ((void (*)(u32))kPlaySound)(kind == R_LEFT || kind == R_RIGHT ? kSoundBackspace : kSoundChangeKeySet);
                     }
                     if (kind != R_NONE)
                         __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
@@ -676,6 +721,16 @@ namespace CTRPluginFramework
                     if (g_state != S_IDLE && !Consistent(tm))
                         g_state = S_IDLE;
                 }
+                return ctx.OriginalFunction<int>(self);
+            }
+
+            // 開くアニメ（BsSkb の window in）の間にもテクスチャを取る（利用者の指示: 開いた段階で読み込みを終わらせる）
+            __attribute__((noinline)) int ChatImeWindowInCalc(u32 self)
+            {
+                HookContext &ctx = HookContext::GetCurrent();
+
+                if (g_convOn && !g_broken)
+                    RefreshKeyTextures();
                 return ctx.OriginalFunction<int>(self);
             }
 
@@ -688,6 +743,7 @@ namespace CTRPluginFramework
                     { kKanaCall[0], kKanaCallWord[0] }, { kKanaCall[1], kKanaCallWord[1] }, { kKanaCall[2], kKanaCallWord[2] },
                     { kSetCursor, kSetCursorOrig }, { kPlaySound, kPlaySoundOrig }, { kTexMapUpdate, kTexMapUpdateOrig },
                     { kGetTexture, kGetTextureOrig }, { kVtAccessorVram + 0x10, kGetTexture },
+                    { kWindowInCalc, kWindowInCalcOrig },
                 };
 
                 if (Process::GetTitleID() != 0x0004000000086200ULL)
@@ -713,13 +769,15 @@ namespace CTRPluginFramework
                 g_hInput.InitializeForMitm(kInputChar, (u32)ChatImeInputChar);
                 g_hBack.InitializeForMitm(kBackspace, (u32)ChatImeBackspace);
                 g_hWait.InitializeForMitm(kWaitCalc, (u32)ChatImeWaitCalc);
+                g_hWindowIn.InitializeForMitm(kWindowInCalc, (u32)ChatImeWindowInCalc);
                 if (g_hInput.Enable() != HookResult::Success || g_hBack.Enable() != HookResult::Success
-                    || g_hWait.Enable() != HookResult::Success)
+                    || g_hWait.Enable() != HookResult::Success || g_hWindowIn.Enable() != HookResult::Success)
                 {
                     // 入った分は外す（まだ何も走っていない。旗も立てていない）
                     g_hInput.Disable();
                     g_hBack.Disable();
                     g_hWait.Disable();
+                    g_hWindowIn.Disable();
                     m_hookFailed = true;
                     GuiMenu::NotifyRed(kKanji, u8"フックを入れられません。");
                     return false;
@@ -855,6 +913,8 @@ namespace CTRPluginFramework
             }
 
             // 依頼の枠が空いているときだけ出す（ゲームのスレッドが読んでいる文字列を書き換えない）
+            bool    AllSelected(void);
+
             void    FlushWants(void)
             {
                 if (__atomic_load_n(&g_reqKind, __ATOMIC_ACQUIRE) != R_NONE)
@@ -881,7 +941,8 @@ namespace CTRPluginFramework
                 }
                 if (m_wantKey >= 0)
                 {
-                    Post(m_wantKey == KEY_SELECT_ALL ? R_SELECT_ALL : m_wantKey == KEY_LEFT ? R_LEFT : R_RIGHT, 0);
+                    Post(m_wantKey == KEY_SELECT_ALL ? (AllSelected() ? R_DESELECT : R_SELECT_ALL)
+                         : m_wantKey == KEY_LEFT ? R_LEFT : R_RIGHT, 0);
                     m_wantKey = -1;
                 }
             }
@@ -940,6 +1001,19 @@ namespace CTRPluginFramework
                     }
                 }
                 return 0.0f;
+            }
+
+            // 全体が選択されているか（全選択キーを「解除」にする）。読むだけ
+            bool    AllSelected(void)
+            {
+                const u32   tm = R32(kTmPtr);
+
+                if (!TmSane(tm) || R8(tm + TM_SEL) == 0)
+                    return false;
+
+                const int   len = RI(tm, TM_LEN), a = RI(tm, TM_ANCHOR), c = RI(tm, TM_CURSOR);
+
+                return len > 0 && ((a == 0 && c == len) || (c == 0 && a == len));
             }
 
             int     KeyAt(int x, int y)
@@ -1061,6 +1135,18 @@ namespace CTRPluginFramework
                         m_texSeqSeen = seq;
                         m_texReady = g_texOk && GuiRenderer::SetGameTexture(1, g_texMap[0], kKeyColor0)
                                      && GuiRenderer::SetGameTexture(2, g_texMap[1], kKeyColor0);
+                    }
+                    // キー配列が切り替わった（テクスチャはそのキー配列の資源）: 取り直されるまで使わない
+                    if (m_texReady)
+                    {
+                        const u32 bsskb = R32(kBsSkbPtr);
+
+                        if (bsskb != g_texOwner || (bsskb >= 0x08000000u && bsskb < 0x40000000u
+                            && (R32(bsskb + kBsSkbKeyset) != g_texKeyset || R32(kKeysetKind) != g_texKind)))
+                        {
+                            GuiRenderer::ClearGameTextures();
+                            m_texReady = false;
+                        }
                     }
                 }
                 const u16   hk = GuiMenu::ItemAppliedHotkey(index);
@@ -1336,12 +1422,21 @@ namespace CTRPluginFramework
             {
                 const KeyRect  &k = kKeys[i];
                 const bool      on = m_keyDown == i && m_keyInside;
+                const char     *label = i == KEY_SELECT_ALL && AllSelected() ? kLabelDeselect : k.label;
 
                 if (m_texReady)
                     GuiRenderer::FillTextured(BOT, k.x, k.y + dy, k.w, k.h, on ? 2 : 1,
                                               on ? kKeyTopPressed : kKeyTopNormal, on ? kKeyBotPressed : kKeyBotNormal);
                 if (ChatKanji::FontReady())
-                    GuiRenderer::DrawTextNative(BOT, k.textX, k.textY + dy, k.label, on ? kKeyTextPressed : kKeyText, k.scale);
+                {
+                    // 中央: 字幅は GPU の送り、文字セルの高さ = FINF の高さ x 倍率。押下は右下へ 1px（T_key_Spc の CLPA）
+                    const float tw = GuiRenderer::MeasureTextNative(label, k.scale);
+                    const float th = (float)ChatKanji::FontCellHeight() * k.scale;
+                    const int   tx = k.x + (int)(((float)k.w - tw) * 0.5f) + (on ? 1 : 0);
+                    const int   ty = k.y + (int)(((float)k.h - th) * 0.5f) + (on ? 1 : 0);
+
+                    GuiRenderer::DrawTextNative(BOT, tx, ty + dy, label, on ? kKeyTextPressed : kKeyText, k.scale);
+                }
             }
         }
 
