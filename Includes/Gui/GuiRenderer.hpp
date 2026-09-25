@@ -57,6 +57,13 @@ namespace CTRPluginFramework
         void        DrawTextNative(Screen screen, int x, int y, const char *text, u32 color, float scale);
         // 上の描き方での幅（CWDH の送り x scale の合計。GPU の送りと同じ小数のまま）
         float       MeasureTextNative(const char *text, float scale);
+        // ★ゲームのテクスチャを貼る矩形（2026-09-26、チャットの自前キー）。
+        //   slot 1..2 に TexMap（nw::lyt::TexMap の 32 B。+0x04 番地・+0x08 使う大きさ・+0x0C 全体の大きさ・+0x10 書式、
+        //   派生は TexMap_UpdateGpuRegs 済み）と色[0] を入れてから FillTextured で描く。色は上と下の頂点色。
+        //   ★テクスチャはゲームの資源なので、持ち主（キーボード）が消えたら ClearGameTextures する。
+        bool        SetGameTexture(int slot, const u32 *texMap, u32 color0);
+        void        ClearGameTextures(void);
+        void        FillTextured(Screen screen, int x, int y, int w, int h, int slot, u32 topColor, u32 bottomColor);
         void        Commit(void);
 
         // ---- 寸法（左上原点・画素）----

@@ -51,6 +51,18 @@ namespace CTRPluginFramework
             const u32   kInsertCharOrig = 0xE92D4FF0;
             const u32   kFinishCell     = 0x005224B8;   // TextManager_FinishCellPhonePending(tm, 1)
             const u32   kFinishCellOrig = 0xE92D4038;
+            const u32   kSetCursor      = 0x00522020;   // TextManager_SetCursor(tm, pos, clearSel, moveAnchor)
+            const u32   kSetCursorOrig  = 0xE92D41F0;
+            const u32   kPlaySound      = 0x0058C7D4;   // Game_PlaySound(id)
+            const u32   kPlaySoundOrig  = 0xE1A01000;
+            const u32   kTexMapUpdate   = 0x004B9830;   // nwlyt_TexMap_UpdateGpuRegs(texMap)
+            const u32   kTexMapUpdateOrig = 0xE52D4004;
+            const u32   kGetTexture     = 0x004B5844;   // nw::lyt::ArcResourceAccessor::GetTexture (vtable +0x10)
+            const u32   kGetTextureOrig = 0xE92D4070;
+            const u32   kVtAccessorVram = 0x009005E4;   // ssys::ma::lyt::ArcResourceAccessorVRAM
+            const u32   kBsSkbPtr       = 0x0094A654;   // BsSkb（キーボード）
+            const u32   kBsSkbCommonAcc = 800;          // BsSkb+788 の ArcResAccReader（swkbd_common.arc）+12 = アクセサ
+            const u32   kBsSkbBgLayout  = 1372;         // BsSkb+1372 = BG レイアウト（N_All に BG_in / BG_out が当たる）
             // gui::KanaKeySet の OnKey（0x4F556C）が InputChar を呼ぶ 3 か所（字 x2・濁点キー）
             const u32   kKanaCall[3]    = { 0x004F5654, 0x004F56A4, 0x004F57A4 };
             const u32   kKanaCallWord[3] = { 0xEB00B028, 0xEB00B014, 0xEB00AFD4 };   // BL 0x5216FC
@@ -64,18 +76,43 @@ namespace CTRPluginFramework
             typedef void    (*DeleteRangeFn)(u32 tm, int pos, int n);
             typedef int     (*FinishCellFn)(u32 tm, int flag);
 
-            // ---- 候補欄（Simulator 670e44f chat-kanji-preview.js の CANDIDATE_BAR / CANDIDATE_COLORS）----
-            const int   kBarX = 8, kBarY = 49, kBarW = 304, kBarH = 17;
+            // ---- 候補欄（Simulator 639b4e6 chat-kanji-preview.js の CHAT_LAYOUT / CANDIDATE_BAR / CANDIDATE_COLORS）----
+            //   変換行 = キーボードの幅 x1..318、y49..67（高さ 19）。候補欄はその左、右端の列（x279..318）が「全選択」。
+            const int   kRowX = 1, kRowW = 318, kRowY = 49, kRowH = 19;
+            const int   kBarX = kRowX, kBarY = kRowY, kBarW = 279 - kRowX, kBarH = kRowH;
             const int   kBarGap = 2, kBarPad = 4, kBarTextY = 48;
             const float kBarScale = 0.72f;
             const u32   kColBarPanel = 0xFF102852;      // #522810
+            const u32   kColRowEdge  = 0xFF0C1D3A;      // #3a1d0c（CONTROL_COLORS.rowEdge）
             const u32   kColBarSel   = 0x3DD6FFEF;      // rgba(239,255,214,.24)
             const u32   kColBarText  = 0xFFD6F3FF;      // #fff3d6
             const u32   kColBarHint  = 0x9ED6F3FF;      // rgba(255,243,214,.62)
-            // 1 フレームに描くゲームの字形の上限（記録リストの見積もり。verify_plugin_port_v2 群 4 が読む）
+            // 1 フレームに描くゲームの字形の上限（記録リストの見積もり。verify_plugin_port_v2 群 4 が読む）。
+            //   ゲームの字形の枠は 16 本（GuiRenderer kNativeSlots）。キーの文字 3 本（全選択 / ← / →、5 字）を先に取る。
             const int   kBarMaxChars = 32;
-            const int   kBarMaxCells = 16;              // ゲームの字形の枠（GuiRenderer kNativeSlots）
+            const int   kBarMaxCells = 13;
+            const int   kKeyTexts = 3, kKeyChars = 5;
             const int   kMaxCand = 300;                 // SwkbdEngine::MaxCandidates
+
+            // ---- 自前キー（全選択・左・右）。見た目はゲームのキー（KeytopModeSelect の中央の部品）----
+            //   位置は Simulator の SELECT_ALL_BUTTON / CURSOR_BUTTONS（左右は 24x22、入力欄の上）。
+            struct KeyRect { int x, y, w, h; const char *label; float scale; int textX, textY; };
+            enum { KEY_SELECT_ALL = 0, KEY_LEFT, KEY_RIGHT, KEY_COUNT };
+            const KeyRect kKeys[KEY_COUNT] = {
+                { 279, 49, 40, 19, u8"全選択", 0.72f, 281, 48 },    // drawAcNlControlKey: x + floor((w - 36) / 2)、文字セル y 48
+                { 271,  1, 24, 22, u8"←",     1.0f,  275,  0 },    // 同: x + floor((24 - 16) / 2)、y - 1
+                { 295,  1, 24, 22, u8"→",     1.0f,  299,  0 },
+            };
+            // KeytopModeSelect.bclyt の P_ktpMode_01（KtpModeC）と KeytopModeSelect_n0s1（フレーム 0 = 通常、1 = 押下）
+            const u32   kKeyColor0     = 0x00192D50;    // material 色[0] (80,45,25,0)
+            const u32   kKeyTopNormal  = 0xFF2D69B9;    // 頂点色 上 (185,105,45)
+            const u32   kKeyBotNormal  = 0xFF082852;    //        下 (82,40,8)
+            const u32   kKeyTopPressed = 0xFF66A0FF;    // 押下   上 (255,160,102)
+            const u32   kKeyBotPressed = 0xFFD2EDFF;    //        下 (255,237,210)
+            const u32   kKeyText       = 0xFFB9F0FF;    // T_ktpMode 色[1] (255,240,185)
+            const u32   kKeyTextPressed = 0xFF3A5EB8;   // 押下 (184,94,58)
+            const u32   kSoundChangeKeySet = 0x010003E0;    // SE_SYS_SWK_CHANGE_KEY_SET（「ABC」「あいう」の切り替え）
+            const int   kTapSlop = 4;                   // これ以上動いたらスクロール（確定しない）
 
             // HotkeyBit（GuiMenu.cpp の kHotkeyKeys の並び）
             const u16   HB_LEFT = 1u << 6, HB_RIGHT = 1u << 7;
@@ -88,7 +125,7 @@ namespace CTRPluginFramework
             volatile bool   g_reverted = false; // Backspace で読みへ戻した（ゲーム -> メニュー。同じ読みでも取り直す）
 
             // ---- 依頼（メニュー -> ゲーム）----
-            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER };
+            enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER, R_SELECT_ALL, R_LEFT, R_RIGHT };
             volatile u32    g_reqKind = R_NONE;
             volatile s32    g_reqArg = 0;
             // R_APPLY で入れる文字列（メニューが写してから依頼する。ゲームのスレッドはキャッシュを読まない）
@@ -96,6 +133,12 @@ namespace CTRPluginFramework
             int             g_applyLen = 0;
             enum { START_OK = 0, START_NO_TARGET, START_TOO_LONG, START_NO_TM };
             volatile u32    g_startResult = START_OK;
+
+            // ---- キーのテクスチャ（ゲームのスレッドが BsSkb ごとに 1 回取り、メニューが描画器へ渡す）----
+            u32             g_texOwner = 0;             // 取った BsSkb
+            u32             g_texMap[2][8];             // [0] KtpModeC / [1] KtpModeCon の TexMap（32 B）
+            volatile u32    g_texSeq = 0;               // 取り直すたびに増える（奇数 = 書いている途中）
+            volatile bool   g_texOk = false;
 
             // ---- 変換の区切り（ゲームのスレッドが書く。g_state だけメニューも読む）----
             enum { S_IDLE = 0, S_WAIT_ENGINE, S_ACTIVE };
@@ -265,7 +308,9 @@ namespace CTRPluginFramework
             int         m_phase = M_IDLE;
             u64         m_startTick = 0;                // M_STARTING に入った時刻（ゲームが受け取らないときの打ち切り）
             // 自動の取得（利用者の指示 2026-09-26: 入力して 300ms 待ってから自動で取る）
-            const u64   kSettleTicks = (u64)SYSCLOCK_ARM11 * 300 / 1000;
+            const u64   kSettleTicks = (u64)SYSCLOCK_ARM11 * 100 / 1000;     // 2026-09-26: 300 -> 100ms（変換が速くなったので）
+            const u64   kRepeatDelayTicks = (u64)SYSCLOCK_ARM11 * 200 / 1000;  // メニューの kRepeatDelay と同じ
+            const u64   kRepeatEveryTicks = (u64)SYSCLOCK_ARM11 * 60 / 1000;   // kRepeatEvery と同じ
             u32         m_key = 0;                      // いまの対象（未確定か選択）の指紋。0 = 対象なし
             u64         m_keySince = 0;                 // m_key になった時刻
             u32         m_doneKey = 0;                  // 取り終えた（または取れなかった）対象
@@ -287,6 +332,16 @@ namespace CTRPluginFramework
             float       m_content = 0.0f;
             bool        m_touchPrev = false;
             bool        m_dragging = false;
+            int         m_dragMax = 0;                  // 触れてから動いた最大の横幅（タップかスクロールか）
+            int         m_tapCandidate = -1;            // 選択中の候補をもう一度触った（離したときに Enter）
+            int         m_keyDown = -1;                 // 押している自前キー
+            bool        m_keyInside = false;            // 押している指がまだキーの上か（押下の見た目）
+            int         m_wantKey = -1;                 // 離したキー。依頼の枠が空いたら出す
+            int         m_dy = 0;                       // 開閉アニメ（BG の N_All の平行移動）ぶんのずれ
+            u32         m_texSeqSeen = 0;
+            bool        m_texReady = false;
+            u64         m_repeatAt = 0;                 // 十字キー左右の長押しの次の時刻
+            u16         m_repeatBit = 0;
             int         m_dragStartX = 0;
             float       m_dragStartScroll = 0.0f;
 
@@ -445,6 +500,67 @@ namespace CTRPluginFramework
                 g_state = S_ACTIVE;
             }
 
+            // KeytopModeSelect の部品のテクスチャを swkbd_common.arc のアクセサから取る（読み込み済みの控えが返る）
+            bool    CaptureKeyTextures(u32 bsskb)
+            {
+                typedef void (*GetTextureFn)(u32 *out, u32 accessor, const char *name);
+                typedef void (*UpdateFn)(u32 *texMap);
+                const u32   acc = bsskb + kBsSkbCommonAcc;
+                const char *names[2] = { "KtpModeC.bclim", "KtpModeCon.bclim" };
+                u32         info[2][5];
+
+                if (bsskb < 0x08000000u || bsskb >= 0x40000000u || R32(acc) != kVtAccessorVram
+                    || R32(kVtAccessorVram + 0x10) != kGetTexture)
+                    return false;
+                for (int i = 0; i < 2; i++)
+                {
+                    std::memset(info[i], 0, sizeof(info[i]));
+                    ((GetTextureFn)kGetTexture)(info[i], acc, names[i]);
+                    if (info[i][1] == 0 || (info[i][2] & 0xFFFF) == 0 || (info[i][3] & 0xFFFF) == 0)
+                        return false;
+                }
+                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 奇数: 書いている途中
+                for (int i = 0; i < 2; i++)
+                {
+                    // Material の ctor と同じ組み方（0x4BCEA8）: 番地・大きさ・書式、ラップ = クランプ、
+                    //   フィルタ = 資源の rawS/rawT 4（KeytopModeSelect の material）→ bits4-6 = 1 / bit7 = 1
+                    std::memset(g_texMap[i], 0, sizeof(g_texMap[i]));
+                    g_texMap[i][0] = info[i][0];
+                    g_texMap[i][1] = info[i][1];
+                    g_texMap[i][2] = info[i][2];
+                    g_texMap[i][3] = info[i][3];
+                    g_texMap[i][4] = ((info[i][4] & 0xFFu) << 8 & 0xF00u) | 0x10u | 0x80u;
+                    ((UpdateFn)kTexMapUpdate)(g_texMap[i]);
+                }
+                g_texOwner = bsskb;
+                g_texOk = true;
+                __atomic_add_fetch(&g_texSeq, 1u, __ATOMIC_ACQ_REL);   // 偶数: 揃った
+                return true;
+            }
+
+            // 全選択（「クリア」キー。利用者の指示で全選択にした）: 起点 0、カーソルを末尾へ（選択中にする）
+            void    SelectAll(u32 tm)
+            {
+                typedef int (*SetCursorFn)(u32 tm, int pos, int clearSel, int moveAnchor);
+                const SetCursorFn set = (SetCursorFn)kSetCursor;
+
+                set(tm, 0, 1, 1);                       // 途中の入力を確定し、起点 0
+                if (RI(tm, TM_LEN) > 0)
+                    set(tm, RI(tm, TM_LEN), 1, 0);      // 起点を残して末尾へ = 全体を選択
+            }
+
+            // 左右: 選択中なら選択の端へ寄せて解く。そうでなければ 1 字動かす（途中の入力はゲームの処理で確定）
+            void    MoveCursor(u32 tm, int dir)
+            {
+                typedef int (*SetCursorFn)(u32 tm, int pos, int clearSel, int moveAnchor);
+                const int   cur = RI(tm, TM_CURSOR), anchor = RI(tm, TM_ANCHOR);
+                int         pos = cur + dir;
+
+                if (R8(tm + TM_SEL) != 0 && anchor != cur)
+                    pos = dir < 0 ? (anchor < cur ? anchor : cur) : (anchor < cur ? cur : anchor);
+                ((SetCursorFn)kSetCursor)(tm, pos, 1, 1);
+            }
+
             // ---- フック本体（ゲームのスレッド）----
             __attribute__((noinline)) int ChatImeInputChar(u32 tm, u32 ch, u32 romaji, u32 combine)
             {
@@ -528,6 +644,14 @@ namespace CTRPluginFramework
                 if (g_convOn && !g_broken)
                 {
                     const u32   tm = R32(kTmPtr);
+                    const u32   bsskb = R32(kBsSkbPtr);
+
+                    if (bsskb != 0 && bsskb != g_texOwner)
+                    {
+                        g_texOk = false;
+                        if (!CaptureKeyTextures(bsskb))
+                            g_texOwner = bsskb;         // 取れなかった: この BsSkb では描かない（キーは矩形なしで文字だけ）
+                    }
                     const u32   kind = __atomic_load_n(&g_reqKind, __ATOMIC_ACQUIRE);
 
                     if (kind == R_START)
@@ -538,6 +662,14 @@ namespace CTRPluginFramework
                         g_state = S_IDLE;
                     else if (kind == R_ENTER && TmSane(tm))
                         ((int (*)(u32, u32, u32, u32))kInputChar)(tm, 10, 0, 0);   // フック経由。字 10 は素通しでゲームが確定する
+                    else if ((kind == R_SELECT_ALL || kind == R_LEFT || kind == R_RIGHT) && TmSane(tm))
+                    {
+                        if (kind == R_SELECT_ALL)
+                            SelectAll(tm);
+                        else
+                            MoveCursor(tm, kind == R_LEFT ? -1 : 1);
+                        ((void (*)(u32))kPlaySound)(kSoundChangeKeySet);
+                    }
                     if (kind != R_NONE)
                         __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
                     // Enter・送信・カーソル移動で未確定が確定したら終わり
@@ -554,6 +686,8 @@ namespace CTRPluginFramework
                     { kInputChar, kInputCharOrig }, { kBackspace, kBackspaceOrig }, { kWaitCalc, kWaitCalcOrig },
                     { kDeleteRange, kDeleteRangeOrig }, { kInsertChar, kInsertCharOrig }, { kFinishCell, kFinishCellOrig },
                     { kKanaCall[0], kKanaCallWord[0] }, { kKanaCall[1], kKanaCallWord[1] }, { kKanaCall[2], kKanaCallWord[2] },
+                    { kSetCursor, kSetCursorOrig }, { kPlaySound, kPlaySoundOrig }, { kTexMapUpdate, kTexMapUpdateOrig },
+                    { kGetTexture, kGetTextureOrig }, { kVtAccessorVram + 0x10, kGetTexture },
                 };
 
                 if (Process::GetTitleID() != 0x0004000000086200ULL)
@@ -743,6 +877,12 @@ namespace CTRPluginFramework
                 {
                     m_wantEnter = false;
                     Post(R_ENTER, 0);
+                    return;
+                }
+                if (m_wantKey >= 0)
+                {
+                    Post(m_wantKey == KEY_SELECT_ALL ? R_SELECT_ALL : m_wantKey == KEY_LEFT ? R_LEFT : R_RIGHT, 0);
+                    m_wantKey = -1;
                 }
             }
 
@@ -754,6 +894,61 @@ namespace CTRPluginFramework
                 m_scroll = 0.0f;
                 m_sel = -1;                             // まだ入力欄には入れない（選んだときに入れる）
                 m_phase = m_count > 0 ? M_SHOW : M_IDLE;
+            }
+
+            // 開閉アニメ: BsSkb の BG レイアウトの N_All の平行移動 y（BG_in -240 -> 5 -> 0 / BG_out 0 -> -240）。
+            //   ゲーム自身も N_All の値をキーボードの各レイアウトへ毎フレーム写している（0x57CF04）。読むだけ。
+            float   ReadNAllY(bool &ok)
+            {
+                const u32   bsskb = R32(kBsSkbPtr);
+                u32         stack[16];
+                int         top = 0, visits = 0;
+
+                ok = false;
+                if (bsskb < 0x08000000u || bsskb >= 0x40000000u)
+                    return 0.0f;
+
+                const u32   wrapper = R32(bsskb + kBsSkbBgLayout);
+
+                if (wrapper < 0x08000000u || wrapper >= 0x40000000u)
+                    return 0.0f;
+                stack[top++] = R32(wrapper + 72);       // 根のペイン（sub_7461D0 と同じ）
+                while (top > 0 && visits < 64)
+                {
+                    const u32 pane = stack[--top];
+
+                    visits++;
+                    if (pane < 0x08000000u || pane >= 0x40000000u || (pane & 3) != 0)
+                        continue;
+                    if (std::memcmp((const void *)(pane + 0xB8), "N_All", 6) == 0)
+                    {
+                        float y;
+
+                        std::memcpy(&y, (const void *)(pane + 0x2C), 4);
+                        ok = y > -1000.0f && y < 1000.0f;
+                        return y;
+                    }
+                    // 子リスト: 番兵 pane+0x14、節 = 子 + 4、次 = [節]
+                    u32 node = R32(pane + 0x14);
+                    int guard = 0;
+
+                    while (node != pane + 0x14 && node != 0 && guard < 32 && top < 16)
+                    {
+                        stack[top++] = node - 4;
+                        node = R32(node);
+                        guard++;
+                    }
+                }
+                return 0.0f;
+            }
+
+            int     KeyAt(int x, int y)
+            {
+                for (int i = 0; i < KEY_COUNT; i++)
+                    if (x >= kKeys[i].x && x < kKeys[i].x + kKeys[i].w
+                        && y >= kKeys[i].y + m_dy && y < kKeys[i].y + kKeys[i].h + m_dy)
+                        return i;
+                return -1;
             }
 
             int     CandidateAt(int x)
@@ -768,7 +963,7 @@ namespace CTRPluginFramework
 
             bool    InsideBar(int x, int y)
             {
-                return x >= kBarX && x < kBarX + kBarW && y >= kBarY && y < kBarY + kBarH;
+                return x >= kBarX && x < kBarX + kBarW && y >= kBarY + m_dy && y < kBarY + kBarH + m_dy;
             }
 
             void    HandleTouch(void)
@@ -777,25 +972,65 @@ namespace CTRPluginFramework
                 const UIntVector pos = Touch::GetPosition();
                 const int   x = (int)pos.x, y = (int)pos.y;
 
+                // 自前キー: 押している間は押下の見た目、キーの上で離したら実行（音もゲームの処理から鳴らす）
+                if (down && !m_touchPrev)
+                {
+                    const int k = KeyAt(x, y);
+
+                    if (k >= 0)
+                    {
+                        m_keyDown = k;
+                        m_keyInside = true;
+                    }
+                }
+                if (m_keyDown >= 0)
+                {
+                    if (down)
+                        m_keyInside = KeyAt(x, y) == m_keyDown;
+                    else
+                    {
+                        if (m_keyInside)
+                            m_wantKey = m_keyDown;
+                        m_keyDown = -1;
+                        m_keyInside = false;
+                    }
+                    GuiMenu::BlockGameTouch();
+                    m_touchPrev = down;
+                    return;
+                }
                 if (down && !m_touchPrev && InsideBar(x, y))
                 {
                     m_dragging = true;
                     m_dragStartX = x;
+                    m_dragMax = 0;
                     m_dragStartScroll = m_scroll;
+                    m_tapCandidate = -1;
                     if (m_phase == M_SHOW)
                     {
                         const int i = CandidateAt(x);
 
-                        if (i >= 0 && i != m_sel)
+                        if (i >= 0 && i == m_sel)
+                            m_tapCandidate = i;         // 選択中をもう一度: 離したときに Enter（動かしていなければ）
+                        else if (i >= 0)
                             Select(i);
                     }
                 }
                 if (m_dragging)
                 {
                     if (!down)
+                    {
                         m_dragging = false;
+                        // あまり動かさずに離したら決定（スクロールのために同じ所を触ったときは決定しない）
+                        if (m_tapCandidate >= 0 && m_tapCandidate == m_sel && m_dragMax < kTapSlop)
+                            m_wantEnter = true;
+                        m_tapCandidate = -1;
+                    }
                     else
                     {
+                        const int moved = x > m_dragStartX ? x - m_dragStartX : m_dragStartX - x;
+
+                        if (moved > m_dragMax)
+                            m_dragMax = moved;
                         m_scroll = m_dragStartScroll - (float)(x - m_dragStartX);
                         ClampScroll();
                     }
@@ -809,6 +1044,25 @@ namespace CTRPluginFramework
                 const u16   pressed = (u16)(held & ~m_heldPrev);
                 const u64   now = svcGetSystemTick();
                 const u32   key = TargetKey();
+
+                // 開閉アニメに合わせてずらす（読めなければ 0）
+                {
+                    bool        ok = false;
+                    const float y = ReadNAllY(ok);
+
+                    m_dy = ok ? (int)(-y + (y > 0.0f ? -0.5f : 0.5f)) : 0;
+                }
+                // キーのテクスチャ（ゲームのスレッドが BsSkb ごとに取る）を描画器へ
+                {
+                    const u32 seq = __atomic_load_n(&g_texSeq, __ATOMIC_ACQUIRE);
+
+                    if ((seq & 1u) == 0 && seq != m_texSeqSeen)
+                    {
+                        m_texSeqSeen = seq;
+                        m_texReady = g_texOk && GuiRenderer::SetGameTexture(1, g_texMap[0], kKeyColor0)
+                                     && GuiRenderer::SetGameTexture(2, g_texMap[1], kKeyColor0);
+                    }
+                }
                 const u16   hk = GuiMenu::ItemAppliedHotkey(index);
                 const bool  hot = hk != 0 && (held & hk) == hk;
 
@@ -940,9 +1194,25 @@ namespace CTRPluginFramework
                         Reset();                        // Enter・Backspace・字の入力・カーソル移動で終わった
                         return;
                     }
-                    if ((pressed & HB_RIGHT) != 0)
+                    // 左右: 押した瞬間に 1 つ、押し続けると 200ms 後から 60ms ごとに（メニューの ControlRepeater と同じ）
+                    u16 step = 0;
+
+                    if ((pressed & (HB_LEFT | HB_RIGHT)) != 0)
+                    {
+                        step = (u16)(pressed & HB_RIGHT ? HB_RIGHT : HB_LEFT);
+                        m_repeatBit = step;
+                        m_repeatAt = now + kRepeatDelayTicks;
+                    }
+                    else if (m_repeatBit != 0 && (held & m_repeatBit) != 0 && now >= m_repeatAt)
+                    {
+                        step = m_repeatBit;
+                        m_repeatAt = now + kRepeatEveryTicks;
+                    }
+                    if ((held & m_repeatBit) == 0)
+                        m_repeatBit = 0;
+                    if (step == HB_RIGHT)
                         Select(m_sel + 1);
-                    else if ((pressed & HB_LEFT) != 0)
+                    else if (step == HB_LEFT)
                         Select(m_sel < 0 ? -1 : m_sel - 1);
                 }
                 // 候補が出ている間は十字キーをゲームへ渡さない（渡すとカーソルが動いて確定してしまう）
@@ -994,6 +1264,16 @@ namespace CTRPluginFramework
                 // チャットが無い間はゲームのスレッドが依頼を受け取らない。残すと次に開いたときに古い依頼が走る
                 __atomic_store_n(&g_reqKind, (u32)R_NONE, __ATOMIC_RELEASE);
                 g_state = S_IDLE;
+                // キーのテクスチャはキーボードの資源。閉じたら使わない（次に開いたらゲームのスレッドが取り直す）
+                if (m_texReady)
+                {
+                    GuiRenderer::ClearGameTextures();
+                    m_texReady = false;
+                }
+                g_texOwner = 0;
+                m_keyDown = -1;
+                m_wantKey = -1;
+                m_dy = 0;
                 if (ChatKanji::ReleaseEngine())         // エンジンの下準備（5 MiB）を返す。動いている間は次の周期で
                     m_preloadTried = false;
                 m_touchPrev = Touch::IsDown();
@@ -1030,22 +1310,48 @@ namespace CTRPluginFramework
             return g_convOn && g_chatOpen && m_hooked && !g_broken;
         }
 
+        void    DrawCandidates(float left, float right, int dy, char *buf, unsigned cap, int &chars, int &cells);
+
         void    DrawBar(void)
         {
             const GuiRenderer::Screen BOT = GuiRenderer::SCREEN_BOTTOM;
             const float left = (float)(kBarX + 1), right = (float)(kBarX + kBarW - 1);
+            const int   dy = m_dy;
             char        buf[200];
             int         chars = 0;
             int         cells = 0;
 
             if (!BarVisible())
                 return;
-            GuiRenderer::FillRect(BOT, kBarX, kBarY, kBarW, kBarH, kColBarPanel);
-            if (!ChatKanji::FontReady())
-                return;
+            // drawCandidateBar: 変換行全体を 1 回で塗る（候補欄 + 全選択で 1 つの部品に見せる）
+            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
+            if (ChatKanji::FontReady())
+                DrawCandidates(left, right, dy, buf, sizeof(buf), chars, cells);
+            // drawPreviewControls: 行の縁（上・左・右・下）と自前キー
+            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, 1, kColRowEdge);
+            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, 1, kRowH, kColRowEdge);
+            GuiRenderer::FillRect(BOT, kRowX + kRowW - 1, kRowY + dy, 1, kRowH, kColRowEdge);
+            GuiRenderer::FillRect(BOT, kRowX, kRowY + kRowH - 1 + dy, kRowW, 1, kColRowEdge);
+            for (int i = 0; i < KEY_COUNT; i++)
+            {
+                const KeyRect  &k = kKeys[i];
+                const bool      on = m_keyDown == i && m_keyInside;
+
+                if (m_texReady)
+                    GuiRenderer::FillTextured(BOT, k.x, k.y + dy, k.w, k.h, on ? 2 : 1,
+                                              on ? kKeyTopPressed : kKeyTopNormal, on ? kKeyBotPressed : kKeyBotNormal);
+                if (ChatKanji::FontReady())
+                    GuiRenderer::DrawTextNative(BOT, k.textX, k.textY + dy, k.label, on ? kKeyTextPressed : kKeyText, k.scale);
+            }
+        }
+
+        void    DrawCandidates(float left, float right, int dy, char *buf, unsigned cap, int &chars, int &cells)
+        {
+            const GuiRenderer::Screen BOT = GuiRenderer::SCREEN_BOTTOM;
+
             if (m_phase == M_STARTING || m_phase == M_ENGINE)
             {
-                GuiRenderer::DrawTextNative(BOT, kBarX + 1 + kBarPad, kBarTextY, u8"変換中", kColBarText, kBarScale);
+                GuiRenderer::DrawTextNative(BOT, kBarX + 1 + kBarPad, kBarTextY + dy, u8"変換中", kColBarText, kBarScale);
                 return;
             }
             if (m_phase != M_SHOW)
@@ -1064,13 +1370,13 @@ namespace CTRPluginFramework
                     const int ix = (int)(x0 + 0.5f), iw = (int)(x1 + 0.5f) - ix;
 
                     if (iw > 0)
-                        GuiRenderer::FillRect(BOT, ix, kBarY + 1, iw, kBarH - 2, kColBarSel);
+                        GuiRenderer::FillRect(BOT, ix, kBarY + 1 + dy, iw, kBarH - 2, kColBarSel);
                 }
                 const float tx = x + (float)kBarPad;
 
                 if (tx < left || tx + m_textW[i] > right || cells >= kBarMaxCells)
                     continue;
-                if (!CandidateUtf8(i, buf, sizeof(buf)))
+                if (!CandidateUtf8(i, buf, cap))
                     continue;
 
                 int n = 0, k = 0;
@@ -1086,16 +1392,16 @@ namespace CTRPluginFramework
                     break;
                 chars += n;
                 cells++;
-                GuiRenderer::DrawTextNative(BOT, (int)(tx + 0.5f), kBarTextY, buf, kColBarText, kBarScale);
+                GuiRenderer::DrawTextNative(BOT, (int)(tx + 0.5f), kBarTextY + dy, buf, kColBarText, kBarScale);
             }
             const float m = MaxScroll();
 
             if (m > 0.0f)
             {
                 if (m_scroll > 0.0f)
-                    GuiRenderer::FillRect(BOT, kBarX + 2, kBarY + 3, 2, kBarH - 6, kColBarHint);
+                    GuiRenderer::FillRect(BOT, kBarX + 2, kBarY + 3 + dy, 2, kBarH - 6, kColBarHint);
                 if (m_scroll < m)
-                    GuiRenderer::FillRect(BOT, kBarX + kBarW - 4, kBarY + 3, 2, kBarH - 6, kColBarHint);
+                    GuiRenderer::FillRect(BOT, kBarX + kBarW - 4, kBarY + 3 + dy, 2, kBarH - 6, kColBarHint);
             }
         }
     }

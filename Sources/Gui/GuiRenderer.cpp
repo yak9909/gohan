@@ -172,6 +172,8 @@ namespace CTRPluginFramework
             {
                 s16 x, y, w, h;
                 u32 color;
+                u32 color2;                     // 下 2 隅の頂点色（FillTextured。FillRect は color と同じ）
+                u8  mat;                        // 0 = 共有（アトラス）/ 1.. = ゲームのテクスチャ（SetGameTexture）
             };
 
             struct TextItem
@@ -228,6 +230,14 @@ namespace CTRPluginFramework
             // ★0x98000 -> 0xAD000（2026-09-25、漢字候補欄のためにゲームの字形の枠を 8 本足した。1 本 10,688 B）。
             const u32   kPlugBytes = 0xAD000;   // plugin-private; game atlas borrow unchanged
             u8          g_mem[kPlugBytes] __attribute__((aligned(0x80)));
+
+            // ★ゲームのテクスチャを貼る Material（2026-09-26、チャットの自前キー）。共有 Material の写しで、
+            //   色[0] と texMap だけ違う。CPU しか読まない（F-345）ので g_mem の配置の外に置く。
+            //   texMap はゲームのリソースアクセサから得た TextureInfo で組む（ChatIme が渡す）。
+            const int   kGameTexMats = 2;
+            u8          g_gameMat[kGameTexMats][0x100] __attribute__((aligned(0x80)));
+            bool        g_gameMatReady[kGameTexMats] = { false, false };
+            float       g_gameUv[kGameTexMats][4];
 
             // 配置（Install() で決める。アトラスだけ g_gpuBase 起点）
             u32         g_offPic   = 0;
@@ -1027,7 +1037,8 @@ namespace CTRPluginFramework
             {
                 const u32   o = PicAddr(index);
                 float       cx, cy;
-                int         k;
+                float       u0, v0, u1, v1;
+                const bool  game = r.mat >= 1 && r.mat <= kGameTexMats && g_gameMatReady[r.mat - 1];
 
                 ToCenter(ScreenW(s), ScreenH(s), r.x, r.y, r.w, r.h, cx, cy);
                 WF(o + 0x48, (float)r.w);
@@ -1035,12 +1046,29 @@ namespace CTRPluginFramework
                 WF(o + 0x80 + 12, cx);
                 WF(o + 0x90 + 12, cy);
                 WF(o + 0xA0 + 12, -1.0f);
-                k = 0;
-                while (k < 4)
+                // ★Picture は使い回すので、Material と UV は毎回書く（前のフレームは別の種類だったかもしれない）
+                if (game)
                 {
-                    W32(o + 0x140 + (u32)k * 4, r.color);   // 頂点カラーで色を決める
-                    k++;
+                    u0 = g_gameUv[r.mat - 1][0];
+                    v0 = g_gameUv[r.mat - 1][1];
+                    u1 = g_gameUv[r.mat - 1][2];
+                    v1 = g_gameUv[r.mat - 1][3];
+                    W32(o + 0x13C, (u32)(uintptr_t)g_gameMat[r.mat - 1]);
                 }
+                else
+                {
+                    SolidUv(u0, v0, u1, v1);
+                    W32(o + 0x13C, g_base);     // 共有 Material
+                }
+                WF(o + 0xDC, u0);
+                WF(o + 0xE0, v0);
+                WF(o + 0xE4, u1);
+                WF(o + 0xE8, v1);
+                // 頂点カラー: [0] 左上 [1] 右上 [2] 左下 [3] 右下（bclyt の vertexColors と同じ並び）
+                W32(o + 0x140, r.color);
+                W32(o + 0x144, r.color);
+                W32(o + 0x148, game ? r.color2 : r.color);
+                W32(o + 0x14C, game ? r.color2 : r.color);
                 W8(o + 0xB7, 0x01);             // 可視
             }
 
@@ -1231,6 +1259,67 @@ namespace CTRPluginFramework
             st.rects[st.rectCount].w = (s16)w;
             st.rects[st.rectCount].h = (s16)h;
             st.rects[st.rectCount].color = color;
+            st.rects[st.rectCount].color2 = color;
+            st.rects[st.rectCount].mat = 0;
+            st.rectCount++;
+        }
+
+        bool    SetGameTexture(int slot, const u32 *texMap, u32 color0)
+        {
+            if (slot < 1 || slot > kGameTexMats || texMap == nullptr || !g_ready)
+                return false;
+
+            u8         *m = g_gameMat[slot - 1];
+            const u32   mat = (u32)(uintptr_t)m;
+            const u32   blk = mat + 0x80;
+            const u32   realW = texMap[3] & 0xFFFF, realH = texMap[3] >> 16;
+            const u32   useW = texMap[2] & 0xFFFF, useH = texMap[2] >> 16;
+
+            if (realW == 0 || realH == 0 || useW == 0 || useH == 0 || texMap[1] == 0)
+                return false;
+            g_gameMatReady[slot - 1] = false;
+            std::memcpy(m, (const void *)g_base, 0x100);     // 共有 Material と可変長ブロックの写し
+            W32(mat + 0x08, mat + 0x08);                      // 連結リストの番兵は自分
+            W32(mat + 0x0C, mat + 0x08);
+            W32(mat + 0x10, color0);                          // 色[0]（テクスチャの暗い側。ゲームの material の値）
+            W32(mat + 0x34, blk);
+            std::memcpy((void *)blk, texMap, 32);             // TexMap（+0x04 番地 / +0x08 大きさ / +0x10 書式。派生も組み済み）
+            // テクスチャ全体（使う範囲）を貼る。v は SolidUv と同じく「(全体の高さ - y) / 全体の高さ」
+            g_gameUv[slot - 1][0] = 0.0f;
+            g_gameUv[slot - 1][1] = 1.0f;
+            g_gameUv[slot - 1][2] = (float)useW / (float)realW;
+            g_gameUv[slot - 1][3] = (float)(realH - useH) / (float)realH;
+            g_gameMatReady[slot - 1] = true;
+            return true;
+        }
+
+        void    ClearGameTextures(void)
+        {
+            for (int i = 0; i < kGameTexMats; i++)
+                g_gameMatReady[i] = false;
+        }
+
+        void    FillTextured(Screen screen, int x, int y, int w, int h, int slot, u32 topColor, u32 bottomColor)
+        {
+            ScreenState &st = g_scr[screen];
+
+            if (slot < 1 || slot > kGameTexMats || !g_gameMatReady[slot - 1])
+                return;
+            if (st.rectCount >= RectsOf(screen) || w <= 0 || h <= 0)
+                return;
+            if (st.oCount < kMaxRect + kMaxSlots)
+            {
+                st.oKind[st.oCount] = 0;
+                st.oIdx[st.oCount] = (u16)st.rectCount;
+                st.oCount++;
+            }
+            st.rects[st.rectCount].x = (s16)x;
+            st.rects[st.rectCount].y = (s16)y;
+            st.rects[st.rectCount].w = (s16)w;
+            st.rects[st.rectCount].h = (s16)h;
+            st.rects[st.rectCount].color = topColor;
+            st.rects[st.rectCount].color2 = bottomColor;
+            st.rects[st.rectCount].mat = (u8)slot;
             st.rectCount++;
         }
 
