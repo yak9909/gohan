@@ -1,6 +1,9 @@
 #include "CTRPluginFramework/System/Controller.hpp"
 #include "CTRPluginFrameworkImpl/Preferences.hpp"
 #include "CTRPluginFrameworkImpl/Menu/PluginMenuImpl.hpp"
+#include "CTRPluginFramework/System/GohanData.hpp"
+#include "CTRPluginFramework/System/Mutex.hpp"
+#include "CTRPluginFramework/System/Lock.hpp"
 #include "3ds.h"
 #include <cmath>
 
@@ -25,6 +28,14 @@ namespace CTRPluginFramework
     bool        Preferences::_bmpCanBeLoaded = true;
 
     static const char *g_signature = "CTRPF\0\0";
+
+    // gohan: GohanCTRPFData.bin instead of CTRPFData.bin, plus one gohan section (see GohanData.hpp).
+    // The CTRPF menu thread and the gohan menu thread may both save: one lock around every file access.
+    const char                  *GohanData::FileName = "GohanCTRPFData.bin";
+    static GohanData::WriteFn   g_gohanWriter = nullptr;
+    static GohanData::ReadFn    g_gohanReader = nullptr;
+    static Mutex                g_fileLock;
+    static const u32            g_gohanSectionVersion = 1;
 
     BMPImage *RegionFromCenter(BMPImage *img, int maxX, int maxY)
     {
@@ -104,7 +115,7 @@ namespace CTRPluginFramework
 
     int     Preferences::OpenConfigFile(File &settings, Header &header)
     {
-        if (File::Open(settings, "CTRPFData.bin") == 0 && settings.GetSize() > 0)
+        if (File::Open(settings, GohanData::FileName) == 0 && settings.GetSize() > 0)
         {
              // Check version
             int     res = 0;
@@ -136,6 +147,7 @@ namespace CTRPluginFramework
 
     void    Preferences::LoadSettings(void)
     {
+        Lock    lock(g_fileLock);
         File    settings;
         Header  header = { 0 };
 
@@ -153,6 +165,7 @@ namespace CTRPluginFramework
 
     void    Preferences::LoadSavedEnabledCheats(void)
     {
+        Lock    lock(g_fileLock);
         File    settings;
         Header  header = { 0 };
 
@@ -172,6 +185,7 @@ namespace CTRPluginFramework
 
     void    Preferences::LoadSavedFavorites(void)
     {
+        Lock    lock(g_fileLock);
         File    settings;
         Header  header = { 0 };
 
@@ -191,6 +205,7 @@ namespace CTRPluginFramework
 
     void    Preferences::LoadHotkeysFromFile(void)
     {
+        Lock    lock(g_fileLock);
         File    settings;
         Header  header = { 0 };
 
@@ -279,6 +294,7 @@ namespace CTRPluginFramework
 
     void    Preferences::WriteSettings(void)
     {
+        Lock    lock(g_fileLock);
         OSDImpl::DrawSaveIcon = true;
 
         File    settings;
@@ -291,7 +307,7 @@ namespace CTRPluginFramework
         header.flags = Flags;
         memcpy(&header.lcdbacklights, Backlights, sizeof(header.lcdbacklights));
 
-        if (File::Open(settings, "CTRPFData.bin", mode) == 0)
+        if (File::Open(settings, GohanData::FileName, mode) == 0)
         {
             if (settings.Write(&header, sizeof(Header)) != 0) goto error;
 
@@ -301,6 +317,20 @@ namespace CTRPluginFramework
                 PluginMenuImpl::WriteFavoritesToFile(header, settings);
 
             PluginMenuImpl::WriteHotkeysToFile(header, settings);
+
+            // gohan section: reserved[0] magic, [1] version, [2] offset, [3] size
+            if (g_gohanWriter != nullptr)
+            {
+                std::vector<u8>     section;
+
+                g_gohanWriter(section);
+                header.reserved[0] = GohanData::Magic;
+                header.reserved[1] = g_gohanSectionVersion;
+                header.reserved[2] = static_cast<u32>(settings.Tell());
+                header.reserved[3] = static_cast<u32>(section.size());
+                if (!section.empty() && settings.Write(section.data(), section.size()) != 0)
+                    header.reserved[0] = 0;
+            }
 
             header.size = settings.Tell();
 
@@ -312,6 +342,44 @@ namespace CTRPluginFramework
 
         PluginMenuActionReplay::SaveCodes();
         OSDImpl::DrawSaveIcon = false;
+    }
+
+    void    GohanData::SetHandlers(WriteFn writer, ReadFn reader)
+    {
+        Lock    lock(g_fileLock);
+
+        g_gohanWriter = writer;
+        g_gohanReader = reader;
+    }
+
+    bool    GohanData::Load(void)
+    {
+        Lock                lock(g_fileLock);
+        File                settings;
+        Preferences::Header header = { 0 };
+        std::vector<u8>     section;
+        bool                found = false;
+
+        if (Preferences::OpenConfigFile(settings, header) == 0
+            && header.reserved[0] == Magic && header.reserved[1] == g_gohanSectionVersion
+            && static_cast<u64>(header.reserved[2]) + header.reserved[3] <= settings.GetSize())
+        {
+            section.resize(header.reserved[3]);
+            if (section.empty()
+                || (settings.Seek(header.reserved[2], File::SET) == 0 && settings.Read(section.data(), section.size()) == 0))
+                found = true;
+            else
+                section.clear();
+        }
+
+        if (g_gohanReader != nullptr)
+            g_gohanReader(found ? section.data() : nullptr, found ? static_cast<u32>(section.size()) : 0);
+        return found;
+    }
+
+    void    GohanData::Save(void)
+    {
+        Preferences::WriteSettings();
     }
 
     void    Preferences::ApplyBacklight(void)

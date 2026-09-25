@@ -22,6 +22,14 @@ devkitPro の `$(DEVKITPRO)/libctrpf` は使わない。
    ビルドのたびに libcwav を clone / `git pull` する処理を外した（gohan のリポジトリに pull が走るため）。
    `clean` が `libcwav` を丸ごと消していたのを、生成物だけ消すように変えた。`install` は止まるようにした
    （devkitPro の libctrpf を上書きするため。元の処理は `install-upstream`）。
+2. **設定ファイルを `GohanCTRPFData.bin` に**（`source/CTRPluginFrameworkImpl/Preferences.cpp`、元は `CTRPFData.bin`）。
+   中身は CTRPFData.bin と同じ（見出し・有効なチート・お気に入り・ホットキー）に **gohan の欄を 1 つ**足す。
+   見出しの `reserved[0]` = 目印 `'GOHN'`（0x4E484F47）、`[1]` = 欄の版（1）、`[2]` = 欄のオフセット、`[3]` = 欄の大きさ。
+   **旧 CTRPFData.bin からの移し替え（マイグレーション）はしない**（利用者の指示）。
+3. **公開 API `CTRPluginFramework::GohanData`**（`include/CTRPluginFramework/System/GohanData.hpp`、`System.hpp` から読む）:
+   `SetHandlers(書き出し, 読み込み)`、`Load()`（gohan の欄を読み込み関数へ渡す。無ければ大きさ 0）、`Save()`（ファイル全体を今書く）。
+   CTRPF のメニューを閉じたときの保存でも gohan の欄は書かれる。
+4. **ファイルへの読み書きに排他**（再帰ロック 1 つ）。CTRPF のメニューのスレッドと gohan のメニューのスレッドの両方から保存するため。
 
 ## ビルド
 

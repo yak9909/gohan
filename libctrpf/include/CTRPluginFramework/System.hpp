@@ -6,6 +6,7 @@
 #include "CTRPluginFramework/System/Directory.hpp"
 #include "CTRPluginFramework/System/File.hpp"
 #include "CTRPluginFramework/System/FwkSettings.hpp"
+#include "CTRPluginFramework/System/GohanData.hpp"
 #include "CTRPluginFramework/System/Hook.hpp"
 #include "CTRPluginFramework/System/Lock.hpp"
 #include "CTRPluginFramework/System/Mutex.hpp"
