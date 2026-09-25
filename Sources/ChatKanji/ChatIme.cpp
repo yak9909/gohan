@@ -114,14 +114,28 @@ namespace CTRPluginFramework
             struct KeyRect { int x, y, w, h; const char *label; float scale; };
             enum { KEY_SELECT_ALL = 0, KEY_LEFT, KEY_RIGHT, KEY_COUNT };
             //   2026-09-26（利用者の指示）: 全選択は幅を 1px 縮める（左に揃える）。左右は 2 つ合わせて全選択と同じ幅・X、間は 1px、前より 1px 下げる。
-            //   2026-09-26（2 回目）: 全選択を 1px 右へ戻す（x280..318。消去と同じ右端）。左右もそれに揃える。
+            //   2026-09-26（3 回目）: 全選択はやはり 1px 左（x279..317）。左右もそれに揃える。
             const KeyRect kKeys[KEY_COUNT] = {
-                { 280, 49, 39, 19, u8"全選択", 0.72f },
-                { 280,  2, 19, 19, u8"←",     0.8f },
-                { 300,  2, 19, 19, u8"→",     0.8f },
+                { 279, 49, 39, 19, u8"全選択", 0.72f },
+                { 279,  2, 19, 19, u8"←",     0.8f },
+                { 299,  2, 19, 19, u8"→",     0.8f },
             };
-            // 左右キーの背面の地（変換欄と同じ色）。キーを 1px ずつ囲む
-            const int   kArrowBackX = 279, kArrowBackY = 1, kArrowBackW = 41, kArrowBackH = 21;
+            // 左右キーの背面の地（変換欄と同じ色）。キーを 1px ずつ囲み、左側だけさらに 1px（利用者の指示）
+            const int   kArrowBackX = 277, kArrowBackY = 1, kArrowBackW = 42, kArrowBackH = 21;
+
+            // ---- キーの角の丸み（利用者の指示 2026-09-26）----
+            //   ゲームのキーは、外周に面した角だけテクスチャのアルファで丸めている（例 Ktp50onKeyBsp の右上: 角 0、隣 0.73、その次 0.87）。
+            //   自前のキーは 1 枚のテクスチャを使い回し、ABC などの空白キーは L4（アルファ無し）なので、角の画素を背面の色で半透明に塗って丸める。
+            //   ROUND_MID = 消去キーの角と同じ形（角 1.0 / 隣 2 つ 0.27 / 縦にもう 1 つ 0.13）、ROUND_LOW = 角 1 画素だけ 0.5。
+            enum { ROUND_NONE = 0, ROUND_LOW, ROUND_MID };
+            struct KeyRound { u8 leftTop, leftBottom, rightTop, rightBottom; };
+            const KeyRound kKeyRound[KEY_COUNT] = {
+                { ROUND_LOW, ROUND_LOW, ROUND_MID, ROUND_MID },     // 全選択: 消去・空白と同じく左は少し、右はそこそこ
+                { ROUND_MID, ROUND_MID, ROUND_NONE, ROUND_NONE },   // 左: 左側の上下
+                { ROUND_NONE, ROUND_NONE, ROUND_MID, ROUND_MID },   // 右: 右側の上下
+            };
+            const u32   kColKeyGround = 0x00102852;     // 背面の色 (82,40,16)。アルファは角ごとに入れる
+            const int   kCornerRects = 26;              // 1 フレームの角の矩形の最大（全選択 2+8、左 8、右 8。verify_plugin_port_v2 が読む）
             const char  kLabelDeselect[] = u8"解除";         // 全体が選択されている間の全選択キー
             // 空白キー（どのキー配列も P_key_Spc / T_key_Spc と *_n0s1 の値が同じ。フレーム 0 = 通常、1 = 押下）
             const u32   kKeyColor0     = 0x0023418C;    // material 色[0] (140,65,35,0)
@@ -1556,6 +1570,22 @@ namespace CTRPluginFramework
 
         void    DrawCandidates(float left, float right, int dy, char *buf, unsigned cap, int &chars, int &cells);
 
+        // 角 1 つを丸める（sx / sy = 角から内側への向き）
+        void    RoundCorner(int cx, int cy, int sx, int sy, int kind)
+        {
+            const GuiRenderer::Screen BOT = GuiRenderer::SCREEN_BOTTOM;
+
+            if (kind == ROUND_LOW)
+                GuiRenderer::FillRect(BOT, cx, cy, 1, 1, kColKeyGround | 0x80000000u);          // 0.5
+            else if (kind == ROUND_MID)
+            {
+                GuiRenderer::FillRect(BOT, cx, cy, 1, 1, kColKeyGround | 0xFF000000u);          // 1.0
+                GuiRenderer::FillRect(BOT, cx + sx, cy, 1, 1, kColKeyGround | 0x45000000u);     // 0.27
+                GuiRenderer::FillRect(BOT, cx, cy + sy, 1, 1, kColKeyGround | 0x45000000u);     // 0.27
+                GuiRenderer::FillRect(BOT, cx, cy + 2 * sy, 1, 1, kColKeyGround | 0x21000000u); // 0.13
+            }
+        }
+
         void    DrawBar(void)
         {
             const GuiRenderer::Screen BOT = GuiRenderer::SCREEN_BOTTOM;
@@ -1591,8 +1621,17 @@ namespace CTRPluginFramework
                 const char     *label = i == KEY_SELECT_ALL && AllSelected() ? kLabelDeselect : k.label;
 
                 if (m_texReady)
+                {
+                    const KeyRound &r = kKeyRound[i];
+                    const int       x0 = k.x, x1 = k.x + k.w - 1, y0 = k.y + dy, y1 = k.y + k.h - 1 + dy;
+
                     GuiRenderer::FillTextured(BOT, k.x, k.y + dy, k.w, k.h, on ? 2 : 1,
                                               on ? kKeyTopPressed : kKeyTopNormal, on ? kKeyBotPressed : kKeyBotNormal);
+                    RoundCorner(x0, y0, 1, 1, r.leftTop);
+                    RoundCorner(x0, y1, 1, -1, r.leftBottom);
+                    RoundCorner(x1, y0, -1, 1, r.rightTop);
+                    RoundCorner(x1, y1, -1, -1, r.rightBottom);
+                }
                 if (ChatKanji::FontReady())
                 {
                     // 中央: 字幅は GPU の送り、文字セルの高さ = FINF の高さ x 倍率。押下は右下へ 1px（T_key_Spc の CLPA）
