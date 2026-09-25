@@ -71,8 +71,8 @@ namespace CTRPluginFramework
             const u32   kSetTranslateOrig = 0xE1C120D0;
             const u32   kKeysetLayout   = 0x110;        // gui::*KeySet の vt+0x20 = LDR R0,[R0,#0x110]（4 種とも）
             // キー配列の背面 W_ktpShade（4 種とも RootPane/N_keytop/N_key の子、320x142、平行移動 (0,-27)、キーより先に描かれる）。
-            //   上端を画面 y65 -> y46 へ伸ばす（元の縁はキーの 3px 上から始まる。変換行 y49 の 3px 上）: 高さ +19、中心 +9.5
-            const float kShadeOrigH = 142.0f, kShadeOrigTy = -27.0f, kShadeGrow = 19.0f;
+            //   上端を画面 y65 -> y47 へ伸ばす（初めは y46 = 変換行の 3px 上。利用者の指示で 1px 下げた）: 高さ +18、中心 +9（下端はそのまま）
+            const float kShadeOrigH = 142.0f, kShadeOrigTy = -27.0f, kShadeGrow = 18.0f;
             const u32   kWindowInCalcOrig = 0xE92D41F0;
             const u32   kBsSkbBgLayout  = 1372;         // BsSkb+1372 = BG レイアウト（N_All に BG_in / BG_out が当たる）
             // gui::KanaKeySet の OnKey（0x4F556C）が InputChar を呼ぶ 3 か所（字 x2・濁点キー）
