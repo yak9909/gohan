@@ -23,6 +23,9 @@ namespace GameList
     // 行の名前をゲームのメッセージから引く（例: "STR_Fobj_name" と番号）。番号が負、または引けなかった行は SetItems の文字列。
     // SetItems の後に呼ぶ。label は呼び出し側で生かしておく（静的な文字列）。
     void        SetItemMessages(const char *label, const s16 *indices, u32 count);
+    // 行の名前の左の空きに小さく出す前置き（UTF-8、6 文字まで。例: "0x5C"）。nullptr か空の行は出さない。
+    // 名前と同じ TextBox に入る（大きさのタグとタブで並べる）。SetItems の後に呼ぶ。次に組み立てるときに使う。
+    void        SetItemPrefixes(const char *const *prefixes, u32 count);
     void        Show(s32 selected);     // 登場（退場中なら今の位置から逆向きに）
     void        Hide(void);             // 退場（登場中なら今の位置から逆向きに）。終われば資源を返す
     bool        Wanted(void);           // 利用者の意思（Show 中か）

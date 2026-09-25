@@ -69,7 +69,7 @@ const u8 kPriority = 0x80;                  // 同上（上画面）
 const u32 kHolderAccessor = 12;
 const u32 kLayoutPriority = 12, kLayoutHolder = 236;
 const u32 kPaneFlags = 183;                 // bit0 = 見える、bit4-5 = 行列の更新済み（0 にすると計算し直す）
-const u32 kPaneX = 40, kPaneY = 44, kPaneScaleX = 64, kPaneWidth = 72;
+const u32 kPaneX = 40, kPaneY = 44, kPaneScaleX = 64, kPaneScaleY = 68, kPaneWidth = 72;
 const u32 kPaneBase = 0xB6;                 // 下位 4 ビット = 基準点（横 + 縦×3。nwlyt_Pane_GetAnchorOffset 0x73B5C4）
 const u32 kTextFont = 224;                  // TextBox の書体
 const u32 kTextDraw = 260;                  // TextBox の描画用の器（+9 の byte が器の確保の旗）
@@ -84,6 +84,9 @@ const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags 
 // 箱の元の幅は 98 を横 1.3 倍（127px）。文字の幅（全角 15px・半角 9px の見積もり。「配置モード」5 文字 ≒ 75px を実機で確認）
 //   に左右 16px を足した幅がこれより広ければ横に伸ばす。
 const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f, kRowPitch = 36.0f;
+// 全体の縮尺（利用者 2026-09-25: 箱と文字を 3/5 くらいに）。N_all の拡大率に入れるので、箱・影・文字・出入りのアニメが一緒に縮む。
+// 画面の端からの距離（上下の端 = kTop ± 箱の高さ/2、左端 = kLeft）は元の大きさのときと同じに保ち、段の間と箱の間も同じ比で縮める。
+const float kScale = 0.6f, kBoxH = 32.0f;   // kBoxH: P_bell_base の高さ（time_bel_win.arc の bclyt。P_bs と同じ 98x32）
 // 余白は左右合わせて 60px（利用者: 32px では窮屈。一回り大きく）
 const float kBaseW = 98.0f, kMinScale = 1.3f, kPad = 60.0f, kWide = 15.0f, kNarrow = 9.0f;
 // 箱（P_bell_base、N_bell の子で (-59,-6)）と影（P_bell_sh、(-57,-8)）。文字は N_bell_00（(-16,-18)）の子。
@@ -333,9 +336,12 @@ bool BuildLabel(Label &l) {
 
 // 箱を左端 left に置く（上下は kTop）。N_all をずらして合わせる
 void Place(Label &l, float left) {
-    const float cx = left + l.width * 0.5f;
-    const float cy = l.bottom ? -kTop + (float)l.row * kRowPitch : kTop - (float)l.row * kRowPitch;
-    MovePane(l.all, cx - (l.bellX + kBoxOffX), cy - (l.bellY + kBoxOffY));
+    const float cx = left + l.width * kScale * 0.5f;
+    const float edge = kTop + kBoxH * 0.5f * (1.0f - kScale);     // 縮めても端からの余白を変えない
+    const float cy = l.bottom ? -edge + (float)l.row * kRowPitch * kScale : edge - (float)l.row * kRowPitch * kScale;
+    F(l.all, kPaneScaleX) = kScale;
+    F(l.all, kPaneScaleY) = kScale;
+    MovePane(l.all, cx - kScale * (l.bellX + kBoxOffX), cy - kScale * (l.bellY + kBoxOffY));
     l.placedX = left;
 }
 
@@ -519,7 +525,7 @@ void FrameStep(void) {
         const bool takesRoom = l.want || l.live;
         StepLabel(l, x, mgr);
         if (takesRoom && l.width > 0.0f)
-            x += l.width + kGap;
+            x += (l.width + kGap) * kScale;
     }
     // 退場し終えた箱を壊す（描くのをやめてから数フレーム後。GPU がまだ読んでいるかもしれない）
     bool pending = false;

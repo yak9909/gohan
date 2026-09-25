@@ -194,15 +194,6 @@ namespace {
 // メニュースレッド
 // ---------------------------------------------------------------------------------------------
 
-const char *ModeName(Mode mode) {
-    switch (mode) {
-    case Mode::Place: return u8"配置";
-    case Mode::Move: return u8"移動";
-    case Mode::Remove: return u8"削除";
-    default: return u8"?";
-    }
-}
-
 // ---- 衝突判定の形 ----------------------------------------------------------------------------
 // 利用者の定義（2026-09-24）: 足元データ（Strc/data/<名>.bin）で属性を書くマスのうち「物・花を置けない」マス。
 //   それが 1 マスも無ければ、足元の範囲（属性を書くマスの外接の四角）を上下左右 1 マスずつ削った四角。
@@ -445,14 +436,8 @@ void Select(s32 slot) {
     UpdateHover();
 }
 
-void NotifyKind(const char *prefix) {
-    static char message[96];
-    if (s_kindCount == 0)
-        return;
-    const u8 id = s_kinds[s_kind];
-    std::snprintf(message, sizeof(message), u8"%s 0x%02X %s", prefix, (unsigned)id, PublicWorks::NameOf(id));
-    GuiNotification::Notify(Cheats::kBeOn, message);
-}
+// ★通知は「エディターの ON/OFF」（GuiMenuModel が出す）と警告・エラー（NotifyRed）だけ（利用者指示 2026-09-25）。
+//   モード・種類の切り替え、配置・移動・削除の完了、選択の解除、部屋の読み直しは通知しない（状態は画面の箱とリストで分かる）。
 
 
 // 上画面左上の箱（GameLabel、横に並ぶ）: 設置の余裕。モードの箱は利用者指示で出さない（PublicWorks::GetCapacity。ゲームのスレッドが約 0.5 秒ごとに数え直す）。変わったときだけ書く
@@ -501,18 +486,8 @@ void UpdateCapacityLabels(bool force) {
     GameLabel::Show(1);
 }
 
-void NotifyMode(void) {
-    if (s_mode == Mode::Place) {
-        NotifyKind(ModeName(s_mode));
-        return;
-    }
-    GuiNotification::Notify(Cheats::kBeOn, ModeName(s_mode));
-}
-
 void Report(PublicWorks::Result result) {
-    if (result == PublicWorks::Result::Ok)
-        GuiNotification::Notify(Cheats::kBeOn, u8"完了");
-    else
+    if (result != PublicWorks::Result::Ok)
         GuiNotification::NotifyRed(Cheats::kBeOn, PublicWorks::ResultName(result));
 }
 
@@ -538,6 +513,14 @@ void ShowKindList(void) {
         for (u32 k = 0; k < s_kindCount; ++k)
             msg[k] = (s_kinds[k] < 0xFC && table[s_kinds[k]] != 0xFF) ? (s16)table[s_kinds[k]] : (s16)-1;
         GameList::SetItemMessages("STR_Fobj_name", msg, s_kindCount);
+        // 名前の左の空きにアイテム ID（利用者指示 2026-09-25。項目名と同じ TextBox に小さく入る）
+        static char idText[sizeof(s_kinds)][8];
+        static const char *ids[sizeof(s_kinds)];
+        for (u32 k = 0; k < s_kindCount; ++k) {
+            std::snprintf(idText[k], sizeof(idText[k]), "0x%02X", (unsigned)s_kinds[k]);
+            ids[k] = idText[k];
+        }
+        GameList::SetItemPrefixes(ids, s_kindCount);
     }
     if (s_listGiven)
         GameList::Show((s32)s_kind);
@@ -555,10 +538,8 @@ void TakeListChoice(void) {
     if (modeChanged) {
         s_mode = Mode::Place;
         Select(-1);
-        NotifyMode();
     } else {
         UpdateTiles();
-        NotifyKind(ModeName(s_mode));
     }
 }
 
@@ -608,7 +589,6 @@ bool Start(bool quiet) {
     s_want = true;
     s_running = true;
     ShowKindList();
-    NotifyMode();
     return true;
 }
 
@@ -663,10 +643,6 @@ u32 s_restartTicks;
 void AfterChange(PublicWorks::Result result) {
     // ★成功した操作のときだけ見る（タイムアウト等で前の操作の記録を読まない）
     if (result == PublicWorks::Result::Ok && PublicWorks::LastReloaded()) {
-        static char message[96];
-        std::snprintf(message, sizeof(message), u8"部屋を読み直しました（%s）",
-                      PublicWorks::ReloadWhyName(PublicWorks::LastReloadWhy()));
-        GuiNotification::Notify(Cheats::kBeOn, message);
         Stop();
         s_restart = true;
         s_restartTicks = 0;
@@ -738,7 +714,6 @@ void CopyKind(void) {
         if (s_kinds[k] == slot.id) {
             s_kind = k;
             UpdateTiles();
-            NotifyKind(u8"コピー");
             GameList::Select((s32)s_kind);
             return;
         }
@@ -867,7 +842,6 @@ void Tick(u32 keys) {
         // 削除はカーソルの下がそのまま選択。移動と配置は選択なしで始める
         // （削除でカーソルを合わせた建物が、移動へ切り替えると選ばれていた。利用者報告）
         Select(s_mode == Mode::Remove ? Hovered() : -1);
-        NotifyMode();
     }
 
     // 配置する種類は下画面のリストで選ぶ（十字キーはリスト自体の操作。利用者指示で十字左右の順送りはやめた）。
@@ -881,7 +855,6 @@ void Tick(u32 keys) {
     // 移動: B で選択を外す（利用者指示）
     if ((pressed & (u32)Key::B) && s_mode == Mode::Move && s_selected >= 0) {
         Select(-1);
-        GuiNotification::Notify(Cheats::kBeOn, u8"選択を外しました");
     }
     if ((pressed & (u32)Key::X) && s_mode == Mode::Place)
         CopyKind();

@@ -4,6 +4,7 @@
 #include "GridCursor.hpp"
 
 #include <3ds.h>
+#include <cstdio>
 #include <cstring>
 
 // ゲームのリスト UI を下画面だけ借りる（IDA-opus-5.5-F036、docs/topics/game_list.md）。
@@ -117,6 +118,7 @@ typedef int (*MsgSetupFn)(u32 msgData, void *word, const char *label, u32 index)
 const MsgSetupFn     MsgSetup       = reinterpret_cast<MsgSetupFn>(0x0075B8A8);     // 成功で真
 const CtorFn         WordFixCtor    = reinterpret_cast<CtorFn>(0x0056CE48);         // script::WordFix<38>
 const u32            kWordFixBytes  = 100;
+const u32            kWordFixText   = 4;    // u16*（vc_SETUPSTACK(this, this+24, 38) が +4 に文字の器 this+24 を置く）
 const u32            kMsgDataPtr    = 0x00957ED4;                                    // u32: vc_DATAPOINTER
 
 const u32 kInstSelectVtbl = 0x008E54B4;     // InstSelect<8> の vtable（26 語）
@@ -164,7 +166,27 @@ u32 s_vtblStore[1 + kVtblWords];           // [0] = TypeInfo（ゲームの vtab
 u32 *const s_vtbl = s_vtblStore + 1;
 u8 *s_list;                                 // ゲームのヒープ
 
-u16 s_text[kMaxItems][kMaxChars + 1];
+// ---- 行の前置き（名前の左の空きに小さく出す文字。例: アイテム ID「0x5C」。利用者指示 2026-09-25）----
+// ★上から重ねず、行の文字そのものに入れる（項目名と同じ TextBox なので、枠に半分隠れる 7 行目も同じに隠れる）。
+//   行の文字 = [大きさ kPrefixPercent%] 前置き [タブ] [大きさ 100%] 名前
+//   行の TagProcessor は script::RenderMain（vt[2] 0x5D58C8）。タグ 0x000E のグループ 0・種類 2（sub_5D55E8）は
+//   writer の横 +0x24・縦 +0x28 の拡大率を「行の元の拡大率 × 値/100」にする（縦横とも縮む）。
+//   タブ（9）は「行の原点 + 4 × 書体の幅 × 今の横の拡大率」の倍数へ進む（4 = TextWriter の既定のタブ幅 writer+88）。
+//   書体の幅 × 元の拡大率 = 行の TextBox の文字の大きさ X = 14.4（ctlg_cntnt_00 の T_itm_XX。書体 Garden_msg_size16 の幅 18 × 0.8）。
+//   → タブを小さい大きさのまま置くと、名前は原点から 4 × 14.4 × 0.65 = 37.44 px で始まる。前置きは「0x」＋ 2 桁で
+//     16 px の書体の送り 46〜50 × 0.8 × 0.65 = 24〜26 px なので、次のタブ位置を越えない（越えると名前がずれる）。
+//   行の TextBox（T_itm_XX。左端・上下中央を基準・左詰め）を左へ 37.44 px 動かして同じだけ広げ、名前の位置を元のままにする。
+const u32 kPrefixChars = 6;
+const u16 kPrefixPercent = 65;
+const float kRowFontSizeX = 14.4f;          // T_itm_XX の文字の大きさ X（bclyt）
+const float kTabChars = 4.0f;               // TextWriter の既定のタブ幅（文字数）
+const float kPrefixShift = kTabChars * kRowFontSizeX * (float)kPrefixPercent / 100.0f;
+const u32 kTagWords = 5;                    // 0x000E, グループ, 種類, 引数の byte 数 2, 値
+// 行の文字の器（UTF-16 の単位）: タグ 2 つ + 前置き + タブ + 名前 38
+const u32 kRowChars = kTagWords * 2 + kPrefixChars + 1 + kMaxChars;
+const u32 kPaneTranslateX = 40, kPaneSizeW = 72, kPaneFlagsByte = 183;
+
+u16 s_text[kMaxItems][kRowChars + 1];
 WordPtr s_words[kMaxItems];
 alignas(8) u8 s_fix[kMaxItems][kWordFixBytes];     // ゲームの名前を入れた WordFix<38>
 bool s_useFix[kMaxItems];
@@ -172,6 +194,9 @@ u32 s_count;
 
 // プラグイン側の要求（メニューのスレッドが書き、FrameStep が読む）
 u16 s_pendText[kMaxItems][kMaxChars + 1];
+u16 s_pendPrefix[kMaxItems][kPrefixChars + 1];
+volatile bool s_pendHasPrefix;
+bool s_hasPrefix;                           // 組み立てた一覧が前置きを持つ（行の TextBox を左へ広げた）
 volatile u32 s_pendCount;
 const char *volatile s_pendLabel;           // メッセージのラベル（nullptr = 使わない）
 s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わない）
@@ -229,6 +254,57 @@ void *ListWordAt(u8 *self, s32 index) {
     if (index < 0 || (u32)index >= s_count)
         index = 0;
     return s_useFix[index] ? static_cast<void *>(s_fix[index]) : static_cast<void *>(&s_words[index]);
+}
+
+// ---- 行の前置き（上の説明）--------------------------------------------------------------------
+// 名前の長さ: 0 まで。ただしタグ（0x000E, グループ, 種類, 引数の byte 数, 引数…）の中の 0 では止まらない
+u32 TaggedLength(const u16 *s, u32 cap) {
+    u32 n = 0;
+    while (n < cap && s[n] != 0) {
+        if (s[n] == 0x000E && n + 3 < cap) {
+            n += 4 + (s[n + 3] + 1u) / 2u;
+            continue;
+        }
+        ++n;
+    }
+    return n < cap ? n : cap;
+}
+
+u32 PutSizeTag(u16 *dst, u16 percent) {
+    dst[0] = 0x000E;
+    dst[1] = 0;                             // グループ 0
+    dst[2] = 2;                             // 種類 2 = 大きさ（%）
+    dst[3] = 2;                             // 引数 2 byte
+    dst[4] = percent;
+    return kTagWords;
+}
+
+void ComposeRow(u16 *dst, const u16 *prefix, const u16 *name) {
+    u32 n = 0;
+    n += PutSizeTag(dst + n, kPrefixPercent);
+    for (u32 k = 0; k < kPrefixChars && prefix[k] != 0; ++k)
+        dst[n++] = prefix[k];
+    dst[n++] = 0x0009;                      // タブ（小さい大きさのまま置く）
+    n += PutSizeTag(dst + n, 100);
+    const u32 len = TaggedLength(name, kMaxChars);
+    for (u32 k = 0; k < len && n < kRowChars; ++k)
+        dst[n++] = name[k];
+    dst[n] = 0;
+}
+
+// 行の TextBox（T_itm_00..）を左へ kPrefixShift 動かして同じだけ広げる（右端と名前の位置は元のまま）
+void WidenRowsForPrefix(void) {
+    void *layout = P(s_list, kListLayout);
+    char name[16];
+    for (u32 i = 0; i < 8; ++i) {
+        std::snprintf(name, sizeof(name), "T_itm_%02u", (unsigned)i);
+        void *pane = FindPane(layout, name);
+        if (pane == nullptr)
+            continue;
+        F(pane, kPaneTranslateX) -= kPrefixShift;
+        F(pane, kPaneSizeW) += kPrefixShift;
+        B(pane, kPaneFlagsByte) &= 0xCFu;   // 行列を計算し直させる
+    }
 }
 
 // ---- UTF-8 → UTF-16（BMP だけ。範囲外は '?'）--------------------------------------------------
@@ -558,17 +634,25 @@ bool BuildStep(void) {
         s_count = count;
         const char *label = s_pendLabel;
         const u32 msgData = label != nullptr ? *reinterpret_cast<const volatile u32 *>(kMsgDataPtr) : 0;
+        s_hasPrefix = s_pendHasPrefix;
         for (u32 i = 0; i < count; ++i) {
-            std::memcpy(s_text[i], s_pendText[i], sizeof(s_text[i]));
             s_useFix[i] = false;
             if (msgData != 0 && s_pendMsg[i] >= 0) {
                 // ゲームの名前があればそちら（STR_Fobj_name など）。引けなければ渡された文字列のまま
                 WordFixCtor(s_fix[i]);
                 s_useFix[i] = MsgSetup(msgData, s_fix[i], label, (u32)s_pendMsg[i]) != 0;
             }
+            if (s_hasPrefix) {
+                // 前置きがあるときは名前（ゲームの名前ならタグごと）を後ろに付けた自前の文字列を行の語にする
+                const u16 *name = s_useFix[i] ? *reinterpret_cast<u16 *const *>(P(s_fix[i], kWordFixText)) : s_pendText[i];
+                ComposeRow(s_text[i], s_pendPrefix[i], name);
+                s_useFix[i] = false;
+            } else {
+                std::memcpy(s_text[i], s_pendText[i], sizeof(s_pendText[i]));
+            }
             s_words[i].vtbl = kWordPtrVtbl;
             s_words[i].text = s_text[i];
-            s_words[i].cap = kMaxChars + 1;
+            s_words[i].cap = kRowChars + 1;
         }
         void *mem = HeapAlloc(kInstSelectBytes, heap, 4);
         if (mem == nullptr) {
@@ -583,13 +667,15 @@ bool BuildStep(void) {
         s_vtbl[13] = reinterpret_cast<u32>(&ListBuildItems);
         s_vtbl[25] = reinterpret_cast<u32>(&ListWordAt);
         W(s_list, 0) = reinterpret_cast<u32>(s_vtbl);
-        W(s_list, kListTextCap) = kMaxChars;
+        W(s_list, kListTextCap) = s_hasPrefix ? kRowChars : kMaxChars;
         return false;
     }
     if (!s_listSetup) {
         if (SetupStep(s_list, s_holder, LytHeap()) == 0)
             return false;
         s_listSetup = true;
+        if (s_hasPrefix)
+            WidenRowsForPrefix();
         void *pane = FindPane(s_frame, "N_scrl_pos_00");
         if (pane != nullptr)
             ScrollBindPane(P(s_list, kListScroll), pane);
@@ -730,8 +816,21 @@ bool SetItems(const char *const *items, u32 count) {
         Utf8To16(items[i], s_pendText[i], kMaxChars);
     s_pendCount = count;
     s_pendLabel = nullptr;                  // メッセージは SetItemMessages で改めて渡す
+    s_pendHasPrefix = false;                // 前置きも SetItemPrefixes で改めて渡す
     s_itemsSeq = s_itemsSeq + 1;
     return count > 0;
+}
+
+void SetItemPrefixes(const char *const *prefixes, u32 count) {
+    if (count > kMaxItems)
+        count = kMaxItems;
+    bool any = false;
+    for (u32 i = 0; i < kMaxItems; ++i) {
+        Utf8To16(prefixes != nullptr && i < count ? prefixes[i] : "", s_pendPrefix[i], kPrefixChars);
+        any = any || s_pendPrefix[i][0] != 0;
+    }
+    s_pendHasPrefix = any;
+    s_itemsSeq = s_itemsSeq + 1;
 }
 
 void FeedDpad(u32 heldKeys) {
