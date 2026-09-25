@@ -65,6 +65,14 @@ namespace CTRPluginFramework
             const u32   kBsSkbKeyset    = 4416;         // BsSkb+4416 = 今のキー配列（gui::*KeySet）
             const u32   kKeysetKind     = 0x00AD0544;   // 0 qwerty / 1 かな / 2・3 grid / 4 ケータイ（BsSkb_InitStep）
             const u32   kWindowInCalc   = 0x0057CB20;   // BsSkb 状態 #0 "window in" の calc（開くアニメの間）
+            const u32   kFindPane       = 0x007461D0;   // lyt_Object_FindPane(object, name) = (*(object+72))->vt+44(name, 1)
+            const u32   kFindPaneOrig   = 0xE5900048;
+            const u32   kSetTranslate   = 0x004B6530;   // nw::lyt::Pane の平行移動を書き、+0xB7 bit4-5 を落とす
+            const u32   kSetTranslateOrig = 0xE1C120D0;
+            const u32   kKeysetLayout   = 0x110;        // gui::*KeySet の vt+0x20 = LDR R0,[R0,#0x110]（4 種とも）
+            // キー配列の背面 W_ktpShade（4 種とも RootPane/N_keytop/N_key の子、320x142、平行移動 (0,-27)、キーより先に描かれる）。
+            //   上端を画面 y65 -> y46 へ伸ばす（元の縁はキーの 3px 上から始まる。変換行 y49 の 3px 上）: 高さ +19、中心 +9.5
+            const float kShadeOrigH = 142.0f, kShadeOrigTy = -27.0f, kShadeGrow = 19.0f;
             const u32   kWindowInCalcOrig = 0xE92D41F0;
             const u32   kBsSkbBgLayout  = 1372;         // BsSkb+1372 = BG レイアウト（N_All に BG_in / BG_out が当たる）
             // gui::KanaKeySet の OnKey（0x4F556C）が InputChar を呼ぶ 3 か所（字 x2・濁点キー）
@@ -84,7 +92,9 @@ namespace CTRPluginFramework
             //   変換行 = キーボードの幅 x1..318、y49..67（高さ 19）。候補欄はその左、右端の列（x279..318）が「全選択」。
             const int   kRowX = 1, kRowW = 318, kRowY = 49, kRowH = 19;
             const int   kBarX = kRowX, kBarY = kRowY, kBarW = 279 - kRowX, kBarH = kRowH;
-            const int   kBarGap = 2, kBarPad = 4, kBarTextY = 48;
+            // 文字セルの上端。行の中央に文字セル（24 x 0.72 = 17.28）の中央を合わせる: 58.5 - 8.64 = 49.86 -> 50
+            //   （Simulator の 48 だと上に寄って見えた。利用者の指摘 2026-09-26）
+            const int   kBarGap = 2, kBarPad = 4, kBarTextY = 50;
             const float kBarScale = 0.72f;
             const u32   kColBarPanel = 0xFF102852;      // #522810
             const u32   kColRowEdge  = 0xFF0C1D3A;      // #3a1d0c（CONTROL_COLORS.rowEdge）
@@ -104,13 +114,14 @@ namespace CTRPluginFramework
             struct KeyRect { int x, y, w, h; const char *label; float scale; };
             enum { KEY_SELECT_ALL = 0, KEY_LEFT, KEY_RIGHT, KEY_COUNT };
             //   2026-09-26（利用者の指示）: 全選択は幅を 1px 縮める（左に揃える）。左右は 2 つ合わせて全選択と同じ幅・X、間は 1px、前より 1px 下げる。
+            //   2026-09-26（2 回目）: 全選択を 1px 右へ戻す（x280..318。消去と同じ右端）。左右もそれに揃える。
             const KeyRect kKeys[KEY_COUNT] = {
-                { 279, 49, 39, 19, u8"全選択", 0.72f },
-                { 279,  2, 19, 19, u8"←",     0.8f },
-                { 299,  2, 19, 19, u8"→",     0.8f },
+                { 280, 49, 39, 19, u8"全選択", 0.72f },
+                { 280,  2, 19, 19, u8"←",     0.8f },
+                { 300,  2, 19, 19, u8"→",     0.8f },
             };
             // 左右キーの背面の地（変換欄と同じ色）。キーを 1px ずつ囲む
-            const int   kArrowBackX = 278, kArrowBackY = 1, kArrowBackW = 41, kArrowBackH = 21;
+            const int   kArrowBackX = 279, kArrowBackY = 1, kArrowBackW = 41, kArrowBackH = 21;
             const char  kLabelDeselect[] = u8"解除";         // 全体が選択されている間の全選択キー
             // 空白キー（どのキー配列も P_key_Spc / T_key_Spc と *_n0s1 の値が同じ。フレーム 0 = 通常、1 = 押下）
             const u32   kKeyColor0     = 0x0023418C;    // material 色[0] (140,65,35,0)
@@ -149,6 +160,11 @@ namespace CTRPluginFramework
             u32             g_texKeyset = 0;            //        キー配列
             u32             g_texKind = 0xFFFFFFFF;     //        キー配列の種類
             u32             g_texMap[2][8];             // [0] 空白キー / [1] その押下（…on）の TexMap（32 B）
+            // キー配列の背面（ゲームのスレッドだけが触る。g_shadeOn はメニューも読む）
+            u32             g_shadePane = 0;
+            u32             g_shadeKeyset = 0;
+            float           g_shadeTx = 0.0f, g_shadeTz = 0.0f;
+            volatile bool   g_shadeOn = false;          // 伸ばしてある（メニューは変換行の地と縁を塗らない）
             // 写し（2026-09-26）: 最初に取ったテクスチャを借りたヒープへ写し、以後はそれを使う（キー配列を切り替えても剥がれない）
             bool            g_texCopied = false;
             u32             g_texCopyGen = 0;           // 写したときの GuiRenderer::Generation()
@@ -617,6 +633,60 @@ namespace CTRPluginFramework
                 return true;
             }
 
+            inline float RF(u32 a)
+            {
+                float v;
+
+                std::memcpy(&v, (const void *)a, 4);
+                return v;
+            }
+
+            // キー配列の背面 W_ktpShade を変換行の上まで伸ばす／戻す（利用者の指示 2026-09-26）。ゲームのスレッド
+            void    AdjustShade(bool want)
+            {
+                typedef u32  (*FindPaneFn)(u32 object, const char *name);
+                typedef void (*SetTranslateFn)(u32 pane, const float *v);
+                const u32   bsskb = R32(kBsSkbPtr);
+
+                if (bsskb < 0x08000000u || bsskb >= 0x40000000u)
+                    return;
+
+                const u32   keyset = R32(bsskb + kBsSkbKeyset);
+
+                if (keyset < 0x08000000u || keyset >= 0x40000000u)
+                    return;
+                if (keyset != g_shadeKeyset)
+                {
+                    // キー配列が作り直された: 前のペインはもう無い（元に戻す必要も無い）
+                    const u32 object = R32(keyset + kKeysetLayout);
+                    u32       pane = 0;
+
+                    g_shadeKeyset = keyset;
+                    g_shadePane = 0;
+                    g_shadeOn = false;
+                    if (object >= 0x08000000u && object < 0x40000000u && R32(object + 72) != 0)
+                        pane = ((FindPaneFn)kFindPane)(object, "W_ktpShade");
+                    // 名前と元の大きさ・位置を確かめてから使う（違えば触らない）
+                    if (pane >= 0x08000000u && pane < 0x40000000u
+                        && std::memcmp((const void *)(pane + 0xB8), "W_ktpShade", 11) == 0
+                        && RF(pane + 0x4C) == kShadeOrigH && RF(pane + 0x2C) == kShadeOrigTy)
+                    {
+                        g_shadePane = pane;
+                        g_shadeTx = RF(pane + 0x28);
+                        g_shadeTz = RF(pane + 0x30);
+                    }
+                }
+                if (g_shadePane == 0 || want == g_shadeOn)
+                    return;
+
+                const float v[3] = { g_shadeTx, want ? kShadeOrigTy + kShadeGrow * 0.5f : kShadeOrigTy, g_shadeTz };
+                const float h = want ? kShadeOrigH + kShadeGrow : kShadeOrigH;
+
+                std::memcpy((void *)(g_shadePane + 0x4C), &h, 4);
+                ((SetTranslateFn)kSetTranslate)(g_shadePane, v);   // 行列を作り直させる（ゲームの BsSkb_WindowOut_Calc と同じ関数）
+                g_shadeOn = want;
+            }
+
             // キー配列が変わっていたら取り直す（開くアニメの間は window in、以後は wait から。ゲームのスレッド）
             void    RefreshKeyTextures(void)
             {
@@ -785,6 +855,7 @@ namespace CTRPluginFramework
                     if (g_state != S_IDLE && !Consistent(tm))
                         g_state = S_IDLE;
                 }
+                AdjustShade(g_convOn && g_chatOpen && !g_broken);
                 return ctx.OriginalFunction<int>(self);
             }
 
@@ -795,6 +866,7 @@ namespace CTRPluginFramework
 
                 if (g_convOn && !g_broken)
                     RefreshKeyTextures();
+                AdjustShade(g_convOn && g_chatOpen && !g_broken);
                 return ctx.OriginalFunction<int>(self);
             }
 
@@ -807,7 +879,7 @@ namespace CTRPluginFramework
                     { kKanaCall[0], kKanaCallWord[0] }, { kKanaCall[1], kKanaCallWord[1] }, { kKanaCall[2], kKanaCallWord[2] },
                     { kSetCursor, kSetCursorOrig }, { kPlaySound, kPlaySoundOrig }, { kTexMapUpdate, kTexMapUpdateOrig },
                     { kGetTexture, kGetTextureOrig }, { kVtAccessorVram + 0x10, kGetTexture },
-                    { kWindowInCalc, kWindowInCalcOrig },
+                    { kWindowInCalc, kWindowInCalcOrig }, { kFindPane, kFindPaneOrig }, { kSetTranslate, kSetTranslateOrig },
                 };
 
                 if (Process::GetTitleID() != 0x0004000000086200ULL)
@@ -1495,15 +1567,21 @@ namespace CTRPluginFramework
 
             if (!BarVisible())
                 return;
-            // drawCandidateBar: 変換行全体を 1 回で塗る（候補欄 + 全選択で 1 つの部品に見せる）
-            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
+            // キーボードの背面（W_ktpShade）を上へ伸ばしてあれば、その上に載せる（地と縁はゲームの背面）。
+            //   伸ばせなかったときだけ Simulator の drawCandidateBar / drawPreviewControls の地と縁を自前で塗る。
+            const bool  own = !g_shadeOn;
+
+            if (own)
+                GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
             if (ChatKanji::FontReady())
                 DrawCandidates(left, right, dy, buf, sizeof(buf), chars, cells);
-            // drawPreviewControls: 行の縁（上・左・右・下）と自前キー
-            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, 1, kColRowEdge);
-            GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, 1, kRowH, kColRowEdge);
-            GuiRenderer::FillRect(BOT, kRowX + kRowW - 1, kRowY + dy, 1, kRowH, kColRowEdge);
-            GuiRenderer::FillRect(BOT, kRowX, kRowY + kRowH - 1 + dy, kRowW, 1, kColRowEdge);
+            if (own)
+            {
+                GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, 1, kColRowEdge);
+                GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, 1, kRowH, kColRowEdge);
+                GuiRenderer::FillRect(BOT, kRowX + kRowW - 1, kRowY + dy, 1, kRowH, kColRowEdge);
+                GuiRenderer::FillRect(BOT, kRowX, kRowY + kRowH - 1 + dy, kRowW, 1, kColRowEdge);
+            }
             // 左右キーの背面の地（変換欄と同じ色。利用者の指示 2026-09-26）
             GuiRenderer::FillRect(BOT, kArrowBackX, kArrowBackY + dy, kArrowBackW, kArrowBackH, kColBarPanel);
             for (int i = 0; i < KEY_COUNT; i++)
@@ -1520,8 +1598,8 @@ namespace CTRPluginFramework
                     // 中央: 字幅は GPU の送り、文字セルの高さ = FINF の高さ x 倍率。押下は右下へ 1px（T_key_Spc の CLPA）
                     const float tw = GuiRenderer::MeasureTextNative(label, k.scale);
                     const float th = (float)ChatKanji::FontCellHeight() * k.scale;
-                    const int   tx = k.x + (int)(((float)k.w - tw) * 0.5f) + (on ? 1 : 0);
-                    const int   ty = k.y + (int)(((float)k.h - th) * 0.5f) + (on ? 1 : 0);
+                    const int   tx = k.x + (int)(((float)k.w - tw) * 0.5f + 0.5f) + (on ? 1 : 0);
+                    const int   ty = k.y + (int)(((float)k.h - th) * 0.5f + 0.5f) + (on ? 1 : 0);
 
                     GuiRenderer::DrawTextNative(BOT, tx, ty + dy, label, on ? kKeyTextPressed : kKeyText, k.scale);
                 }
