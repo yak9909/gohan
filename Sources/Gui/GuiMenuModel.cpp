@@ -1914,6 +1914,10 @@ namespace CTRPluginFramework
 
             static void PollChatKanji(u32 now)
             {
+                // ★漢字変換（ChatIme）が同じエンジンを使う。リストボックスが無いときに Poll すると結果を横取りし、
+                //   ChatIme が「変換中」のまま止まった（利用者報告 2026-09-26）。リストボックスの間だけ見る。
+                if (!g_overlay.active || g_overlay.mode != OV_CHAT_KANJI)
+                    return;
                 if (ChatKanji::Poll() && g_overlay.active && !g_overlay.anim.closing
                     && g_overlay.mode == OV_CHAT_KANJI)
                 {

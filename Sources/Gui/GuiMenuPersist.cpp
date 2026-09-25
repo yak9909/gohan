@@ -10,7 +10,9 @@
 //   'GMP1'  u16 版(=1)  u8 設定の旗(bit0 お気に入りを保持 / bit1 オンにした項目を保持 / bit2 オンにしたお気に入りを保持)  u8 0
 //   u16 お気に入りの数  { u16 長さ, 階層パス }...
 //   u16 保持した値の数  { u16 長さ, 階層パス, u8 種類, u8 旗(bit0 固定), s32 適用値, s32 固定値 }...
+//   u16 ホットキーの数  { u16 長さ, 階層パス, u16 適用済みのホットキー }...   ← 2026-09-26 追加（末尾。無ければ読まない）
 // 階層パスは項目のラベルを "/" で連結したもの（ui-model.js の assignFavoriteKeys と同じ鍵）。
+// ホットキーの欄は末尾に足しただけなので、それより前の形は変わらない（古い保存も版 1 のまま読める）。
 //
 // ★Simulator との意図した差
 //   1. ★固定していない連動型は保持しない（利用者の決定 2026-09-25）。Simulator は連動型の適用値も保持するので、
@@ -19,6 +21,8 @@
 //   2. チェック項目の効果は、適用のときと同じ規則で戻す（ON かつホットキーの束縛なしのときだけ効果 ON。
 //      gohan-menu.md §4.3）。Simulator は保持した値をそのまま effectActive に入れる。
 //   3. 戻したときは通知しない（登録しただけで通知しない、という PollEffects の方針と同じ）。
+//   4. ★ホットキーを保持する（利用者の指摘 2026-09-26。Simulator の issue-fixes.js は値しか保存しない）。
+//      CTRPF の通常メニューと同じく**保持の設定に関係なく常に**保存する。既定（BuildTree の値）と違うものだけ書く。
 
 #include "GuiMenuInternal.hpp"
 
@@ -38,6 +42,17 @@ namespace CTRPluginFramework
 
                 bool                g_pendingRestore[kMaxItems];
                 std::vector<u8>     g_lastSaved;
+                u16                 g_defaultHotkey[kMaxItems];     // BuildTree が決めた既定（最初の保存・復元の前に控える）
+                bool                g_defaultsTaken = false;
+
+                void    TakeDefaultHotkeys(void)
+                {
+                    if (g_defaultsTaken)
+                        return;
+                    for (int i = 0; i < g_itemCount && i < kMaxItems; i++)
+                        g_defaultHotkey[i] = g_items[i].appliedHotkey;
+                    g_defaultsTaken = true;
+                }
 
                 // RETAINABLE_TYPES
                 bool    Retainable(const Item &it)
@@ -185,12 +200,38 @@ namespace CTRPluginFramework
                     Put16(out, fn.count);
                     out.insert(out.end(), fn.body.begin(), fn.body.end());
                 }
+
+                // ホットキー（常に。既定と違うものだけ。適用済みの値。編集中は入れない）
+                {
+                    struct Fn
+                    {
+                        u32                 count;
+                        std::vector<u8>     body;
+                        void operator()(int idx, const std::string &p)
+                        {
+                            const Item &it = g_items[idx];
+
+                            if (it.type == ITEM_FOLDER || it.appliedHotkey == g_defaultHotkey[idx])
+                                return;
+                            PutStr(body, p);
+                            Put16(body, it.appliedHotkey);
+                            count++;
+                        }
+                    } fn;
+
+                    TakeDefaultHotkeys();
+                    fn.count = 0;
+                    WalkPaths(g_rootFirst, g_rootCount, std::string(), fn);
+                    Put16(out, fn.count);
+                    out.insert(out.end(), fn.body.begin(), fn.body.end());
+                }
             }
 
             void    RestorePersist(const u8 *data, u32 size)
             {
                 Reader  r = { data, size, 0, data != nullptr };
 
+                TakeDefaultHotkeys();
                 std::memset(g_pendingRestore, 0, sizeof(g_pendingRestore));
                 if (data == nullptr || size < 8 || std::memcmp(data, kMagic, 4) != 0)
                 {
@@ -267,6 +308,41 @@ namespace CTRPluginFramework
                     }
                     else if (g_behavior[idx].Apply != nullptr)
                         g_behavior[idx].Apply(idx, it.applied);
+                }
+
+                // ホットキー（末尾の欄。古い保存には無い）
+                if (r.ok && r.at < size)
+                {
+                    const u32 hotkeys = r.Get(2);
+
+                    for (u32 i = 0; i < hotkeys && r.ok; i++)
+                    {
+                        const std::string   path = r.Str();
+                        const u32           hk = r.Get(2);
+                        const int           idx = FindByPath(path);
+
+                        if (!r.ok || idx < 0 || g_items[idx].type == ITEM_FOLDER)
+                            continue;
+
+                        Item &it = g_items[idx];
+
+                        it.hotkey = (u16)hk;
+                        it.appliedHotkey = (u16)hk;
+                        // 効果の規則（ON かつ束縛なしのときだけ効果 ON。§4.3）を束縛に合わせて取り直す
+                        if (it.type == ITEM_CHECKBOX)
+                        {
+                            const Behavior &b = g_behavior[idx];
+
+                            if (b.IsActive != nullptr && b.SetActive != nullptr)
+                            {
+                                const bool want = it.applied != 0 && it.appliedHotkey == 0;
+
+                                if (b.IsActive(idx) != want)
+                                    b.SetActive(idx, want);
+                                PrimeEffect(idx);
+                            }
+                        }
+                    }
                 }
                 SerializePersist(g_lastSaved);
             }

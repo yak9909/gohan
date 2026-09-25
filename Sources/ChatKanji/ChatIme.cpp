@@ -83,6 +83,7 @@ namespace CTRPluginFramework
             volatile bool   g_compOn = false;
             volatile bool   g_chatOpen = false;
             volatile bool   g_broken = false;   // スレッドの取り違えなどで止めた
+            volatile bool   g_reverted = false; // Backspace で読みへ戻した（ゲーム -> メニュー。同じ読みでも取り直す）
 
             // ---- 依頼（メニュー -> ゲーム）----
             enum { R_NONE = 0, R_START, R_APPLY, R_ABORT };
@@ -100,6 +101,7 @@ namespace CTRPluginFramework
             int             g_curLen = 0;
             int             g_applied = -1;
             u32             g_sessionTm = 0;
+            bool            g_sessionSel = false;   // 対象が選択範囲（まだ未確定にしていない）
 
             // ---- かなで作った未確定（ゲームのスレッドだけが触る）----
             //   ローマ字の入力（QwertyKeySet・ローマ字モード）は未確定の字をローマ字として変換し直すので、
@@ -117,13 +119,17 @@ namespace CTRPluginFramework
             enum { M_IDLE = 0, M_STARTING, M_ENGINE, M_SHOW };
             int         m_phase = M_IDLE;
             u64         m_startTick = 0;                // M_STARTING に入った時刻（ゲームが受け取らないときの打ち切り）
+            // 自動の取得（利用者の指示 2026-09-26: 入力して 300ms 待ってから自動で取る）
+            const u64   kSettleTicks = (u64)SYSCLOCK_ARM11 * 300 / 1000;
+            u32         m_key = 0;                      // いまの対象（未確定か選択）の指紋。0 = 対象なし
+            u64         m_keySince = 0;                 // m_key になった時刻
+            u32         m_doneKey = 0;                  // 取り終えた（または取れなかった）対象
             int         m_kanjiIndex = -1;
             int         m_compIndex = -1;
             bool        m_hooked = false;
             bool        m_hookFailed = false;
-            bool        m_hotPrev = false;
             u16         m_heldPrev = 0;
-            int         m_sel = 0;
+            int         m_sel = -1;
             float       m_scroll = 0.0f;
             int         m_count = 0;
             float       m_cellX[kMaxCand];
@@ -171,7 +177,29 @@ namespace CTRPluginFramework
                     return false;
                 const int   cur = RI(tm, TM_CURSOR), pend = RI(tm, TM_PEND);
 
+                if (g_sessionSel)
+                {
+                    const int   a = RI(tm, TM_ANCHOR);
+                    const int   s0 = a < cur ? a : cur;
+                    const int   e0 = a < cur ? cur : a;
+
+                    return R8(tm + TM_SEL) != 0 && pend == 0 && s0 == g_start && e0 - s0 == g_curLen;
+                }
                 return pend == g_curLen && pend > 0 && cur - pend == g_start;
+            }
+
+            // 選択範囲を未確定に変える（候補を初めて入れるとき。以後は未確定と同じ流れ）
+            void    SelectionToPending(u32 tm)
+            {
+                const int   e = g_start + g_curLen;
+
+                W8(tm + TM_SEL, 0);
+                WI(tm, TM_CURSOR, e);
+                WI(tm, TM_ANCHOR, e);
+                WI(tm, TM_90, -1);
+                WI(tm, TM_EXTRA, 0);
+                WI(tm, TM_PEND, g_curLen);
+                g_sessionSel = false;
             }
 
             // 範囲 [g_start, g_start + g_curLen) を text で置き換え、未確定にする。
@@ -205,6 +233,8 @@ namespace CTRPluginFramework
                 const int   cur = RI(tm, TM_CURSOR), pend = RI(tm, TM_PEND);
                 int         start, n;
 
+                bool        selection = false;
+
                 if (pend > 0)
                 {
                     start = cur - pend;
@@ -218,17 +248,10 @@ namespace CTRPluginFramework
 
                     if (s < 0 || e > RI(tm, TM_LEN))
                         return START_NO_TARGET;
+                    selection = true;
                     start = s;
                     n = e - s;
-                    if (n > kReadingMax)
-                        return START_TOO_LONG;
-                    // 選択を未確定に変える（以後は未確定と同じ流れ。飾りも未確定のものになる）
-                    W8(tm + TM_SEL, 0);
-                    WI(tm, TM_CURSOR, e);
-                    WI(tm, TM_ANCHOR, e);
-                    WI(tm, TM_90, -1);
-                    WI(tm, TM_EXTRA, 0);
-                    WI(tm, TM_PEND, n);
+                    // 選択はここでは変えない（候補を選んだときに未確定へ変える）
                 }
                 else
                     return START_NO_TARGET;
@@ -245,6 +268,7 @@ namespace CTRPluginFramework
                 g_curLen = n;
                 g_applied = -1;
                 g_sessionTm = tm;
+                g_sessionSel = selection;
                 g_state = S_WAIT_ENGINE;
                 return START_OK;
             }
@@ -259,6 +283,8 @@ namespace CTRPluginFramework
                 cand = ChatKanji::Candidate(index, len);
                 if (cand == nullptr || len <= 0)
                     return;
+                if (g_sessionSel)
+                    SelectionToPending(tm);
                 if (!Replace(tm, cand, len))
                 {
                     // 入り切らない候補は読みへ戻す（読みは入っていたので入る）
@@ -281,10 +307,11 @@ namespace CTRPluginFramework
                 if (!g_convOn || g_broken || !TmSane(tm))
                     return ctx.OriginalFunction<int>(tm, ch, romaji, combine);
 
-                // 変換中に字を打ったら変換を確定する（候補はそのまま確定した文字になる）。Enter は素通し（ゲームが確定する）。
+                // 候補を選んだあとに字を打ったら、その候補で確定する。Enter は素通し（ゲームが確定する）。
+                // 候補を選ぶ前なら区切りを捨てるだけ（読みが変わるので、止まってから取り直す）。
                 if (g_state != S_IDLE && tm == g_sessionTm && ch != 10)
                 {
-                    if (Consistent(tm))
+                    if (g_state == S_ACTIVE && g_applied >= 0 && Consistent(tm))
                         WI(tm, TM_PEND, 0);
                     g_state = S_IDLE;
                 }
@@ -331,10 +358,11 @@ namespace CTRPluginFramework
                 {
                     if (g_state == S_ACTIVE && g_applied >= 0)
                     {
-                        // 変換を戻して読みの未確定へ（一般的な IME と同じ）
+                        // 変換を戻して読みの未確定へ（一般的な IME と同じ）。候補はメニュー側が取り直す
                         Replace(tm, g_reading, g_readingLen);
                         g_applied = -1;
                         g_state = S_IDLE;
+                        g_reverted = true;
                         return 1;
                     }
                     g_state = S_IDLE;
@@ -428,9 +456,46 @@ namespace CTRPluginFramework
                     ChatKanji::Dismiss();
                 m_phase = M_IDLE;
                 m_count = 0;
-                m_sel = 0;
+                m_sel = -1;
                 m_scroll = 0.0f;
                 m_dragging = false;
+            }
+
+            // 変換の対象（未確定、無ければ選択範囲）の指紋。読むだけ（書き換えはゲームのスレッド）。
+            //   取り違えても害は無い: 実際の読みはゲームのスレッドが R_START で取り直し、候補を入れる前にも照合する。
+            u32     TargetKey(void)
+            {
+                const u32   tm = R32(kTmPtr);
+
+                if (!TmSane(tm))
+                    return 0;
+                const int   cur = RI(tm, TM_CURSOR), pend = RI(tm, TM_PEND), len = RI(tm, TM_LEN);
+                int         start = 0, n = 0;
+                u32         h = 2166136261u;
+
+                if (pend > 0)
+                {
+                    start = cur - pend;
+                    n = pend;
+                }
+                else if (R8(tm + TM_SEL) != 0 && RI(tm, TM_ANCHOR) != cur)
+                {
+                    const int a = RI(tm, TM_ANCHOR);
+
+                    start = a < cur ? a : cur;
+                    n = (a < cur ? cur : a) - start;
+                    h ^= 0x5E1u;
+                }
+                if (n <= 0 || n > kReadingMax || start < 0 || start + n > len)
+                    return 0;
+
+                const u32   buf = R32(tm + TM_BUF);
+
+                h = (h ^ (u32)start) * 16777619u;
+                h = (h ^ (u32)n) * 16777619u;
+                for (int i = 0; i < n; i++)
+                    h = (h ^ *(volatile u16 *)(buf + (u32)(start + i) * 2)) * 16777619u;
+                return h != 0 ? h : 1u;
             }
 
             float   MaxScroll(void)
@@ -498,7 +563,7 @@ namespace CTRPluginFramework
             {
                 if (m_count <= 0)
                     return;
-                m_sel = ((i % m_count) + m_count) % m_count;
+                m_sel = ((i % m_count) + m_count) % m_count;     // 未選択（-1）から左で最後、右で最初
                 EnsureVisible(m_sel);
                 Post(R_APPLY, m_sel);
             }
@@ -553,21 +618,33 @@ namespace CTRPluginFramework
 
             void    Step(int index, u16 held)
             {
-                const u16   hk = GuiMenu::ItemAppliedHotkey(index);
-                const bool  hot = hk != 0 && (held & hk) == hk;
-                const bool  hotEdge = hot && !m_hotPrev;
                 const u16   pressed = (u16)(held & ~m_heldPrev);
+                const u64   now = svcGetSystemTick();
+                const u32   key = TargetKey();
 
-                m_hotPrev = hot;
+                (void)index;
                 m_heldPrev = held;
+                if (key != m_key)
+                {
+                    m_key = key;
+                    m_keySince = now;
+                }
+                if (g_reverted)
+                {
+                    g_reverted = false;
+                    m_doneKey = 0;
+                    m_keySince = now;
+                }
 
                 if (m_phase == M_IDLE)
                 {
-                    if (hotEdge)
+                    // 候補を選んで入れた後（S_ACTIVE）は取り直さない。対象が 300ms 変わらなければ取る。
+                    if (g_state == S_IDLE && key != 0 && key != m_doneKey && now - m_keySince >= kSettleTicks)
                     {
+                        m_doneKey = key;
                         Post(R_START, 0);
                         m_phase = M_STARTING;
-                        m_startTick = svcGetSystemTick();
+                        m_startTick = now;
                     }
                 }
                 else if (m_phase == M_STARTING)
@@ -584,11 +661,7 @@ namespace CTRPluginFramework
                         const u32 r = g_startResult;
 
                         if (r != START_OK)
-                        {
-                            GuiMenu::NotifyRed(kKanji, r == START_TOO_LONG ? u8"変換する文字が長すぎます。"
-                                                                          : u8"変換する文字がありません。");
-                            m_phase = M_IDLE;
-                        }
+                            m_phase = M_IDLE;           // 自動で取るので通知しない（打ち終わる前に消えた等）
                         else
                         {
                             const ChatKanji::RequestResult rr =
@@ -598,10 +671,12 @@ namespace CTRPluginFramework
                                 m_phase = M_ENGINE;
                             else
                             {
-                                GuiMenu::NotifyRed(kKanji, rr == ChatKanji::REQUEST_BUSY ? u8"変換処理中です。"
-                                                           : rr == ChatKanji::REQUEST_BAD_INPUT ? u8"変換できない文字です。"
-                                                           : rr == ChatKanji::REQUEST_NO_FONT ? u8"フォントを取得できません。"
-                                                           : u8"変換を開始できません。");
+                                // 変換できない文字（記号など）は通知せず、同じ対象では取り直さない（m_doneKey）
+                                if (rr == ChatKanji::REQUEST_NO_FONT || rr == ChatKanji::REQUEST_NO_THREAD
+                                    || rr == ChatKanji::REQUEST_UNSUPPORTED)
+                                    GuiMenu::NotifyRed(kKanji, rr == ChatKanji::REQUEST_NO_FONT ? u8"フォントを取得できません。"
+                                                               : rr == ChatKanji::REQUEST_UNSUPPORTED ? u8"対応していない版です。"
+                                                               : u8"変換を開始できません。");
                                 Post(R_ABORT, 0);
                                 m_phase = M_IDLE;
                             }
@@ -610,23 +685,29 @@ namespace CTRPluginFramework
                 }
                 else if (m_phase == M_ENGINE)
                 {
-                    if (ChatKanji::Poll())
+                    // ★Poll の真は 1 回しか返らない。ほかの所（旧リストボックスの PollChatKanji）が先に受け取ると
+                    //   ここでは永久に偽になり「変換中」で止まった（利用者報告 2026-09-26）。終わったかは Busy でも見る。
+                    const bool  finished = ChatKanji::Poll() || !ChatKanji::Busy();
+
+                    if (finished)
                     {
-                        if (ChatKanji::Error()[0] != '\0' || ChatKanji::CandidateCount() <= 0)
+                        if (ChatKanji::Error()[0] != '\0')
                         {
-                            GuiMenu::NotifyRed(kKanji, ChatKanji::Error()[0] != '\0' ? ChatKanji::Error()
-                                                                                     : "NO CANDIDATES");
+                            GuiMenu::NotifyRed(kKanji, ChatKanji::Error());
                             Post(R_ABORT, 0);
                             Reset();
                         }
-                        else if (g_state == S_IDLE)
-                            Reset();                    // 待っている間に確定・取り消しされた
+                        else if (ChatKanji::CandidateCount() <= 0 || g_state == S_IDLE)
+                        {
+                            Post(R_ABORT, 0);           // 候補なし、または待っている間に読みが変わった
+                            Reset();
+                        }
                         else
                         {
                             BuildLayout();
                             m_scroll = 0.0f;
+                            m_sel = -1;                 // まだ入力欄には入れない（選んだときに入れる）
                             m_phase = M_SHOW;
-                            Select(0);
                         }
                     }
                 }
@@ -639,13 +720,13 @@ namespace CTRPluginFramework
                         Reset();                        // Enter・Backspace・字の入力・カーソル移動で終わった
                         return;
                     }
-                    if (hotEdge || (pressed & HB_RIGHT) != 0)
+                    if ((pressed & HB_RIGHT) != 0)
                         Select(m_sel + 1);
                     else if ((pressed & HB_LEFT) != 0)
-                        Select(m_sel - 1);
+                        Select(m_sel < 0 ? -1 : m_sel - 1);
                 }
-                // 変換の途中は十字キーをゲームへ渡さない（渡すとカーソルが動いて確定してしまう）
-                if (m_phase != M_IDLE)
+                // 候補が出ている間は十字キーをゲームへ渡さない（渡すとカーソルが動いて確定してしまう）
+                if (m_phase == M_SHOW)
                     GuiMenu::BlockGameDpad();
                 HandleTouch();
             }
@@ -685,6 +766,8 @@ namespace CTRPluginFramework
                     Post(R_ABORT, 0);
                     Reset();
                 }
+                m_key = 0;
+                m_doneKey = 0;
                 m_touchPrev = Touch::IsDown();
                 return true;
             }
@@ -705,6 +788,8 @@ namespace CTRPluginFramework
             g_convOn = false;
             g_compOn = false;
             Reset();
+            m_key = 0;
+            m_doneKey = 0;
             return true;
         }
 
