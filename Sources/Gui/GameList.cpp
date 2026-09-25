@@ -341,7 +341,8 @@ bool FieldIdle(void) {
 //   （SE_SYS_MAIN_TAB_SELECTED_OFF）が鳴った（利用者報告。実機の差分: タブボタン 0 の +204 が 0x10003F3、+384/+385 = 1）。
 //   → 選択されたまま（+384 が 0 でない）のボタンは番号に関係なく外す。
 const u32 kTabButtons = 1948, kTabButtonStride = 388, kTabButtonCount = 11;
-const u32 kTabButtonSelected = 384, kTabButtonDirty = 217;
+const u32 kTabButtonSelected = 384, kTabButtonDirty = 217, kTabButtonSound = 204, kTabButtonSound218 = 218;
+const u32 kSndTabSelectedOn = 0x010003F2;   // SE_SYS_MAIN_TAB_SELECTED_ON（開いていないタブを押したときの音）
 const u32 kTabSelectedIndex = 6427, kTabFlags6576 = 6576, kTabActive6422 = 6422, kTab4493 = 4493, kTab4881 = 4881;
 const u32 kTabStateMachine = 20;
 const u32 kTabWaitCalc = 0x006D4444;        // 状態 0「待機」の calc（何もしない）
@@ -356,9 +357,16 @@ void ChangeTabState(u32 tab, u32 calc) {
     reinterpret_cast<void (*)(u32, u32, u32)>(kChangeStateFn)(tab + kTabStateMachine, calc, 0);
 }
 
+// ゲームがタブボタンの選択を外す手順（BsMenuTab_TabSelectUpdate 0x6D4980〜0x6D49C8）の写し:
+//   +204 = 押したときの音 SELECTED_ON、+218 = 1、+384 = +385 = 0（選択中）、vt+28(ボタン, 0) で見た目を +384 に合わせる。
+//   ★+217 と vt+28 だけ（状態 6 enter の形）では +384 が 1 のまま残り、次に開くと閉じる音が鳴った（実機 2026-09-25）。
 void DeselectTabButton(u32 tab, u32 index) {
     const u32 b = tab + kTabButtons + kTabButtonStride * index;
     *reinterpret_cast<volatile u8 *>(b + kTabButtonDirty) = 1;
+    *reinterpret_cast<volatile u32 *>(b + kTabButtonSound) = kSndTabSelectedOn;
+    *reinterpret_cast<volatile u8 *>(b + kTabButtonSound218) = 1;
+    *reinterpret_cast<volatile u8 *>(b + kTabButtonSelected) = 0;
+    *reinterpret_cast<volatile u8 *>(b + kTabButtonSelected + 1) = 0;
     const u32 vt = R32(b);
     reinterpret_cast<void (*)(u32, u32)>(R32(vt + 28))(b, 0);
 }
