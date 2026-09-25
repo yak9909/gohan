@@ -112,6 +112,7 @@ namespace CTRPluginFramework
         static const char *const kMvEmptyOptions[] = { u8"（一覧を作ってください）" };
         // ---- root/ゲーム/キーボード ----
         static const char kKanji[]          = u8"漢字変換";
+        static const char kComposition[]    = u8"コンポジション";
 
         // 天気の選択肢（gohan.md §17.8。0 番がゲームに任せる、以降が値 0..6）
         static const char *const kWeatherOptions[] = {

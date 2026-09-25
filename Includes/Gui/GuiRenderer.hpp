@@ -52,6 +52,11 @@ namespace CTRPluginFramework
         void        FillRect(Screen screen, int x, int y, int w, int h, u32 color);
         void        DrawText(Screen screen, int x, int y, const char *text, u32 color,
                              int scale = 1, Font font = FONT_MAIN);
+        // ゲームの字形（FONT_GAME）を元の大きさの scale 倍で描く（チャットの漢字候補欄。Simulator の 0.72 倍）。
+        //   (x, y) = 文字セルの左上（画素）。要求の大きさ = FINF の幅・高さ x scale、ペインの高さ = FINF の高さ x scale。
+        void        DrawTextNative(Screen screen, int x, int y, const char *text, u32 color, float scale);
+        // 上の描き方での幅（CWDH の送り x scale の合計。GPU の送りと同じ小数のまま）
+        float       MeasureTextNative(const char *text, float scale);
         void        Commit(void);
 
         // ---- 寸法（左上原点・画素）----

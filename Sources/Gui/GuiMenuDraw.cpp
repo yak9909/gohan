@@ -16,6 +16,7 @@
 #include "GuiMenuInternal.hpp"
 #include "GuiKeyboard.hpp"
 #include "GuiDialog.hpp"
+#include "ChatIme.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -760,6 +761,8 @@ namespace CTRPluginFramework
                     DrawSlider(now);
                 else if (GuiKeyboard::Active())
                     GuiKeyboard::Draw(now);
+                else
+                    ChatIme::DrawBar();         // 漢字変換の候補欄（下画面にほかの UI が無いときだけ。Simulator と同じ）
             }
         }
     }

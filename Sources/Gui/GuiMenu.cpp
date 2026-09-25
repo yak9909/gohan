@@ -23,6 +23,7 @@
 #include "GuiDialog.hpp"
 #include "GuiKeyboard.hpp"
 #include "ChatKanji.hpp"
+#include "ChatIme.hpp"
 #include "csvc.h"   // svcInvalidateEntireInstructionCache
 
 namespace CTRPluginFramework
@@ -88,6 +89,8 @@ namespace CTRPluginFramework
 
             bool    g_touchLatch = false;
             bool    g_dpadBlockReq = false;     // このフレームだけゲームの十字キーを遮断（BlockGameDpad）
+            bool    g_touchBlockReq = false;    // このフレームだけゲームのタッチを遮断（BlockGameTouch）
+            bool    g_barDrawn = false;         // 漢字変換の候補欄を前のフレームで描いた（消すために 1 回描き直す）
             bool    g_allBlockReq = false;      // このフレームだけスライドパッドも含めて全部遮断（BlockGameAll）
 
             // ★入力遮断は毎フレーム条件から決める（F-350）。描画の有無に縛らない。
@@ -101,7 +104,9 @@ namespace CTRPluginFramework
                 // タッチ遮断: 下画面 UI がある間（退場中も）。消えた後も指が離れるまで続ける。
                 //   ホットキー入力待ちを「無効」「取消」のタッチで閉じた瞬間に遮断を外すと、
                 //   触れたままの指がゲームへ新しいタッチとして届いていた。
-                const bool present = BottomUiPresent();
+                const bool present = BottomUiPresent() || g_touchBlockReq;
+
+                g_touchBlockReq = false;
 
                 g_touchLatch = present || (g_touchLatch && in.touch);
                 GuiRenderer::SetTouchBlock(g_touchLatch);
@@ -174,11 +179,15 @@ namespace CTRPluginFramework
                         }
                         Step(now, in);
                         SyncInputLock(in);
-                        if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal)
+
+                        const bool  bar = ChatIme::BarVisible();
+
+                        if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal || bar || g_barDrawn)
                         {
                             Draw(now);
                             g_needFinal = false;
                         }
+                        g_barDrawn = bar;
                     }
                     svcSleepThread(16000000LL);     // 約 16ms
                 }
@@ -424,6 +433,11 @@ namespace CTRPluginFramework
         void    BlockGameDpad(void)
         {
             g_dpadBlockReq = true;
+        }
+
+        void    BlockGameTouch(void)
+        {
+            g_touchBlockReq = true;
         }
 
         void    BlockGameAll(void)

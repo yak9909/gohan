@@ -100,9 +100,11 @@ namespace CTRPluginFramework
             };
             const u8    kBotSlotCaps[] = {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 28,
-                28, 28, 28, 28, 28, 28, 28, 28
+                28, 28, 28, 28, 28, 28, 28, 28,
+                28, 28, 28, 28, 28, 28, 28, 28  // 漢字候補欄（2026-09-25。見える候補は画面幅で 15 個まで）
             };
-            const int   kNativeSlots = 8; // dedicated multi-sheet game font rows
+            // dedicated multi-sheet game font rows: 8 listbox rows, or the chat candidate bar (up to 16 cells)
+            const int   kNativeSlots = 16;
 
             const int   kTopSlots    = (int)(sizeof(kTopSlotCaps));
             const int   kBotSlots    = (int)(sizeof(kBotSlotCaps));
@@ -177,6 +179,7 @@ namespace CTRPluginFramework
                 s16     x, y;
                 u8      scale;
                 u8      font;                   // 0=美咲ゴシック / 1=PixelMplus 数字
+                float   native;                 // >0: FONT_GAME を元の大きさの native 倍で（DrawTextNative）
                 u32     color;
                 u8      slot;                   // Commit が割り当てるスロット番号
                 // ★UTF-8 で持つ。日本語は 1 文字 3 バイトなので 3 倍取る。
@@ -222,7 +225,8 @@ namespace CTRPluginFramework
             //   0x80 境界に置いておく（中で 0x20 / 0x80 の整列を仮定しているため）。
             // ★0x90000 -> 0x98000（2026-09-25、Simulator 670e44f の F 印・操作の文字・複数行の通知で上画面の枠を 24 本足した）。
             //   gohan 自身の .bss。ゲームから借りる領域（アトラス）は変わらない。
-            const u32   kPlugBytes = 0x98000;   // plugin-private; game atlas borrow unchanged
+            // ★0x98000 -> 0xAD000（2026-09-25、漢字候補欄のためにゲームの字形の枠を 8 本足した。1 本 10,688 B）。
+            const u32   kPlugBytes = 0xAD000;   // plugin-private; game atlas borrow unchanged
             u8          g_mem[kPlugBytes] __attribute__((aligned(0x80)));
 
             // 配置（Install() で決める。アトラスだけ g_gpuBase 起点）
@@ -638,6 +642,13 @@ namespace CTRPluginFramework
                 cy = sh / 2.0f - ((float)y + (float)h / 2.0f);
             }
 
+            void    ToTextOriginF(float sw, float sh, float x, float y, float h,
+                                  float &cx, float &cy)
+            {
+                cx = x - sw / 2.0f;
+                cy = sh / 2.0f - (y + h / 2.0f);
+            }
+
             // 左上原点 -> 画面中央原点（F-290 で実測した写像）
             void    ToCenter(float sw, float sh, int x, int y, int w, int h,
                              float &cx, float &cy)
@@ -876,6 +887,7 @@ namespace CTRPluginFramework
                 int         k = 0;
 
                 int         wpx = 0;
+                float       wnative = 0.0f;
 
                 SlotAddrs(i, tb, mat, str, batch);
                 // ★UTF-8 を読んで UTF-16LE で置く。幅は CWDH の送り（可変幅）を足す。
@@ -893,9 +905,38 @@ namespace CTRPluginFramework
                         continue;
                     W16(str + (u32)n * 2, (u16)cp);
                     wpx += GlyphAdvance(gi, (int)t.font);
+                    wnative += (float)ChatKanji::GlyphRawAdvance(gi) * t.native;
                     n++;
                 }
                 W16(str + (u32)n * 2, 0);
+
+                // ★ゲームの字形を元の大きさの倍率で（漢字候補欄）。要求の大きさ = FINF の幅・高さ x 倍率
+                //   （拡大率 = 要求 / FINF。0x4D51B0）。ペインの高さ = 文字の高さ（F-311 と同じ理由）。
+                if (t.font == FONT_GAME && t.native > 0.0f)
+                {
+                    const float fw = (float)ChatKanji::FontCellWidth() * t.native;
+                    const float fh = (float)ChatKanji::FontCellHeight() * t.native;
+                    const float pw = (float)(int)(wnative + 1.0f);
+                    float       ncx, ncy;
+
+                    ToTextOriginF(ScreenW(s), ScreenH(s), (float)t.x, (float)t.y, fh, ncx, ncy);
+                    WF(tb + 0x48, pw);
+                    WF(tb + 0x4C, fh);
+                    WF(tb + 0x80 + 12, ncx);
+                    WF(tb + 0x90 + 12, ncy);
+                    WF(tb + 0xA0 + 12, -1.0f);
+                    W32(tb + 0xD8, t.color);
+                    W32(tb + 0xDC, t.color);
+                    WF(tb + 0xE4, fw);
+                    WF(tb + 0xE8, fh);
+                    W16(tb + 0xFA, (u16)n);
+                    W32(tb + 0xE0, FontResFontAddr((int)t.font));
+                    W8(tb + 0xB7, n > 0 ? 0x01 : 0x00);
+                    W8(batch + 0x08, 0);
+                    W16(batch + 0x04, 0);
+                    W8(tb + 0xFE, 1);
+                    return n;
+                }
 
                 const int   scale = t.scale < 1 ? 1 : (int)t.scale;
                 const int   wpxs = wpx * scale;
@@ -1214,6 +1255,7 @@ namespace CTRPluginFramework
             t.y = (s16)y;
             t.scale = (u8)(scale < 1 ? 1 : scale);
             t.font = (u8)font;
+            t.native = 0.0f;
             t.slot = 0xFF;              // Commit が決める
             t.color = color;
             // ★ここはバイト数で切る（字数の上限は FillSlot 側の cap で効く）。
@@ -1225,6 +1267,35 @@ namespace CTRPluginFramework
             std::memcpy(t.s, text, (size_t)k);
             t.s[k] = '\0';
             st.textCount++;
+        }
+
+        void    DrawTextNative(Screen screen, int x, int y, const char *text, u32 color, float scale)
+        {
+            ScreenState &st = g_scr[screen];
+            const int   before = st.textCount;
+
+            if (scale <= 0.0f)
+                return;
+            DrawText(screen, x, y, text, color, 1, FONT_GAME);
+            if (st.textCount != before)
+                st.texts[before].native = scale;
+        }
+
+        float   MeasureTextNative(const char *text, float scale)
+        {
+            float   w = 0.0f;
+            int     i = 0;
+
+            if (text == nullptr)
+                return 0.0f;
+            while (text[i] != '\0')
+            {
+                const int gi = GlyphIndex(NextCodepoint(text, i), (int)FONT_GAME);
+
+                if (gi >= 0)
+                    w += (float)ChatKanji::GlyphRawAdvance(gi) * scale;
+            }
+            return w;
         }
 
         void    Commit(void)

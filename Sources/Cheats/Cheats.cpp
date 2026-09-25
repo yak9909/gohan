@@ -16,6 +16,7 @@
 #include "ModelViewer.hpp"
 #include "PlayerClone.hpp"
 #include "PublicWorks.hpp"
+#include "ChatIme.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -222,6 +223,8 @@ namespace CTRPluginFramework
                     return;
                 if (BuildingEditorTick(index, held))
                     return;
+                if (ChatIme::Tick(index, held))
+                    return;
                 GridCursorTick(index, held);
             }
 
@@ -230,6 +233,8 @@ namespace CTRPluginFramework
                 if (PlayerMoveDisable(index))
                     return;
                 if (BuildingEditorDisable(index))
+                    return;
+                if (ChatIme::Disable(index))
                     return;
                 GridCursorDisable(index);
             }
@@ -263,6 +268,7 @@ namespace CTRPluginFramework
             WirePlayerClone();
             WirePublicWorks();
             WireBuildingEditor();
+            ChatIme::Wire();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }

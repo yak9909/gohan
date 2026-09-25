@@ -210,9 +210,11 @@ namespace CTRPluginFramework
                 const int keyboardFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, u8"キーボード制限解除（未設計）",
                         u8"文字数制限、改行、無効化されたキーの有効化など、キーボードに関する制限を撤去します。");
-                // ★現行の実装はアクション（チャットの入力から候補を取って下画面に出す）
-                i = AddItem(ITEM_ACTION, kKanji, u8"チャットの入力から漢字候補を取得し下画面に表示します。");
-                g_items[i].action = ACT_CHAT_KANJI;
+                // ★トグル（2026-09-25 利用者の決定）。ON の間、普通のチャットの下画面に候補欄を描き、
+                //   この項目のホットキーで変換する（確定は Enter）。実装は ChatIme.cpp。
+                AddItem(ITEM_CHECKBOX, kKanji, u8"漢字変換が出来るようになります。");
+                AddItem(ITEM_CHECKBOX, kComposition,
+                        u8"かな入力に未確定の文字列を付けます。漢字変換はこの未確定の文字列を変換します。");
                 const int keyboardCount = g_itemCount - keyboardFirst;
 
                 // ---- root/ゲーム/店（§12.5）----

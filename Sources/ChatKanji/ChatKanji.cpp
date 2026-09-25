@@ -69,6 +69,7 @@ bool PrepareFont() {
     fontManager=manager;fontResource=obj[1];fontReady=true;
     return true;
 }
+void Work(void*);
 RequestResult Snapshot() {
     uint32_t manager=0,chat=0,vt=0,ptr=0,cap=0,active=0,child=0,global=0;
     if(!Word(kMenuManager,manager) || !manager || !Word(manager+kChatSlot,chat) || !chat ||
@@ -89,6 +90,21 @@ RequestResult Snapshot() {
     std::memset(input,0,sizeof(input));std::memcpy(input,first,(length+1)*sizeof(uint16_t));
     return REQUEST_OK;
 }
+// Normal chat open and bound to the shared input buffer. Same checks as Snapshot, without reading the text.
+bool ChatBound() {
+    uint32_t manager=0,chat=0,vt=0,ptr=0,cap=0,active=0,child=0,global=0;
+    return Word(kMenuManager,manager) && manager && Word(manager+kChatSlot,chat) && chat &&
+           Word(chat,vt) && vt==kChatVtable && Word(chat+0x50,ptr) && ptr==chat+0x58 &&
+           Word(chat+0x54,cap) && cap==65 && Word(chat+0xDC,child) && child &&
+           Word(kKeyboard,active) && active && Word(kInput,global) && global==ptr;
+}
+RequestResult Start() {
+    if(!PrepareFont())return REQUEST_NO_FONT;
+    __atomic_store_n(&done,0u,__ATOMIC_RELEASE);
+    // Engine uses its own verified 64 KiB stack. This stack is for FS/loader/libctru.
+    worker=threadCreate(Work,nullptr,0x8000,0x31,-2,false);
+    return worker ? REQUEST_OK : REQUEST_NO_THREAD;
+}
 void Work(void*) {
     SwkbdEngine::Reset(report);
     NativeFsApi api;
@@ -103,11 +119,21 @@ RequestResult Request() {
     error[0]=0;rowCount=0;discard=false;
     if(!BuildMatches())return REQUEST_UNSUPPORTED;
     const RequestResult snapshot=Snapshot();if(snapshot!=REQUEST_OK)return snapshot;
-    if(!PrepareFont())return REQUEST_NO_FONT;
-    __atomic_store_n(&done,0u,__ATOMIC_RELEASE);
-    // Engine uses its own verified 64 KiB stack. This stack is for FS/loader/libctru.
-    worker=threadCreate(Work,nullptr,0x8000,0x31,-2,false);
-    return worker ? REQUEST_OK : REQUEST_NO_THREAD;
+    return Start();
+}
+RequestResult RequestText(const uint16_t *text,size_t length) {
+    if(worker || owned)return REQUEST_BUSY;
+    error[0]=0;rowCount=0;discard=false;
+    if(!BuildMatches())return REQUEST_UNSUPPORTED;
+    if(!ChatBound())return REQUEST_NO_CHAT;
+    if(!text || !length)return REQUEST_EMPTY;
+    if(length>kChatLimit)return REQUEST_BAD_INPUT;
+    uint16_t copy[kChatLimit+1]={};
+    std::memcpy(copy,text,length*sizeof(uint16_t));
+    size_t checked=0;
+    if(!ChatKanjiText::Valid(copy,kChatLimit+1,kChatLimit,checked) || checked!=length)return REQUEST_BAD_INPUT;
+    std::memset(input,0,sizeof(input));std::memcpy(input,copy,(length+1)*sizeof(uint16_t));
+    return Start();
 }
 bool Poll() {
     // Result timeouts can be positive informational codes: only exact success permits freeing.
@@ -141,6 +167,14 @@ void Shutdown() {
     if(worker) {threadJoin(worker,U64_MAX);threadFree(worker);worker=nullptr;}
 }
 const char *const *Rows() {return rowPointers;}
+int CandidateCount() {return owned?rowCount:0;}
+const uint16_t *Candidate(int index,int &length) {
+    length=0;
+    if(!owned || index<0 || index>=rowCount)return nullptr;
+    length=report.lengths[index];
+    return report.candidates[index];
+}
+bool NormalChatOpen() {return ChatBound();}
 int RowCount() {return rowCount;}
 const char *Title() {return title;}
 const char *Error() {return error;}
@@ -152,4 +186,7 @@ bool FontReady() {
 uint32_t FontAddress() {return fontReady?reinterpret_cast<uintptr_t>(fontObject):0;}
 int Glyph(uint32_t cp) {return fontReady?fontView.Glyph(cp):-1;}
 int GlyphAdvance(int glyph) {return fontReady?fontView.Advance(glyph):0;}
+int GlyphRawAdvance(int glyph) {return fontReady?fontView.RawAdvance(glyph):0;}
+int FontCellWidth() {return fontReady?fontView.CellWidth():0;}
+int FontCellHeight() {return fontReady?fontView.CellHeight():0;}
 } }

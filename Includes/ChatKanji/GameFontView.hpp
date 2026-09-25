@@ -47,6 +47,14 @@ public:
         return fallback ? U16(f+2) : -1;
     }
     int Advance(int glyph) const {
+        const uint8_t *f=At(info_,24); if(!f)return 0;
+        const int advance=RawAdvance(glyph);
+        return advance>0 ? (advance*8+f[21]-1)/f[21] : 0; // conservative pixel width at requested width 8
+    }
+    int CellWidth() const { const uint8_t *f=At(info_,24); return f?f[21]:0; }
+    int CellHeight() const { const uint8_t *f=At(info_,24); return f?f[20]:0; }
+    // CWDH advance in font pixels (the value nw::font multiplies by the horizontal scale).
+    int RawAdvance(int glyph) const {
         const uint8_t *f=At(info_,24); if(!f || glyph<0)return 0;
         uint32_t address=U32(f+12); unsigned advance=f[6];
         for(unsigned steps=0;address && steps<128;++steps) {
@@ -60,6 +68,6 @@ public:
             address=U32(p+4);
             if(steps==127 && address)return 0;
         }
-        return (advance*8+f[21]-1)/f[21]; // conservative pixel width at requested width 8
+        return int(advance);
     }
 };
