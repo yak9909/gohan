@@ -755,6 +755,28 @@ namespace CTRPluginFramework
             }
 
             // ---- フック本体（ゲームのスレッド）----
+            // 入力欄の見た目の状態（字が入ったかどうかを見分ける）
+            struct TextSnap { int len, cur, pend, anchor; u8 sel; u16 prev; };
+
+            TextSnap Snap(u32 tm)
+            {
+                TextSnap    t;
+                const u32   buf = R32(tm + TM_BUF);
+
+                t.len = RI(tm, TM_LEN);
+                t.cur = RI(tm, TM_CURSOR);
+                t.pend = RI(tm, TM_PEND);
+                t.anchor = RI(tm, TM_ANCHOR);
+                t.sel = R8(tm + TM_SEL);
+                t.prev = t.cur > 0 ? *(volatile u16 *)(buf + (u32)(t.cur - 1) * 2) : 0;
+                return t;
+            }
+
+            bool    SameText(const TextSnap &a, const TextSnap &b)
+            {
+                return a.len == b.len && a.cur == b.cur && a.prev == b.prev && a.sel == b.sel && a.anchor == b.anchor;
+            }
+
             __attribute__((noinline)) int ChatImeInputChar(u32 tm, u32 ch, u32 romaji, u32 combine)
             {
                 HookContext &ctx = HookContext::GetCurrent();
@@ -764,46 +786,67 @@ namespace CTRPluginFramework
                 if (!g_convOn || g_broken || !TmSane(tm))
                     return ctx.OriginalFunction<int>(tm, ch, romaji, combine);
 
-                // 候補を選んだあとに字を打ったら、その候補で確定する。Enter は素通し（ゲームが確定する）。
-                // 候補を選ぶ前なら区切りを捨てるだけ（読みが変わるので、止まってから取り直す）。
-                if (g_state != S_IDLE && tm == g_sessionTm && ch != 10)
-                {
-                    if (g_state == S_ACTIVE && g_applied >= 0 && Consistent(tm))
-                        WI(tm, TM_PEND, 0);
-                    g_state = S_IDLE;
-                }
+                const TextSnap  before = Snap(tm);
+                // 変換の区切りがある間に字を打った（Enter は素通し。ゲームが確定する）
+                const bool      session = g_state != S_IDLE && tm == g_sessionTm && ch != 10;
+                const u32       stateBefore = g_state;
+
+                // 候補を選んだあとなら、その候補で確定してから打たせる（字が入らなかったら下で戻す）
+                if (session && g_state == S_ACTIVE && g_applied >= 0 && Consistent(tm))
+                    WI(tm, TM_PEND, 0);
 
                 const bool  kana = ret == kKanaCall[0] + 4 || ret == kKanaCall[1] + 4 || ret == kKanaCall[2] + 4;
 
                 if (!kana && romaji != 0 && tm == g_ownTm && g_ownPend > 0
                     && RI(tm, TM_PEND) == g_ownPend && RI(tm, TM_CURSOR) == g_ownCursor)
                     WI(tm, TM_PEND, 0);                 // かなの未確定を確定してからローマ字を打たせる
+
+                int         r;
+                const bool  compose = g_compOn && kana && g_chatOpen && ch != 0x20 && ch != 0x3000 && ch != 10;
+
+                if (!compose)
+                    r = ctx.OriginalFunction<int>(tm, ch, romaji, combine);
+                else
+                {
+                    const bool  sel = R8(tm + TM_SEL) != 0 && RI(tm, TM_ANCHOR) != RI(tm, TM_CURSOR);
+                    const int   keep = sel ? 0 : RI(tm, TM_PEND);
+                    const int   len0 = RI(tm, TM_LEN);
+
+                    // 元関数はローマ字モード 0 のとき先に未確定を確定するので、一時的に 0 にしておく
+                    WI(tm, TM_PEND, 0);
+                    r = ctx.OriginalFunction<int>(tm, ch, romaji, combine);
+
+                    const int   delta = RI(tm, TM_LEN) - len0;
+                    int         pend = sel ? (r != 0 ? 1 : 0) : keep + delta;
+                    const int   cur = RI(tm, TM_CURSOR);
+
+                    if (pend < 0)
+                        pend = 0;
+                    if (pend > cur)
+                        pend = cur;
+                    WI(tm, TM_EXTRA, 0);
+                    WI(tm, TM_PEND, pend);
+                }
+
+                // ★字が入らなかった（文字数の上限など）: 何も変わっていないので、未確定と変換の区切りを元に戻す
+                //   （以前は入らなくても変換を終え、選択中の候補が消えた。利用者の報告 2026-09-26）
+                if (SameText(before, Snap(tm)))
+                {
+                    WI(tm, TM_PEND, before.pend);
+                    if (session)
+                        g_state = stateBefore;
+                    return r;
+                }
+                if (session)
+                    g_state = S_IDLE;
                 g_ownTm = 0;
                 g_ownPend = 0;
-                if (!g_compOn || !kana || !g_chatOpen || ch == 0x20 || ch == 0x3000 || ch == 10)
-                    return ctx.OriginalFunction<int>(tm, ch, romaji, combine);
-
-                const bool  sel = R8(tm + TM_SEL) != 0 && RI(tm, TM_ANCHOR) != RI(tm, TM_CURSOR);
-                const int   keep = sel ? 0 : RI(tm, TM_PEND);
-                const int   before = RI(tm, TM_LEN);
-
-                // 元関数はローマ字モード 0 のとき先に未確定を確定するので、一時的に 0 にしておく
-                WI(tm, TM_PEND, 0);
-
-                const int   r = ctx.OriginalFunction<int>(tm, ch, romaji, combine);
-                const int   delta = RI(tm, TM_LEN) - before;
-                int         pend = sel ? (r != 0 ? 1 : 0) : keep + delta;
-                const int   cur = RI(tm, TM_CURSOR);
-
-                if (pend < 0)
-                    pend = 0;
-                if (pend > cur)
-                    pend = cur;
-                WI(tm, TM_EXTRA, 0);
-                WI(tm, TM_PEND, pend);
-                g_ownTm = tm;
-                g_ownCursor = cur;
-                g_ownPend = pend;
+                if (compose)
+                {
+                    g_ownTm = tm;
+                    g_ownCursor = RI(tm, TM_CURSOR);
+                    g_ownPend = RI(tm, TM_PEND);
+                }
                 return r;
             }
 
