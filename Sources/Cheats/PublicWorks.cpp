@@ -447,6 +447,38 @@ bool IsActorOf(u32 actor, u32 id, u32 x, u32 y) {
     return (s32)p[0] == (s32)(32 * x + 16) && (s32)p[2] == (s32)(32 * y + 16);
 }
 
+// ---- 建物の影（BsShadowMapMgr。IDA-opus-5.5-F037）------------------------------------------------
+// 場面を作るとき（BsShadowMapMgr_CreateResources 0x264C08 → sub_265544）に、一覧 0x67CC の数を mgr+100 へ控え、
+// 1 件ごとの影のコマンド {番地, 語数}（8 B）を表 dword_94A458 に作る。並びは一覧と同じ番号。
+// 毎フレームの描画 sub_262698 は i < mgr+100 で回し、sub_76EB48(StrcMgr, i) = 一覧[i] の vt+0xA0 を呼ぶ。
+// ★一覧から 1 件抜いて表をそのままにすると、最後の i が一覧の数を越えて 0 の vtable を読み SIGSEGV
+//   （利用者報告 2026-09-25: 橋を消したら落ちた。実機: mgr+100 = 3、一覧の数 = 2、PC 0x76EB64）。
+// → 一覧から i 番目を抜くときは表の i 番目も抜き、mgr+100 を 1 減らす。抜いた影のコマンドは影のヒープに残るが、
+//   場面を閉じるときにヒープごと返る（DestroyResources 0x265438 は表の先頭と HeapAllocator_DestroyHeap だけを返す）。
+//   あとから一覧へ足した建物（i >= mgr+100）には影の表が無い（描画は範囲外を読まないので落ちない。影は出ない）。
+const u32 kShadowMgrPtr = 0x0094A44C;       // off_94A44C（BsShadowMapMgr。場面に無ければ 0）
+const u32 kShadowTablePtr = 0x0094A458;     // dword_94A458
+const u32 kShadowCount = 100;               // BsShadowMapMgr+100: 表の件数
+const u32 kShadowEntryWords = 2;
+
+void DropShadowEntry(u32 index) {
+    const u32 shadow = *reinterpret_cast<volatile u32 *>(kShadowMgrPtr);
+    u32 *const table = *reinterpret_cast<u32 *volatile *>(kShadowTablePtr);
+    if (shadow == 0 || table == nullptr)
+        return;
+    volatile s32 &count = *reinterpret_cast<volatile s32 *>(shadow + kShadowCount);
+    const s32 n = count;
+    if ((s32)index >= n)
+        return;
+    for (s32 j = (s32)index + 1; j < n; ++j) {
+        table[kShadowEntryWords * (j - 1)] = table[kShadowEntryWords * j];
+        table[kShadowEntryWords * (j - 1) + 1] = table[kShadowEntryWords * j + 1];
+    }
+    table[kShadowEntryWords * (n - 1)] = 0;
+    table[kShadowEntryWords * (n - 1) + 1] = 0;
+    count = n - 1;
+}
+
 // 一覧から抜いてから削除を要求する。管理役は毎フレーム一覧を読み、AcStrc の
 // デストラクタは自分を一覧から外さないので、順序を逆にすると解放済みを読まれる。
 bool KillVisual(u32 id, u32 x, u32 y) {
@@ -464,6 +496,8 @@ bool KillVisual(u32 id, u32 x, u32 y) {
             const u32 actor = array[i];
             if (!IsActorOf(actor, id, x, y))
                 continue;
+            if (kAllLists[l] == kListBridge)
+                DropShadowEntry(i);     // 影の表を一覧と同じ並びに保つ（上の説明）
             for (u32 j = i + 1; j < *count; ++j)
                 array[j - 1] = array[j];
             --*count;
