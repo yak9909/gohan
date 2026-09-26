@@ -248,6 +248,8 @@ namespace CTRPluginFramework
                 const char *FormatValue(const Item &it, u32 now, char *buf, unsigned cap)
                 {
                     buf[0] = '\0';
+                    if (it.type == ITEM_ACTION)
+                        return buf;                     // アクションは値を出さない（書式付きでも。利用者の指示 2026-09-27）
                     if (it.type == ITEM_CHECKBOX)
                         std::snprintf(buf, cap, "%s", it.value ? "ON" : "OFF");
                     else if (it.type == ITEM_TOGGLE_ACTION)

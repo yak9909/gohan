@@ -1276,9 +1276,12 @@ namespace CTRPluginFramework
             {
                 const int self = ItemIndex(it);
 
-                // 書式のあるアクション（ポケットアイテムなど）: まず数値を入れさせ、確定したら Apply に渡す（TakeKeyboardResult）
+                // 書式のあるアクション（ポケットアイテムなど）: まず数値を入れさせ、確定したら Apply に渡す（TakeKeyboardResult）。
+                //   前の値は持たない（利用者の指示 2026-09-27）: 毎回 0 から
                 if (it.fmt != FMT_NONE)
                 {
+                    it.value = 0;
+                    it.applied = 0;
                     OpenNumeric(it, false, now);
                     return;
                 }
@@ -1486,9 +1489,7 @@ namespace CTRPluginFramework
 
                     if (it.type == ITEM_ACTION)
                     {
-                        // 書式のあるアクション: 入れた値で 1 回実行する（値は次に開いたときの初期値）
-                        it.value = result.value;
-                        it.applied = result.value;
+                        // 書式のあるアクション: 入れた値で 1 回実行する（値は覚えない）
                         if (g_behavior[result.item].Apply != nullptr)
                             g_behavior[result.item].Apply(result.item, result.value);
                         return;

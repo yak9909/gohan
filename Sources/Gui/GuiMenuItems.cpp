@@ -158,10 +158,14 @@ namespace CTRPluginFramework
                 const int itemFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"ドロップ", u8"アイテムを置く・消す・掘るチートです。");
                 SetFolder(i, dropFirst, dropCount);
-                // アクション式 → 16 進入力（§17.5）。値は最後に入れた ID（表示用。項目の状態ではない）
+                // アクション式 → 16 進入力（§17.5）。値は表示せず、毎回 0 から入れる（利用者の指示 2026-09-27）
                 i = AddItem(ITEM_ACTION, kPocketItem,
                             u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
+                // Issue #15。連動型リスト（ゲームのコードの 1 語を読んで今の状態を出す）
+                i = AddItem(ITEM_LINKED_LIST, kHiddenItems,
+                            u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示は未設計です。");
+                SetOptions(i, kHiddenItemsOptions, 3);
                 const int itemCount = g_itemCount - itemFirst;
 
                 // ---- root/村/マップ（§9.5）----

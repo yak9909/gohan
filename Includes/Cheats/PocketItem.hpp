@@ -10,7 +10,7 @@ namespace PocketItem {
 enum class Result : u8 {
     Ok,
     Full,           // 空き枠が無い
-    Invalid,        // ゲームのアイテムの表で持ち物に入れられない（存在しない ID など）
+    Invalid,        // 空のアイテム（0x7FFE）
     NoPlayer,       // 今のプレイヤーのセーブが読めない（読み書き中）
     Busy,
     HookFailed,
@@ -20,6 +20,10 @@ enum class Result : u8 {
 
 // メニューのスレッドから。ゲームのスレッドが処理するまで最大 1 秒待つ。slot = 入れた枠（0〜15）
 Result Request(u16 id, int &slot, bool &iconUpdated);
+
+// 没アイテム表示（Inventory_GetSlot 0x7238C0 の BEQ を NOP）。切り替えたら、持ち物を開いていれば 16 枠のアイコンを作り直す。
+bool HiddenShown(void);
+Result SetHiddenShown(bool show);
 const char *ResultName(Result result);
 
 }  // namespace PocketItem
