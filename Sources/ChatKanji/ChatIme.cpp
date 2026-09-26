@@ -17,6 +17,7 @@
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -170,7 +171,25 @@ namespace CTRPluginFramework
             const u32   kKeyTextPressed = 0xFF3A5EB8;   // 押下 (184,94,58)。文字は右下へ 1px（T_key_Spc の CLPA）
             const u32   kSoundChangeKeySet = 0x010003E0;    // SE_SYS_SWK_CHANGE_KEY_SET（全選択。「ABC」「あいう」の切り替えの音）
             const u32   kSoundBackspace    = 0x010003DA;    // SE_SYS_SWK_BACKSPACE（左右。Backspace で消せたときの音）
-            const int   kTapSlop = 4;                   // これ以上動いたらスクロール（確定しない）
+            // ---- 候補欄のタッチ（利用者の指示 2026-09-26: 1 回のタッチで確定・慣性スクロール・揺れの補正）----
+            const float kTapSlop = 6.0f;                // 触れた所から（補正後の位置で）これ以上動いたらスクロール（確定しない）
+            // 揺れの補正（係数は解析 repo tools/chat_kanji/sim_touch.py で決めた）:
+            //   1. 飛び値の保留: 前の値から 1 回で kSpikePx を越えて飛んだ値は 1 回保留し、次の値が続かなければ捨てる
+            //      （3 点の中央値だと 1500px/s のスワイプで約 28px 遅れたのでやめた）
+            //   2. 1€ フィルタ（Casiez 2012）: 遅い動きほど強く均し、速い動きは遅らせない
+            //   3. 表示のヒステリシス: 補正後の位置が kHysteresisPx を越えて動くまでスクロール位置を変えない（1px の揺れで字が震えない）
+            const float kSpikePx = 40.0f;               // 1 回（約 16ms）で 40px = 2500px/s を越える動きは飛び値とみなす
+            const float kEuroMinCutoff = 1.0f;          // Hz。止まっているときの均し具合
+            const float kEuroBeta = 0.05f;              // 速さ（px/s）に応じて均しを弱める度合い
+            const float kEuroDCutoff = 5.0f;            // Hz。速さの推定の均し
+            const float kHysteresisPx = 1.0f;
+            // 慣性スクロール
+            const float kFlingWindow = 0.1f;            // s。離す直前のこの間の動きから速さを求める
+            const float kFlingMin = 60.0f;              // px/s。これより遅ければ投げない
+            const float kFlingMax = 2500.0f;            // px/s
+            const float kFlingTau = 0.35f;              // s。速さが 1/e になる時間（指数関数的に減速）
+            const float kFlingStop = 15.0f;             // px/s。これより遅くなったら止める
+            const int   kTouchHist = 16;                // 速さを求めるための履歴
 
             // HotkeyBit（GuiMenu.cpp の kHotkeyKeys の並び）
             const u16   HB_LEFT = 1u << 6, HB_RIGHT = 1u << 7;
@@ -316,9 +335,21 @@ namespace CTRPluginFramework
             float       m_textW[kMaxCand];
             float       m_content = 0.0f;
             bool        m_touchPrev = false;
-            bool        m_dragging = false;
-            int         m_dragMax = 0;                  // 触れてから動いた最大の横幅（タップかスクロールか）
-            int         m_tapCandidate = -1;            // 選択中の候補をもう一度触った（離したときに Enter）
+            bool        m_dragging = false;             // 候補欄の上で触れている
+            bool        m_scrolling = false;            // 触れてからタッチスロップを越えた（以後は確定しない）
+            int         m_tapCandidate = -1;            // 触れた候補（離したときに確定。スクロールになったら -1）
+            float       m_flingV = 0.0f;                // 慣性の速さ（m_scroll の増え方、px/s）
+            u64         m_lastTick = 0;                 // 前回の HandleTouch の時刻
+            // 揺れの補正
+            float       m_lastRaw = 0.0f;               // 最後に受け入れた生の x
+            bool        m_spikeHeld = false;            // 飛び値を 1 回保留している
+            float       m_spikeDt = 0.0f;               // 保留した回の経過時間（次の回に足す）
+            float       m_fx = 0.0f, m_fdx = 0.0f;      // 1€ フィルタの位置と速さ
+            float       m_hx = 0.0f;                    // ヒステリシスをかけた位置（スクロールに使う）
+            float       m_touchStartX = 0.0f;           // 触れた所（補正後）
+            float       m_histX[kTouchHist];            // 補正後の位置と時刻（速さの推定）
+            u64         m_histT[kTouchHist];
+            int         m_histCount = 0, m_histHead = 0;
             int         m_keyDown = -1;                 // 押している自前キー
             bool        m_keyInside = false;            // 押している指がまだキーの上か（押下の見た目）
             int         m_wantKey = -1;                 // 離したキー。依頼の枠が空いたら出す
@@ -329,7 +360,7 @@ namespace CTRPluginFramework
             bool        m_texReady = false;
             u64         m_repeatAt = 0;                 // 十字キー左右の長押しの次の時刻
             u16         m_repeatBit = 0;
-            int         m_dragStartX = 0;
+            float       m_dragStartX = 0.0f;            // スクロールを始めた所（補正後）
             float       m_dragStartScroll = 0.0f;
 
             Hook        g_hInput;
@@ -1028,6 +1059,7 @@ namespace CTRPluginFramework
                 m_wantApply = -1;
                 m_sel = -1;
                 m_scroll = 0.0f;
+                m_flingV = 0.0f;
                 m_dragging = false;
             }
 
@@ -1092,6 +1124,7 @@ namespace CTRPluginFramework
 
                 if (i < 0 || i >= m_count)
                     return;
+                m_flingV = 0.0f;
                 if (m_cellX[i] < m_scroll)
                     m_scroll = m_cellX[i];
                 else if (m_cellX[i] + m_cellW[i] > m_scroll + view)
@@ -1179,6 +1212,8 @@ namespace CTRPluginFramework
                 m_entry = entry;
                 BuildLayout();
                 m_scroll = 0.0f;
+                m_flingV = 0.0f;
+                m_tapCandidate = -1;           // 前の候補の上で触れていた指で、新しい候補を確定しない
                 m_sel = -1;                             // まだ入力欄には入れない（選んだときに入れる）
                 m_phase = m_count > 0 ? M_SHOW : M_IDLE;
             }
@@ -1266,6 +1301,94 @@ namespace CTRPluginFramework
                 return x >= kBarX && x < kBarX + kBarW && y >= kBarY + m_dy && y < kBarY + kBarH + m_dy;
             }
 
+            // ---- タッチの揺れの補正（メニュースレッド）----
+            void    HistPush(float x, u64 now);
+
+            void    FilterReset(float x, u64 now)
+            {
+                m_lastRaw = x;
+                m_spikeHeld = false;
+                m_fx = x;
+                m_hx = x;
+                m_fdx = 0.0f;
+                m_histCount = 0;
+                m_histHead = 0;
+                HistPush(x, now);
+            }
+
+            static float Alpha(float cutoff, float dt)
+            {
+                const float tau = 1.0f / (2.0f * 3.14159265f * cutoff);
+
+                return 1.0f / (1.0f + tau / dt);
+            }
+
+            void    FilterPush(float x, float dt, u64 now)
+            {
+                // 飛び値の保留: 保留の次の値は、そのそばに続いた（本当に動いた）でも戻った（飛び値）でも、今の値を使えば済む
+                const float med = x;
+
+                if (m_spikeHeld)
+                {
+                    m_spikeHeld = false;
+                    dt += m_spikeDt;
+                }
+                else if (x - m_lastRaw > kSpikePx || m_lastRaw - x > kSpikePx)
+                {
+                    m_spikeHeld = true;
+                    m_spikeDt = dt;
+                    return;
+                }
+                m_lastRaw = med;
+                if (dt <= 0.0f)
+                    return;
+                // 1€ フィルタ
+                const float dx = (med - m_fx) / dt;
+
+                m_fdx += Alpha(kEuroDCutoff, dt) * (dx - m_fdx);
+
+                const float speed = m_fdx < 0.0f ? -m_fdx : m_fdx;
+
+                m_fx += Alpha(kEuroMinCutoff + kEuroBeta * speed, dt) * (med - m_fx);
+                if (m_fx - m_hx > kHysteresisPx)
+                    m_hx = m_fx - kHysteresisPx;
+                else if (m_hx - m_fx > kHysteresisPx)
+                    m_hx = m_fx + kHysteresisPx;
+                HistPush(m_fx, now);
+            }
+
+            void    HistPush(float x, u64 now)
+            {
+                m_histX[m_histHead] = x;
+                m_histT[m_histHead] = now;
+                m_histHead = (m_histHead + 1) % kTouchHist;
+                if (m_histCount < kTouchHist)
+                    m_histCount++;
+            }
+
+            // 離す直前 kFlingWindow の間の平均の速さ（px/s、指の向き）。止めてから離したら 0 に近い
+            float   ReleaseVelocity(u64 now)
+            {
+                const u64   window = (u64)(kFlingWindow * (float)SYSCLOCK_ARM11);
+                const int   last = (m_histHead + kTouchHist - 1) % kTouchHist;
+                int         first = last;
+
+                if (m_histCount < 2 || now - m_histT[last] > window)
+                    return 0.0f;
+                for (int n = 1; n < m_histCount; n++)
+                {
+                    const int i = (last + kTouchHist - n) % kTouchHist;
+
+                    if (now - m_histT[i] > window)
+                        break;
+                    first = i;
+                }
+
+                const float dt = (float)(m_histT[last] - m_histT[first]) / (float)SYSCLOCK_ARM11;
+
+                return dt >= 0.02f ? (m_histX[last] - m_histX[first]) / dt : 0.0f;
+            }
+
             void    HandleTouch(void)
             {
                 const bool  down = Touch::IsDown();
@@ -1313,43 +1436,79 @@ namespace CTRPluginFramework
                     m_touchPrev = down;
                     return;
                 }
+                const float dt = m_lastTick != 0 ? (float)(now - m_lastTick) / (float)SYSCLOCK_ARM11 : 0.0f;
+
+                m_lastTick = now;
                 if (down && !m_touchPrev && InsideBar(x, y))
                 {
-                    m_dragging = true;
-                    m_dragStartX = x;
-                    m_dragMax = 0;
-                    m_dragStartScroll = m_scroll;
-                    m_tapCandidate = -1;
-                    if (m_phase == M_SHOW)
-                    {
-                        const int i = CandidateAt(x);
+                    // 慣性で動いている最中のタッチは止めるだけ（確定しない。よくある操作と同じ）
+                    const bool  wasFlinging = m_flingV != 0.0f;
 
-                        if (i >= 0 && i == m_sel)
-                            m_tapCandidate = i;         // 選択中をもう一度: 離したときに Enter（動かしていなければ）
-                        else if (i >= 0)
-                            Select(i);
-                    }
+                    m_flingV = 0.0f;
+                    FilterReset((float)x, now);
+                    m_dragging = true;
+                    m_scrolling = false;
+                    m_touchStartX = m_fx;
+                    m_tapCandidate = !wasFlinging && m_phase == M_SHOW ? CandidateAt(x) : -1;
                 }
                 if (m_dragging)
                 {
                     if (!down)
                     {
                         m_dragging = false;
-                        // あまり動かさずに離したら決定（スクロールのために同じ所を触ったときは決定しない）
-                        if (m_tapCandidate >= 0 && m_tapCandidate == m_sel && m_dragMax < kTapSlop)
+                        if (m_scrolling)
+                        {
+                            // 離す直前の速さで投げる
+                            const float v = ReleaseVelocity(now);
+
+                            if (v > kFlingMin || v < -kFlingMin)
+                                m_flingV = -(v > kFlingMax ? kFlingMax : v < -kFlingMax ? -kFlingMax : v);
+                        }
+                        else if (m_tapCandidate >= 0 && m_phase == M_SHOW && m_tapCandidate < m_count
+                                 && CandidateAt((int)(m_fx + 0.5f)) == m_tapCandidate)
+                        {
+                            // 動かさずに離した（タップ）: その候補を入れて確定（入れる依頼のあとに Enter の依頼が出る）
+                            if (m_tapCandidate != m_sel)
+                                Select(m_tapCandidate);
                             m_wantEnter = true;
+                        }
                         m_tapCandidate = -1;
+                        m_scrolling = false;
                     }
                     else
                     {
-                        const int moved = x > m_dragStartX ? x - m_dragStartX : m_dragStartX - x;
+                        FilterPush((float)x, dt, now);
+                        if (!m_scrolling)
+                        {
+                            const float moved = m_fx - m_touchStartX;
 
-                        if (moved > m_dragMax)
-                            m_dragMax = moved;
-                        m_scroll = m_dragStartScroll - (float)(x - m_dragStartX);
-                        ClampScroll();
+                            if (moved > kTapSlop || moved < -kTapSlop)
+                            {
+                                // スロップを越えた所から動かす（越えた分だけ飛ばない）
+                                m_scrolling = true;
+                                m_tapCandidate = -1;
+                                m_dragStartX = m_hx;
+                                m_dragStartScroll = m_scroll;
+                            }
+                        }
+                        if (m_scrolling)
+                        {
+                            m_scroll = m_dragStartScroll - (m_hx - m_dragStartX);
+                            ClampScroll();
+                        }
                     }
                     GuiMenu::BlockGameTouch();          // 欄の上で始めた指はゲームへ渡さない
+                }
+                else if (m_flingV != 0.0f)
+                {
+                    // 慣性: 指数関数的に減速し、端か十分遅くなったら止める
+                    const float before = m_scroll;
+
+                    m_scroll += m_flingV * dt;
+                    ClampScroll();
+                    m_flingV *= expf(-dt / kFlingTau);
+                    if ((m_flingV < kFlingStop && m_flingV > -kFlingStop) || (dt > 0.0f && m_scroll == before))
+                        m_flingV = 0.0f;
                 }
                 m_touchPrev = down;
             }
@@ -1733,7 +1892,7 @@ namespace CTRPluginFramework
                 if (x + m_cellW[i] < (float)kBarX || x > (float)(kBarX + kBarW))
                     continue;
                 // 切り抜きが無いので、選択の塗りは内側へ詰め、文字は丸ごと入る候補だけ描く（Simulator は切り抜く）
-                if (i == m_sel)
+                if (i == m_sel || (m_dragging && !m_scrolling && i == m_tapCandidate))
                 {
                     float   x0 = x < left ? left : x;
                     float   x1 = x + m_cellW[i] > right ? right : x + m_cellW[i];
