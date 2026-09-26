@@ -40,6 +40,11 @@ namespace GameList
     //   ★この間はゲームが地図の arc（596 KB の塊）を取り直すことがあるので、ほかの部品は arc を新しく読まない
     //   （持ち物欄を閉じさせた直後に地図の arc が取れず SIGSEGV した。2026-09-25）
     bool        FieldTransition(void);
+    // リストを出さずに、元の下画面 UI（地図・タブ）だけを退場させておく（マップエディターが下画面を自前で使う間）。
+    //   on = false で、リストも出していなければ元の UI を戻す。フレームフックが入れられなければ false。
+    bool        HoldField(bool on);
+    bool        FieldHidden(void);      // 元の UI が隠れきっていて、リストも組んでいない（ほかの部品が下画面を使ってよい）
+    bool        FieldShown(void);       // 元の UI が戻りきっている
 
     void        FrameStep(void);        // ゲームのスレッド
     void        Shutdown(void);         // プラグイン終了時（ゲームのスレッドで片付け終わるまで待つ）

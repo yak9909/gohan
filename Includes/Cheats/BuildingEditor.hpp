@@ -35,6 +35,10 @@ namespace BuildingEditor
     bool            Running(void);
     void            Reset(void);                // 失敗の記憶を消す（チェックを外したとき）
 
+    // 建物の衝突判定のマス（基点からのずれ）。上の「形」と同じ規則。count を返す（max を超えた分は捨てる）。
+    // メニュースレッド（romfs を読む・名前の無い家はゲームのスレッドに足元を写してもらう）。マップエディターが使う。
+    u32             CollisionCells(u16 id, s8 *dx, s8 *dy, u32 max);
+
     // ---- 描画スレッド（PublicWorks::FrameStep から）----
     void            FrameStep(void);
 }

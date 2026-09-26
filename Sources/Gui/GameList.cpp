@@ -239,6 +239,7 @@ s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わ
 volatile u32 s_itemsSeq;                    // SetItems のたびに増える
 u32 s_builtSeq;
 volatile bool s_want;
+volatile bool s_holdField;                  // ほかの部品（マップエディター）が下画面を使う: リストは出さず元の UI だけ退場させておく
 volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
 u32 s_selectDone;
@@ -270,6 +271,7 @@ Dir s_listDir = Dir::None;
 bool s_hookReady;
 u32 s_waitFrames;
 s32 s_lastSelected = -1;
+volatile bool s_fieldHiddenNow;             // 直近の FrameStep で元の UI が隠れきっていた
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
@@ -1025,6 +1027,28 @@ void SetItemMessages(const char *label, const s16 *indices, u32 count) {
     s_itemsSeq = s_itemsSeq + 1;
 }
 
+bool EnsureHook(void) {
+    if (!s_hookReady) {
+        if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep))
+            return false;
+        s_hookReady = true;
+    }
+    return true;
+}
+
+bool HoldField(bool on) {
+    if (on && !EnsureHook()) {
+        s_error = "フレームフックを入れられない";
+        return false;
+    }
+    s_holdField = on;
+    return true;
+}
+
+bool FieldHidden(void) {
+    return s_fieldHiddenNow && s_stage == Stage::Off;
+}
+
 void Show(s32 selected) {
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {
@@ -1049,6 +1073,10 @@ bool Wanted(void) {
 
 bool Present(void) {
     return s_stage != Stage::Off || s_field != Field::Shown;
+}
+
+bool FieldShown(void) {
+    return s_field == Field::Shown && !s_menuCloseSent;
 }
 
 bool FieldTransition(void) {
@@ -1087,7 +1115,8 @@ void FrameStep(void) {
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
     //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
     const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
-    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live);
+    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || (s_holdField && !s_shutdown));
+    s_fieldHiddenNow = fieldHidden;
 
     switch (s_stage) {
     case Stage::Off:
