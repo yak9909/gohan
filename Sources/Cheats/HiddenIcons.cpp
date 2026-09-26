@@ -18,6 +18,7 @@
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
 
+#include <cstdio>
 #include <cstring>
 
 #if defined(__has_include)
@@ -61,6 +62,8 @@ volatile u32 s_size = 32;
 Slot s_slots[kSlots];
 u32 s_clock;
 u32 s_gen = 0xFFFFFFFFu;
+// 診断（利用者の実機確認で、どこで抜けたかを見るため。2026-09-27）
+volatile u32 s_calls, s_hidden, s_noCache, s_noPane, s_applied, s_cacheBytes;
 
 inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 inline u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
@@ -87,6 +90,7 @@ int ImageIndex(u16 number) {
 u32 Place(int image, u32 size) {
     u32 bytes = 0;
     const u32 base = CTRPluginFramework::GuiRenderer::GpuIconCache(bytes);
+    s_cacheBytes = bytes;
     if (base == 0 || bytes < kSlotBytes * kSlots)
         return 0;
     if (s_gen != CTRPluginFramework::GuiRenderer::Generation()) {
@@ -124,7 +128,10 @@ __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     const u32 r = ctx.OriginalFunction<u32>(widget, item, kind);
 
 #ifdef GOHAN_HIDDEN_ITEM_ICONS
-    if (!s_on || kind != 0 || widget == 0)
+    if (!s_on || widget == 0)
+        return r;
+    s_calls = s_calls + 1;
+    if (kind != 0)
         return r;
     const u16 id = *reinterpret_cast<const volatile u16 *>(widget + kWidgetItem) & 0x7FFF;
     if (id == 0x7FFE)
@@ -135,23 +142,24 @@ __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     const int image = ImageIndex(e->icon);
     if (image < 0)
         return r;
+    s_hidden = s_hidden + 1;
     const u32 size = s_size == 64 ? 64 : 32;
     const u32 va = Place(image, size);
-    if (va == 0)
+    if (va == 0) {
+        s_noCache = s_noCache + 1;
         return r;
+    }
 
     typedef u32 (*FindPaneFn)(u32 layout, const char *name);
     typedef u32 (*GetMaterialFn)(u32 pane, u32 index);
     typedef void (*UpdateFn)(u32 texMap);
     const u32 pane = reinterpret_cast<FindPaneFn>(kFindPane)(widget + kWidgetLayout, "P_itemIcon");
-    if (pane == 0)
+    const u32 material = pane != 0 ? reinterpret_cast<GetMaterialFn>(R32(R32(pane) + 40))(pane, 0) : 0;
+    const u32 texMap = material != 0 ? R32(material + kMaterialTexMap) : 0;
+    if (texMap == 0) {
+        s_noPane = s_noPane + 1;
         return r;
-    const u32 material = reinterpret_cast<GetMaterialFn>(R32(R32(pane) + 40))(pane, 0);
-    if (material == 0)
-        return r;
-    const u32 texMap = R32(material + kMaterialTexMap);
-    if (texMap == 0)
-        return r;
+    }
     W32(texMap + 0, 0);
     W32(texMap + 4, va - 0x10000000u);
     W32(texMap + 8, size | size << 16);
@@ -159,6 +167,7 @@ __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     W32(texMap + 16, ((kFmtEtc1a4 << 8) & 0xF00u) | (R32(texMap + 16) & 0xFFFFF0FFu));
     reinterpret_cast<UpdateFn>(kTexMapUpdate)(texMap);
     W8(material + kMaterialFlags, R8(material + kMaterialFlags) & ~4u);
+    s_applied = s_applied + 1;
 #else
     (void)kind;
     (void)item;
@@ -202,6 +211,14 @@ void SetSize(u32 size) {
 
 u32 Size(void) {
     return s_size;
+}
+
+void Status(char *out, u32 cap) {
+    u32 bytes = 0;
+    const u32 base = CTRPluginFramework::GuiRenderer::GpuIconCache(bytes);
+    std::snprintf(out, cap, u8"呼出 %lu / 没 %lu / 置けず %lu / 枠なし %lu / 貼替 %lu / キャッシュ 0x%08lX (0x%lX)",
+                  (unsigned long)s_calls, (unsigned long)s_hidden, (unsigned long)s_noCache, (unsigned long)s_noPane,
+                  (unsigned long)s_applied, (unsigned long)base, (unsigned long)bytes);
 }
 
 }  // namespace HiddenIcons

@@ -310,6 +310,11 @@ namespace CTRPluginFramework
                 HiddenIcons::SetSize(value == 1 ? 64 : 32);
                 if (HiddenIcons::Enabled())
                     PocketItem::RefreshPocketIcons();
+
+                char buf[160];
+
+                HiddenIcons::Status(buf, sizeof(buf));
+                GuiNotification::Notify(kHiddenIconSize, buf);      // 診断（実機確認のあいだ）
             }
 
             void    HiddenWrite(int index, s32 value)

@@ -1172,13 +1172,20 @@ namespace CTRPluginFramework
 
         u32     BorrowBytes(void)   { return kBorrowBytes; }
 
+        // ★借りた先頭は 0x80 に揃っていない（アトラスも g_offAtlas で揃え直している）。キャッシュの先頭は切り下げで決める。
+        //   2026-09-27 の初版は切り上げにしていて、残りが 0x10000 に足りず、アイコンを 1 枚も置けなかった（利用者の報告: 家具アイコンのまま）。
+        u32     IconCacheStart(void)
+        {
+            return (g_gpuBase + g_size - kIconCacheBytes) & ~0x7Fu;
+        }
+
         u32     GpuIconCache(u32 &bytes)
         {
             bytes = 0;
             if (!g_ready || g_gpuBase == 0 || g_size < kIconCacheBytes)
                 return 0;
 
-            const u32   start = AlignUp(g_gpuBase + g_size - kIconCacheBytes, 0x80);
+            const u32   start = IconCacheStart();
             const u32   end = g_gpuBase + g_size;
 
             if (start >= end || start < AlignUp(g_gpuBase + g_offAtlas + kUiSheetBytes, 0x80))
@@ -1188,6 +1195,8 @@ namespace CTRPluginFramework
         }
         u32     Generation(void)    { return g_generation; }
 
+        u32     IconCacheStart(void);
+
         u32     GpuSpare(u32 &bytes)
         {
             bytes = 0;
@@ -1195,7 +1204,7 @@ namespace CTRPluginFramework
                 return 0;
 
             const u32   start = AlignUp(g_gpuBase + g_offAtlas + kUiSheetBytes, 0x80);
-            const u32   end = g_gpuBase + g_size - kIconCacheBytes;     // 末尾はアイコンのキャッシュ（GpuIconCache）
+            const u32   end = IconCacheStart();                         // 末尾はアイコンのキャッシュ（GpuIconCache）
 
             if (start >= end)
                 return 0;
