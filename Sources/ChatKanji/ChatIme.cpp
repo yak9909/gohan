@@ -122,6 +122,7 @@ namespace CTRPluginFramework
             const u32   kColRowEdge  = 0xFF0C1D3A;      // #3a1d0c（CONTROL_COLORS.rowEdge）
             const u32   kColBarSel   = 0x3DD6FFEF;      // rgba(239,255,214,.24)
             const u32   kColBarText  = 0xFFD6F3FF;      // #fff3d6
+            const u32   kColBarBusy  = 0x80D6F3FFu;     // 「変換中」は半透明（利用者の指示 2026-09-26）
             const u32   kColBarHint  = 0x9ED6F3FF;      // rgba(255,243,214,.62)
             // 1 フレームに描くゲームの字形の上限（記録リストの見積もり。verify_plugin_port_v2 群 4 が読む）。
             //   ゲームの字形の枠は 16 本（GuiRenderer kNativeSlots）。キーの文字 3 本（全選択 / ← / →、5 字）を先に取る。
@@ -235,109 +236,26 @@ namespace CTRPluginFramework
             volatile u32    g_threadInput = 0;
             volatile u32    g_threadWait = 0;
 
-            // ---- 変換の対象とその候補のキャッシュ（メニュースレッドだけ。利用者の指示 2026-09-26）----
-            //   255 件まで。溢れたら一番長く使っていないものから消す。当たったら「いま使った」にする（よく使うものを残す）。
-            //   件数とは別に、合計の大きさでも抑える（候補は最大 300 件 x 55 字。普段は 1 件数百バイト）。
-            const int   kCacheMax = 255;
-            const u32   kCacheBytesMax = 1024 * 1024;
+            // ---- いま候補欄に出している候補（メニュースレッドだけ）----
+            //   2026-09-26 利用者の指示でキャッシュは削除（変換が十分速く、キャッシュが逆に遅くしうる）。
+            //   エンジンの結果は次の依頼で消えるので、出している 1 件だけ写して持つ。
             struct CacheEntry
             {
                 bool                used;
-                u32                 stamp;              // 最後に使った順（大きいほど新しい）
-                u16                 reading[kReadingMax + 1];
-                int                 readingLen;
                 std::vector<u16>    text;               // 候補を続けて並べたもの
                 std::vector<u16>    start;              // 候補 i は text[start[i] .. start[i+1])（要素数は候補数 + 1）
             };
-            CacheEntry  m_cache[kCacheMax];
-            u32         m_cacheClock = 0;
-            u32         m_cacheBytes = 0;
-            int         m_entry = -1;                   // いま候補欄に出しているもの
+            CacheEntry  m_cache[1];
+            int         m_entry = -1;                   // いま候補欄に出しているもの（0 か -1）
 
-            u32     EntryBytes(const CacheEntry &e)
-            {
-                return (u32)(e.text.size() + e.start.size()) * 2 + (u32)sizeof(CacheEntry);
-            }
-
-            int     CacheFind(const u16 *reading, int n)
-            {
-                for (int i = 0; i < kCacheMax; i++)
-                    if (m_cache[i].used && m_cache[i].readingLen == n
-                        && std::memcmp(m_cache[i].reading, reading, (size_t)n * 2) == 0)
-                    {
-                        m_cache[i].stamp = ++m_cacheClock;
-                        return i;
-                    }
-                return -1;
-            }
-
-            void    CacheDrop(int i)
-            {
-                m_cacheBytes -= EntryBytes(m_cache[i]);
-                m_cache[i].used = false;
-                std::vector<u16>().swap(m_cache[i].text);
-                std::vector<u16>().swap(m_cache[i].start);
-                if (m_entry == i)
-                    m_entry = -1;
-            }
-
-            int     CacheOldest(void)
-            {
-                int best = -1;
-
-                for (int i = 0; i < kCacheMax; i++)
-                    if (m_cache[i].used && (best < 0 || m_cache[i].stamp < m_cache[best].stamp))
-                        best = i;
-                return best;
-            }
-
-            // ChatKanji の結果を入れる（同じ読みがあれば置き換える）。入れた番号を返す
-            int     CacheInsert(const u16 *reading, int n)
+            // ChatKanji の結果を写す。写した番号（0）を返す
+            int     TakeResult(void)
             {
                 const int   count = ChatKanji::CandidateCount();
-                int         slot = -1;
-                u32         total = 0;
-
-                for (int i = 0; i < count; i++)
-                {
-                    int len = 0;
-
-                    ChatKanji::Candidate(i, len);
-                    total += (u32)len;
-                }
-                for (int i = 0; i < kCacheMax; i++)
-                    if (m_cache[i].used && m_cache[i].readingLen == n
-                        && std::memcmp(m_cache[i].reading, reading, (size_t)n * 2) == 0)
-                        CacheDrop(i);
-
-                const u32   need = (total + (u32)count + 1) * 2 + (u32)sizeof(CacheEntry);
-
-                for (;;)
-                {
-                    int free = -1;
-
-                    for (int i = 0; i < kCacheMax && free < 0; i++)
-                        if (!m_cache[i].used)
-                            free = i;
-                    if (free >= 0 && m_cacheBytes + need <= kCacheBytesMax)
-                    {
-                        slot = free;
-                        break;
-                    }
-                    const int old = CacheOldest();
-
-                    if (old < 0)
-                        break;
-                    CacheDrop(old);
-                }
-                if (slot < 0)
-                    return -1;
-
-                CacheEntry &e = m_cache[slot];
+                CacheEntry &e = m_cache[0];
 
                 e.text.clear();
                 e.start.clear();
-                e.text.reserve(total);
                 e.start.reserve((size_t)count + 1);
                 for (int i = 0; i < count; i++)
                 {
@@ -349,13 +267,8 @@ namespace CTRPluginFramework
                         e.text.push_back(c[k]);
                 }
                 e.start.push_back((u16)e.text.size());
-                std::memcpy(e.reading, reading, (size_t)n * 2);
-                e.reading[n] = 0;
-                e.readingLen = n;
                 e.used = true;
-                e.stamp = ++m_cacheClock;
-                m_cacheBytes += EntryBytes(e);
-                return slot;
+                return 0;
             }
 
             int     EntryCount(void)
@@ -380,7 +293,7 @@ namespace CTRPluginFramework
             int         m_phase = M_IDLE;
             u64         m_startTick = 0;                // M_STARTING に入った時刻（ゲームが受け取らないときの打ち切り）
             // 自動の取得（利用者の指示 2026-09-26: 入力して 300ms 待ってから自動で取る）
-            const u64   kSettleTicks = (u64)SYSCLOCK_ARM11 * 100 / 1000;     // 2026-09-26: 300 -> 100ms（変換が速くなったので）
+            const u64   kSettleTicks = 0;               // 2026-09-26: 300 -> 100 -> 0ms（利用者の指示: 待たずに取る）
             const u64   kRepeatDelayTicks = (u64)SYSCLOCK_ARM11 * 200 / 1000;  // メニューの kRepeatDelay と同じ
             const u64   kRepeatEveryTicks = (u64)SYSCLOCK_ARM11 * 60 / 1000;   // kRepeatEvery と同じ
             u32         m_key = 0;                      // いまの対象（未確定か選択）の指紋。0 = 対象なし
@@ -1260,7 +1173,7 @@ namespace CTRPluginFramework
                 }
             }
 
-            // 対象が決まった（R_START を受け取った）あと: キャッシュにあればすぐ出す、無ければエンジンへ
+            // 対象が決まった（R_START を受け取った）あと: エンジンへ
             void    ShowEntry(int entry)
             {
                 m_entry = entry;
@@ -1504,7 +1417,7 @@ namespace CTRPluginFramework
                 }
                 if (g_reverted)
                 {
-                    // Backspace で読みへ戻した: 同じ読みはキャッシュにあるので待たずに出す
+                    // Backspace で読みへ戻した: 同じ読みを取り直す
                     g_reverted = false;
                     m_doneKey = 0;
                     m_keySince = now - kSettleTicks;
@@ -1534,12 +1447,8 @@ namespace CTRPluginFramework
                     {
                         const u32 r = g_startResult;
 
-                        const int hit = r == START_OK ? CacheFind(g_reading, g_readingLen) : -1;
-
                         if (r != START_OK)
                             m_phase = M_IDLE;           // 自動で取るので通知しない（打ち終わる前に消えた等）
-                        else if (hit >= 0)
-                            ShowEntry(hit);             // キャッシュにある（エンジンを呼ばない）
                         else
                         {
                             const ChatKanji::RequestResult rr =
@@ -1585,17 +1494,15 @@ namespace CTRPluginFramework
                         }
                         else if (ChatKanji::CandidateCount() <= 0 || g_state == S_IDLE)
                         {
-                            // 候補なし、または待っている間に読みが変わった。取れた候補はキャッシュには入れておく
-                            if (ChatKanji::CandidateCount() > 0)
-                                CacheInsert(g_reading, g_readingLen);
+                            // 候補なし、または待っている間に読みが変わった
                             Post(R_ABORT, 0);
                             Reset();
                         }
                         else
                         {
-                            const int entry = CacheInsert(g_reading, g_readingLen);
+                            const int entry = TakeResult();
 
-                            ChatKanji::Dismiss();       // 結果はキャッシュへ写した。次の依頼を受けられるようにする
+                            ChatKanji::Dismiss();       // 結果は写した。次の依頼を受けられるようにする
                             if (entry < 0)
                             {
                                 Post(R_ABORT, 0);
@@ -1814,7 +1721,7 @@ namespace CTRPluginFramework
 
             if (m_phase == M_STARTING || m_phase == M_ENGINE)
             {
-                GuiRenderer::DrawTextNative(BOT, kBarX + 1 + kBarPad, kBarTextY + dy, u8"変換中", kColBarText, kBarScale);
+                GuiRenderer::DrawTextNative(BOT, kBarX + 1 + kBarPad, kBarTextY + dy, u8"変換中", kColBarBusy, kBarScale);
                 return;
             }
             if (m_phase != M_SHOW)
