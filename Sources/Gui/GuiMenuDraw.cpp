@@ -41,7 +41,11 @@ namespace CTRPluginFramework
                 char    g_noticeLines[8][kWrapBytes];
 
                 // issue-overlay.js の色
-                const u32   kColFavorite  = 0xFF8AC9D6; // #d6c98a（F 印）
+                // 行の状態の印（Simulator 639b4e6 docs/menu-state-indicators.md）: 1px x 12px の縦線を上から等分、不透明度 60%
+                const u32   kColFavorite  = 0xFF8AC9D6; // #d6c98a お気に入り
+                const u32   kColRetained  = 0xFF4D48E5; // #e5484d この項目を保持
+                const float kStatusAlpha  = 0.6f;
+                const int   kStatusH      = 12;
                 const u32   kColValueLock = 0xFFFFC85C; // #5cc8ff（値の固定の線と値）
                 const u32   kColHoldMuted = 0xFF767B74; // #747b76（長押し 2/5 未満）
                 const u32   kColCtrlBg    = 0xFA0B0D0A; // rgba(10,13,11,.98)（説明欄の操作の文字の下地）
@@ -291,16 +295,15 @@ namespace CTRPluginFramework
                             settings = d;
                             break;
                         }
-                    if (Cur().kind == FR_SETTINGS)
-                        std::snprintf(buf, cap, "START:CLOSE  A:SELECT");
-                    else if (settings >= 0)
-                        std::snprintf(buf, cap, "R:FAV  START:CLOSE");
-                    else
+                    // Simulator 639b4e6: キーの案内は消した（フッターにある）。値の固定の状態だけ残す。設定画面は空
+                    (void)settings;
+                    buf[0] = '\0';
+                    if (Cur().kind != FR_SETTINGS)
                     {
                         const Item &sel = Sel();
-                        const bool  fixed = !IsSettingsItem(sel) && IsFixed(ItemIndex(sel));
 
-                        std::snprintf(buf, cap, "%sR:FAV", fixed ? u8"値を固定:ON  " : "");
+                        if (!IsSettingsItem(sel) && IsFixed(ItemIndex(sel)))
+                            std::snprintf(buf, cap, u8"値を固定:ON");
                     }
                     return buf;
                 }
@@ -325,10 +328,11 @@ namespace CTRPluginFramework
                         GuiRenderer::DrawText(TOP, x + w - 8 - bw, y + 18, "SYNC", Fade(kColLinked, amount));
                     }
                     GuiRenderer::FillRect(TOP, 174, 35, 211, 11, Fade(kColCtrlBg, amount));
-                    GuiRenderer::DrawText(TOP, 176, 37, ControlText(g_buf, sizeof(g_buf)), Fade(kColHint, amount));
+                    if (ControlText(g_buf, sizeof(g_buf))[0] != '\0')
+                        GuiRenderer::DrawText(TOP, 176, 37, g_buf, Fade(kColHint, amount));
+                    // 無効な項目の説明も読める色のまま（Simulator 639b4e6）
                     for (int i = 0; i < n; i++)
-                        GuiRenderer::DrawText(TOP, x + 8, y + 42 + i * 11, g_lines[i],
-                                              Fade(it.disabled ? kColDescOff : kColBody, amount));
+                        GuiRenderer::DrawText(TOP, x + 8, y + 42 + i * 11, g_lines[i], Fade(kColBody, amount));
                 }
 
                 void    DrawHoldProgress(int menuX, u32 now)
@@ -699,6 +703,25 @@ namespace CTRPluginFramework
 
                         if (y < 25 || y > 204)
                             continue;
+                        // 状態の印（お気に入り・この項目を保持・ホットキーの順に上から等分。値の固定は線を足さない）
+                        {
+                            u32 status[3];
+                            int ns = 0;
+
+                            if (real && IsFavorite(idx))
+                                status[ns++] = kColFavorite;
+                            if (real && IsItemRetained(idx))
+                                status[ns++] = kColRetained;
+                            if (it.type != ITEM_FOLDER && it.hotkey != 0)
+                                status[ns++] = kColHotkey;
+                            for (int s = 0; s < ns; s++)
+                            {
+                                const int top = kStatusH * s / ns, bottom = kStatusH * (s + 1) / ns;
+
+                                GuiRenderer::FillRect(TOP, menuX + 4 + off, y - 2 + top, 1, bottom - top,
+                                                      WithAlpha(status[s], kStatusAlpha));
+                            }
+                        }
                         DrawItemIcon(it, menuX + 8 + off, y, col);
                         FormatValue(it, now, g_buf2, sizeof(g_buf2));
 
@@ -710,24 +733,26 @@ namespace CTRPluginFramework
                         if (g_buf2[0] != '\0')
                             GuiRenderer::DrawText(TOP, menuX + kMenuW - 8 - vw + off, y, g_buf2,
                                                   fixed ? kColValueLock : col, 1, vf);
-                        if (it.type != ITEM_FOLDER && it.hotkey != 0)
-                            GuiRenderer::DrawText(TOP, menuX + 147 + off, y + 8, "H", kColHotkey);
-                        // issue-overlay.js: F は H と右寄せの組（H があれば x+140、無ければ x+147）。設定画面には出さない
-                        if (real && fr.kind != FR_SETTINGS && IsFavorite(idx))
-                            GuiRenderer::DrawText(TOP, menuX + (it.type != ITEM_FOLDER && it.hotkey != 0 ? 140 : 147) + off,
-                                                  y + 8, "F", kColFavorite);
-                        // 値の固定: 行の左端に 1px の縦線（項目の色は変えない）
-                        if (fixed)
-                            GuiRenderer::FillRect(TOP, menuX + 4, y - 2, 1, 12, kColValueLock);
                     }
                 }
                 ScrollBar(TOP, menuX + 154, 28, 176, kVisibleRows, fr.count, start, 1.0f);
 
                 GuiRenderer::FillRect(TOP, menuX, 216, kMenuW - 2, 24, kColFoot);
-                GuiRenderer::DrawText(TOP, menuX + 6, 220, u8"A決定 X適用 Y HOTKEY", kColFootTxt);
-                std::snprintf(g_buf, sizeof(g_buf), u8"%d変更", changed);
-                GuiRenderer::DrawText(TOP, menuX + 6, 230, g_buf, changed ? kColDirty : kColFootOff);
-                GuiRenderer::DrawText(TOP, menuX + 59, 230, u8"B戻る L戻し R FAV", kColFootTxt);
+                // フッター（Simulator 639b4e6）: 字ごとに位置を固定する（変更数が 2 桁でも 2 行目がずれない）
+                {
+                    const int ax = menuX + 6, xx = menuX + 30, yx = menuX + 54, sx = menuX + 102;
+
+                    GuiRenderer::DrawText(TOP, ax, 220, u8"A決定", kColFootTxt);
+                    GuiRenderer::DrawText(TOP, xx, 220, u8"X適用", kColFootTxt);
+                    GuiRenderer::DrawText(TOP, yx, 220, u8"Yホットキー", kColFootTxt);
+                    GuiRenderer::DrawText(TOP, sx, 220, u8"START設定", kColFootTxt);
+                    std::snprintf(g_buf, sizeof(g_buf), u8"%d変更", changed);
+                    GuiRenderer::DrawText(TOP, menuX + 6, 230, g_buf, changed ? kColDirty : kColFootOff);
+                    GuiRenderer::DrawText(TOP, yx, 230, u8"B戻る", kColFootTxt);
+                    GuiRenderer::DrawText(TOP, sx, 230, u8"L戻し", kColFootTxt);
+                    GuiRenderer::DrawText(TOP, sx + GuiRenderer::MeasureText(u8"START設定") + GuiRenderer::MeasureText(" "),
+                                          230, u8"R星", kColFootTxt);
+                }
                 DrawHoldProgress(menuX, now);
 
                 if (g_inline.active)

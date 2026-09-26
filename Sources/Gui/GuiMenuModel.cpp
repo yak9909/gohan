@@ -53,7 +53,8 @@ namespace CTRPluginFramework
             int         g_settingsTarget = -1;
             bool        g_fixed[kMaxItems];
             s32         g_fixedValue[kMaxItems];
-            Persistence g_persist = { true, false, false };     // DEFAULT_PERSISTENCE_SETTINGS
+            bool        g_retained[kMaxItems];
+            Persistence g_persist = { true, false, false, false };  // DEFAULT_PERSISTENCE_SETTINGS
             void      (*g_requestSave)(void) = nullptr;
 
             namespace
@@ -310,6 +311,25 @@ namespace CTRPluginFramework
             bool    IsFixed(int index)
             {
                 return index >= 0 && index < g_itemCount && g_fixed[index] && IsLinked(g_items[index]);
+            }
+
+            // issue-fixes.js isItemRetainable（RETAINABLE_TYPES で適用値を持つもの）。
+            // ★gohan の意図した差: 連動型は除く（固定していない連動型は保持しない、という 2026-09-25 の決定。
+            //   連動型を次回も同じ値にしたいときは「値を固定」＋「値の固定を保持」を使う）
+            bool    IsItemRetainable(int index)
+            {
+                if (index < 0 || index >= g_itemCount)
+                    return false;
+
+                const Item &it = g_items[index];
+
+                return (it.type == ITEM_CHECKBOX || it.type == ITEM_VALUE || it.type == ITEM_SLIDER
+                        || it.type == ITEM_LIST) && !IsLinked(it);
+            }
+
+            bool    IsItemRetained(int index)
+            {
+                return index >= 0 && index < g_itemCount && g_retained[index];
             }
 
             // ================================================================
@@ -811,11 +831,17 @@ namespace CTRPluginFramework
                              false, g_favCount == 0);
                 SettingsItem(1, ITEM_CHECKBOX, ACT_SET_VALUE_LOCK, u8"値を固定", u8"選択中の連動型の値を固定します。",
                              fixed, !linked || (g_items[target].disabled && !fixed));
-                SettingsItem(2, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITES, u8"お気に入りを保持",
+                SettingsItem(2, ITEM_CHECKBOX, ACT_SET_KEEP_THIS_ITEM, u8"この項目を保持",
+                             u8"選択中の項目の適用済み状態だけを次回も保持します。", IsItemRetained(target),
+                             !IsItemRetainable(target));
+                SettingsItem(3, ITEM_CHECKBOX, ACT_SET_KEEP_VALUE_LOCKS, u8"値の固定を保持",
+                             u8"値を固定した状態を次回も保持します。", g_persist.keepValueLocks, false);
+                SettingsItem(4, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITES, u8"お気に入りを保持",
                              u8"お気に入り登録を次回も保持します。", g_persist.keepFavorites, false);
-                SettingsItem(3, ITEM_CHECKBOX, ACT_SET_KEEP_ITEMS, u8"オンにした項目を保持",
-                             u8"適用済みの項目設定を次回も保持します。", g_persist.keepEnabledItems, false);
-                SettingsItem(4, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_ITEMS, u8"オンにしたお気に入りを保持",
+                SettingsItem(5, ITEM_CHECKBOX, ACT_SET_KEEP_ITEMS, u8"オンにした項目を保持",
+                             u8"適用済みの項目設定を次回も保持します。値・リストボックス等も含みます。",
+                             g_persist.keepEnabledItems, false);
+                SettingsItem(6, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_ITEMS, u8"オンにしたお気に入りを保持",
                              u8"お気に入り項目の適用済み設定を次回も保持します。", g_persist.keepEnabledFavorites, false);
             }
 
@@ -886,10 +912,26 @@ namespace CTRPluginFramework
                     e.applied = e.value;
                     e.disabled = !(t >= 0 && t < g_itemCount && IsLinked(g_items[t]))
                                  || (g_items[t].disabled && e.value == 0);
+                    if (g_requestSave != nullptr)
+                        g_requestSave();        // Simulator 639b4e6: 設定画面の A は保存もする
+                    return true;
+                }
+                if (e.action == ACT_SET_KEEP_THIS_ITEM)
+                {
+                    const int t = g_settingsTarget;
+
+                    if (!IsItemRetainable(t))
+                        return false;
+                    g_retained[t] = !g_retained[t];
+                    e.value = g_retained[t] ? 1 : 0;
+                    e.applied = e.value;
+                    if (g_requestSave != nullptr)
+                        g_requestSave();
                     return true;
                 }
 
-                bool *setting = e.action == ACT_SET_KEEP_FAVORITES ? &g_persist.keepFavorites
+                bool *setting = e.action == ACT_SET_KEEP_VALUE_LOCKS ? &g_persist.keepValueLocks
+                              : e.action == ACT_SET_KEEP_FAVORITES ? &g_persist.keepFavorites
                               : e.action == ACT_SET_KEEP_ITEMS ? &g_persist.keepEnabledItems
                               : e.action == ACT_SET_KEEP_FAVORITE_ITEMS ? &g_persist.keepEnabledFavorites
                               : nullptr;
@@ -2107,9 +2149,11 @@ namespace CTRPluginFramework
                 std::memset(g_favorite, 0, sizeof(g_favorite));
                 std::memset(g_fixed, 0, sizeof(g_fixed));
                 std::memset(g_fixedValue, 0, sizeof(g_fixedValue));
+                std::memset(g_retained, 0, sizeof(g_retained));
                 g_persist.keepFavorites = true;
                 g_persist.keepEnabledItems = false;
                 g_persist.keepEnabledFavorites = false;
+                g_persist.keepValueLocks = false;
                 for (int i = 0; i < kMaxItems; i++)
                     g_effectSeen[i] = EffectActive(i);
                 g_noticeNextId = 1;

@@ -7,10 +7,14 @@
 // ここでは 1 本のバイト列にまとめる。**旧形式からの移し替えはしない**（利用者の指示）。
 //
 // 形式（リトルエンディアン）
-//   'GMP1'  u16 版(=1)  u8 設定の旗(bit0 お気に入りを保持 / bit1 オンにした項目を保持 / bit2 オンにしたお気に入りを保持)  u8 0
+//   'GMP1'  u16 版(=1)  u8 設定の旗(bit0 お気に入りを保持 / bit1 オンにした項目を保持 / bit2 オンにしたお気に入りを保持
+//                                    / bit3 値の固定を保持)  u8 0
 //   u16 お気に入りの数  { u16 長さ, 階層パス }...
 //   u16 保持した値の数  { u16 長さ, 階層パス, u8 種類, u8 旗(bit0 固定), s32 適用値, s32 固定値 }...
+//                        ★2026-09-26（Simulator 639b4e6）から固定は入れない（旗 0・連動型は入らない）。古い保存の固定は読む
 //   u16 ホットキーの数  { u16 長さ, 階層パス, u16 適用済みのホットキー }...   ← 2026-09-26 追加（末尾。無ければ読まない）
+//   u16 この項目を保持の数 { u16 長さ, 階層パス, u8 種類, s32 適用値 }...     ← Simulator 639b4e6（末尾。無ければ読まない）
+//   u16 値の固定の数    { u16 長さ, 階層パス, u8 種類, s32 固定値 }...     ← 同上。「値の固定を保持」のときだけ中身がある
 // 階層パスは項目のラベルを "/" で連結したもの（ui-model.js の assignFavoriteKeys と同じ鍵）。
 // ホットキーの欄は末尾に足しただけなので、それより前の形は変わらない（古い保存も版 1 のまま読める）。
 //
@@ -144,6 +148,42 @@ namespace CTRPluginFramework
                         return ClampI(v, 0, it.optionCount > 0 ? (int)it.optionCount - 1 : 0);
                     return ClampI(v, it.minimum, it.maximum);
                 }
+
+                // applyRetainedSnapshot の 1 件（連動型以外）。チェック項目の効果は適用と同じ規則（§4.3）
+                void    ApplyRetainedValue(int idx, s32 value)
+                {
+                    Item       &it = g_items[idx];
+                    const s32   v = Normalize(it, value);
+
+                    it.value = v;
+                    it.applied = v;
+                    if (it.type == ITEM_CHECKBOX)
+                    {
+                        const Behavior &b = g_behavior[idx];
+
+                        if (b.IsActive != nullptr && b.SetActive != nullptr)
+                        {
+                            const bool want = it.applied != 0 && it.appliedHotkey == 0;
+
+                            if (b.IsActive(idx) != want)
+                                b.SetActive(idx, want);
+                        }
+                        PrimeEffect(idx);
+                    }
+                    else if (g_behavior[idx].Apply != nullptr)
+                        g_behavior[idx].Apply(idx, it.applied);
+                }
+
+                // applyValueLockSnapshot の 1 件
+                void    ApplyValueLock(int idx, s32 fixedValue)
+                {
+                    Item &it = g_items[idx];
+
+                    g_fixed[idx] = true;
+                    g_fixedValue[idx] = Normalize(it, fixedValue);
+                    it.value = g_fixedValue[idx];
+                    it.applied = g_fixedValue[idx];
+                }
             }
 
             void    SerializePersist(std::vector<u8> &out)
@@ -152,7 +192,7 @@ namespace CTRPluginFramework
                 out.insert(out.end(), kMagic, kMagic + 4);
                 Put16(out, kVersion);
                 Put8(out, (g_persist.keepFavorites ? 1u : 0u) | (g_persist.keepEnabledItems ? 2u : 0u)
-                          | (g_persist.keepEnabledFavorites ? 4u : 0u));
+                          | (g_persist.keepEnabledFavorites ? 4u : 0u) | (g_persist.keepValueLocks ? 8u : 0u));
                 Put8(out, 0);
 
                 // お気に入り（keepFavorites が偽なら空。issue-fixes.js favoriteKeysArray）
@@ -181,13 +221,15 @@ namespace CTRPluginFramework
 
                             if (!Retainable(it) || (favoritesOnly && !g_favorite[idx]))
                                 return;
-                            if (IsLinked(it) && !IsFixed(idx))
-                                return;         // 固定していない連動型は保持しない（利用者の決定）
+                            // 連動型は入れない: 固定していないものは保持しない（利用者の決定）、固定は「値の固定を保持」の欄へ
+                            //   （Simulator 639b4e6: オンにした項目の保持は値の固定を含めない）
+                            if (IsLinked(it))
+                                return;
                             PutStr(body, p);
                             Put8(body, it.type);
-                            Put8(body, IsFixed(idx) ? 1u : 0u);
+                            Put8(body, 0);
                             Put32(body, (u32)it.applied);
-                            Put32(body, (u32)g_fixedValue[idx]);
+                            Put32(body, 0);
                             count++;
                         }
                     } fn;
@@ -225,6 +267,53 @@ namespace CTRPluginFramework
                     Put16(out, fn.count);
                     out.insert(out.end(), fn.body.begin(), fn.body.end());
                 }
+
+                // この項目を保持（全体の設定に関係なく、印を付けた項目の適用値。makeSpecificRetainedSnapshot）
+                {
+                    struct Fn
+                    {
+                        u32                 count;
+                        std::vector<u8>     body;
+                        void operator()(int idx, const std::string &p)
+                        {
+                            if (!g_retained[idx] || !IsItemRetainable(idx))
+                                return;
+                            PutStr(body, p);
+                            Put8(body, g_items[idx].type);
+                            Put32(body, (u32)g_items[idx].applied);
+                            count++;
+                        }
+                    } fn;
+
+                    fn.count = 0;
+                    WalkPaths(g_rootFirst, g_rootCount, std::string(), fn);
+                    Put16(out, fn.count);
+                    out.insert(out.end(), fn.body.begin(), fn.body.end());
+                }
+
+                // 値の固定（「値の固定を保持」のときだけ。makeValueLockSnapshot）
+                {
+                    struct Fn
+                    {
+                        u32                 count;
+                        std::vector<u8>     body;
+                        void operator()(int idx, const std::string &p)
+                        {
+                            if (!IsFixed(idx))
+                                return;
+                            PutStr(body, p);
+                            Put8(body, g_items[idx].type);
+                            Put32(body, (u32)g_fixedValue[idx]);
+                            count++;
+                        }
+                    } fn;
+
+                    fn.count = 0;
+                    if (g_persist.keepValueLocks)
+                        WalkPaths(g_rootFirst, g_rootCount, std::string(), fn);
+                    Put16(out, fn.count);
+                    out.insert(out.end(), fn.body.begin(), fn.body.end());
+                }
             }
 
             void    RestorePersist(const u8 *data, u32 size)
@@ -248,6 +337,7 @@ namespace CTRPluginFramework
                 g_persist.keepFavorites = (flags & 1u) != 0;
                 g_persist.keepEnabledItems = (flags & 2u) != 0;
                 g_persist.keepEnabledFavorites = (flags & 4u) != 0;
+                g_persist.keepValueLocks = (flags & 8u) != 0;
 
                 const u32 favorites = r.Get(2);
 
@@ -281,33 +371,10 @@ namespace CTRPluginFramework
                     // 固定していない連動型は保持しない（古い保存に入っていても戻さない。利用者の決定）
                     if (IsLinked(it) && (rflags & 1u) == 0)
                         continue;
-
-                    const s32 v = Normalize(it, value);
-
-                    it.value = v;
-                    it.applied = v;
                     if (IsLinked(it))
-                    {
-                        g_fixed[idx] = true;
-                        g_fixedValue[idx] = Normalize(it, fixedValue);
-                        it.value = g_fixedValue[idx];
-                        it.applied = g_fixedValue[idx];
-                    }
-                    else if (it.type == ITEM_CHECKBOX)
-                    {
-                        const Behavior &b = g_behavior[idx];
-
-                        if (b.IsActive != nullptr && b.SetActive != nullptr)
-                        {
-                            const bool want = it.applied != 0 && it.appliedHotkey == 0;
-
-                            if (b.IsActive(idx) != want)
-                                b.SetActive(idx, want);
-                        }
-                        PrimeEffect(idx);
-                    }
-                    else if (g_behavior[idx].Apply != nullptr)
-                        g_behavior[idx].Apply(idx, it.applied);
+                        ApplyValueLock(idx, fixedValue);    // 2026-09-26 より前の保存（固定をこの欄に入れていた）
+                    else
+                        ApplyRetainedValue(idx, value);
                 }
 
                 // ホットキー（末尾の欄。古い保存には無い）
@@ -342,6 +409,42 @@ namespace CTRPluginFramework
                                 PrimeEffect(idx);
                             }
                         }
+                    }
+                }
+                // この項目を保持（末尾の欄。全体の設定とは独立で、最後に適用する）
+                if (r.ok && r.at < size)
+                {
+                    const u32 n = r.Get(2);
+
+                    for (u32 i = 0; i < n && r.ok; i++)
+                    {
+                        const std::string   path = r.Str();
+                        const u32           type = r.Get(1);
+                        const s32           value = (s32)r.Get(4);
+                        const int           idx = FindByPath(path);
+
+                        if (!r.ok || idx < 0 || g_items[idx].type != type || !IsItemRetainable(idx))
+                            continue;
+                        g_retained[idx] = true;
+                        ApplyRetainedValue(idx, value);
+                    }
+                }
+                // 値の固定（「値の固定を保持」のときだけ戻す）
+                if (r.ok && r.at < size)
+                {
+                    const u32 n = r.Get(2);
+
+                    for (u32 i = 0; i < n && r.ok; i++)
+                    {
+                        const std::string   path = r.Str();
+                        const u32           type = r.Get(1);
+                        const s32           fixedValue = (s32)r.Get(4);
+                        const int           idx = FindByPath(path);
+
+                        if (!r.ok || idx < 0 || !g_persist.keepValueLocks || g_items[idx].type != type
+                            || !IsLinked(g_items[idx]))
+                            continue;
+                        ApplyValueLock(idx, fixedValue);
                     }
                 }
                 SerializePersist(g_lastSaved);

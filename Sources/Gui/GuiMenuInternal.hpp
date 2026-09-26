@@ -77,7 +77,6 @@ namespace CTRPluginFramework
             const u32   kColDirty     = 0xFF66D1FF; // #ffd166
             const u32   kColHotkey    = 0xFFFFA978; // #78a9ff
             const u32   kColDisabled  = 0xFF545B52; // #525b54
-            const u32   kColDescOff   = 0xFF646B62; // #626b64
             const u32   kColLinked    = 0xFFFFC85C; // #5cc8ff
             const u32   kColCheckMark = 0xFF6B6BFF; // #ff6b6b
             const u32   kColFootTxt   = 0xFF879082; // #829087
@@ -127,7 +126,8 @@ namespace CTRPluginFramework
                 ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI,
                 // 設定画面（START）の項目（issue-fixes.js の settingsAction）
                 ACT_SET_FAVORITES, ACT_SET_VALUE_LOCK, ACT_SET_KEEP_FAVORITES,
-                ACT_SET_KEEP_ITEMS, ACT_SET_KEEP_FAVORITE_ITEMS
+                ACT_SET_KEEP_ITEMS, ACT_SET_KEEP_FAVORITE_ITEMS,
+                ACT_SET_KEEP_THIS_ITEM, ACT_SET_KEEP_VALUE_LOCKS        // Simulator 639b4e6
             };
 
             const int   kMaxItems   = 128;     // 子の番号は u8（childFirst）なので 255 まで
@@ -312,18 +312,21 @@ namespace CTRPluginFramework
             extern u8           g_favList[kMaxItems];   // walkItems の順に並べたお気に入り
             extern int          g_favCount;
             // ---- 設定画面の項目（issue-fixes.js の buildSettingsItems）----
-            const int   kSettingsItems = 5;
+            const int   kSettingsItems = 7;
             extern Item         g_settingsItems[kSettingsItems];
             extern int          g_settingsTarget;       // 設定画面を開いたときに選んでいた項目（-1 = なし）
             // ---- 値の固定（連動型だけ。issue-fixes.js の fixed / fixedValue）----
             extern bool         g_fixed[kMaxItems];
             extern s32          g_fixedValue[kMaxItems];
+            // ---- この項目を保持（issue-fixes.js retainedItemKeys。項目ごと、全体の設定とは独立）----
+            extern bool         g_retained[kMaxItems];
             // ---- 保持の設定（issue-fixes.js の persistenceSettings）----
             struct Persistence
             {
                 bool    keepFavorites;          // 既定 true
                 bool    keepEnabledItems;       // 既定 false
                 bool    keepEnabledFavorites;   // 既定 false
+                bool    keepValueLocks;         // 既定 false（値の固定を保持。Simulator 639b4e6）
             };
             extern Persistence  g_persist;
             // 保存を頼む（GuiMenu.cpp が GohanData::Save を繋ぐ。試験では空）
@@ -361,6 +364,8 @@ namespace CTRPluginFramework
             Item   &FrameItem(const Frame &fr, int row);  // フレームの row 行目の項目
             bool    IsFavorite(int index);
             bool    IsFixed(int index);
+            bool    IsItemRetainable(int index);
+            bool    IsItemRetained(int index);
             bool    IsSettingsItem(const Item &it);
             // 設定画面・お気に入りの操作（外から呼ぶのは試験だけ）
             bool    ToggleFavorite(int index, u32 now);
