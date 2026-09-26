@@ -54,7 +54,8 @@ namespace CTRPluginFramework
             bool        g_fixed[kMaxItems];
             s32         g_fixedValue[kMaxItems];
             bool        g_retained[kMaxItems];
-            Persistence g_persist = { true, false, false, false };  // DEFAULT_PERSISTENCE_SETTINGS
+            const char *const kBlockButtonNames[5] = { "A", "B", "X", "Y", "START" };
+            Persistence g_persist = { true, true, false, false, true, true, false, 0x10 };  // DEFAULT_PERSISTENCE_SETTINGS（e5f8f01）
             void      (*g_requestSave)(void) = nullptr;
 
             namespace
@@ -80,6 +81,10 @@ namespace CTRPluginFramework
                 bool    g_prevTouch = false;
                 bool    g_hotActive[kMaxItems]; // activeHotkeyItems
                 u32     g_repAt[HB_COUNT];      // ControlRepeater の nextAt（十字のみ使う）
+                // ControlRepeater.held は Map（押した順）。リピートは押した順に送る（同じフレームに下と右が来たとき、どちらを先に
+                //   処理するかで左右が当たる項目が変わる。e5f8f01 でリストも左右に反応するようになって検査で見つかった）
+                u8      g_pressOrder[HB_COUNT];
+                int     g_pressCount = 0;
 
                 // ---- 通知（NotificationTimeline）----
                 int     g_noticeNextId = 1;
@@ -290,13 +295,19 @@ namespace CTRPluginFramework
             Item   &FrameItem(const Frame &fr, int row)
             {
                 if (fr.kind == FR_SETTINGS)
-                    return g_settingsItems[row];
+                    return g_settingsItems[fr.first + row];
                 if (fr.kind == FR_FAVORITES)
                     return g_items[g_frameList[&fr - &g_frames[0]][row]];
                 return g_items[fr.first + row];
             }
 
             Item   &Sel(void)   { return FrameItem(Cur(), Cur().selection); }
+
+            // インラインリストの対象（設定画面の checkbox-list は g_settingsItems）
+            Item   &InlineItem(void)
+            {
+                return g_inline.settings ? g_settingsItems[g_inline.item] : g_items[g_inline.item];
+            }
 
             bool    IsSettingsItem(const Item &it)
             {
@@ -314,8 +325,8 @@ namespace CTRPluginFramework
             }
 
             // issue-fixes.js isItemRetainable（RETAINABLE_TYPES で適用値を持つもの）。
-            // ★gohan の意図した差: 連動型は除く（固定していない連動型は保持しない、という 2026-09-25 の決定。
-            //   連動型を次回も同じ値にしたいときは「値を固定」＋「値の固定を保持」を使う）
+            // ★Simulator e5f8f01 から連動型にも印を付けられる（値の固定の「保持された項目」の範囲に要る）。
+            //   ただし gohan の意図した差（固定していない連動型は保持しない。2026-09-25）として、印の項目の値の保存からは連動型を外す（GuiMenuPersist.cpp）。
             bool    IsItemRetainable(int index)
             {
                 if (index < 0 || index >= g_itemCount)
@@ -323,8 +334,8 @@ namespace CTRPluginFramework
 
                 const Item &it = g_items[index];
 
-                return (it.type == ITEM_CHECKBOX || it.type == ITEM_VALUE || it.type == ITEM_SLIDER
-                        || it.type == ITEM_LIST) && !IsLinked(it);
+                return it.type == ITEM_CHECKBOX || it.type == ITEM_VALUE || it.type == ITEM_SLIDER
+                       || it.type == ITEM_LIST || IsLinked(it);
             }
 
             bool    IsItemRetained(int index)
@@ -692,7 +703,7 @@ namespace CTRPluginFramework
                 return true;
             }
 
-            bool    OpenFavorites(u32 now)
+            bool    OpenFavorites(u32 now, const char *title)
             {
                 RebuildFavList();
                 if (g_favCount == 0)
@@ -707,7 +718,7 @@ namespace CTRPluginFramework
 
                 for (int i = 0; i < g_favCount; i++)
                     g_frameList[g_depth][i] = g_favList[i];
-                fr.title = "FAVORITES";
+                fr.title = title;
                 fr.first = 0;
                 fr.count = g_favCount;
                 fr.selection = 0;
@@ -753,16 +764,29 @@ namespace CTRPluginFramework
                 return true;
             }
 
-            // 表示の値を固定した値に合わせる（読めない＝disabled の間は触らない）
+            // 表示の値を固定した値に合わせる（読めない＝disabled の間は触らない）。
+            // Simulator e5f8f01: 固定中でもメニューでの編集（左右・数値入力・リスト）は許す。value と applied が違えば
+            //   利用者が変えたとみなし、その値を新しい固定値にする（ゲーム側の変化は DriveFixedItems が固定値へ戻す）。
             static void UpdateFixedLinkedItems(void)
             {
+                bool changed = false;
+
                 for (int i = 0; i < g_itemCount; i++)
                 {
                     if (!IsFixed(i) || g_items[i].disabled)
                         continue;
+                    if (g_items[i].value != g_items[i].applied)
+                    {
+                        g_fixedValue[i] = g_items[i].value;
+                        g_items[i].applied = g_items[i].value;
+                        changed = true;
+                        continue;
+                    }
                     g_items[i].value = g_fixedValue[i];
                     g_items[i].applied = g_fixedValue[i];
                 }
+                if (changed && g_requestSave != nullptr)
+                    g_requestSave();
             }
 
             // ゲームへの書き戻し（gohan-menu.md §5.6 の駆動）: 読めて、かつ固定値と違うときだけ書く。
@@ -821,28 +845,62 @@ namespace CTRPluginFramework
                 it.disabled = disabled;
             }
 
+            static void SettingsFolder(int i, const char *label, const char *desc, int first, int count, bool disabled)
+            {
+                SettingsItem(i, ITEM_FOLDER, ACT_SET_FOLDER, label, desc, false, disabled);
+                g_settingsItems[i].childFirst = (u8)first;
+                g_settingsItems[i].childCount = (u8)count;
+            }
+
+            // 全項目が ON の間は、保持された項目・お気に入りを無効にする（issue-fixes.js の sibling.disabled）
+            static void RefreshRetentionDisabled(void)
+            {
+                g_settingsItems[8].disabled = g_persist.keepAllValueLocks;
+                g_settingsItems[9].disabled = g_persist.keepAllValueLocks;
+                g_settingsItems[11].disabled = g_persist.keepAllToggleStates;
+                g_settingsItems[12].disabled = g_persist.keepAllToggleStates;
+            }
+
             static void BuildSettingsItems(int target)
             {
                 const bool linked = target >= 0 && target < g_itemCount && IsLinked(g_items[target]);
                 const bool fixed = IsFixed(target);
 
                 RebuildFavList();
-                SettingsItem(0, ITEM_ACTION, ACT_SET_FAVORITES, "FAVORITES", u8"お気に入り項目を表示します。",
-                             false, g_favCount == 0);
+                // 直下（SETTINGS はフォルダを先頭へ寄せず、この順のまま）
+                SettingsItem(0, ITEM_CHECKBOX, ACT_SET_KEEP_THIS_ITEM, u8"この項目を保持",
+                             u8"選択中の項目の状態を次回も保持します。", IsItemRetained(target), !IsItemRetainable(target));
                 SettingsItem(1, ITEM_CHECKBOX, ACT_SET_VALUE_LOCK, u8"値を固定", u8"選択中の連動型の値を固定します。",
                              fixed, !linked || (g_items[target].disabled && !fixed));
-                SettingsItem(2, ITEM_CHECKBOX, ACT_SET_KEEP_THIS_ITEM, u8"この項目を保持",
-                             u8"選択中の項目の適用済み状態だけを次回も保持します。", IsItemRetained(target),
-                             !IsItemRetainable(target));
-                SettingsItem(3, ITEM_CHECKBOX, ACT_SET_KEEP_VALUE_LOCKS, u8"値の固定を保持",
-                             u8"値を固定した状態を次回も保持します。", g_persist.keepValueLocks, false);
+                SettingsItem(2, ITEM_FOLDER, ACT_SET_FAVORITES, u8"お気に入り", u8"お気に入り項目を表示します。",
+                             false, g_favCount == 0);
+                SettingsFolder(3, u8"項目の保持設定", u8"値の固定と項目のトグル状態の保持範囲を設定します。", 6, 2, false);
                 SettingsItem(4, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITES, u8"お気に入りを保持",
                              u8"お気に入り登録を次回も保持します。", g_persist.keepFavorites, false);
-                SettingsItem(5, ITEM_CHECKBOX, ACT_SET_KEEP_ITEMS, u8"オンにした項目を保持",
-                             u8"適用済みの項目設定を次回も保持します。値・リストボックス等も含みます。",
-                             g_persist.keepEnabledItems, false);
-                SettingsItem(6, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_ITEMS, u8"オンにしたお気に入りを保持",
-                             u8"お気に入り項目の適用済み設定を次回も保持します。", g_persist.keepEnabledFavorites, false);
+                SettingsItem(5, ITEM_CHECKBOX_LIST, ACT_SET_BLOCK_BUTTONS, u8"押し切るまでボタンの遮断",
+                             u8"押下中にゲームへ渡さず、離した時に入力するボタンを選択します。", false, false);
+                g_settingsItems[5].options = kBlockButtonNames;
+                g_settingsItems[5].optionCount = 5;
+                g_settingsItems[5].value = g_persist.blockButtonsUntilReleaseMask & 0x1F;
+                g_settingsItems[5].applied = g_settingsItems[5].value;
+                // 項目の保持設定
+                SettingsFolder(6, u8"値の固定", u8"値の固定状態を次回も保持する範囲を設定します。", 8, 3, false);
+                SettingsFolder(7, u8"トグル状態", u8"項目のトグル状態を次回も保持する範囲を設定します。", 11, 3, false);
+                // 値の固定
+                SettingsItem(8, ITEM_CHECKBOX, ACT_SET_KEEP_RETAINED_LOCKS, u8"保持された項目",
+                             u8"「この項目を保持」がオンの項目の値の固定を次回も保持します。", g_persist.keepRetainedValueLocks, false);
+                SettingsItem(9, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_LOCKS, u8"お気に入り",
+                             u8"お気に入りの値の固定を次回も保持します。", g_persist.keepFavoriteValueLocks, false);
+                SettingsItem(10, ITEM_CHECKBOX, ACT_SET_KEEP_ALL_LOCKS, u8"全項目",
+                             u8"全項目の値の固定を次回も保持します。", g_persist.keepAllValueLocks, false);
+                // トグル状態
+                SettingsItem(11, ITEM_CHECKBOX, ACT_SET_KEEP_RETAINED_TOGGLES, u8"保持された項目",
+                             u8"「この項目を保持」がオンの項目のトグル状態を次回も保持します。", g_persist.keepRetainedToggleStates, false);
+                SettingsItem(12, ITEM_CHECKBOX, ACT_SET_KEEP_FAVORITE_TOGGLES, u8"お気に入り",
+                             u8"お気に入り項目のトグル状態を次回も保持します。", g_persist.keepFavoriteToggleStates, false);
+                SettingsItem(13, ITEM_CHECKBOX, ACT_SET_KEEP_ALL_TOGGLES, u8"全項目",
+                             u8"全項目のトグル状態を次回も保持します。", g_persist.keepAllToggleStates, false);
+                RefreshRetentionDisabled();
             }
 
             static int SettingsFrameIndex(void)
@@ -868,7 +926,7 @@ namespace CTRPluginFramework
                 BuildSettingsItems(targetIndex);
                 fr.title = "SETTINGS";
                 fr.first = 0;
-                fr.count = kSettingsItems;
+                fr.count = kSettingsRoot;
                 fr.selection = 0;
                 fr.kind = FR_SETTINGS;
                 g_depth++;
@@ -893,6 +951,10 @@ namespace CTRPluginFramework
                 return SettingsFrameIndex() >= 0 ? CloseSettings(now) : OpenSettings(now);
             }
 
+            static void OpenList(Listbox &l, int screen, const char *title,
+                                 const char *const *options, int count, int mode,
+                                 int item, int selected, int rows, u32 now);
+
             static bool ActivateSettingsItem(Item &e, u32 now)
             {
                 if (e.disabled)
@@ -900,7 +962,28 @@ namespace CTRPluginFramework
                 g_actAt = now;
                 g_actOn = true;
                 if (e.action == ACT_SET_FAVORITES)
-                    return OpenFavorites(now);
+                    return OpenFavorites(now, e.label);         // 設定画面の「お気に入り」フォルダ（題名もその名前）
+                if (e.action == ACT_SET_FOLDER)
+                {
+                    if (g_depth >= kMaxDepth)
+                        return false;
+                    g_frames[g_depth].title = e.label;
+                    g_frames[g_depth].first = (int)e.childFirst;
+                    g_frames[g_depth].count = (int)e.childCount;
+                    g_frames[g_depth].selection = 0;
+                    g_frames[g_depth].kind = FR_SETTINGS;
+                    g_depth++;
+                    ResetSelectionAnimation(now);
+                    return true;
+                }
+                if (e.type == ITEM_CHECKBOX_LIST)
+                {
+                    // チェックボックス式: インラインリストを開く（A でその行を反転、閉じない。B で閉じる）
+                    OpenList(g_inline, 0, e.label, e.options, (int)e.optionCount, OV_GENERIC,
+                             (int)(&e - &g_settingsItems[0]), 0, kInlineRows, now);
+                    g_inline.settings = true;
+                    return true;
+                }
                 if (e.action == ACT_SET_VALUE_LOCK)
                 {
                     const int   t = g_settingsTarget;
@@ -930,10 +1013,13 @@ namespace CTRPluginFramework
                     return true;
                 }
 
-                bool *setting = e.action == ACT_SET_KEEP_VALUE_LOCKS ? &g_persist.keepValueLocks
-                              : e.action == ACT_SET_KEEP_FAVORITES ? &g_persist.keepFavorites
-                              : e.action == ACT_SET_KEEP_ITEMS ? &g_persist.keepEnabledItems
-                              : e.action == ACT_SET_KEEP_FAVORITE_ITEMS ? &g_persist.keepEnabledFavorites
+                bool *setting = e.action == ACT_SET_KEEP_FAVORITES ? &g_persist.keepFavorites
+                              : e.action == ACT_SET_KEEP_RETAINED_LOCKS ? &g_persist.keepRetainedValueLocks
+                              : e.action == ACT_SET_KEEP_FAVORITE_LOCKS ? &g_persist.keepFavoriteValueLocks
+                              : e.action == ACT_SET_KEEP_ALL_LOCKS ? &g_persist.keepAllValueLocks
+                              : e.action == ACT_SET_KEEP_RETAINED_TOGGLES ? &g_persist.keepRetainedToggleStates
+                              : e.action == ACT_SET_KEEP_FAVORITE_TOGGLES ? &g_persist.keepFavoriteToggleStates
+                              : e.action == ACT_SET_KEEP_ALL_TOGGLES ? &g_persist.keepAllToggleStates
                               : nullptr;
 
                 if (setting == nullptr)
@@ -941,6 +1027,7 @@ namespace CTRPluginFramework
                 *setting = !*setting;
                 e.value = *setting ? 1 : 0;
                 e.applied = e.value;
+                RefreshRetentionDisabled();
                 if (g_requestSave != nullptr)
                     g_requestSave();
                 return true;
@@ -965,6 +1052,7 @@ namespace CTRPluginFramework
                 const float s = ScrollTarget(selected, count, rows);
 
                 l.active = true;
+                l.settings = false;
                 l.screen = (u8)screen;
                 l.mode = (u8)mode;
                 l.item = item;
@@ -1588,13 +1676,47 @@ namespace CTRPluginFramework
                     MoveList(g_inline, -1, now, kInlineRows, !repeated);
                 else if (bit == HB_DOWN)
                     MoveList(g_inline, 1, now, kInlineRows, !repeated);
+                else if (bit == HB_A && InlineItem().type == ITEM_CHECKBOX_LIST)
+                {
+                    // チェックボックス式はリストを閉じず、カーソル位置のビットだけを反転する（ui-model.js e5f8f01）
+                    Item &it = InlineItem();
+
+                    it.value ^= (1 << g_inline.index);
+                    if (g_inline.settings)
+                    {
+                        // 設定画面のものは切り替えた時点で適用済み（applyCheckboxListImmediately）
+                        it.applied = it.value;
+                        if (it.action == ACT_SET_BLOCK_BUTTONS)
+                        {
+                            g_persist.blockButtonsUntilReleaseMask = (u8)(it.value & 0x1F);
+                            if (g_requestSave != nullptr)
+                                g_requestSave();
+                        }
+                    }
+                }
                 else if (bit == HB_A)
                 {
-                    g_items[g_inline.item].value = g_inline.index;
+                    InlineItem().value = g_inline.index;
                     CloseList(g_inline, now);
                 }
                 else if (bit == HB_B)
                     CloseList(g_inline, now);
+            }
+
+            // list / linked-list の左右（changeListValue。端で止まる。値の弾みは数値の左右と同じ）
+            static void ChangeListValue(Item &it, int dir, u32 now)
+            {
+                if (it.disabled || it.optionCount == 0)
+                    return;
+
+                const s32 next = ClampI(it.value + dir, 0, (int)it.optionCount - 1);
+
+                if (next == it.value)
+                    return;
+                it.value = next;
+                g_valueDir = dir;
+                g_valueAt = now;
+                g_valueOn = true;
             }
 
             static void ChangeValue(Item &it, int dir, u32 now)
@@ -1705,6 +1827,9 @@ namespace CTRPluginFramework
                 }
                 else if ((bit == HB_LEFT || bit == HB_RIGHT) && IsNumericItem(Sel()))
                     ChangeValue(Sel(), bit == HB_RIGHT ? 1 : -1, now);
+                else if ((bit == HB_LEFT || bit == HB_RIGHT)
+                         && (Sel().type == ITEM_LIST || Sel().type == ITEM_LINKED_LIST))
+                    ChangeListValue(Sel(), bit == HB_RIGHT ? 1 : -1, now);
             }
 
             // 下画面のタッチ（app.js の bottomCanvas pointerdown。押した瞬間だけ）
@@ -2061,6 +2186,14 @@ namespace CTRPluginFramework
                     if ((released & (1u << bit)) == 0)
                         continue;
                     g_held = (u16)(g_held & ~(1u << bit));
+                    for (int k = 0; k < g_pressCount; k++)
+                        if (g_pressOrder[k] == bit)
+                        {
+                            for (int j = k; j + 1 < g_pressCount; j++)
+                                g_pressOrder[j] = g_pressOrder[j + 1];
+                            g_pressCount--;
+                            break;
+                        }
                     HandleKey(bit, now, false, false, in);
                 }
                 for (int bit = 0; bit < HB_COUNT; bit++)
@@ -2068,13 +2201,17 @@ namespace CTRPluginFramework
                     if ((pressed & (1u << bit)) == 0)
                         continue;
                     g_held = (u16)(g_held | (1u << bit));
+                    if (g_pressCount < HB_COUNT)
+                        g_pressOrder[g_pressCount++] = (u8)bit;
                     if (IsDir(bit))
                         g_repAt[bit] = now + (u32)kRepeatDelay;
                     HandleKey(bit, now, true, false, in);
                 }
                 // ControlRepeater.update: 十字だけ、予定時刻ちょうどに連続入力を送る
-                for (int bit = 0; bit < HB_COUNT; bit++)
+                for (int k = 0; k < g_pressCount; k++)
                 {
+                    const int bit = g_pressOrder[k];
+
                     if (!IsDir(bit) || (g_held & (1u << bit)) == 0 || (pressed & (1u << bit)) != 0)
                         continue;
                     while ((s32)(now - g_repAt[bit]) >= 0)
@@ -2161,6 +2298,7 @@ namespace CTRPluginFramework
                 std::memset(g_notices, 0, sizeof(g_notices));
                 std::memset(g_hotActive, 0, sizeof(g_hotActive));
                 std::memset(g_repAt, 0, sizeof(g_repAt));
+                g_pressCount = 0;
                 std::memset(&g_toggleHdl, 0, sizeof(g_toggleHdl));
                 // お気に入り・値の固定・保持の設定は ResetState で既定へ戻す（保存から戻すのは RestorePersist）
                 std::memset(g_favorite, 0, sizeof(g_favorite));
@@ -2168,9 +2306,13 @@ namespace CTRPluginFramework
                 std::memset(g_fixedValue, 0, sizeof(g_fixedValue));
                 std::memset(g_retained, 0, sizeof(g_retained));
                 g_persist.keepFavorites = true;
-                g_persist.keepEnabledItems = false;
-                g_persist.keepEnabledFavorites = false;
-                g_persist.keepValueLocks = false;
+                g_persist.keepRetainedValueLocks = true;
+                g_persist.keepFavoriteValueLocks = false;
+                g_persist.keepAllValueLocks = false;
+                g_persist.keepRetainedToggleStates = true;
+                g_persist.keepFavoriteToggleStates = true;
+                g_persist.keepAllToggleStates = false;
+                g_persist.blockButtonsUntilReleaseMask = 0x10;
                 for (int i = 0; i < kMaxItems; i++)
                     g_effectSeen[i] = EffectActive(i);
                 g_noticeNextId = 1;

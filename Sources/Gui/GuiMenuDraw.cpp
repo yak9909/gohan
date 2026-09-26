@@ -48,7 +48,6 @@ namespace CTRPluginFramework
                 const int   kStatusH      = 12;
                 const u32   kColValueLock = 0xFFFFC85C; // #5cc8ff（値の固定の線と値）
                 const u32   kColHoldMuted = 0xFF767B74; // #747b76（長押し 2/5 未満）
-                const u32   kColCtrlBg    = 0xFA0B0D0A; // rgba(10,13,11,.98)（説明欄の操作の文字の下地）
 
                 int     Round(float v) { return (int)std::floor(v + 0.5f); }
 
@@ -232,6 +231,8 @@ namespace CTRPluginFramework
                         return "S";
                     if (it.type == ITEM_LIST)
                         return "L";
+                    if (it.type == ITEM_CHECKBOX_LIST)
+                        return "C";
                     return "V";
                 }
 
@@ -263,6 +264,15 @@ namespace CTRPluginFramework
                     {
                         if (it.options != nullptr && it.value >= 0 && it.value < (s32)it.optionCount)
                             std::snprintf(buf, cap, "%s", it.options[it.value]);
+                    }
+                    else if (it.type == ITEM_CHECKBOX_LIST)
+                    {
+                        int selected = 0;
+
+                        for (int i = 0; i < (int)it.optionCount; i++)
+                            if ((it.value & (1 << i)) != 0)
+                                selected++;
+                        std::snprintf(buf, cap, "%d/%d", selected, (int)it.optionCount);
                     }
                     else if (it.fmt == FMT_HEX)
                         std::snprintf(buf, cap, "0x%04X", (unsigned)it.value);
@@ -329,7 +339,7 @@ namespace CTRPluginFramework
 
                         GuiRenderer::DrawText(TOP, x + w - 8 - bw, y + 18, "SYNC", Fade(kColLinked, amount));
                     }
-                    GuiRenderer::FillRect(TOP, 174, 35, 211, 11, Fade(kColCtrlBg, amount));
+                    // e5f8f01: 操作の文字の下の黒帯は描かない（説明欄の地の上へそのまま）
                     if (ControlText(g_buf, sizeof(g_buf))[0] != '\0')
                         GuiRenderer::DrawText(TOP, 176, 37, g_buf, Fade(kColHint, amount));
                     // 無効な項目の説明も読める色のまま（Simulator 639b4e6）
@@ -357,7 +367,7 @@ namespace CTRPluginFramework
 
                 void    DrawInlineList(int menuX, float start, u32 now)
                 {
-                    const Item &it = g_items[g_inline.item];
+                    const Item &it = InlineItem();
                     const float amount = AnimAmount(g_inline.anim, now);
 
                     if (amount <= 0.0f)
@@ -387,7 +397,15 @@ namespace CTRPluginFramework
                             continue;
                         if (i == g_inline.index)
                             GuiRenderer::FillRect(TOP, x + 3, rowY, 122, 12, Fade(kColListSel, amount));
-                        GuiRenderer::DrawText(TOP, x + 8, rowY + 2, Trim(it.options[i], 114, g_buf, sizeof(g_buf)),
+                        // チェックボックス式は行頭に [X] / [ ]（app.js e5f8f01。行の配置は通常のインラインリストと同じ）
+                        const char *text = it.options[i];
+
+                        if (it.type == ITEM_CHECKBOX_LIST)
+                        {
+                            std::snprintf(g_buf2, sizeof(g_buf2), "[%s] %s", (it.value & (1 << i)) != 0 ? "X" : " ", it.options[i]);
+                            text = g_buf2;
+                        }
+                        GuiRenderer::DrawText(TOP, x + 8, rowY + 2, Trim(text, 114, g_buf, sizeof(g_buf)),
                                               Fade(i == g_inline.index ? kColWhite : kColText, amount));
                     }
                     ScrollBar(TOP, x + 128, y + 3, h - 6, rows, (int)it.optionCount, scroll, amount);
@@ -667,8 +685,9 @@ namespace CTRPluginFramework
                 GuiRenderer::FillRect(TOP, menuX, 0, kMenuW, 240, kColPanel);
                 GuiRenderer::FillRect(TOP, menuX + kMenuW - 2, 0, 2, 240, kColBorder);
                 GuiRenderer::FillRect(TOP, menuX, 0, kMenuW - 2, 23, kColHeader);
-                GuiRenderer::DrawText(TOP, menuX + 7, 7, "CHEAT MENU", kColWhite);
-                GuiRenderer::DrawText(TOP, menuX + 91, 7, Trim(fr.title, 62, g_buf, sizeof(g_buf)), kColCrumb);
+                // e5f8f01: 固定の題名が 1 字長くなったので、今の枠の題名も同じ 4px の間を保って右へ（最大幅 54）
+                GuiRenderer::DrawText(TOP, menuX + 7, 7, u8"-* GOHAN *-", kColWhite);
+                GuiRenderer::DrawText(TOP, menuX + 99, 7, Trim(fr.title, 54, g_buf, sizeof(g_buf)), kColCrumb);
 
                 // 選択帯
                 {

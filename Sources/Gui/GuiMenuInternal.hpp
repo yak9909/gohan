@@ -117,7 +117,8 @@ namespace CTRPluginFramework
                 ITEM_LINKED_LIST,       // "linked-list"
                 ITEM_VALUE,             // "value"
                 ITEM_LINKED_VALUE,      // "linked-value"
-                ITEM_SLIDER             // "slider"
+                ITEM_SLIDER,            // "slider"
+                ITEM_CHECKBOX_LIST      // "checkbox-list"（Simulator e5f8f01。値 = ビット。いまは設定画面だけ）
             };
             enum Format { FMT_NONE = 0, FMT_DEC, FMT_HEX, FMT_FLOAT };
             enum ActionId
@@ -125,9 +126,11 @@ namespace CTRPluginFramework
                 ACT_NONE = 0, ACT_SAVE, ACT_TOP_LIST, ACT_BOTTOM_LIST,
                 ACT_TEXT, ACT_COMPACT_TEXT, ACT_CHAT_KANJI,
                 // 設定画面（START）の項目（issue-fixes.js の settingsAction）
-                ACT_SET_FAVORITES, ACT_SET_VALUE_LOCK, ACT_SET_KEEP_FAVORITES,
-                ACT_SET_KEEP_ITEMS, ACT_SET_KEEP_FAVORITE_ITEMS,
-                ACT_SET_KEEP_THIS_ITEM, ACT_SET_KEEP_VALUE_LOCKS        // Simulator 639b4e6
+                ACT_SET_FAVORITES, ACT_SET_VALUE_LOCK, ACT_SET_KEEP_FAVORITES, ACT_SET_KEEP_THIS_ITEM,
+                // Simulator e5f8f01: 項目の保持設定（値の固定 / トグル状態 x 保持された項目 / お気に入り / 全項目）と入れ子のフォルダ
+                ACT_SET_FOLDER, ACT_SET_KEEP_RETAINED_LOCKS, ACT_SET_KEEP_FAVORITE_LOCKS, ACT_SET_KEEP_ALL_LOCKS,
+                ACT_SET_KEEP_RETAINED_TOGGLES, ACT_SET_KEEP_FAVORITE_TOGGLES, ACT_SET_KEEP_ALL_TOGGLES,
+                ACT_SET_BLOCK_BUTTONS
             };
 
             const int   kMaxItems   = 128;     // 子の番号は u8（childFirst）なので 255 まで
@@ -172,7 +175,7 @@ namespace CTRPluginFramework
                 int         first;          // FR_NORMAL: g_items の先頭
                 int         count;
                 int         selection;
-                u8          kind;           // FrameKind。FR_FAVORITES は g_favList、FR_SETTINGS は g_settingsItems を並べる
+                u8          kind;           // FrameKind。FR_FAVORITES は g_favList、FR_SETTINGS は g_settingsItems[first..] を並べる
             };
 
             // 開閉のアニメーション（createListboxAnimation 等の共通部）
@@ -190,6 +193,7 @@ namespace CTRPluginFramework
                 u8          screen;         // 0=上 / 1=下
                 u8          mode;           // OV_*
                 int         item;           // 対象項目（-1=なし）
+                bool        settings;       // item が g_settingsItems の番号（設定画面の checkbox-list）
                 const char *title;
                 const char *const *options;
                 int         optionCount;
@@ -311,8 +315,10 @@ namespace CTRPluginFramework
             extern bool         g_favorite[kMaxItems];
             extern u8           g_favList[kMaxItems];   // walkItems の順に並べたお気に入り
             extern int          g_favCount;
-            // ---- 設定画面の項目（issue-fixes.js の buildSettingsItems）----
-            const int   kSettingsItems = 7;
+            // ---- 設定画面の項目（issue-fixes.js の buildSettingsItems。Simulator e5f8f01 で入れ子のフォルダになった）----
+            //   0..5 = 直下、6..7 = 項目の保持設定の中、8..10 = 値の固定の中、11..13 = トグル状態の中
+            const int   kSettingsItems = 14;
+            const int   kSettingsRoot = 6;
             extern Item         g_settingsItems[kSettingsItems];
             extern int          g_settingsTarget;       // 設定画面を開いたときに選んでいた項目（-1 = なし）
             // ---- 値の固定（連動型だけ。issue-fixes.js の fixed / fixedValue）----
@@ -321,12 +327,16 @@ namespace CTRPluginFramework
             // ---- この項目を保持（issue-fixes.js retainedItemKeys。項目ごと、全体の設定とは独立）----
             extern bool         g_retained[kMaxItems];
             // ---- 保持の設定（issue-fixes.js の persistenceSettings）----
-            struct Persistence
+            struct Persistence             // Simulator e5f8f01 の DEFAULT_PERSISTENCE_SETTINGS
             {
-                bool    keepFavorites;          // 既定 true
-                bool    keepEnabledItems;       // 既定 false
-                bool    keepEnabledFavorites;   // 既定 false
-                bool    keepValueLocks;         // 既定 false（値の固定を保持。Simulator 639b4e6）
+                bool    keepFavorites;              // 既定 true
+                bool    keepRetainedValueLocks;     // 既定 true（値の固定 / 保持された項目）
+                bool    keepFavoriteValueLocks;     // 既定 false
+                bool    keepAllValueLocks;          // 既定 false
+                bool    keepRetainedToggleStates;   // 既定 true（トグル状態 / 保持された項目）
+                bool    keepFavoriteToggleStates;   // 既定 true
+                bool    keepAllToggleStates;        // 既定 false
+                u8      blockButtonsUntilReleaseMask;   // A/B/X/Y/START の順（bit0..4）。既定 START だけ（0x10）
             };
             extern Persistence  g_persist;
             // 保存を頼む（GuiMenu.cpp が GohanData::Save を繋ぐ。試験では空）
@@ -369,7 +379,10 @@ namespace CTRPluginFramework
             bool    IsSettingsItem(const Item &it);
             // 設定画面・お気に入りの操作（外から呼ぶのは試験だけ）
             bool    ToggleFavorite(int index, u32 now);
-            bool    OpenFavorites(u32 now);
+            bool    OpenFavorites(u32 now, const char *title);
+            Item   &InlineItem(void);
+            // 押し切るまでボタンの遮断の選択肢（A/B/X/Y/START。ビット 0..4）
+            extern const char *const kBlockButtonNames[5];
             bool    ToggleSettings(u32 now);
             bool    SetItemFixed(int index, bool fixed, u32 now);
             bool    HoldMuted(u32 now);                    // 長押しの進捗が 2/5 未満（灰色で描く）
