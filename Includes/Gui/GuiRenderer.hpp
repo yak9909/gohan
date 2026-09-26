@@ -98,6 +98,10 @@ namespace CTRPluginFramework
         //   キーボードや下画面リストボックスは**自前で暗幕を描かず** DrawBottomDim を使う。
         // ================================================================
         void        SetTouchBlock(bool on);      // ゲーム側のタッチ遮断（入力遮断ケーブの旗 +1）
+        // 押し切るまでボタンの遮断（設定の A/B/X/Y/START = bit0..4）。入力遮断ケーブ B が使う状態の番地と初期化
+        void        SetHoldUntilRelease(u8 settingsMask);
+        u32         HoldStateAddress(void);
+        void        ResetHoldState(void);
         void        DrawBottomDim(u32 color, float amount);   // ★BuildBottom の先頭で 1 回だけ
         // ゲーム側のボタン遮断（スライドパッドは残る）。buttons が優先。
         //   dpadOnly: 十字キーだけ遮断する（座標移動の「十字キーの無効化」。入力遮断ケーブの値 2）

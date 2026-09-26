@@ -95,26 +95,23 @@ static const unsigned long kGuiInputHookAddr  = 0x0053CDF4;
 static const unsigned long kGuiInputHookOrig  = 0xEB001823;
 static const unsigned long kGuiInputHookBl    = 0xEB0BEC89;
 
-// ★ケーブ B — SELECT を「START への読み替え」の手前で消し、START を単押しだけにする（F-355 / gohan issue #5）
-//   制御ブロック +2 SELECT 遮断 / +3 START 単押し / +4 判定中 / +5 押下合成の残り（+4 と +5 はケーブが使う）
+// ★ケーブ B — SELECT を「START への読み替え」の手前で消し、押し切るまで遮断するボタン（A/B/X/Y/START）を扱う
+//   （F-355 / gohan issue #5 / Simulator e5f8f01）。制御ブロック +2 SELECT 遮断。ボタンの状態はプラグインの .bss（BST）
 //   ゲームは `sub_483020` で **SELECT(bit2) を START(bit3) に読み替えて
 //   bit2 を消す**（SELECT は START の別名）。だから sead 層では区別できない。
 //   読み替えの直前で bit2 だけ落とせば、SELECT だけが消えて START は残る。
 static const unsigned long kGuiInputCaveB[] = {
-    0xE59F3100, 0xE5D3C003, 0xE35C0000, 0x0A000030, 0xE92D0030, 0xE5901000,
-    0xE5902004, 0xE59F40E8, 0xE5D35004, 0xE3120008, 0x0A000003, 0xE3A05001,
-    0xE1110004, 0x13A05000, 0xEA000003, 0xE3110008, 0x0A000001, 0xE1110004,
-    0x13A05000, 0xE5902008, 0xE3120008, 0x0A000003, 0xE3550000, 0x13A0C002,
-    0x15C3C005, 0xE3A05000, 0xE5C35004, 0xE3C11008, 0xE5902004, 0xE3C22008,
-    0xE5802004, 0xE5902008, 0xE3C22008, 0xE5802008, 0xE5D3C005, 0xE35C0002,
-    0x1A000006, 0xE3811008, 0xE5902004, 0xE3822008, 0xE5802004, 0xE3A0C001,
-    0xE5C3C005, 0xEA000006, 0xE35C0001, 0x1A000004, 0xE5902008, 0xE3822008,
-    0xE5802008, 0xE3A0C000, 0xE5C3C005, 0xE5801000, 0xE8BD0030, 0xE5D3C002,
-    0xE35C0000, 0x0A000008, 0xE590C000, 0xE3CCC004, 0xE580C000, 0xE590C004,
-    0xE3CCC004, 0xE580C004, 0xE590C008, 0xE3CCC004, 0xE580C008, 0xEAF12B45,
-    0x009B7010, 0x0000FFF7,
+    0xE92D01F0, 0xE59FC0A8, 0xE1DC40B0, 0xE5901000, 0xE5902004, 0xE5903008,
+    0xE1DC60B2, 0xE0037004, 0xE0077006, 0xE1C66003, 0xE1A05801, 0xE1A05825,
+    0xE2458001, 0xE0188005, 0x13A06000, 0x00028004, 0x00088005, 0x01866008,
+    0xE1C11004, 0xE1C22004, 0xE1C33004, 0xE1811007, 0xE1822007, 0xE1DC50B6,
+    0xE1833005, 0xE1CC60B2, 0xE1CC70B6, 0xE5801000, 0xE5802004, 0xE5803008,
+    0xE8BD01F0, 0xE59F3034, 0xE5D3C002, 0xE35C0000, 0x0A000008, 0xE590C000,
+    0xE3CCC004, 0xE580C000, 0xE590C004, 0xE3CCC004, 0xE580C004, 0xE590C008,
+    0xE3CCC004, 0xE580C008, 0xEAF12B5A, 0xB10CB10C, 0x009B7010,
 };
-static const unsigned long kGuiInputCaveBCount = 68;
+static const unsigned long kGuiInputCaveBCount = 47;
+static const unsigned long kGuiInputCaveBStateIndex = 45;   // ★押し切るまで遮断の状態（プラグインの .bss）の番地を書く語。+0 u16 対象 / +2 判定中 / +6 次の離し
 static const unsigned long kGuiInputCaveBBase  = 0x00838200;
 static const unsigned long kGuiInputHookBAddr  = 0x003534E0;
 static const unsigned long kGuiInputHookBOrig  = 0x0B04BECE;

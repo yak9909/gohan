@@ -99,6 +99,7 @@ namespace CTRPluginFramework
                 // ボタン遮断: 操作可能な UI が出ている間（gameInputCaptureState）
                 //   操作可能な UI が無い間は、関数側の要求（Step 中の OnTick）があれば十字キーだけ遮断する
                 GuiRenderer::SetButtonBlock(ButtonBlock(), g_dpadBlockReq, g_allBlockReq);
+                GuiRenderer::SetHoldUntilRelease(detail::g_persist.blockButtonsUntilReleaseMask);
                 g_dpadBlockReq = false;
                 g_allBlockReq = false;
                 // タッチ遮断: 下画面 UI がある間（退場中も）。消えた後も指が離れるまで続ける。

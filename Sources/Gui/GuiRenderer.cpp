@@ -1263,6 +1263,34 @@ namespace CTRPluginFramework
 
         void    SetTouchBlock(bool on)  { WriteInputFlag(1, on ? 1 : 0); }
 
+        // ★押し切るまでボタンの遮断（Simulator e5f8f01）。入力遮断ケーブ B が読み書きする状態（リテラル BST がこの番地を指す）:
+        //   +0 u16 対象（読み替え前の生のビット）/ +2 u16 判定中 / +4 未使用 / +6 u16 次のフレームに出す離し
+        namespace
+        {
+            volatile u16 g_holdState[4] __attribute__((aligned(8)));
+        }
+
+        u32     HoldStateAddress(void)  { return reinterpret_cast<u32>(g_holdState); }
+
+        // 設定の選択（A/B/X/Y/START = bit0..4）→ 生のビット（A 0x1 / B 0x2 / X 0x400 / Y 0x800 / START 0x8）
+        void    SetHoldUntilRelease(u8 settingsMask)
+        {
+            static const u16 kRaw[5] = { 0x0001, 0x0002, 0x0400, 0x0800, 0x0008 };
+            u16 raw = 0;
+
+            for (int i = 0; i < 5; i++)
+                if ((settingsMask & (1u << i)) != 0)
+                    raw = (u16)(raw | kRaw[i]);
+            g_holdState[0] = raw;
+        }
+
+        void    ResetHoldState(void)
+        {
+            g_holdState[1] = 0;
+            g_holdState[2] = 0;
+            g_holdState[3] = 0;
+        }
+
         // ★1 回の書き込みで決める（2 回に分けるとゲームが途中の 0 を読むことがある）
         //   3 = ボタン＋スライドパッド（ビットとアナログ値）。建物エディターでプレイヤーを止める。
         void    SetButtonBlock(bool buttons, bool dpadOnly, bool everything)

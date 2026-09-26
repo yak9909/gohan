@@ -383,6 +383,12 @@ namespace CTRPluginFramework
         //   幻の押下・離しが出ない。
         //   ★これは A1/A2 とは別枠（フックが B ではなく BL）。
         // ------------------------------------------------------------------
+        // ケーブ B の語（BST のリテラルだけ、押し切るまで遮断の状態の番地に差し替える）
+        u32     CaveBWord(u32 i)
+        {
+            return i == kGuiInputCaveBStateIndex ? GuiRenderer::HoldStateAddress() : kGuiInputCaveB[i];
+        }
+
         bool    InstallInputBlock(void)
         {
             u32 cur = 0;
@@ -430,14 +436,17 @@ namespace CTRPluginFramework
             }
 
             // 制御ブロックを初期化してからケーブを書く
-            //   +0 ボタン遮断 / +1 タッチ遮断 / +2 SELECT 遮断（★常に 1）
-            //   +3 START 単押し（★常に 1。gohan issue #5）/ +4 判定中・+5 押下合成（ケーブが使う）
+            //   +0 ボタン遮断 / +1 タッチ遮断 / +2 SELECT 遮断（★常に 1）/ +3〜+5 は使わない（旧 START 単押し）
+            //   押し切るまでボタンの遮断（Simulator e5f8f01。旧 START 単押しを広げた）の状態はプラグインの .bss（GuiRenderer）。
+            //   対象はメニューが毎フレーム設定から書く（既定 START だけ = 旧と同じ）
             *(volatile u8 *)(kGuiInputCtl + 0) = 0;
             *(volatile u8 *)(kGuiInputCtl + 1) = 0;
+            *(volatile u8 *)(kGuiInputCtl + 3) = 0;
             *(volatile u8 *)(kGuiInputCtl + 4) = 0;
             *(volatile u8 *)(kGuiInputCtl + 5) = 0;
             *(volatile u8 *)(kGuiInputCtl + 2) = 1;
-            *(volatile u8 *)(kGuiInputCtl + 3) = 1;
+            GuiRenderer::ResetHoldState();
+            GuiRenderer::SetHoldUntilRelease(0x10);
             i = 0;
             while (i < kGuiInputCaveCount)
             {
@@ -447,7 +456,7 @@ namespace CTRPluginFramework
             i = 0;
             while (i < kGuiInputCaveBCount)
             {
-                Process::Patch(kGuiInputCaveBBase + i * 4, kGuiInputCaveB[i]);
+                Process::Patch(kGuiInputCaveBBase + i * 4, CaveBWord(i));
                 i++;
             }
             svcInvalidateEntireInstructionCache();
@@ -467,7 +476,7 @@ namespace CTRPluginFramework
             while (i < kGuiInputCaveBCount)
             {
                 Process::Read32(kGuiInputCaveBBase + i * 4, cur);
-                if (cur != kGuiInputCaveB[i])
+                if (cur != CaveBWord(i))
                 {
                     Log("[!] 入力遮断ケーブ B の書き戻しが違う（語 %d）", (int)i);
                     return false;
@@ -500,6 +509,7 @@ namespace CTRPluginFramework
             *(volatile u8 *)(kGuiInputCtl + 3) = 0;
             *(volatile u8 *)(kGuiInputCtl + 4) = 0;
             *(volatile u8 *)(kGuiInputCtl + 5) = 0;
+            GuiRenderer::ResetHoldState();
             while (i < kGuiInputCaveCount)
             {
                 Process::Patch(kGuiInputCaveBase + i * 4, 0);
