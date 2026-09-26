@@ -158,8 +158,10 @@ namespace CTRPluginFramework
                 const int itemFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"ドロップ", u8"アイテムを置く・消す・掘るチートです。");
                 SetFolder(i, dropFirst, dropCount);
-                AddItem(ITEM_ACTION, u8"ポケットアイテム（未設計）",
-                        u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
+                // アクション式 → 16 進入力（§17.5）。値は最後に入れた ID（表示用。項目の状態ではない）
+                i = AddItem(ITEM_ACTION, kPocketItem,
+                            u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
+                SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
                 const int itemCount = g_itemCount - itemFirst;
 
                 // ---- root/村/マップ（§9.5）----

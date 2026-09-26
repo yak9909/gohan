@@ -16,6 +16,7 @@
 #include "ModelViewer.hpp"
 #include "PlayerClone.hpp"
 #include "PublicWorks.hpp"
+#include "PocketItem.hpp"
 #include "ChatIme.hpp"
 #include "GuiMenu.hpp"
 
@@ -268,6 +269,7 @@ namespace CTRPluginFramework
             WirePlayerClone();
             WirePublicWorks();
             WireBuildingEditor();
+            WirePocketItem();
             ChatIme::Wire();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);

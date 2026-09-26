@@ -1276,6 +1276,13 @@ namespace CTRPluginFramework
             {
                 const int self = ItemIndex(it);
 
+                // 書式のあるアクション（ポケットアイテムなど）: まず数値を入れさせ、確定したら Apply に渡す（TakeKeyboardResult）
+                if (it.fmt != FMT_NONE)
+                {
+                    OpenNumeric(it, false, now);
+                    return;
+                }
+
                 Execute(it);
                 if (it.action == ACT_SAVE)
                     AddNotice("ACTION", u8"セーブ関数を呼び出しました", now);
@@ -1477,6 +1484,15 @@ namespace CTRPluginFramework
                 {
                     Item &it = g_items[result.item];
 
+                    if (it.type == ITEM_ACTION)
+                    {
+                        // 書式のあるアクション: 入れた値で 1 回実行する（値は次に開いたときの初期値）
+                        it.value = result.value;
+                        it.applied = result.value;
+                        if (g_behavior[result.item].Apply != nullptr)
+                            g_behavior[result.item].Apply(result.item, result.value);
+                        return;
+                    }
                     if (result.apply)
                         CommitHotkeyValue(it, result.value);
                     else

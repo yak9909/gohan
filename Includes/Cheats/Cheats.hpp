@@ -28,6 +28,8 @@ namespace CTRPluginFramework
         static const char kNoTrap[]         = u8"穴に落下しない";
         // ---- root/プレイヤー/スタイル ----
         static const char kNoBedHead[]      = u8"寝癖付かない";
+        // ---- root/アイテム ----
+        static const char kPocketItem[]     = u8"ポケットアイテム";
         // ---- root/アイテム/ドロップ ----
         static const char kDropItem[]       = u8"ドロップアイテム";
         static const char kTrampler[]       = u8"歩いた場所のアイテムを消し去る";
