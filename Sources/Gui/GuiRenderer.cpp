@@ -131,7 +131,11 @@ namespace CTRPluginFramework
             //     以前は OwnGui 側に 0x30000 が直書きされていて食い違っていた。
             // ★2026-09-26: 0x11000 -> 0x13000。アトラスの後ろに、チャットの自前キーのテクスチャ（ゲームの空白キーの写し。
             //   通常と押下の 2 枚で最大 8,192 B = 記号の 256x32 L4 x 2）を置く。キー配列を切り替えても剥がれないように。
-            const u32   kBorrowBytes = 0x13000; // 77,824 B（アトラス + キーのテクスチャの写し）
+            // ★2026-09-27: 0x13000 -> 0x23000。末尾に没アイテムのアイコンのキャッシュ（64x64 ETC1A4 = 4,096 B x 16 枠）を足す。
+            //   手紙の場面の空き（0x9000 のとき約 457,000 B）から差し引いて約 350,504 B 残る（実機未確認）。
+            const u32   kIconCacheBytes = 0x10000;  // 65,536 B（GpuIconCache。借りた領域の末尾）
+            const u32   kBorrowBytes = 0x23000; // 143,360 B（アトラス + キーの写し 0x13000 + アイコンのキャッシュ）。検査が数値で読むので直書き
+            static_assert(kBorrowBytes == 0x13000 + kIconCacheBytes, "kBorrowBytes = 0x13000 + kIconCacheBytes");
             // ★2026-09-17: アトラスを 256x128 -> 256x256（65,536 B）に広げたので 0x9000 から増やした。
             //   手紙の場面の空きは 0x9000 のとき約 457,000 B なので、増分 32,768 B を引いても約 424,000 B 残る。
             //   ★実機では未確認（手紙を開いて落ちないかを確かめること）。
@@ -1167,6 +1171,21 @@ namespace CTRPluginFramework
         }
 
         u32     BorrowBytes(void)   { return kBorrowBytes; }
+
+        u32     GpuIconCache(u32 &bytes)
+        {
+            bytes = 0;
+            if (!g_ready || g_gpuBase == 0 || g_size < kIconCacheBytes)
+                return 0;
+
+            const u32   start = AlignUp(g_gpuBase + g_size - kIconCacheBytes, 0x80);
+            const u32   end = g_gpuBase + g_size;
+
+            if (start >= end || start < AlignUp(g_gpuBase + g_offAtlas + kUiSheetBytes, 0x80))
+                return 0;
+            bytes = end - start;
+            return start;
+        }
         u32     Generation(void)    { return g_generation; }
 
         u32     GpuSpare(u32 &bytes)
@@ -1176,7 +1195,7 @@ namespace CTRPluginFramework
                 return 0;
 
             const u32   start = AlignUp(g_gpuBase + g_offAtlas + kUiSheetBytes, 0x80);
-            const u32   end = g_gpuBase + g_size;
+            const u32   end = g_gpuBase + g_size - kIconCacheBytes;     // 末尾はアイコンのキャッシュ（GpuIconCache）
 
             if (start >= end)
                 return 0;

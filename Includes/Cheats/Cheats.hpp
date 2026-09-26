@@ -32,6 +32,8 @@ namespace CTRPluginFramework
         static const char kPocketItem[]     = u8"ポケットアイテム";
         static const char kHiddenItems[]    = u8"没アイテム表示";
         static const char *const kHiddenItemsOptions[] = { u8"非表示", u8"表示", u8"自前表示" };
+        static const char kHiddenIconSize[] = u8"没アイテムのアイコン解像度";
+        static const char *const kHiddenIconSizeOptions[] = { u8"32x32", u8"64x64" };
         // ---- root/アイテム/ドロップ ----
         static const char kDropItem[]       = u8"ドロップアイテム";
         static const char kTrampler[]       = u8"歩いた場所のアイテムを消し去る";

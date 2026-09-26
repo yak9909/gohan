@@ -164,8 +164,12 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
                 // Issue #15。連動型リスト（ゲームのコードの 1 語を読んで今の状態を出す）
                 i = AddItem(ITEM_LINKED_LIST, kHiddenItems,
-                            u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムの名前を付けます（アイコンは未対応）。");
+                            u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムに名前とアイコンを付けます。");
                 SetOptions(i, kHiddenItemsOptions, 3);
+                // 見比べて決めるための一時的な項目（利用者の指示 2026-09-27）
+                i = AddItem(ITEM_LIST, kHiddenIconSize,
+                            u8"自前表示のアイコンの解像度です。見比べるための仮の項目です。");
+                SetOptions(i, kHiddenIconSizeOptions, 2);
                 const int itemCount = g_itemCount - itemFirst;
 
                 // ---- root/村/マップ（§9.5）----

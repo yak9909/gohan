@@ -14,3 +14,6 @@ __pycache__/
 /libctrpf/libcwav/lib/
 /libctrpf/libcwav/libncsnd/build/
 /libctrpf/libcwav/libncsnd/lib/
+
+# 没アイテムのアイコン（ゲーム由来の絵の可能性があるので入れない。解析 repo tools/items/export_hidden_icons.py で作る）
+/Includes/Cheats/HiddenItemIcons.h

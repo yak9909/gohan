@@ -24,6 +24,8 @@ Result Request(u16 id, int &slot, bool &iconUpdated);
 // 没アイテム表示（Inventory_GetSlot 0x7238C0 の BEQ を NOP）。切り替えたら、持ち物を開いていれば 16 枠のアイコンを作り直す。
 bool HiddenShown(void);
 Result SetHiddenShown(bool show);
+// 持ち物を開いていれば 16 枠のアイコンをゲームの処理で作り直す（自前表示・解像度を切り替えたとき）
+Result RefreshPocketIcons(void);
 const char *ResultName(Result result);
 
 }  // namespace PocketItem

@@ -19,6 +19,7 @@
 
 #include "PocketItem.hpp"
 
+#include "HiddenIcons.hpp"
 #include "ItemNames.hpp"
 
 #include "Cheats.hpp"
@@ -233,6 +234,13 @@ Result SetHiddenShown(bool show) {
     return Result::Ok;
 }
 
+Result RefreshPocketIcons(void) {
+    int slot = -1;
+    bool icon = false;
+
+    return Run(OP_REFRESH, 0, slot, icon);
+}
+
 const char *ResultName(Result result) {
     switch (result) {
     case Result::Ok: return u8"入れました";
@@ -287,12 +295,21 @@ namespace CTRPluginFramework
                 }
             }
 
-            // 没アイテム表示（連動型リスト: 0 非表示 / 1 表示 / 2 自前表示 = 表示 + 自前の名前。アイコンは未実装）
+            // 没アイテム表示（連動型リスト: 0 非表示 / 1 表示 / 2 自前表示 = 表示 + 自前の名前とアイコン）
             bool    HiddenRead(int index, s32 *value)
             {
                 (void)index;
                 *value = !PocketItem::HiddenShown() ? 0 : ItemNames::CustomNames() ? 2 : 1;
                 return true;
+            }
+
+            // 没アイテムのアイコンの解像度（0 = 32x32 / 1 = 64x64。利用者が見比べて決める）
+            void    IconSizeApply(int index, s32 value)
+            {
+                (void)index;
+                HiddenIcons::SetSize(value == 1 ? 64 : 32);
+                if (HiddenIcons::Enabled())
+                    PocketItem::RefreshPocketIcons();
             }
 
             void    HiddenWrite(int index, s32 value)
@@ -308,6 +325,16 @@ namespace CTRPluginFramework
                 }
                 if (!ItemNames::SetCustomNames(value == 2))
                     GuiNotification::NotifyRed(kHiddenItems, u8"名前のフックを入れられません");
+
+                const bool iconsBefore = HiddenIcons::Enabled();
+
+                if (value == 2 && !HiddenIcons::Available())
+                    GuiNotification::NotifyRed(kHiddenItems, u8"アイコンのデータがビルドに入っていません（名前だけ）");
+                else if (!HiddenIcons::SetEnabled(value == 2))
+                    GuiNotification::NotifyRed(kHiddenItems, u8"アイコンのフックを入れられません");
+                // 表示／非表示の切り替えは SetHiddenShown が作り直す。自前のアイコンの入り切りだけのときはここで作り直す
+                if (HiddenIcons::Enabled() != iconsBefore)
+                    PocketItem::RefreshPocketIcons();
             }
         }
 
@@ -320,6 +347,11 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterApply(index, PocketApply);
             if (hidden >= 0)
                 GuiMenu::RegisterLinked(hidden, HiddenRead, HiddenWrite);
+
+            const int size = GuiMenu::FindItem(kHiddenIconSize);
+
+            if (size >= 0)
+                GuiMenu::RegisterApply(size, IconSizeApply);
         }
     }
 }
