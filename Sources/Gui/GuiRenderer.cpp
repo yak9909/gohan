@@ -1264,13 +1264,21 @@ namespace CTRPluginFramework
         void    SetTouchBlock(bool on)  { WriteInputFlag(1, on ? 1 : 0); }
 
         // ★押し切るまでボタンの遮断（Simulator e5f8f01）。入力遮断ケーブ B が読み書きする状態（リテラル BST がこの番地を指す）:
-        //   +0 u16 対象（読み替え前の生のビット）/ +2 u16 判定中 / +4 未使用 / +6 u16 次のフレームに出す離し
+        //   +0 u16 対象（読み替え前の生のビット）/ +2 u16 判定中 / +4 u16 窓のボタン / +6 u16 通過中（窓で押し直した = 長押し）/
+        //   +8 u32 窓の開始 tick / +12 u32 窓の長さ tick
+        //   ★2026-09-27 利用者の指示（長押しができない）: 渡した押下は 300ms 押しっぱなしにし、その間に押し直したらそのまま長押しにする。
         namespace
         {
-            volatile u16 g_holdState[4] __attribute__((aligned(8)));
+            struct HoldState
+            {
+                u16 mask, pending, window, pass;
+                u32 start, length;
+            };
+            volatile HoldState g_holdState __attribute__((aligned(8)));
+            const u32 kHoldWindowTicks = (u32)((u64)SYSCLOCK_ARM11 * 300 / 1000);     // 300ms
         }
 
-        u32     HoldStateAddress(void)  { return reinterpret_cast<u32>(g_holdState); }
+        u32     HoldStateAddress(void)  { return reinterpret_cast<u32>(&g_holdState); }
 
         // 設定の選択（A/B/X/Y/START = bit0..4）→ 生のビット（A 0x1 / B 0x2 / X 0x400 / Y 0x800 / START 0x8）
         void    SetHoldUntilRelease(u8 settingsMask)
@@ -1281,18 +1289,18 @@ namespace CTRPluginFramework
             for (int i = 0; i < 5; i++)
                 if ((settingsMask & (1u << i)) != 0)
                     raw = (u16)(raw | kRaw[i]);
-            g_holdState[0] = raw;
+            g_holdState.mask = raw;
         }
 
         void    ResetHoldState(void)
         {
-            g_holdState[1] = 0;
-            g_holdState[2] = 0;
-            g_holdState[3] = 0;
+            g_holdState.pending = 0;
+            g_holdState.window = 0;
+            g_holdState.pass = 0;
+            g_holdState.start = 0;
+            g_holdState.length = kHoldWindowTicks;
         }
 
-        // ★1 回の書き込みで決める（2 回に分けるとゲームが途中の 0 を読むことがある）
-        //   3 = ボタン＋スライドパッド（ビットとアナログ値）。建物エディターでプレイヤーを止める。
         void    SetButtonBlock(bool buttons, bool dpadOnly, bool everything)
         {
             WriteInputFlag(0, everything ? 3 : buttons ? 1 : dpadOnly ? 2 : 0);
