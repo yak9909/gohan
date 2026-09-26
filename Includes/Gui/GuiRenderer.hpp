@@ -79,7 +79,7 @@ namespace CTRPluginFramework
         // 借りたヒープ（GPU から読める）のアトラスの後ろの空き。VA を返し、大きさを bytes に入れる。PA = VA - 0x10000000。
         //   チャットの自前キーのテクスチャの写しに使う（2026-09-26）。書いたら svcFlushProcessDataCache すること。
         u32         GpuSpare(u32 &bytes);
-        // 借りたヒープの末尾の、没アイテムのアイコンのキャッシュ（2026-09-27）。VA を返す。PA = VA - 0x10000000。ゲームのスレッドだけが使う
+        // 借りたヒープの末尾の、没アイテムのアイコンのキャッシュ（2026-09-27。1,024 B x 16 枠）。VA を返す。PA = VA - 0x10000000。ゲームのスレッドだけが使う
         u32         GpuIconCache(u32 &bytes);
         u32         HeapBase(void);
         u32         HeapSize(void);

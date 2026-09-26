@@ -303,19 +303,6 @@ namespace CTRPluginFramework
                 return true;
             }
 
-            // 没アイテムのアイコンの解像度（0 = 32x32 / 1 = 64x64。利用者が見比べて決める）
-            void    IconSizeApply(int index, s32 value)
-            {
-                (void)index;
-                HiddenIcons::SetSize(value == 1 ? 64 : 32);
-                if (HiddenIcons::Enabled())
-                    PocketItem::RefreshPocketIcons();
-
-                char buf[160];
-
-                HiddenIcons::Status(buf, sizeof(buf));
-                GuiNotification::Notify(kHiddenIconSize, buf);      // 診断（実機確認のあいだ）
-            }
 
             void    HiddenWrite(int index, s32 value)
             {
@@ -352,11 +339,6 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterApply(index, PocketApply);
             if (hidden >= 0)
                 GuiMenu::RegisterLinked(hidden, HiddenRead, HiddenWrite);
-
-            const int size = GuiMenu::FindItem(kHiddenIconSize);
-
-            if (size >= 0)
-                GuiMenu::RegisterApply(size, IconSizeApply);
         }
     }
 }
