@@ -153,21 +153,24 @@ const float kSnapBias = kTile * 0.5f - 1.0f;
 const float kCarryHysteresis = 2.0f / 32.0f;
 const float kMoveSoundScale = 0.00625f;     // 移動の音の引数 = 行き先の世界 x × 0.00625（ModuleFtr 0xB070A8 の VLDR 0x3BCCCCCD）
 const float kWorldTile = 32.0f;
-// 音（名前は reference/old_project/SOUND/index/sounds.csv）
-const u32 kSndPolyStart = 0x0100051D;       // SE_SYS_FUR_POLY_START: 範囲を引き始めた（CollectChip Neutral 0xB0ABB0）
-const u32 kSndPolyOn = 0x0100051F;          // SE_SYS_FUR_POLY_ON: 範囲で 1 個以上選んだ（sub_B3D014）
-const u32 kSndPolyCancel = 0x01000520;      // SE_SYS_FUR_POLY_CANCEL: 選択を解いた（sub_B3D5B0）
-const u32 kSndFurOn = 0x01000521;           // SE_SYS_FUR_ON: コマを触った・持ち上げた
-const u32 kSndPut = 0x01000525;             // SE_SYS_FUR_PUT: まとめて置いた（ModuleFtr 0xB071DC）
-const u32 kSndBack = 0x01000526;            // SE_SYS_FUR_BACK: 置けずに戻した
-const u32 kSndPolyMove = 0x01000527;        // SE_SYS_FUR_POLY_MOVE: 行き先が変わった（置ける。ModuleFtr 0xB070BC）
-const u32 kSndPolyMoveOut = 0x01000528;     // SE_SYS_FUR_POLY_MOVE_OUT: 行き先が変わった（置けない）
+// 音（名前は reference/old_project/SOUND/index/sounds.csv）。
+//   ゲームの模様替えの音 SE_SYS_FUR_*（POLY_START 0x100051D / POLY_MOVE_FOR_SLT 0x100051E / POLY_ON 0x100051F / POLY_CANCEL 0x1000520 /
+//   FUR_ON 0x1000521 / PUT 0x1000525 / BACK 0x1000526 / POLY_MOVE 0x1000527 / POLY_MOVE_OUT 0x1000528）は全部 GROUP_HOUSE
+//   （BANK_SE_SYS_HOUSE_PLUS・波形 WARC005 = 668,792 B）にあり、家の中でしか読まれていないので屋外では鳴らない（利用者の実機確認 2026-09-27）。
+//   ゲームの音のヒープへ読み足すのはやめ、屋外で常に読まれている GROUP_STATIC から同じ役割の音を使う（利用者の指示 2026-09-27: 鳴らない所は直す）:
+//   持ち物欄のアイテムを掴む・置く・マーク、持ち物のドラッグで枠を移るとき、スクロールのつまみ、デザインの線を引き始めるとき
+const u32 kSndRangeStart = 0x01000452;      // SE_SYS_EDIT_LINE_START（範囲を引き始めた ← POLY_START）
+const u32 kSndRangeStep = 0x010003A6;       // SE_SYS_SCROLL_BAR_DRAG（引いている間、終点が格子 1 本動くたび ← POLY_MOVE_FOR_SLT。
+                                            //   ゲームはスクロールのつまみが 1 行動くたびに sub_5827D0 で鳴らす: sub_2993E4）
+const u32 kSndSelectOn = 0x01000403;        // SE_SYS_ITEM_ICON_MARKING_ON（アイテムを選んだ ← POLY_ON / FUR_ON）
+const u32 kSndSelectOff = 0x01000404;       // SE_SYS_ITEM_ICON_MARKING_OFF（選択を解いた ← POLY_CANCEL）
+const u32 kSndPickUp = 0x01000401;          // SE_SYS_ITEM_ICON_PICK_UP（持ち上げた ← FUR_ON）
+const u32 kSndPut = 0x01000402;             // SE_SYS_ITEM_ICON_SET（置いた ← PUT）
+const u32 kSndInvalid = 0x0100039A;         // SE_SYS_BTN_ACT_INVALID（置けない ← POLY_MOVE_OUT / BACK）
+const u32 kSndCarryStep = 0x01000405;       // SE_SYS_ITEM_SLOT_ACTIVE（行き先が変わった ← POLY_MOVE。持ち物のドラッグと同じく sub_5827D0: sub_1FFA80）
 const u32 kSndListClose = 0x010003C6;       // SE_SYS_WIN_SELECT_ITEM_CLOSE（一覧を窓の外のタッチで閉じたときと同じ。sub_2BA608）
-typedef void (*SlideSoundFn)(float area);
 typedef void (*MoveSoundFn)(u32 id, float x);
-// 範囲を引いている間、毎フレーム呼ぶ（SE_SYS_FUR_POLY_MOVE_FOR_SLT を鳴らし続け、変数 15 = |面積| / 270。CollectChip sub_B0ABF8）
-const SlideSoundFn SlideSoundGame = reinterpret_cast<SlideSoundFn>(0x00583068);
-// 移動の音（sub_6B1530: BGM に合わせた音程。+0xC5C != 0 / +0xC5D == 0 / +0xCB8 == 2 のときだけ鳴る）
+// BGM に合わせた音程で鳴らす（sub_6B1530: +0xC5C != 0 / +0xC5D == 0 / +0xCB8 == 2 のときだけ鳴る）
 const MoveSoundFn MoveSoundGame = reinterpret_cast<MoveSoundFn>(0x005827D0);
 const u32 kSoundMgrPtr = 0x00947080;
 const u32 kPlaySoundFn = 0x0058C7D4;        // Game_PlaySound
@@ -205,10 +208,13 @@ const u32 kListRowBase = 956, kListRowStride = 12;  // 行 i: +0 文字箱 T_slc
 const u32 kListAnchorPane = 1204;           // 基準のペイン（sub_2B9D1C が +72/+76 の大きさだけ読む）
 const u32 kListResult = 1212, kListCancelled = 1228;
 const u32 kListAnchor = 1236;               // 基準の位置（持ち物欄は項目のペインの大域位置 +140/+156/+172。sub_71A250）
+// u8: 閉じ終わりに手カーソルを戻すか（sub_2BA2A0: 真かつ開く前に出ていた（+1249）なら BsHandCursor_Show、偽なら隠す。ゲームも行によって 0 にする: sub_2BA608）
+const u32 kListRestoreCursor = 1251;
 const u32 kListRowCount = 4;
 const s32 kListCancelRow = 3;               // 「やめる」
-// 行の決定音はゲームの表（dword_88BA80: 選択肢の種類 → 音）から: 複製 = 9 COPY / 削除 = 8 ERASE / 埋める = 7 WIN_SELECT_ITEM_DECIDE / やめる = 1 CANCEL
-const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x010003C5, 0x01000392 };
+// 行の決定音はゲームの表（dword_88BA80: 選択肢の種類 → 音）から: 複製 = 9 COPY / 削除 = 8 ERASE / 埋める = 0 DECIDE / やめる = 1 CANCEL。
+//   ※7 WIN_SELECT_ITEM_DECIDE は CSEQ が大域変数 31 を鳴らすたびに +1 して 3 段階に音程を上げる（利用者報告 2026-09-27: 選ぶたびに上がる）ので使わない
+const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x0100038E, 0x01000392 };
 const u32 kTextAllocSlot = 28;              // TextBox vt[28] = 器の確保（GameList と同じ）
 const u32 kTextDraw = 260;
 typedef void (*AllocBufFn)(void *textBox, u32 chars, u32 flags);
@@ -336,6 +342,7 @@ u32 s_dropFrames = 0xFFFFFFFFu;             // 置いてからのフレーム（
 s32 s_selStartTx, s_selStartTy;             // 押したマス（タップの判定）
 s32 s_selGridX0, s_selGridY0;               // 範囲の始点 = 押した点を吸着した格子線（村のマスの番号。左上の角 = そのマスの番号）
 s32 s_selGridX1, s_selGridY1;               // 範囲の終点（指）
+s32 s_selStepX, s_selStepY;                 // 引いている間の音を最後に鳴らした終点
 alignas(8) u8 s_group[332];
 bool s_groupMade, s_groupBuilt;
 void *s_gWin, *s_gStart, *s_gEnd;
@@ -793,10 +800,6 @@ void Sound(u32 id) {
     reinterpret_cast<void (*)(u32)>(kPlaySoundFn)(id);
 }
 
-void SlideSound(float area) {
-    SlideSoundGame(area);
-}
-
 // 移動の音はゲームと同じ sub_5827D0（BGM に合わせた音程）。その経路が鳴らない状態のときだけ Game_PlaySound で補う（自前）
 void MoveSound(u32 id, float worldX) {
     const u32 mgr = R32(kSoundMgrPtr);
@@ -903,6 +906,7 @@ void OpenList(s32 vx, s32 vy, s32 tx, s32 ty) {
     F(s_listAnchorPane, 76) = kTile;
     W(s_listWin, kListAnchorPane) = reinterpret_cast<u32>(s_listAnchorPane);
     ListNameVisible(s_listWin, 0);
+    B(s_listWin, kListRestoreCursor) = 0;   // 閉じたあと手カーソルを出さない（エディターでは使わない。利用者指示 2026-09-27）
     ListOpen(s_listWin, kListCancelRow);
     s_listActive = true;
 }
@@ -1075,23 +1079,10 @@ void ClearSel(void) {
     s_sel.active = false;
 }
 
-u32 ItemsInSel(void) {
-    if (!s_sel.active)
-        return 0;
-    u32 n = 0;
-    for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
-        for (s32 x = s_sel.x0; x <= s_sel.x1; ++x) {
-            const u32 *item = ItemAtTile(x, y);
-            if (item != nullptr && !IsEmpty(item))
-                ++n;
-        }
-    return n;
-}
-
-// 選択を解く。選ばれたコマがあれば POLY_CANCEL（ゲームの sub_B3D5B0）
+// 選択を解く（ゲームの sub_B3D5B0 は選んだチップがあれば POLY_CANCEL。こちらは空きマスだけの範囲も選択なので、範囲があれば鳴らす）
 void CancelSel(void) {
-    if (ItemsInSel() != 0)
-        Sound(kSndPolyCancel);
+    if (s_sel.active)
+        Sound(kSndSelectOff);
     ClearSel();
 }
 
@@ -1150,7 +1141,7 @@ void StartCarry(Carry mode, s32 vx, s32 vy, u16 px, u16 py) {
     s_carrySoundX = s_carrySoundY = 0;
     s_carryFrames = 0;
     s_dropFrames = 0xFFFFFFFFu;
-    Sound(kSndFurOn);                       // コマを取った（ゲームのチップ Select → Drag と同じ音）
+    Sound(kSndPickUp);                      // 持ち上げた
 }
 
 // 持ち上げる。基準 = 今の指の位置と今の盤面
@@ -1208,7 +1199,7 @@ void CommitCarry(s32 vx, s32 vy) {
     const bool move = s_carry == Carry::Move;
     s_carry = Carry::None;
     if (!CarryPlaceable(ox, oy)) {
-        Sound(kSndBack);                    // 置けないので元へ戻す（ModuleFtr sub_B07108 と同じ）
+        Sound(kSndInvalid);                 // 置けないので元へ戻す（ModuleFtr sub_B07108 と同じ動き）
         return;
     }
     Sound(kSndPut);
@@ -1277,7 +1268,7 @@ void SelectPress(s32 vx, s32 vy, u16 px, u16 py, bool inside, s32 tx, s32 ty) {
             s_touchKind = TouchKind::CarryDrag;
         } else {
             CancelCarry();
-            Sound(kSndBack);
+            Sound(kSndInvalid);
             s_touchKind = TouchKind::Ignore;
         }
         return;
@@ -1320,8 +1311,10 @@ void SelectMove(s32 vx, s32 vy, u16 px, u16 py) {
         if (!TouchTile(vx, vy, px, py, tx, ty) || tx != s_selStartTx || ty != s_selStartTy) {
             HideName();                     // マスを出たら範囲を引く
             s_touchKind = TouchKind::SelDrag;
-            Sound(kSndPolyStart);
+            Sound(kSndRangeStart);
             GridAt(vx, vy, px, py, s_selGridX1, s_selGridY1);
+            s_selStepX = s_selGridX1;
+            s_selStepY = s_selGridY1;
         }
         break;
     }
@@ -1346,8 +1339,7 @@ void SelectRelease(s32 vx, s32 vy) {
         s_sel.x0 = s_sel.x1 = s_selStartTx;
         s_sel.y0 = s_sel.y1 = s_selStartTy;
         s_dropFrames = 0xFFFFFFFFu;
-        if (ItemsInSel() != 0)
-            Sound(kSndFurOn);
+        Sound(kSndSelectOn);                // 空きマスも選択（埋めるに使う）なので必ず鳴らす
         ShowNameAt(vx, vy, s_selStartTx, s_selStartTy);
         break;
     }
@@ -1366,8 +1358,7 @@ void SelectRelease(s32 vx, s32 vy) {
         s_sel.y0 = gy0;
         s_sel.y1 = gy1 - 1;
         s_dropFrames = 0xFFFFFFFFu;
-        if (ItemsInSel() != 0)
-            Sound(kSndPolyOn);              // 1 個以上選んだ（sub_B3D014）
+        Sound(kSndSelectOn);                // 選んだ（ゲームは 1 個以上のとき sub_B3D014 で POLY_ON。こちらは空きマスだけの範囲も選択）
         break;
     }
     case TouchKind::CarryDrag:
@@ -1386,8 +1377,11 @@ void SelectFrame(s32 vx, s32 vy) {
         else
             s_touchKind = TouchKind::Ignore;
     }
-    if (s_touchKind == TouchKind::SelDrag)  // 面積（吸着した 2 点の差の積）で鳴らし続ける（sub_B0ABF8）
-        SlideSound((float)(s_selGridX1 - s_selGridX0) * kTile * (float)(s_selGridY1 - s_selGridY0) * kTile);
+    if (s_touchKind == TouchKind::SelDrag && (s_selGridX1 != s_selStepX || s_selGridY1 != s_selStepY)) {
+        s_selStepX = s_selGridX1;           // 終点が格子 1 本動いた
+        s_selStepY = s_selGridY1;
+        MoveSound(kSndRangeStep, ((float)s_selGridX1) * kWorldTile);
+    }
     if (s_carry != Carry::None) {
         ++s_carryFrames;
         s32 ox = 0, oy = 0;
@@ -1395,7 +1389,10 @@ void SelectFrame(s32 vx, s32 vy) {
         if (ox != s_carrySoundX || oy != s_carrySoundY) {
             s_carrySoundX = ox;
             s_carrySoundY = oy;
-            MoveSound(CarryPlaceable(ox, oy) ? kSndPolyMove : kSndPolyMoveOut, CarryWorldX(ox));
+            if (CarryPlaceable(ox, oy))
+                MoveSound(kSndCarryStep, CarryWorldX(ox));
+            else
+                Sound(kSndInvalid);
         }
     }
     if (s_dropFrames <= kAnimPulseEnd)
@@ -1411,7 +1408,7 @@ void SelectCancel(void) {
     }
     if (s_carry != Carry::None) {
         CancelCarry();
-        Sound(kSndBack);
+        Sound(kSndInvalid);
         if (s_touchKind == TouchKind::CarryDrag)
             s_touchKind = TouchKind::Ignore;
         return;
