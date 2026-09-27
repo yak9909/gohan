@@ -219,20 +219,22 @@ const u32 kListAnchor = 1236;               // 基準の位置（持ち物欄は
 const u32 kListRestoreCursor = 1251;
 const u32 kListRowCount = 4;
 const s32 kListCancelRow = 3;               // 「やめる」
-// ---- 一覧のキー操作（F059 の続き。利用者指示 2026-09-28: ゲームと同じく十字で選択・A で決定・B でやめる）----
-//   窓の部品（ButtonActionControl、窓 +1256）は +208 = 13 / +204 = 11 で、窓を開くと BsMenuMgr +508 = 11 → キー方式 sub_2F5C68 が
-//   窓の更新（ItemSelectWindow_Update）の中で BsMenuMgr（*0x949D4C）+68 の sead::ControllerWrapper の +72（押した瞬間）| +80（リピート）を読む:
-//   次へ = 下 0x800 / 右 0x2000（sub_722A6C）、前へ = 上 0x400 / 左 0x1000（sub_722B40）、決定 = sub_6D33F0(mgr, 4)（A）。
-//   メニュー側のビットは BsMenuMgr_Init 0x6D3274 → sub_54752C(+68, 19, 表 0x84B4FC): 0x1 / 0x4 = A、0x400〜0x2000 = 十字。
-//   ゲームの入力は止めたまま（BlockGameAll）、自前で呼ぶ窓の更新の間だけこの 2 語に入れて戻す。判断・音・決定は窓の部品がする。
-//   リピートはゲームがメニューの上下に付ける値（sub_2093A8 → sub_542B58(+68, 0xC00, 20, 5)）。
-//   ★B の処理は窓・部品・ChoiceStandardItem のどこにも無い。窓の取消は外のタッチだけ（選択待ち 0x2BA730〜0x2BA764）なので、B はその手順を踏む。
+// ---- 一覧のキー操作（IDA-opus-5.5-F060。利用者指示 2026-09-28: ゲームと同じく十字で選択・A で決定・B でやめる）----
+//   窓の部品（窓 +1256。vtable 0x8F0F64、ctor 0x33E4A4）は窓の更新（ItemSelectWindow_Update → sub_2F7744 → sub_2F7768）の中で
+//   BsMenuMgr（*0x949D4C）+68 の sead::ControllerWrapper の +72（押した瞬間）/ +80（リピート）を読む:
+//     ・vt+24 = 0x2F6B1C ショートカット: 部品 +208 & 8 のとき、各ノードの +196 と sub_6D33F0(mgr, mask)（+72 & mask）を照合し、当たったノードを決定。
+//       窓は取消の行（+1224）のノード +196 に 8 = B を書く（ItemSelectWindow_LayoutRows 0x2B9C70）→ B は「やめる」のショートカット。
+//     ・vt+28 = 0x33DEE0 キー方式（BsMenuMgr +508 == 部品 +204 = 11 のとき）: 次へ sub_722A6C / 前へ sub_722B40 は部品 +196 = 0x14C04 で
+//       下 0x800 / 上 0x400（左右 0x2000 / 0x1000 は外れる）、決定 = sub_6D33F0(mgr, 4)（A）。
+//   メニュー側のビットは BsMenuMgr_Init 0x6D3274 → sub_54752C(+68, 19, 表 0x84B4FC): 0x1 / 0x4 = A、0x2 / 0x8 = B、0x400〜0x2000 = 十字。
+//   ゲームの入力は止めたまま（BlockGameAll）、自前で呼ぶ窓の更新の間だけこの 2 語に実機のボタンと同じビットを入れて戻す。判断・音・決定は窓の部品がする。
+//   リピートはゲームの設定そのまま: BsMenuMgr_Init が sub_542B58(+68, 0x77F00, 20, 5)、sub_542E88 がボタンごとの押し続け c（押した最初 = 0）で
+//   c == 20、または c > 20 かつ (c − 20) % 5 == 0 のとき立てる。A・B は対象外（0x77F00 に無い）。
 const u32 kMenuMgrPtr = 0x00949D4C;         // BsMenuMgr
 const u32 kMenuPadTrig = 72, kMenuPadRepeat = 80;
-const u32 kMenuKeyA = 0x1u | 0x4u, kMenuKeyUp = 0x400u, kMenuKeyDown = 0x800u, kMenuKeyLeft = 0x1000u, kMenuKeyRight = 0x2000u;
-const u32 kMenuRepeatDelay = 20, kMenuRepeatEvery = 5;
-const u32 kListSelectWait = 0x002BA608;     // ItemSelectWindow_SelectWait_Calc
-const u32 kListCancelRowAt = 1224, kListCursorPane = 1208;
+const u32 kMenuKeyA = 0x1u | 0x4u, kMenuKeyB = 0x2u | 0x8u;
+const u32 kMenuKeyUp = 0x400u, kMenuKeyDown = 0x800u, kMenuKeyLeft = 0x1000u, kMenuKeyRight = 0x2000u;
+const u32 kMenuRepeatMask = 0x77F00u, kMenuRepeatDelay = 20, kMenuRepeatEvery = 5;
 // 行の決定音はゲームの表（dword_88BA80: 選択肢の種類 → 音）から: 複製 = 9 COPY / 削除 = 8 ERASE / 埋める = 0 DECIDE / やめる = 1 CANCEL。
 //   ※7 WIN_SELECT_ITEM_DECIDE は CSEQ が大域変数 31 を鳴らすたびに +1 して 3 段階に音程を上げる（利用者報告 2026-09-27: 選ぶたびに上がる）ので使わない
 const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x0100038E, 0x01000392 };
@@ -280,8 +282,9 @@ volatile u16 s_pickX, s_pickY;              // 長押しを始めた画素
 volatile u32 s_pickedSeq;                   // スポイトで取れたら増える（メニュースレッドが通知）
 volatile u32 s_noItemSeq;                   // 配置するアイテムが無いまま置こうとしたら増える
 volatile u32 s_cancelSeq;                   // B（範囲選択の取り消し）ごとに増える
-volatile u32 s_listKeys;                    // 一覧が開いている間の十字・A（メニューのスレッドが書く。CTRPF の Key）
-u32 s_listPrevKeys, s_listHeldFrames;
+volatile u32 s_listKeys;                    // 一覧が開いている間の十字・A・B（メニューのスレッドが書く。CTRPF の Key）
+u32 s_listPrevKeys;
+u32 s_listHold[32];                         // メニュー側のビットごとの押し続け（sead の +44 + 4i と同じ数え方）
 // ---- 描画 → メニュー（持ち上げ中の行き先。メニュースレッドが GridCursor へ渡す）----
 volatile u8 s_cursorX[kMaxCursorTiles], s_cursorY[kMaxCursorTiles];
 volatile u32 s_cursorCount, s_cursorSeq;
@@ -1460,23 +1463,9 @@ void SelectFrame(s32 vx, s32 vy) {
 }
 
 // 範囲選択モードの B: 一覧・持ち上げ・範囲を順に 1 段ずつ解く
-// 一覧の B: 窓の外をタッチしたときのゲームの取消と同じ手順（ItemSelectWindow_SelectWait_Calc 0x2BA730〜0x2BA764）。
-//   選択待ちのときだけ（ゲームも選択待ちでしか取消を受けない）。決まった状態の処理は StepList が窓と同じく片付ける。
-void ListCancelLikeGame(void) {
-    if (W(s_listWin, kListState) != kListSelectWait || W(s_listWin, kListState + 4) != 0)
-        return;
-    Sound(kSndListClose);
-    W(s_listWin, kListResult) = W(s_listWin, kListCancelRowAt);
-    B(s_listWin, kListCancelled) = 1;
-    B(reinterpret_cast<void *>(W(s_listWin, kListCursorPane)), 183) &= (u8)~1u;
-    ChangeState(s_listWin, kListDecided, 0);
-}
-
 void SelectCancel(void) {
-    if (ListBusy()) {
-        ListCancelLikeGame();
-        return;
-    }
+    if (ListBusy())
+        return;                             // 一覧の B は窓の部品のショートカット（取消の行 = 「やめる」）が受ける（StepList）
     if (s_carry != Carry::None) {
         CancelCarry();
         Sound(kSndInvalid);
@@ -1795,21 +1784,30 @@ void StepList(s32 vx, s32 vy) {
         s_listActive = false;
         return;
     }
-    // 十字・A をこの呼び出しの間だけ窓の部品が読む欄に入れる（上の説明）
+    // 十字・A・B をこの呼び出しの間だけ窓の部品が読む欄に入れる（上の説明）
     const u32 menu = R32(kMenuMgrPtr);
     u32 trig = 0, repeat = 0;
     {
         const u32 keys = s_listKeys;
         u32 held = 0;
         if (keys & (u32)Key::A) held |= kMenuKeyA;
+        if (keys & (u32)Key::B) held |= kMenuKeyB;
         if (keys & (u32)Key::DPadUp) held |= kMenuKeyUp;
         if (keys & (u32)Key::DPadDown) held |= kMenuKeyDown;
         if (keys & (u32)Key::DPadLeft) held |= kMenuKeyLeft;
         if (keys & (u32)Key::DPadRight) held |= kMenuKeyRight;
         trig = held & ~s_listPrevKeys;
-        s_listHeldFrames = (held != 0 && held == s_listPrevKeys) ? s_listHeldFrames + 1 : 0;
-        if (s_listHeldFrames >= kMenuRepeatDelay && (s_listHeldFrames - kMenuRepeatDelay) % kMenuRepeatEvery == 0)
-            repeat = held & ~kMenuKeyA;
+        for (u32 i = 0; i < 32; ++i) {      // sub_542E88 と同じ: 押している間 c を数え、c == 遅れ か 遅れを越えて間隔ごとに立てる
+            const u32 bit = 1u << i;
+            if ((held & bit) == 0) {
+                s_listHold[i] = 0;
+                continue;
+            }
+            const u32 c = s_listHold[i];
+            if ((kMenuRepeatMask & bit) != 0 && (c == kMenuRepeatDelay || (c > kMenuRepeatDelay && (c - kMenuRepeatDelay) % kMenuRepeatEvery == 0)))
+                repeat |= bit;
+            s_listHold[i] = c + 1;
+        }
         s_listPrevKeys = held;
     }
     const bool inject = menu != 0 && (trig | repeat) != 0;
@@ -2217,7 +2215,7 @@ void Tick(u32 keys) {
     if (!s_listActive)                      // 一覧（ゲームの ItemSelectWindow）はゲームのタッチで動く
         GuiMenu::BlockGameTouch();
     // 一覧が開いている間の十字・A は一覧へ（描画スレッドが窓の更新の間だけ渡す）。盤面は動かさない
-    s_listKeys = s_listActive ? (keys & ((u32)Key::A | (u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight)) : 0u;
+    s_listKeys = s_listActive ? (keys & ((u32)Key::A | (u32)Key::B | (u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight)) : 0u;
     StepMove(s_listActive ? 0u : keys);     // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
@@ -2228,8 +2226,8 @@ void Tick(u32 keys) {
         s_mode = (Mode)((pressed & (u32)Key::R) ? (now + 1) % count : (now + count - 1) % count);
         GuiMenu::Notify(Cheats::kMeOn, ModeName(s_mode));
     }
-    if ((pressed & (u32)Key::B) && s_mode == Mode::Select)
-        s_cancelSeq = s_cancelSeq + 1;      // 一覧・持ち上げ・範囲を 1 段ずつ解く
+    if ((pressed & (u32)Key::B) && s_mode == Mode::Select && !s_listActive)
+        s_cancelSeq = s_cancelSeq + 1;      // 持ち上げ・範囲を 1 段ずつ解く（一覧の B は一覧が受ける）
     ForwardCursor();
     NotifyEvents();
     if (GuiMenu::IsVisible()) {
