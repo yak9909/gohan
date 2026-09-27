@@ -1,5 +1,6 @@
 #include "GridCursor.hpp"
 #include "FrameTrace.hpp"
+#include "InstancedDraw.hpp"
 
 #include "BuildingHighlight.hpp"
 #include "PublicWorks.hpp"
@@ -36,9 +37,15 @@ using namespace Game;
 static u8 s_resourceHolder[kResourceHolderBytes] GC_ALIGNED;
 static u8 s_resourceAllocator[16] GC_ALIGNED;
 static u8 s_instanceAllocator[16] GC_ALIGNED;
-static u8 s_holders[kMaxCursors][kNodeHolderBytes] GC_ALIGNED;
-static u8 s_anims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
-static u8 s_rotAnims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
+// ★体は 1 つだけ（IDA-opus-5.5-F059）。カーソルは全部同じアニメ・同じ向きで、違うのは位置だけなので、
+//   描画ノード（InstancedDraw）が行列を変えて何か所にも描く。以前は 1 マスに 1 体（6 KB）で、ヒープが数に比例して
+//   上限に当たり、組み直しの失敗でカーソルが消えた（2026-09-28 実機）。
+static u8 s_holder[kNodeHolderBytes] GC_ALIGNED;
+static u8 s_anim[kMaterialAnimBytes] GC_ALIGNED;
+static u8 s_rotAnim[kMaterialAnimBytes] GC_ALIGNED;
+static float s_matrices[kMaxCursors][12] GC_ALIGNED;    // 置き場ごとの行列（描画スレッドが Pose で書き、描画で読む）
+static InstancedDraw::Drawer s_drawer;
+static InstancedDraw::Batch s_batch;
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -54,28 +61,19 @@ static const u32 kCanmOffset = 0x1148;
 static const float kCanmFrames = 150.0f;
 
 // Heap sizes. The game gives its own UnitCursor resource a 20,480 byte heap for a 16,256
-// byte file; 32 KiB is the same shape with room to spare. Instances measured 5,090 bytes
-// each including their animation (IDA-opus-5-F023), so 64 KiB covers all sixteen.
+// byte file; 32 KiB is the same shape with room to spare.
 static const u32 kResourceHeapBytes = 0x8000;
-// instance ヒープは体数から決める。1 体 5,090 B の実測（IDA-opus-5-F023）に 25% ほど足した。
-// ★以前の固定 0x10000 は 12 体分しかなく、「16 体入る」と書いてあったのは誤り。
 // 向きを決める 4 キーのアニメ。frame 0 = 45度 / 1 = 135 / 2 = 225 / 3 = 315
 // （`UnitCursor.bcres` 0x161C、メンバは Materials["m_UnitCursor"].TextureCoordinators[1].Rotate の 1 つだけ）。
 static const u32 kRotateCanmOffset = 0x161C;
 static const float kRotateFrame45 = 0.0f;
-// 1 体あたりの予約量。実測 5,090 B（IDA-opus-5-F023）に、向きアニメをもう一つ
-// 組む分と余裕を乗せてある。★足りないまま建てるとゲーム側が落ちる（F034）ので多めに取る。
-// ★親ヒープ（*0x94CC48）の空きは実機で 484 KB しかなく（2026-09-24）、設置プレビューと並ぶと足りなかった。
-//   実測 5,090 B（F023）＋向きアニメの分として 6 KB。1 体ごとに建てる前に残りを見る（kHeapExhausted）ので、
-//   足りなければ建てずに止まる。最後の 1 体は kInstanceHeapSlack が受ける。
+// instance ヒープ = 体 1 つ（実測 5,090 B（F023）＋向きアニメ → 6 KB）＋ 描画ノード ＋ 余裕。カーソルの数に依らない。
+// ★足りないまま建てるとゲーム側が落ちる（F034）ので、建てる前に残りを見る（kHeapExhausted）。
 static const u32 kInstanceBytesPerCursor = 6144;
-// ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
-// ★128 KB では、UnitCursor 40 体と交番のプレビューが並ばず「足りない」になった（2026-09-24 実機、空き 208 KB）。
-static const u32 kParentReserve = 0xC000;
 static const u32 kInstanceHeapSlack = 0x4000;
-// 1 フレームに作る上限。これはゲームの描画パスの中なので、
-// 64 体を一気に作るとそのフレームだけ長く止まる。
-static const u32 kBuildPerFrame = 8;
+static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor + InstancedDraw::kCreateBytes + kInstanceHeapSlack;
+// ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
+static const u32 kParentReserve = 0xC000;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
 
 // 間隔と拡大率は**別々に持つ**。以前は scale = spacing / 12 と連動させていたので、
@@ -98,9 +96,10 @@ static void* s_sceneOwner;
 static void* s_sceneResource;
 static void* s_resource;
 static void* s_model;
-static void* s_nodes[kMaxCursors];
-static u32 s_cursorCount;
-static bool s_rotBuilt[kMaxCursors];   // 向きアニメを組んだ体だけ解放する
+static void* s_node;
+static u32 s_cursorCount;   // 建っている体（0 か 1）
+static u32 s_placeCount;    // 描く置き場の数
+static bool s_rotBuilt;     // 向きアニメを組んだときだけ解放する
 static u32 s_loadAttempts;
 static u32 s_frames;
 static u32 s_submits;
@@ -116,7 +115,6 @@ static float s_playerZ;
 static float s_originX;   // 実際に使う基点。出したときに 1 度だけ決める
 static float s_originZ;
 static bool s_haveOrigin; // 一度掴んだら大きさを変えても掴み直さない
-static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
 // ★マス指定の形（建物エディター）。プレイヤーの足元ではなく、村のマス (x, y) の並びへ 1 体ずつ置く。
@@ -171,10 +169,7 @@ static inline bool IsHeapPointer(const void* p) {
     return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u;
 }
 
-// 大きさや見た目を変える要求。**必ず解放を挾む**。
-// instance ヒープは体数ぴったりで作っているので、数が変われば作り直す以外にない。
-// ★以前は Ready のときだけ見ていたので、**組み立て中に数を変えると**新しい数で
-// 古いヒープへ建て続けて落ちていた（IDA-opus-5-F034）。
+// 見た目（向きのアニメ）を変える要求。**必ず解放を挾む**。数や大きさは置き場の行列だけなので組み直さない。
 static void RequestRebuild() {
     // 止めると言われたあとに勝手に出し直さないための関門。
     if (!s_wantShown || s_stage == Stage::Off || s_stage == Stage::Failed)
@@ -201,6 +196,8 @@ static bool RoomIsCurved() {
 // ---------------------------------------------------------------------------------------
 
 static void PoseCursor(u32 index, float x, float y, float z) {
+    if (index >= kMaxCursors)
+        return;
     float matrix[12];
     float in[3] = {x, y, z};
     float out[3] = {x, y, z};
@@ -219,10 +216,9 @@ static void PoseCursor(u32 index, float x, float y, float z) {
     if (angle != 0)
         AppendRotationX16(matrix, angle);
 
-    SetMatrix3x4(s_holders[index], matrix);
-    // Not optional: this is what fills the skeleton's per-bone arrays, and without it the
-    // instance is submitted every frame and never drawn (IDA-opus-5-F020).
-    UpdateWorldAndSkeleton(s_holders[index]);
+    // 体へ書くのは描画ノードのコールバック（InstancedDraw）。そこで SetMatrix3x4 と UpdateWorldAndSkeleton を呼ぶ
+    //（後者は骨の配列を埋める。無いと描かれない。IDA-opus-5-F020）。
+    std::memcpy(s_matrices[index], matrix, sizeof(matrix));
 }
 
 // 画面と world の対応。**実機で観測した向き**（IDA-opus-5-F032）:
@@ -261,7 +257,8 @@ static void PoseTiles() {
     s_tileCount = count;
     s_takenSeq = seq;                    // 写している間に書き換わっていれば次のフレームでもう一度
     const float shared = heightId >= 0 ? PublicWorks::CursorHeight((u16)heightId, anchorX, anchorY) : 0.0f;
-    for (u32 i = 0; i < s_cursorCount && i < s_tileCount; ++i) {
+    s_placeCount = s_tileCount;
+    for (u32 i = 0; i < s_tileCount; ++i) {
         float pos[3] = { (float)(32 * s_tileX[i] + 16), 0.0f, (float)(32 * s_tileY[i] + 16) };
         pos[1] = heightId >= 0 ? shared : GroundHeight(pos, 0);
         PoseCursor(i, pos[0], pos[1], pos[2]);
@@ -276,13 +273,12 @@ static void PoseAll() {
     const float ox = s_originX;
     const float oz = s_originZ;
     u32 index = 0;
+    s_placeCount = (u32)s_footprintW * (u32)s_footprintH;
     // ★実機で見ると 2 つの枚数が逆だった（利用者報告、2026-09-22）。
     //   軸の写像自体は移動で合っているので、**どちらの数がどちらの辺か**だけを入れ替える。
     //   位置のずれ（s_row / s_col）はそれぞれの軸に残してあるので、十字キーは変わらない。
     for (u32 j = 0; j < s_footprintH; ++j) {          // 縦の枚数 = -Z 方向
         for (u32 i = 0; i < s_footprintW; ++i) {      // 横の枚数 = +X 方向
-            if (index >= s_cursorCount)
-                return;
             const float x = ox + (float)(s_row + (s16)i) * s_spacing;
             const float z = oz - (float)(s_col + (s16)j) * s_spacing;
             PoseCursor(index, x, s_playerY, z);
@@ -295,16 +291,16 @@ static void PoseAll() {
 // Build and teardown, both on the game's draw thread.
 // ---------------------------------------------------------------------------------------
 
-static bool BuildOneCursor(u32 index) {
+static bool BuildCursor() {
     // ★これを戻り値で済ませてはいけない。instance ヒープが尽きると
     //   `nwgfx_SkeletalModel_Create 0x0049693C` は失敗した確保の null をそのまま辿り、
     //   `ldr r0,[r5]` で落ちる（IDA-opus-5-F034、クラッシュダンプ）。呼ぶ前に残りを見る。
     void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
-    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor) {
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor + InstancedDraw::kCreateBytes) {
         Stop(Fail::kHeapExhausted);
         return false;
     }
-    void* holder = s_holders[index];
+    void* holder = s_holder;
     NodeHolderCtor(holder);
     // (bufferOption, isAnimationEnabled, maxAnimObjectsPerGroup). The last two matter: with
     // animation disabled the instance gets no binding at all, and the game gives its own
@@ -331,9 +327,10 @@ static bool BuildOneCursor(u32 index) {
         Stop(Fail::kSharedMeshArray);
         return false;
     }
-    s_nodes[index] = node;
+    s_node = node;
+    s_cursorCount = 1;
 
-    void* anim = s_anims[index];
+    void* anim = s_anim;
     MaterialAnimCtor(anim);
     void* canm = reinterpret_cast<u8*>(s_resource) + kCanmOffset;
     if (std::memcmp(canm, "CANM", 4) != 0) {
@@ -349,10 +346,10 @@ static bool BuildOneCursor(u32 index) {
 
     // 向きのアニメ。ゲーム自身と同じ slot 2（IDA-opus-5-F029）。
     // slot 0 の 150 フレームは Translate と MaterialColor しか書かないので、Rotate は衝突しない。
-    s_rotBuilt[index] = false;
+    s_rotBuilt = false;
     // マス指定の形（公共事業エディター）は常に斜め。メニューの設定は変えない（変えると通知が出る。利用者報告）
     if (s_diagonal || s_tileMode) {
-        void* rot = s_rotAnims[index];
+        void* rot = s_rotAnim;
         void* rotCanm = reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset;
         if (std::memcmp(rotCanm, "CANM", 4) != 0) {
             Stop(Fail::kAnimBuildFailed);
@@ -363,27 +360,32 @@ static bool BuildOneCursor(u32 index) {
             Stop(Fail::kAnimBuildFailed);
             return false;
         }
-        s_rotBuilt[index] = true;
+        s_rotBuilt = true;
         BindAnimSlot(holder, rot, 2);
         // 1 フレームで止める。キーは 4 つで 45/135/225/315 度。
         AnimSetFrame(rot, kRotateFrame45);
+    }
+    // 描画ノード（340 B + 付属）。生成関数は確保の失敗を確かめないので残りを見てから
+    if (HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_drawer, s_instanceAllocator)) {
+        Stop(Fail::kHeapExhausted);
+        return false;
     }
     return true;
 }
 
 static void DestroyCursors() {
-    for (u32 i = 0; i < kMaxCursors; ++i) {
-        if (*Word(s_holders[i], 4) != 0u) {
-            ModelInstanceDestroy(s_holders[i]);
-            // vtable slot 5, not the destructor: the destructor would leave the animation
-            // object and its child heap allocated (IDA-opus-5-F023).
-            MaterialAnimReleaseBuilt(s_anims[i]);
-            if (s_rotBuilt[i])
-                MaterialAnimReleaseBuilt(s_rotAnims[i]);
-        }
-        s_rotBuilt[i] = false;
-        s_nodes[i] = nullptr;
+    // 描画ノードが先（コールバックが体を読むので）。どちらもこのスレッドで、描画リストへ出すのをやめて数フレーム後
+    InstancedDraw::Destroy(s_drawer);
+    if (*Word(s_holder, 4) != 0u) {
+        ModelInstanceDestroy(s_holder);
+        // vtable slot 5, not the destructor: the destructor would leave the animation
+        // object and its child heap allocated (IDA-opus-5-F023).
+        MaterialAnimReleaseBuilt(s_anim);
+        if (s_rotBuilt)
+            MaterialAnimReleaseBuilt(s_rotAnim);
     }
+    s_rotBuilt = false;
+    s_node = nullptr;
     s_cursorCount = 0;
 }
 
@@ -429,27 +431,16 @@ static void StepBuild() {
             Stop(Fail::kNoParentHeap);
             return;
         }
-        // ★マス指定の形（公共事業・建物・マップエディター）は、親ヒープが足りなければ入る行数（8 体ずつ）で組み、
-        //   1 行も入らなければ止めずに次のフレームで見直す。以前は Failed で止まったまま二度と組み直さず、
-        //   マップエディターの複製が 256 KB を借りている間に組み直しが来るとカーソルが消えたままになった（2026-09-28 実機:
-        //   親の空き 503,480 B − 262,144 B < 24 体の 245,760 B）。足元の形（メニューの ON/OFF）は従来どおり止める。
-        u32 cursors = (u32)s_footprintW * (u32)s_footprintH;
-        {
-            const u32 fixedBytes = kResourceHeapBytes + kInstanceHeapSlack + kParentReserve;
-            const u32 freeBytes = HeapGetFreeSize(parent);
-            if (freeBytes < fixedBytes + cursors * kInstanceBytesPerCursor) {
-                if (!s_tileMode) {
-                    Stop(Fail::kInstanceHeap);
-                    return;
-                }
-                u32 fit = freeBytes > fixedBytes ? (freeBytes - fixedBytes) / kInstanceBytesPerCursor : 0u;
-                fit -= fit % kMaxSide;
-                if (fit == 0u) {
-                    s_failReason = Fail::kInstanceHeap;     // 表示用。段は AllocHeaps のまま
-                    return;
-                }
-                cursors = fit;
+        // ★ヒープはカーソルの数に依らず固定（F059）。足りなければ、マス指定の形（公共事業・建物・マップエディター）は
+        //   止めずに次のフレームで見直す（以前は Failed で止まったまま二度と組み直さず、カーソルが消えたままになった）。
+        //   足元の形（メニューの ON/OFF）は従来どおり止める。
+        if (HeapGetFreeSize(parent) < kResourceHeapBytes + kInstanceHeapBytes + kParentReserve) {
+            if (!s_tileMode) {
+                Stop(Fail::kInstanceHeap);
+                return;
             }
+            s_failReason = Fail::kInstanceHeap;     // 表示用。段は AllocHeaps のまま
+            return;
         }
         s_sceneOwner = owner;
         s_sceneResource = *reinterpret_cast<void**>(Word(owner, kSceneOwnerResourceOffset));
@@ -467,12 +458,8 @@ static void StepBuild() {
             Stop(Fail::kResourceHeap);
             return;
         }
-        // 体数ぶんだけ取る。大きさを増やして入り切らなくなったときは SetFootprint が
-        // 組み直しを頼むので、ここは「いま要る量」でよい。
-        s_heapCursors = cursors;
         s_failReason = Fail::kNone;
-        const u32 instanceBytes = s_heapCursors * kInstanceBytesPerCursor + kInstanceHeapSlack;
-        if (HeapCreateNamed(s_instanceAllocator, instanceBytes, parent, &s_heapName,
+        if (HeapCreateNamed(s_instanceAllocator, kInstanceHeapBytes, parent, &s_heapName,
                             1, 0u) != 1 ||
             !IsHeapPointer(*reinterpret_cast<void**>(Word(s_instanceAllocator, 4)))) {
             Stop(Fail::kInstanceHeap);
@@ -537,19 +524,8 @@ static void StepBuild() {
             ComputeOrigin();
         }
 
-        // ★生の footprint ではなく、**ヒープを作ったときの体数**で建てる。
-        //   途中で数を変えられてもここが増えないので、ヒープを超えようがない。
-        //   数の変更は SetFootprint が組み直しを頼む形で反映される。
-        const u32 want = s_heapCursors;
-        u32 made = 0;
-        while (s_cursorCount < want && made < kBuildPerFrame) {
-            if (!BuildOneCursor(s_cursorCount))
-                return;
-            ++s_cursorCount;
-            ++made;
-        }
-        if (s_cursorCount < want)
-            return;                    // この段に居たまま次のフレームへ
+        if (s_cursorCount == 0u && !BuildCursor())
+            return;
         PoseAll();
         s_animFrame = 0.0f;
         s_stage = Stage::Ready;
@@ -581,7 +557,7 @@ static void PrepareTint() {
     s_tintPremultiplied = false;
     if (s_cursorCount == 0)
         return;
-    const u32 node = *Word(s_holders[0], 4);
+    const u32 node = *Word(s_holder, 4);
     const u32 arr = BuildingHighlight::SafeReadable(node + kModelMaterials, 4) ? Rd32(node + kModelMaterials) : 0;
     if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
         return;
@@ -613,13 +589,13 @@ static void PrepareTint() {
 
 static void ApplyTint() {
     const u32 value = BuildingHighlight::TintConstant(s_tintColor, s_tintStrength, s_tintPremultiplied);
-    for (u32 i = 0; i < s_cursorCount; ++i) {
-        const u32 node = *Word(s_holders[i], 4);
+    {
+        const u32 node = *Word(s_holder, 4);
         if (node == 0u || !BuildingHighlight::SafeReadable(node + kModelMaterials, 4))
-            continue;
+            return;
         const u32 arr = Rd32(node + kModelMaterials);
         if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
-            continue;
+            return;
         for (u32 k = 0; k < kMaxTintMaterials; ++k) {
             const u32 m = Rd32(arr + 4 * k);
             if (!BuildingHighlight::LooksLikeMaterial(m))
@@ -731,20 +707,19 @@ extern "C" void FrameCallback(void) {
         ApplyTint();
     }
 
-    for (u32 i = 0; i < s_cursorCount; ++i) {
-        if (s_tileMode && i >= s_tileCount)
-            continue;                     // マス指定の形で使っていない体は出さない
-        void* holder = s_holders[i];
-        if (*Word(holder, 4) == 0u)
-            continue;
+    // 体は 1 つ。アニメを 1 回進め、置き場の並びを描画ノードに渡す（描くのはシーンの描画のとき。InstancedDraw）
+    if (*Word(s_holder, 4) != 0u) {
         // Drive the loop ourselves. The resource says 150 frames and loop, and the game's
         // own wrap folds anything we pass into that range.
-        AnimSetFrame(s_anims[i], s_animFrame);
+        AnimSetFrame(s_anim, s_animFrame);
         // The game's own call: every animation object gets its vtable[5], then both
         // evaluate-and-apply phases (IDA-opus-5-F029).
-        EvaluateAndApplyAnims(holder);
-        Submit(holder, 0);
-        ++s_submits;
+        EvaluateAndApplyAnims(s_holder);
+        s_batch.holder = s_holder;
+        s_batch.matrices = s_matrices;
+        s_batch.count = s_placeCount < kMaxCursors ? s_placeCount : kMaxCursors;
+        InstancedDraw::Submit(s_drawer, &s_batch, 1);
+        s_submits += s_batch.count;
     }
     s_animFrame += 1.0f;
     if (s_animFrame >= kCanmFrames)
@@ -753,12 +728,6 @@ extern "C" void FrameCallback(void) {
     // Once a second, and from this thread only: walking a heap's free list is cheap but it
     // is the game's heap, so it happens here rather than from the plugin thread.
     if ((s_frames % 60u) == 0u) {
-        // 入る数に減らして組んだあと、親ヒープが空いて形の体数が入るようになったら組み直す
-        const u32 cursors = (u32)s_footprintW * (u32)s_footprintH;
-        void* parent = *kParentHeap;
-        if (s_tileMode && s_heapCursors < cursors && IsHeapPointer(parent)
-            && HeapGetFreeSize(parent) >= kResourceHeapBytes + kInstanceHeapSlack + kParentReserve + cursors * kInstanceBytesPerCursor)
-            RequestRebuild();
         void* resourceHeap = *reinterpret_cast<void**>(Word(s_resourceAllocator, 4));
         void* instanceHeap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
         s_resourceFree = IsHeapPointer(resourceHeap) ? HeapGetFreeSize(resourceHeap) : 0u;
@@ -834,9 +803,6 @@ bool ShowTiles(void) {
     if (!s_tileMode && s_wantShown)
         return false;                     // 足元の形で出ている。混ぜない
     s_tileMode = true;
-    // 最初から 8x3 = 24 体で組む（公共事業の大半が入る）。大きい形のときだけ増やす。
-    if ((u32)s_footprintW * (u32)s_footprintH < 24)
-        SetFootprint(kMaxSide, 3);
     return Show();
 }
 
@@ -851,18 +817,7 @@ void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u
         s_pendY[i] = ys[i];
     }
     s_pendCount = count;
-    ++s_pendSeq;
-    // 組んである体数で足りなければ 8 の倍数で組み直す（ヒープは体数ぴったりで取るので）
-    // 体数は形に合わせて増やし、小さい形に戻ったら減らす（親ヒープを空けて設置プレビューに回す）。
-    // 行 = 8 体。24 体より下には減らさず、2 行以上余ったときだけ減らす（切り替えのたびに組み直さないため）。
-    if (s_tileMode || !s_wantShown) {
-        const u32 have = (u32)s_footprintH;
-        u32 rows = (count + kMaxSide - 1) / kMaxSide;
-        if (rows < 3)
-            rows = 3;
-        if (rows > have || rows + 2 <= have)
-            SetFootprint(kMaxSide, rows);
-    }
+    ++s_pendSeq;                        // 数が変わっても組み直さない（置き場の行列だけ。描画スレッドが写す）
 }
 
 void SetTint(u32 color, u8 strength) {
@@ -951,7 +906,8 @@ void SetFootprint(u32 width, u32 height) {
         return;
     s_footprintW = (u8)width;
     s_footprintH = (u8)height;
-    RequestRebuild();
+    if (s_stage == Stage::Ready)        // 置き場の数が変わるだけ。体は作り直さない（F059）
+        s_request = Request::Reposition;
 }
 
 void SetSpacing(s32 worldUnits) {
@@ -1004,7 +960,7 @@ Status Read(void) {
     out.failReason = s_failReason;
     out.frames = s_frames;
     out.submits = s_submits;
-    out.cursors = s_cursorCount;
+    out.cursors = s_placeCount;
     out.footprintW = s_footprintW;
     out.footprintH = s_footprintH;
     out.col = s_col;

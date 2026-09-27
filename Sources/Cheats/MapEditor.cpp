@@ -146,7 +146,7 @@ const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送�
 // 持ち上げる・写すアイテムの数。以前は 64（UnitCursor の最大）で、大きな範囲は 65 個目から掴めなかった（利用者報告 2026-09-27）。
 //   上画面のカーソル・複製と下画面のコマは盤面の周りだけ作るので、ここは村の物の数だけ持てればよい
 const u32 kMaxCarry = 2048;
-const u32 kMaxCursorTiles = 64;             // 上画面の UnitCursor（GridCursor::kMaxCursors）
+const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 8x8 の周り 1 マスで最大 100 か所（GridCursor::kMaxCursors 256 以下）
 const s32 kNearMargin = 1;                  // 盤面の周り何マスまで上画面に出すか（カーソル・複製）
 const u32 kCursorBlue = 0x00FFB060u;        // BuildingHighlight::kBlue（公共事業エディターの移動の色）
 const u8 kCursorTint = 0xB0;                // 公共事業エディターと同じ強さ

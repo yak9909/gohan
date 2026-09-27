@@ -2,6 +2,7 @@
 
 #include "BuildingHighlight.hpp"
 #include "GridCursorGameApi.hpp"
+#include "InstancedDraw.hpp"
 
 #include <cstring>
 
@@ -10,7 +11,8 @@
 //
 // ★村の実体（fgobj）の材質は書き換えない（F056）。材質の物体は同じモデルの実体で共有されていて（利用者報告: 触っていない
 //   同じモデルも赤くなった）、ゲームの簡易版の書き出し（0x4A17B8）が季節資源の未解決の参照表を読んで落ちた（0x4B0C54、実機）。
-//   複製は実体の体 +8 の資源から作った自前の体で描く。
+//   複製は実体の体 +8 の資源から作った自前の体で描く。★モデル（資源）1 種類につき体 1 つで、同じモデルの置き場は
+//   描画ノード（InstancedDraw、F059）が行列を変えて何か所にも描く。ヒープはモデルの種類の数だけ。
 // ★赤は体を作らない（F058）。村の実体の描画関数の表 off_948F90（2 語）を自前の包みへ差し替え、選んだマスの物体を描くときだけ
 //   材質を結んだ直後に TEV 段 5 へ赤を混ぜるコマンドを積む。描いたあとはゲームのフェード（obj+104 の 0x800）と同じ手順で
 //   材質・形状のキャッシュを捨てるので、同じモデルのほかの物体には漏れない。モデルの共有もヒープも関係なく何個でも赤くできる。
@@ -117,6 +119,9 @@ void FreeOwn(u32 p) {
     reinterpret_cast<FreeFn>(vt[3])(s_alloc, reinterpret_cast<void *>(p));
 }
 
+InstancedDraw::Drawer s_drawer;             // 複製を描く描画ノード（自前のヒープに作る）
+void DropHeap(void);
+
 bool HeapRoom(u32 need) {
     return s_heapMade && HeapGetFreeSize(Heap()) >= need + kHeapLow;
 }
@@ -144,6 +149,11 @@ bool EnsureHeap(void) {
     s_heapMade = true;
     s_heapProc = proc;
     s_heapRes = R32(proc + kProcFgResource);
+    // 描画ノード。生成関数は確保の失敗を確かめないので残りを見てから（F059）
+    if (!HeapRoom(InstancedDraw::kCreateBytes) || !InstancedDraw::Create(s_drawer, s_alloc)) {
+        DropHeap();
+        return false;
+    }
     return true;
 }
 
@@ -465,7 +475,7 @@ struct Slot {
     bool tinted;                            // 色を混ぜられた（汎用の書き出しへ替えた）
     bool used;
 };
-const u32 kMaxSlots = 64;
+const u32 kMaxSlots = 32;                   // 同時に描くモデルの種類
 Slot s_slots[kMaxSlots];
 struct LayerUndo { u32 res, old; };
 const u32 kMaxLayerUndo = 64;
@@ -625,14 +635,14 @@ void DestroySlot(Slot &s) {
     s.res = nullptr;
 }
 
-void PoseAtTile(Slot &s, s32 x, s32 y) {
+// マス (x, y) に少し浮かせて置く行列（体へは描画ノードが書く）
+void MatrixAtTile(s32 x, s32 y, float *matrix) {
     float in[3] = { (float)(32 * x + 16), 0.0f, (float)(32 * y + 16) };
     in[1] = GroundHeight(in, 0) + kPreviewLift;
     float out[3] = { in[0], in[1], in[2] };
     u16 angle = 0;
     if ((kRoomFlags[*kRoomId] & kRoomFlagCurved) != 0u)
         angle = FieldPositionToRenderSpace(out, in);
-    float matrix[12];
     for (u32 i = 0; i < 12; ++i)
         matrix[i] = 0.0f;
     matrix[0] = matrix[5] = matrix[10] = 1.0f;
@@ -641,27 +651,28 @@ void PoseAtTile(Slot &s, s32 x, s32 y) {
     matrix[11] = out[2];
     if (angle != 0)
         AppendRotationX16(matrix, angle);
-    const float one[3] = { 1.0f, 1.0f, 1.0f };
-    SetMatrix3x4(s.holder, matrix);
-    SetScale(s.holder, one);                // 体を使い回すので赤のときの拡大率を戻す
-    UpdateWorldAndSkeleton(s.holder);
 }
 
 // 要求（このフレームに描く物）
-struct Want { void *res; s16 x, y; u8 style; };
-const u32 kMaxWants = kMaxSlots;
+struct Want { void *res; s16 x, y; u8 style; u8 slot; };
+const u32 kMaxWants = kMaxClones;
+const u8 kNoSlot = 0xFF;
 Want s_wants[kMaxWants];
 u32 s_wantCount;
+float s_matrices[kMaxWants][12];            // 束ごとに続けて並べる（描画ノードがこのフレームの描画で読む）
+InstancedDraw::Batch s_batches[kMaxSlots];
 
 void StepSlots(void) {
     for (u32 i = 0; i < kMaxSlots; ++i)
         s_slots[i].used = false;
+    // 1. 要求ごとに体を決める（同じ資源なら同じ体。無ければ作る）
     u32 creates = 0;
     for (u32 c = 0; c < s_wantCount; ++c) {
-        const Want &w = s_wants[c];
+        Want &w = s_wants[c];
+        w.slot = kNoSlot;
         Slot *slot = nullptr;
-        for (u32 i = 0; i < kMaxSlots && slot == nullptr; ++i)      // 同じ資源・同じ色の体を使い回す
-            if (s_slots[i].live && !s_slots[i].used && s_slots[i].res == w.res && s_slots[i].style == w.style)
+        for (u32 i = 0; i < kMaxSlots && slot == nullptr; ++i)
+            if (s_slots[i].live && s_slots[i].res == w.res && s_slots[i].style == w.style)
                 slot = &s_slots[i];
         if (slot == nullptr) {
             if (creates >= kCreatesPerFrame)
@@ -682,9 +693,22 @@ void StepSlots(void) {
         }
         slot->used = true;
         slot->idle = 0;
-        PoseAtTile(*slot, w.x, w.y);
-        Submit(slot->holder, 0);
+        w.slot = (u8)(slot - s_slots);
     }
+    // 2. 体ごとに置き場の行列を続けて並べ、束にして描画ノードへ渡す
+    u32 n = 0, batches = 0;
+    for (u32 i = 0; i < kMaxSlots; ++i) {
+        if (!s_slots[i].used)
+            continue;
+        const u32 start = n;
+        for (u32 c = 0; c < s_wantCount && n < kMaxWants; ++c)
+            if (s_wants[c].slot == i)
+                MatrixAtTile(s_wants[c].x, s_wants[c].y, s_matrices[n++]);
+        if (n == start)
+            continue;
+        s_batches[batches++] = { s_slots[i].holder, &s_matrices[start], n - start };
+    }
+    InstancedDraw::Submit(s_drawer, s_batches, batches);
     for (u32 i = 0; i < kMaxSlots; ++i)
         if (!s_slots[i].used && s_slots[i].idle < 0xFFFFu)
             ++s_slots[i].idle;
@@ -709,6 +733,10 @@ bool SceneSame(void) {
 u32 s_quiet;
 
 void TearDown(bool sameScene) {
+    if (sameScene)
+        InstancedDraw::Destroy(s_drawer);       // 描画ノードが先（コールバックが体を読む）
+    else
+        std::memset(&s_drawer, 0, sizeof(s_drawer));   // 場面が変わった: 何も呼ばずにヒープごと捨てる
     if (sameScene) {
         for (u32 i = 0; i < kMaxSlots; ++i)
             if (s_slots[i].made && !s_slots[i].broken)

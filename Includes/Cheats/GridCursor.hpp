@@ -11,8 +11,8 @@
 // 4 コマの `UnitCursorRotate` は `TextureCoordinators[1].Rotate` を π/4 と 3π/4 に振って
 // 斜線の向きを家具の向きへ合わせるだけで、フレームを決める `0x00690B68` の引数も
 // アイテム ID ではなく家具の 16bit 角度（返す 0〜3 は向きの象限）。IDA-opus-5-F028。
-// だから任意の大きさは **1 マスにつき 1 体**で作る。12 体を毎フレーム動かして描いても
-// フレーム落ちは測れなかった（IDA-opus-5-F017、実機）。
+// 任意の大きさは **1 マスにつき 1 か所**描く。★2026-09-28 から体は 1 つだけで、描画ノード（InstancedDraw）が
+// 行列を変えて何か所にも描く（IDA-opus-5.5-F059）。以前の 1 マス 1 体（6 KB）はヒープが数に比例して上限に当たった。
 //
 // ゲームへ触るのは**描画スレッド上の 1 か所だけ**（`FrameCallback`）。メニュー側は
 // 要求を立てて状態を読むだけで、確保・生成・解放も全部あちらで起きる。
@@ -26,8 +26,8 @@
 
 namespace GridCursor
 {
-    // 3x3 が今の最大。16 あれば作り直さずにもう少し大きいものも試せる。
-    static const u32 kMaxCursors = 64;
+    // 置き場の最大（体は 1 つ。数を増やしてもヒープは増えない。1 か所ごとにコマンドバッファの残りを見て描く）
+    static const u32 kMaxCursors = 256;
     static const u32 kMaxSide = 8;
 
     enum class Stage : u32
@@ -37,7 +37,7 @@ namespace GridCursor
         LoadResource,   // UnitCursor.bcres を頼む。届くまでフレームをまたいで繰り返す
         SetupResource,  // ゲームに再配置・準備をさせる
         FindModel,      // 名前でモデルを引く
-        BuildCursors,   // 1 マスにつき 1 体を生成・姿勢付け・アニメ結線
+        BuildCursors,   // 体 1 つと描画ノードを生成・アニメ結線・置き場の行列
         Ready,          // 毎フレーム描いている
         Teardown,       // 描画を止めてから順に返す
         Failed,         // 検査で止まった。failReason にどれか
@@ -51,7 +51,7 @@ namespace GridCursor
         u32     failReason;
         u32     frames;         // シーン所有者の検査を通ったフレーム
         u32     submits;        // 実際にシーンへ渡したノード
-        u32     cursors;        // いま建っている体数
+        u32     cursors;        // いま描いている置き場の数
         u8      footprintW;
         u8      footprintH;
         s16     col;            // 出したときの位置からの相対（マス）。画面の右が +
