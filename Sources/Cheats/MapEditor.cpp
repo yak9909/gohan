@@ -79,9 +79,10 @@ const u32 kChipCmdBytes = 1280;             // Chip の組み立て（sub_B420C4
 //   8x8 のうちゲームが使う 4.0 にする（扉は隠す）
 const float kKindFrame = 4.0f;
 const float kTile = 20.0f;                  // 盤面の 1 マス（エディター +129560）
-enum ChipType : u8 { kItemC, kFgobjN, kBuild11, kBuild12, kBuild22, kChipTypes };
+// 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
+enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
-    "cip_01C_02x02.bclyt", "cip_01N_02x02.bclyt", "cip_01P_02x02.bclyt", "cip_01P_02x04.bclyt", "cip_01P_04x04.bclyt",
+    "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01P_02x02.bclyt",
 };
 const u32 kMaxChips = 160;                  // 8x8 のアイテム 64 + 建物のコマ（1x1 に割っても 64）+ 余裕
 const u32 kBuildsPerFrame = 8;              // 1 フレームで組み立てるコマの数（組み立ての山を平らにする）
@@ -130,10 +131,12 @@ const u32 kPickShowFrames = 6;              // 進捗バーはタッチから 20
 const u32 kNoItem = 0xFFFFFFFFu;
 // カメラの目標は盤面の中心より 1 マス南（利用者指示 2026-09-27: 盤面の下一列が上画面から外れていた）
 const float kCameraSouthTiles = 1.0f;
-// fgobj のコマの色（利用者指示 2026-09-27: 通常アイテムと見分ける）。テクスチャは灰色（LA4）で、色はマテリアルの黒色・白色
-//   （Material +0x10 / +0x14。F-291）。元は C = #3F930F/#B4FF14（黄緑）、N・P = #1B7348/#00CA79（青緑）。fgobj はオレンジに
-const u8 kFgobjBlack[4] = { 0x7A, 0x3E, 0x10, 0x00 };
-const u8 kFgobjWhite[4] = { 0xFF, 0xA0, 0x3C, 0xFF };
+// コマの色（利用者指示 2026-09-27）。テクスチャは灰色（LA4）で、色はマテリアルの黒色・白色（Material +0x10 / +0x14。F-291）。
+//   元は C = #3F930F/#B4FF14（黄緑）、N・P = #1B7348/#00CA79（青緑）。fgobj = 通常アイテムより濃い緑、建物 = オレンジ
+const u8 kFgobjBlack[4] = { 0x1C, 0x4F, 0x07, 0x00 };
+const u8 kFgobjWhite[4] = { 0x5D, 0xAE, 0x12, 0xFF };
+const u8 kBuildBlack[4] = { 0x7A, 0x3E, 0x10, 0x00 };
+const u8 kBuildWhite[4] = { 0xFF, 0xA0, 0x3C, 0xFF };
 const u32 kPictureMaterial = 316;           // nw::lyt::Picture +0x13C = Material*（ctor 0x4BAA68。F-291）
 const u32 kMatColors = 0x10;                // Material +0x10.. 色 7 個（[0] 黒色 / [1] 白色）
 const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送り直す（GameList と同じ）
@@ -424,30 +427,14 @@ void AddWant(u8 type, s32 tx, s32 ty, u8 w, u8 h, bool rotated) {
 
 void CollectWants(s32 vx, s32 vy) {
     s_wantCount = 0;
-    // 建物（P）。盤面に収まるものはコマ 1 個、はみ出すものは盤面の中のマスを 1x1 で
+    // 建物（P）。衝突判定のマスごとに 1x1
     const u32 n = s_buildChipCount;
     for (u32 k = 0; k < n; ++k) {
         const BuildChip &b = s_buildChips[k];
-        const s32 x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
-        if (x1 <= vx || y1 <= vy || x0 >= vx + kView || y0 >= vy + kView)
-            continue;
-        if (x0 >= vx && y0 >= vy && x1 <= vx + kView && y1 <= vy + kView) {
-            if (b.w == 2 && b.h == 2)
-                AddWant(kBuild22, x0, y0, 2, 2, false);
-            else if (b.w == 1 && b.h == 2)
-                AddWant(kBuild12, x0, y0, 1, 2, false);
-            else if (b.w == 2 && b.h == 1)
-                AddWant(kBuild12, x0, y0, 2, 1, true);     // 1x2 のコマを 90 度回す
-            else
-                AddWant(kBuild11, x0, y0, 1, 1, false);
-            continue;
-        }
-        for (s32 y = y0; y < y1; ++y)
-            for (s32 x = x0; x < x1; ++x)
-                if (x >= vx && y >= vy && x < vx + kView && y < vy + kView)
-                    AddWant(kBuild11, x, y, 1, 1, false);
+        if (b.x >= vx && b.y >= vy && b.x < vx + kView && b.y < vy + kView)
+            AddWant(kBuild11, b.x, b.y, 1, 1, false);
     }
-    // アイテム（C = 通常 / N = fgobj）。建物の上に載っていても出す（上に置ける家具に載る扱い）
+    // アイテム（C。fgobj は色だけ変える）。建物の上に載っていても出す（上に置ける家具に載る扱い）
     const u32 field = R32(kFieldPtr);
     if (field == 0)
         return;
@@ -459,7 +446,7 @@ void CollectWants(s32 vx, s32 vy) {
             const u16 id = (u16)(*item & 0x7FFFu);
             if (id == kEmptyItem)
                 continue;
-            AddWant(id <= kFgobjMax ? kFgobjN : kItemC, vx + i, vy + j, 1, 1, false);
+            AddWant(id <= kFgobjMax ? kFgobjC : kItemC, vx + i, vy + j, 1, 1, false);
         }
     }
 }
@@ -475,12 +462,12 @@ bool BuildChipLayout(Chip &c, u8 type) {
     c.built = true;
     c.type = type;
     B(c.layout, kLayoutPriority) = 2;
-    if (type == kFgobjN) {
+    if (type == kFgobjC || type == kBuild11) {
         void *pic = FindPane(c.layout, "P_Btn_00");
         const u32 mat = pic != nullptr ? W(pic, kPictureMaterial) : 0u;
         if (mat != 0) {
-            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), kFgobjBlack, 4);
-            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), kFgobjWhite, 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), type == kFgobjC ? kFgobjBlack : kBuildBlack, 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), type == kFgobjC ? kFgobjWhite : kBuildWhite, 4);
             *reinterpret_cast<u8 *>(mat + kMatFlags) &= ~4u;
         }
     }
@@ -754,9 +741,20 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         Trace(vx, vy, px, py);
         break;
     case TouchKind::Hold: {
+        // 指が長押しのマスを出たら配置に切り替え、なぞった先に置く（利用者指示 2026-09-27。長押しのマス自体は物があるので置かない）
+        s32 tx = -1, ty = -1;
+        if (!TouchTile(vx, vy, px, py, tx, ty) || tx != s_holdTileX || ty != s_holdTileY) {
+            EndHold();
+            HideName();
+            s_touchKind = TouchKind::Paint;
+            s_touchLastX = s_holdTileX;
+            s_touchLastY = s_holdTileY;
+            Trace(vx, vy, px, py);
+            break;
+        }
         const float dx = (float)px - (float)s_touchStartX, dy = (float)py - (float)s_touchStartY;
         if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop) {
-            s_touchKind = TouchKind::Ignore;    // 動かしたら長押しをやめる
+            s_touchKind = TouchKind::Ignore;    // 同じマスの中で大きく動かしたら長押しだけやめる
             EndHold();
         }
         break;
@@ -858,7 +856,7 @@ void MoveView(s32 dx, s32 dy) {
     s_viewY = y;
 }
 
-// 建物の衝突判定（公共事業エディターと同じ形）をコマにする
+// 建物の衝突判定（公共事業エディターと同じ形）のマスをコマにする
 void CollectBuildings(void) {
     u32 n = 0;
     for (u32 i = 0; i < PublicWorks::kSlots; ++i) {
@@ -869,22 +867,7 @@ void CollectBuildings(void) {
         const u32 cells = BuildingEditor::CollisionCells(slot.id, dx, dy, 64);
         if (cells == 0)
             continue;
-        s32 x0 = 0x7FFF, y0 = 0x7FFF, x1 = -0x7FFF, y1 = -0x7FFF;
-        for (u32 k = 0; k < cells; ++k) {
-            const s32 x = (s32)slot.x + dx[k], y = (s32)slot.y + dy[k];
-            if (x < x0) x0 = x;
-            if (y < y0) y0 = y;
-            if (x > x1) x1 = x;
-            if (y > y1) y1 = y;
-        }
-        const s32 w = x1 - x0 + 1, h = y1 - y0 + 1;
-        const bool box = (u32)(w * h) == cells && w <= 2 && h <= 2;   // 1x1 / 2x1 / 1x2 / 2x2 の詰まった四角
-        if (box && x0 >= 0 && y0 >= 0 && x1 < kTilesX && y1 < kTilesY) {
-            if (n < kMaxBuildChips)
-                s_buildChips[n++] = { (u8)x0, (u8)y0, (u8)w, (u8)h };
-            continue;
-        }
-        for (u32 k = 0; k < cells && n < kMaxBuildChips; ++k) {      // それ以外（3x3・離れた形など）は 1x1 を並べる
+        for (u32 k = 0; k < cells && n < kMaxBuildChips; ++k) {      // 衝突判定のマスごとに 1x1（利用者指示 2026-09-27）
             const s32 x = (s32)slot.x + dx[k], y = (s32)slot.y + dy[k];
             if (x >= 0 && y >= 0 && x < kTilesX && y < kTilesY)
                 s_buildChips[n++] = { (u8)x, (u8)y, 1, 1 };

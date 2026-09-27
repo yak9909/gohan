@@ -7,8 +7,8 @@
 // ゲームの模様替え UI（BsMenuInteriorEditor）は ModuleIndoor.cro にあり村では使えない（IDA-opus-5.5-F050）。
 // そこで同じ資源 `Layout/chip/chip.arc` をゲームの Layout 部品で組み、動きはゲームの実装を写す。
 //   盤面   … chip_room_00（kind アニメのフレーム 4 = ゲームが使う最大の 8x8。1 マス 20）。扉・窓・投函ボタンは隠す（本体以外は出さない）
-//   コマ   … cip_01{C,N,P}_WWxHH。通常アイテム = C（上に置ける家具に置ける家具）、fgobj（ID <= 0xFD）= N（置けない家具）、
-//             建物 = P（上に物を置ける家具。衝突判定が 1x1/2x1/1x2/2x2 の四角ならコマ 1 個、ほかは 1x1 を並べる）
+//   コマ   … 通常アイテム = cip_01C_02x02（黄緑）、fgobj（ID <= 0xFD）= 同じ C を濃い緑に、建物 = 衝突判定のマスごとに
+//             cip_01P_02x02 をオレンジに（利用者指示 2026-09-27。色はマテリアルの黒色・白色を書き換える）
 //   位置   … N_All = 盤面の中心（N_Room_00 の大域位置）+ (マス − 中心) × 20、y は下へ減る（ModuleFtr 0xB0F758 と同じ式）
 //   名前   … 持ち物欄と同じ吹き出し ItemSelectNameWindow（itm_slct_win.arc の N_itm_nm_00）
 // カメラは公共事業エディターと同じ（FieldCamera）。元の下画面 UI（地図・タブ）は GameList の手順で退場させておく。
