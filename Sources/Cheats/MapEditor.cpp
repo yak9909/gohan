@@ -10,6 +10,7 @@
 #include "GuiDialog.hpp"
 #include "GuiMenu.hpp"
 #include "ItemNames.hpp"
+#include "MapEditor3D.hpp"
 #include "PublicWorks.hpp"
 
 #include <3ds.h>
@@ -142,7 +143,13 @@ const u32 kPictureMaterial = 316;           // nw::lyt::Picture +0x13C = Materia
 const u32 kMatColors = 0x10;                // Material +0x10.. 色 7 個（[0] 黒色 / [1] 白色）
 const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送り直す（GameList と同じ）
 // ---- 範囲選択（段階 3）。ゲームの模様替え（ModuleIndoor の CollectChip / Chip、ModuleFtr の移動）に合わせる（IDA-opus-5.5-F053）----
-const u32 kMaxCarry = 64;                   // 持ち上げる・写すアイテムの数（UnitCursor の最大と同じ）
+// 持ち上げる・写すアイテムの数。以前は 64（UnitCursor の最大）で、大きな範囲は 65 個目から掴めなかった（利用者報告 2026-09-27）。
+//   上画面のカーソル・複製と下画面のコマは盤面の周りだけ作るので、ここは村の物の数だけ持てればよい
+const u32 kMaxCarry = 2048;
+const u32 kMaxCursorTiles = 64;             // 上画面の UnitCursor（GridCursor::kMaxCursors）
+const s32 kNearMargin = 1;                  // 盤面の周り何マスまで上画面に出すか（カーソル・複製）
+const u32 kCursorBlue = 0x00FFB060u;        // BuildingHighlight::kBlue（公共事業エディターの移動の色）
+const u8 kCursorTint = 0xB0;                // 公共事業エディターと同じ強さ
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
 const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub_B0AD88）が渡す大きさ
@@ -260,7 +267,7 @@ volatile u32 s_pickedSeq;                   // スポイトで取れたら増え
 volatile u32 s_noItemSeq;                   // 配置するアイテムが無いまま置こうとしたら増える
 volatile u32 s_cancelSeq;                   // B（範囲選択の取り消し）ごとに増える
 // ---- 描画 → メニュー（持ち上げ中の行き先。メニュースレッドが GridCursor へ渡す）----
-volatile u8 s_cursorX[kMaxCarry], s_cursorY[kMaxCarry];
+volatile u8 s_cursorX[kMaxCursorTiles], s_cursorY[kMaxCursorTiles];
 volatile u32 s_cursorCount, s_cursorSeq;
 // ---- 描画 → メニュー ----
 const char *volatile s_error = "";
@@ -312,6 +319,7 @@ enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold, SelPendIn, SelPend
 u32 s_touchTail;                            // 処理した点（通算）
 bool s_touchPrevDown;
 bool s_touchWaitUp;                         // 一覧が指を使っていた: 離すまで点を使わない
+s32 s_fingerX = -1, s_fingerY = -1;         // いま指が触れているマス（盤面の外・離している = -1）
 u16 s_touchLastPx, s_touchLastPy;           // 直前の点（画素）
 TouchKind s_touchKind = TouchKind::None;
 s32 s_touchLastX = -1, s_touchLastY = -1;   // 直前のマス（盤面の外は -1）
@@ -538,6 +546,7 @@ void EndHold(void);
 
 void DestroyAll(void) {
     EndHold();
+    MapEditor3D::Abandon();                 // 場面が同じなら赤を戻して複製を壊す。変わっていれば何も書かずにヒープだけ返す
     s_nameChip = nullptr;                   // 壊すだけなので退場の状態へは進めない
     s_nameTileX = s_nameTileY = -1;
     for (u32 i = 0; i < s_chipsMade; ++i) {
@@ -1462,20 +1471,30 @@ bool UpdateGroup(s32 vx, s32 vy) {
     return true;
 }
 
-// 持ち上げ中の行き先（上画面の UnitCursor。メニュースレッドが GridCursor へ渡す）
+bool NearView(s32 vx, s32 vy, s32 x, s32 y) {
+    return x >= vx - kNearMargin && y >= vy - kNearMargin && x < vx + kView + kNearMargin && y < vy + kView + kNearMargin
+        && x >= 0 && y >= 0 && x < kTilesX && y < kTilesY;
+}
+
+// 上画面の UnitCursor（青。メニュースレッドが GridCursor へ渡す）: 持ち上げ中は行き先のうち盤面の周りのマス、
+//   そうでなければ指が触れているマス（利用者指示 2026-09-27）
 void PublishCursor(s32 vx, s32 vy) {
     u32 n = 0;
     if (s_carry != Carry::None) {
         s32 ox = 0, oy = 0;
         CarryOffset(vx, vy, ox, oy);
-        for (u32 k = 0; k < s_carriedCount && n < kMaxCarry; ++k) {
+        for (u32 k = 0; k < s_carriedCount && n < kMaxCursorTiles; ++k) {
             const s32 x = s_carried[k].x + ox, y = s_carried[k].y + oy;
-            if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
+            if (!NearView(vx, vy, x, y))
                 continue;
             s_cursorX[n] = (u8)x;
             s_cursorY[n] = (u8)y;
             ++n;
         }
+    } else if (s_fingerX >= 0 && s_fingerY >= 0) {
+        s_cursorX[0] = (u8)s_fingerX;
+        s_cursorY[0] = (u8)s_fingerY;
+        n = 1;
     }
     if (n != s_cursorCount || n != 0) {
         s_cursorCount = n;
@@ -1483,8 +1502,39 @@ void PublishCursor(s32 vx, s32 vy) {
     }
 }
 
+// 赤くするマス（MapEditor3D）: 持ち上げ中は無し（元の実体の赤を戻す。利用者指示）。指が触れているアイテムと、範囲選択の中
+bool HighlightTile(s32 x, s32 y) {
+    if (s_carry != Carry::None)
+        return false;
+    if (x == s_fingerX && y == s_fingerY)
+        return true;
+    return s_mode == Mode::Select && InSel(x, y);
+}
+
+// 移動の複製（MapEditor3D）: 行き先が盤面の周りにある物だけ
+MapEditor3D::Clone s_clones[MapEditor3D::kMaxClones];
+
+u32 CollectClones(s32 vx, s32 vy) {
+    if (s_carry == Carry::None)
+        return 0;
+    s32 ox = 0, oy = 0;
+    CarryOffset(vx, vy, ox, oy);
+    u32 n = 0;
+    for (u32 k = 0; k < s_carriedCount && n < MapEditor3D::kMaxClones; ++k) {
+        const s32 x = s_carried[k].x + ox, y = s_carried[k].y + oy;
+        if (!NearView(vx, vy, x, y))
+            continue;
+        s_clones[n].item = s_carried[k].value;
+        s_clones[n].x = (u8)x;
+        s_clones[n].y = (u8)y;
+        ++n;
+    }
+    return n;
+}
+
 void TouchRelease(void) {
     s_touchPrevDown = false;
+    s_fingerX = s_fingerY = -1;
     s_touchKind = TouchKind::None;
     s_touchLastX = s_touchLastY = -1;
     EndHold();
@@ -1521,6 +1571,8 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         const bool inside = TouchTile(vx, vy, px, py, tx, ty);
         s_touchLastX = inside ? tx : -1;
         s_touchLastY = inside ? ty : -1;
+        s_fingerX = s_touchLastX;
+        s_fingerY = s_touchLastY;
         if (s_mode == Mode::Select) {
             SelectPress(vx, vy, px, py, inside, tx, ty);
         } else if (!inside) {
@@ -1578,6 +1630,11 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
     }
     s_touchLastPx = px;
     s_touchLastPy = py;
+    s32 fx = -1, fy = -1;                   // 上画面の青いカーソル・赤いハイライトの「触れているマス」
+    if (!TouchTile(vx, vy, px, py, fx, fy))
+        fx = fy = -1;
+    s_fingerX = fx;
+    s_fingerY = fy;
 }
 
 // 毎フレーム: 溜まった点を順に処理し、長押しを 1 フレーム進める
@@ -1733,7 +1790,7 @@ bool Start(void) {
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"グリッドカーソルを先に止めてください");
         return false;
     }
-    GridCursor::SetTint(0, 0);
+    GridCursor::SetTint(kCursorBlue, kCursorTint);     // 青（利用者指示 2026-09-27）
     GridCursor::SetTiles(nullptr, nullptr, 0, -1, 0, 0);
     s_cursorShown = 0xFFFFFFFFu;
     if (!GameList::HoldField(true)) {
@@ -1818,10 +1875,10 @@ void ForwardCursor(void) {
     if (seq == s_cursorShown)
         return;
     s_cursorShown = seq;
-    u8 xs[kMaxCarry], ys[kMaxCarry];
+    u8 xs[kMaxCursorTiles], ys[kMaxCursorTiles];
     u32 n = s_cursorCount;
-    if (n > kMaxCarry)
-        n = kMaxCarry;
+    if (n > kMaxCursorTiles)
+        n = kMaxCursorTiles;
     for (u32 i = 0; i < n; ++i) {
         xs[i] = s_cursorX[i];
         ys[i] = s_cursorY[i];
@@ -1890,7 +1947,8 @@ void FrameStep(void) {
         }
         break;
     case Stage::Leaving:
-        if (s_boardAnim == nullptr && !ListBusy()) {    // 一覧も閉じ終わってから（閉じ終わりで手カーソルの状態をゲームが戻す）
+        // 一覧も閉じ終わってから（閉じ終わりで手カーソルの状態をゲームが戻す）。上画面の赤・複製も戻し終わってから
+        if (s_boardAnim == nullptr && !ListBusy() && MapEditor3D::Release()) {
             s_stage = Stage::Waiting;
             s_waitFrames = 0;
             return;
@@ -1930,6 +1988,8 @@ void FrameStep(void) {
         CancelCarry();
     }
     PublishCursor(vx, vy);
+    if (s_stage == Stage::Live)             // 上画面: 赤いハイライトと移動の複製（Leaving は Release が戻す）
+        MapEditor3D::Frame(HighlightTile, s_clones, CollectClones(vx, vy));
     const bool group = UpdateGroup(vx, vy);
     StepList(vx, vy);
     NameCalc();
