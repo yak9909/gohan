@@ -211,7 +211,7 @@ namespace CTRPluginFramework
                         u8"A で実行、移動の選択は B で解除。");
                 // Issue #16（段階 1: 表示・カメラ・名前）。MapEditor.hpp
                 AddItem(ITEM_CHECKBOX, kMeOn,
-                        u8"模様替えの画面で村のアイテムを見渡します。十字キーで範囲を動かし、アイテムをタッチすると名前を出します。"
+                        u8"模様替えの画面で村のアイテムを見渡します。十字キーかスライドパッドで範囲を動かし、アイテムをタッチすると名前を出します。"
                         u8"プレイヤーは動けません。");
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;

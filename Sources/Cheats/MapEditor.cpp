@@ -2,6 +2,7 @@
 
 #include "BuildingEditor.hpp"
 #include "Cheats.hpp"
+#include "CursorRepeat.hpp"
 #include "FieldCamera.hpp"
 #include "GameList.hpp"
 #include "GridCursorGameApi.hpp"
@@ -574,14 +575,9 @@ void CameraTarget(float out[3]) {
 
 bool s_running;
 bool s_failed;
-u32 s_dpadPrev;
-u32 s_dpadNextMs;
+CursorRepeat s_repeat;                      // 十字キーとスライドパッドの押し続け（公共事業エディターと同じ規則）
 bool s_touchPrev;
 s32 s_minX, s_minY, s_maxX, s_maxY;         // 盤面の左上にできる範囲
-
-u32 NowMs(void) {
-    return (u32)(svcGetSystemTick() / (u64)(SYSCLOCK_ARM11 / 1000));
-}
 
 // 盤面の左上にできる範囲 = アイテムのあるエーカー（部屋データ +0..+C）。取れなければ村全体
 void ReadBounds(void) {
@@ -677,7 +673,7 @@ bool Start(void) {
     s_touchSeq = 0;
     s_touchDone = 0;
     s_touchPrev = true;                     // 押したまま始めたタッチは押し始めにしない
-    s_dpadPrev = 0xFFFFFFFFu;
+    s_repeat.Reset();
     s_startRoom = RoomId();
     FieldCamera::Want(CameraTarget, false);
     s_want = true;
@@ -685,38 +681,21 @@ bool Start(void) {
     return true;
 }
 
-void StepDpad(u32 keys) {
-    const u32 s = keys & ((u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight);
-    const u32 now = NowMs();
-    if (s_dpadPrev == 0xFFFFFFFFu) {        // 始めたときに押していたものは離すまで無視
-        if (s != 0)
-            return;
-        s_dpadPrev = 0;
-    }
-    if (s == 0) {
-        s_dpadPrev = 0;
-        return;
-    }
-    bool send = false;
-    const u32 trig = s & ~s_dpadPrev;
-    if (trig != 0 || s != s_dpadPrev) {
-        s_dpadNextMs = now + 400;           // GameList と同じ: 400ms 後から 100ms ごと
-        send = trig != 0;
-    } else if ((s32)(now - s_dpadNextMs) >= 0) {
-        s_dpadNextMs += 100;
-        if ((s32)(now - s_dpadNextMs) >= 0)
-            s_dpadNextMs = now + 100;
-        send = true;
-    }
-    s_dpadPrev = s;
-    if (!send)
-        return;
+// 十字キーとスライドパッドのどちらでも動かす（利用者指示 2026-09-27。押し続けは公共事業エディターと同じ）
+void StepMove(u32 keys) {
+    u32 held = 0;
+    if (keys & ((u32)Key::DPadUp | (u32)Key::CPadUp)) held |= CursorRepeat::kUp;
+    if (keys & ((u32)Key::DPadDown | (u32)Key::CPadDown)) held |= CursorRepeat::kDown;
+    if (keys & ((u32)Key::DPadLeft | (u32)Key::CPadLeft)) held |= CursorRepeat::kLeft;
+    if (keys & ((u32)Key::DPadRight | (u32)Key::CPadRight)) held |= CursorRepeat::kRight;
+    const u32 fire = s_repeat.Step(held);
     s32 dx = 0, dy = 0;
-    if (s & (u32)Key::DPadUp) dy = -1;
-    if (s & (u32)Key::DPadDown) dy = +1;
-    if (s & (u32)Key::DPadLeft) dx = -1;
-    if (s & (u32)Key::DPadRight) dx = +1;
-    MoveView(dx, dy);
+    if (fire & CursorRepeat::kUp) dy -= 1;
+    if (fire & CursorRepeat::kDown) dy += 1;
+    if (fire & CursorRepeat::kLeft) dx -= 1;
+    if (fire & CursorRepeat::kRight) dx += 1;
+    if (dx != 0 || dy != 0)
+        MoveView(dx, dy);
 }
 
 void StepTouchInput(void) {
@@ -857,9 +836,9 @@ void Tick(u32 keys) {
     // プレイヤーとゲームのタッチを止める（毎ティック頼み続けている間だけ効く）
     GuiMenu::BlockGameAll();
     GuiMenu::BlockGameTouch();
-    if (keys == 0 && GuiMenu::IsVisible())
+    StepMove(keys);                         // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
+    if (GuiMenu::IsVisible())
         return;
-    StepDpad(keys);
     StepTouchInput();
 }
 

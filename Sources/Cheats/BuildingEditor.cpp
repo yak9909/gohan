@@ -3,6 +3,7 @@
 #include "BuildingHighlight.hpp"
 #include "BuildingPreview.hpp"
 #include "Cheats.hpp"
+#include "CursorRepeat.hpp"
 #include "FieldCamera.hpp"
 #include "GameLabel.hpp"
 #include "GameList.hpp"
@@ -67,7 +68,7 @@ u32 s_kindCount;
 u32 s_kind;
 s32 s_selected = -1;
 u32 s_prevKeys;
-u32 s_hold[4];                  // スライドパッド 上下左右の押し続けティック
+CursorRepeat s_repeat;          // スライドパッドの押し続け（CursorRepeat.hpp。マップエディターと共用）
 
 u8 s_footprint[kFootprintBytes];   // 足元データを読む置き場
 
@@ -519,7 +520,7 @@ bool Start(bool quiet) {
     const bool snapCamera = quiet;          // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
     s_selected = -1;
     s_prevKeys = 0xFFFFFFFFu;                       // 押しっぱなしのボタンを最初の押下にしない
-    std::memset(s_hold, 0, sizeof(s_hold));
+    s_repeat.Reset();
     PublicWorks::Unhighlight();
     UpdateTiles();
     if (!GridCursor::ShowTiles()) {
@@ -533,28 +534,7 @@ bool Start(bool quiet) {
     return true;
 }
 
-// 押した瞬間と、押し続けたとき（約 200ms 後から約 64ms ごと）に真
-bool Repeat(u32 &counter, bool held) {
-    if (!held) {
-        counter = 0;
-        return false;
-    }
-    ++counter;
-    return counter == 1 || (counter > 12 && ((counter - 12) % 4) == 0);
-}
-
-// スライドパッド: どれかの向きが連続移動に入っている間（離して kPadGrace ティック以内も含む）に
-// 別の向きを入れたら、その向きは待たずに連続移動にする（押した瞬間に 1 マス、以後 4 ティックごと。利用者指示）。
-const u32 kPadGrace = 3;
-u32 s_padRepeatingAgo = 0xFFFFu;
-
-bool PadRepeat(u32 &counter, bool held, bool fast) {
-    if (held && counter == 0 && fast) {
-        counter = 12;
-        return true;
-    }
-    return Repeat(counter, held);
-}
+// 押し続けの規則は CursorRepeat.hpp（マップエディターと共用）
 
 void MoveCursor(s32 dx, s32 dy) {
     s32 x = s_cx + dx;
@@ -779,18 +759,16 @@ void Tick(u32 keys) {
     s_prevKeys = keys;
 
     // スライドパッド（画面の上 = マスの -y）
-    bool repeating = false;
-    for (u32 i = 0; i < 4; ++i)
-        repeating = repeating || s_hold[i] > 12;
-    if (repeating)
-        s_padRepeatingAgo = 0;
-    else if (s_padRepeatingAgo < 0xFFFFu)
-        ++s_padRepeatingAgo;
-    const bool fast = s_padRepeatingAgo <= kPadGrace;
-    if (PadRepeat(s_hold[0], (keys & (u32)Key::CPadUp) != 0, fast)) MoveCursor(0, -1);
-    if (PadRepeat(s_hold[1], (keys & (u32)Key::CPadDown) != 0, fast)) MoveCursor(0, +1);
-    if (PadRepeat(s_hold[2], (keys & (u32)Key::CPadLeft) != 0, fast)) MoveCursor(-1, 0);
-    if (PadRepeat(s_hold[3], (keys & (u32)Key::CPadRight) != 0, fast)) MoveCursor(+1, 0);
+    u32 pad = 0;
+    if (keys & (u32)Key::CPadUp) pad |= CursorRepeat::kUp;
+    if (keys & (u32)Key::CPadDown) pad |= CursorRepeat::kDown;
+    if (keys & (u32)Key::CPadLeft) pad |= CursorRepeat::kLeft;
+    if (keys & (u32)Key::CPadRight) pad |= CursorRepeat::kRight;
+    const u32 fire = s_repeat.Step(pad);
+    if (fire & CursorRepeat::kUp) MoveCursor(0, -1);
+    if (fire & CursorRepeat::kDown) MoveCursor(0, +1);
+    if (fire & CursorRepeat::kLeft) MoveCursor(-1, 0);
+    if (fire & CursorRepeat::kRight) MoveCursor(+1, 0);
 
     if (pressed & ((u32)Key::L | (u32)Key::R)) {
         const u32 count = (u32)Mode::Count;
