@@ -11,6 +11,9 @@
 // ★村の実体（fgobj）の材質は書き換えない（F056）。材質の物体は同じモデルの実体で共有されていて（利用者報告: 触っていない
 //   同じモデルも赤くなった）、ゲームの簡易版の書き出し（0x4A17B8）が季節資源の未解決の参照表を読んで落ちた（0x4B0C54、実機）。
 //   赤も複製も、実体の体 +8 の資源から作った自前の体で描く（赤は実体の行列を写して少し大きく重ねる）。
+// ★自前の体を壊す前に、写しの材質 +648 に繋いだ自前の TEV を外す（F057）。ゲームの材質の後片付け（0x4AF288 → 0x4AE2A4）は
+//   写しの +648 の TEV → +40 の参照表を辿って参照を +12 = 0 に外し（sub_4A7420）、TEV・表・参照を体のアロケータで解放する（sub_4AE958）。
+//   自前の TEV の表は元の季節資源の表なので、外さずに壊すと元のモデルの参照が外れ、ゲームがそのモデルを描いた所で落ちた（実機 3 回）。
 
 namespace MapEditor3D {
 
@@ -38,6 +41,7 @@ typedef const char *(*LeafNameFn)(const u8 *type, int outdoor);
 typedef int (*SandFn)(s32 x, s32 y, u32 zero);
 typedef float (*GroundHeightFn)(const float *pos, u32 zero);
 typedef void *(*AllocFn)(void *allocator, u32 size, s32 align);
+typedef void (*FreeFn)(void *allocator, void *p);                    // ssys::ma::HeapAllocator vtable +12 = Allocator::Free 0x569B44
 typedef void (*SetScaleFn)(void *holder, const float *xyz);
 
 const ItemPtrFn      ItemRecord     = reinterpret_cast<ItemPtrFn>(0x00535188);      // ItemParam_GetRecord
@@ -104,6 +108,13 @@ void *Alloc(u32 size) {
         return nullptr;
     void **vt = *reinterpret_cast<void ***>(s_alloc);
     return reinterpret_cast<AllocFn>(vt[2])(s_alloc, size, 4);
+}
+
+void FreeOwn(u32 p) {
+    if (!s_heapMade || p == 0)
+        return;
+    void **vt = *reinterpret_cast<void ***>(s_alloc);
+    reinterpret_cast<FreeFn>(vt[3])(s_alloc, reinterpret_cast<void *>(p));
 }
 
 bool HeapRoom(u32 need) {
@@ -333,23 +344,20 @@ bool PrepareMaterial(u32 m, u8 style) {
             return false;
         const u32 src = tevres + kResTevRel + srcRel;
         const u32 buf = reinterpret_cast<u32>(Alloc(kTevBytes));
-        if (buf == 0 || !Readable(src, kTevBytes))
+        if (buf == 0)
             return false;
+        if (!Readable(src, kTevBytes)) {
+            FreeOwn(buf);
+            return false;
+        }
         std::memcpy(reinterpret_cast<void *>(buf), reinterpret_cast<const void *>(src), kTevBytes);
         LinkLut(buf, src);
         W32(colour + kResTevRel, buf - (colour + kResTevRel));
         W32(m + kMatTev, colour);
         W32(m + kMatLighting, colour);      // 参照表も色の部分（資源の本体の写し）の +648 の先 = 安全な表から読ませる
         tev = buf;
-    } else {                                // 体ごとの TEV: その場で
-        const u32 rel = R32(colour + kResTevRel);
-        if (rel == 0)
-            return false;
-        tev = colour + kResTevRel + rel;
-        if (!LutSafe(tev))
-            W32(tev + kTevLutRel, reinterpret_cast<u32>(s_zeroLut) - (tev + kTevLutRel));
-        W32(colour + kResTevKey, 0);
-        W32(m + kMatLighting, colour);
+    } else {
+        return false;                       // ゲームが写した TEV（mask 0x780）: 後片付けがその表を解放するので触らない。0x834 では起きない
     }
     const bool blended = BuildingHighlight::FragBlendsAlready(frag);
     const int plan = BuildingHighlight::PlanTev(reinterpret_cast<u8 *>(tev), colour);
@@ -418,9 +426,32 @@ bool BuildSlot(Slot &s, void *res, u8 style) {
     return true;
 }
 
+// 写しの材質の +648 に繋いだ自前の TEV を外して返す（壊す前に必ず）。
+//   0x834 の写しは TEV を写さないので、gfx_ResMaterial_CopyForInstance が +648 を 0 にしている（0x4ADEEC）→ 0 でない = 自前の TEV。
+void DetachOwnTev(u32 node) {
+    const u32 arr = R32(node + kModelMaterials);
+    if (!Readable(arr, 4 * kMaxMatsPerModel))
+        return;
+    for (u32 k = 0; k < kMaxMatsPerModel; ++k) {
+        const u32 m = R32(arr + 4 * k);
+        if (!BuildingHighlight::LooksLikeMaterial(m) || !Readable(m, kMatFrag + 4))
+            break;
+        const u32 colour = R32(m + kMatColour);
+        if (colour == R32(m + kMatResource) || !Readable(colour, kResTevRel + 4))
+            continue;
+        const u32 rel = R32(colour + kResTevRel);
+        if (rel == 0)
+            continue;
+        W32(colour + kResTevRel, 0);
+        FreeOwn(colour + kResTevRel + rel);
+    }
+}
+
 void DestroySlot(Slot &s) {
-    if (s.live && Word(s.holder, 4) != 0u)
+    if (s.live && Word(s.holder, 4) != 0u) {
+        DetachOwnTev(Word(s.holder, 4));
         ModelInstanceDestroy(s.holder);
+    }
     s.live = s.made = s.tinted = false;
     s.res = nullptr;
 }
