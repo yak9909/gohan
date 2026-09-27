@@ -53,6 +53,9 @@ const SetScaleFn     SetScale       = reinterpret_cast<SetScaleFn>(0x004ED6B4); 
 const u32 kModelMaterials = 0x164;
 const u32 kModelActivator = 0x1EC;
 const u32 kMatResource = 8, kMatColour = 48, kMatTev = 72, kMatFrag = 80;
+// ★汎用の書き出しは参照表をライティングの部分 M+0x44 から読む（0x49C53C: LDR R0,[R8,#0x44] → SP+0x60 → 0x49C7EC で +0x288 → +0x28）。
+//   ここが資源のままだと季節資源の未解決の表を読んで落ちる（ca85896、実機 2026-09-28。戻り先 0x49C818）
+const u32 kMatLighting = 0x44;
 const u32 kResTevRel = 648, kResTevKey = 712, kResFragKey = 720, kResLayer = 32;
 const u32 kResConst5 = 36 + 4 * 54;
 const u32 kTevBytes = 244, kTevLutRel = 40;
@@ -315,11 +318,14 @@ bool PrepareMaterial(u32 m, u8 style) {
     const u32 colour = R32(m + kMatColour);
     const u32 tevres = R32(m + kMatTev);
     const u32 frag = R32(m + kMatFrag);
+    const u32 light = R32(m + kMatLighting);
     if (!Readable(res, kResFragKey + 4) || !Readable(colour, kResFragKey + 4) || !Readable(tevres, kResTevKey + 4)
-        || !Readable(frag, kResFragKey + 4))
+        || !Readable(frag, kResFragKey + 4) || !Readable(light, kResTevKey + 4))
         return false;
     if (colour == res)
         return false;                       // 色の部分が体ごとでない（資源を書き換えることになる）
+    if (light != res && light != colour)
+        return false;                       // 知らない形（ライティングの部分が別の写し）: 汎用へ替えない
     u32 tev;
     if (colour != tevres) {                 // 共有の TEV: 写しを自前のヒープに置き、色の部分の未使用 +648 から指す
         const u32 srcRel = R32(tevres + kResTevRel);
@@ -333,6 +339,7 @@ bool PrepareMaterial(u32 m, u8 style) {
         LinkLut(buf, src);
         W32(colour + kResTevRel, buf - (colour + kResTevRel));
         W32(m + kMatTev, colour);
+        W32(m + kMatLighting, colour);      // 参照表も色の部分（資源の本体の写し）の +648 の先 = 安全な表から読ませる
         tev = buf;
     } else {                                // 体ごとの TEV: その場で
         const u32 rel = R32(colour + kResTevRel);
@@ -342,6 +349,7 @@ bool PrepareMaterial(u32 m, u8 style) {
         if (!LutSafe(tev))
             W32(tev + kTevLutRel, reinterpret_cast<u32>(s_zeroLut) - (tev + kTevLutRel));
         W32(colour + kResTevKey, 0);
+        W32(m + kMatLighting, colour);
     }
     const bool blended = BuildingHighlight::FragBlendsAlready(frag);
     const int plan = BuildingHighlight::PlanTev(reinterpret_cast<u8 *>(tev), colour);
