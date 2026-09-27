@@ -126,9 +126,17 @@ const s32 kTilesX = 112, kTilesY = 96;      // 村のマス（7 x 6 エーカー
 // タッチ（ゲームの模様替えのチップ Select 状態 0xB429BC と同じ閾値: 押した点から 24.0 動いたら長押しをやめる）
 const float kHoldSlop = 24.0f;
 const u32 kPickFrames = 15;                 // スポイトの長押し（30fps で 0.5 秒）
+const u32 kPickShowFrames = 6;              // 進捗バーはタッチから 200ms（6 フレーム）で出す（利用者指示 2026-09-27）
 const u32 kNoItem = 0xFFFFFFFFu;
-// 建物のマス（メニュースレッドが開始時に作る。置けるかの判定: fgobj は建物の上に置けない）
-u8 s_buildMask[kTilesX * kTilesY / 8];
+// カメラの目標は盤面の中心より 1 マス南（利用者指示 2026-09-27: 盤面の下一列が上画面から外れていた）
+const float kCameraSouthTiles = 1.0f;
+// fgobj のコマの色（利用者指示 2026-09-27: 通常アイテムと見分ける）。テクスチャは灰色（LA4）で、色はマテリアルの黒色・白色
+//   （Material +0x10 / +0x14。F-291）。元は C = #3F930F/#B4FF14（黄緑）、N・P = #1B7348/#00CA79（青緑）。fgobj はオレンジに
+const u8 kFgobjBlack[4] = { 0x7A, 0x3E, 0x10, 0x00 };
+const u8 kFgobjWhite[4] = { 0xFF, 0xA0, 0x3C, 0xFF };
+const u32 kPictureMaterial = 316;           // nw::lyt::Picture +0x13C = Material*（ctor 0x4BAA68。F-291）
+const u32 kMatColors = 0x10;                // Material +0x10.. 色 7 個（[0] 黒色 / [1] 白色）
+const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送り直す（GameList と同じ）
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
@@ -146,8 +154,12 @@ volatile u32 s_buildChipCount;
 // ---- メニュー → 描画 ----
 volatile bool s_want;
 volatile s32 s_viewX, s_viewY;              // 盤面の左上のマス
-volatile bool s_touchDown;                  // 今触れている（メニュースレッドが毎ティック書く）
-volatile u16 s_touchX, s_touchY;            // 下画面の画素
+// タッチはメニュースレッドが毎ティック（約 16ms）読んだ点を全部リングに積み、描画スレッド（30fps）がまとめて処理する。
+//   以前は最後の 1 点だけを見ていて、速くなぞると間のマスを飛ばした（利用者報告 2026-09-27）。
+//   1 語 = bit31 触れている / bit0-8 x / bit9-16 y（1 語で書くので途中の値を読まない）
+const u32 kTouchRing = 64;
+volatile u32 s_touchRing[kTouchRing];
+volatile u32 s_touchHead;                   // メニュースレッドだけが書く（通算）
 volatile Mode s_mode = Mode::Place;
 volatile u32 s_placeId = kNoItem;           // 配置するアイテム（kNoItem = 未設定）
 // ---- 描画 → メニュー（スポイト）----
@@ -197,7 +209,9 @@ u32 s_drawCount;
 
 // タッチの状態（描画スレッドだけ）
 enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold };
+u32 s_touchTail;                            // 処理した点（通算）
 bool s_touchPrevDown;
+u16 s_touchLastPx, s_touchLastPy;           // 直前の点（画素）
 TouchKind s_touchKind = TouchKind::None;
 s32 s_touchLastX = -1, s_touchLastY = -1;   // 直前のマス（盤面の外は -1）
 u16 s_touchStartX, s_touchStartY;
@@ -461,6 +475,15 @@ bool BuildChipLayout(Chip &c, u8 type) {
     c.built = true;
     c.type = type;
     B(c.layout, kLayoutPriority) = 2;
+    if (type == kFgobjN) {
+        void *pic = FindPane(c.layout, "P_Btn_00");
+        const u32 mat = pic != nullptr ? W(pic, kPictureMaterial) : 0u;
+        if (mat != 0) {
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), kFgobjBlack, 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), kFgobjWhite, 4);
+            *reinterpret_cast<u8 *>(mat + kMatFlags) &= ~4u;
+        }
+    }
     c.nAll = FindPane(c.layout, "N_All");
     c.nRot = FindPane(c.layout, "N_Rotate_00");
     c.bBtn = FindPane(c.layout, "B_Btn_00");
@@ -546,12 +569,6 @@ Chip *ChipAt(s32 tx, s32 ty, bool itemsOnly) {
     return nullptr;
 }
 
-bool IsBuildingTile(s32 x, s32 y) {
-    if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
-        return false;
-    return ((s_buildMask[(y * kTilesX + x) >> 3] >> ((y * kTilesX + x) & 7)) & 1u) != 0;
-}
-
 // 画素 → 盤面のマス。盤面の外なら偽
 bool TouchTile(s32 vx, s32 vy, u16 px, u16 py, s32 &tx, s32 &ty) {
     const float lx = (float)px - 160.0f;
@@ -597,7 +614,7 @@ bool ShowNameAt(s32 vx, s32 vy, s32 tx, s32 ty) {
     return true;
 }
 
-// 配置: 空いているマスにだけ置く。fgobj は建物のマスに置けない（上に置ける家具に置けない家具）
+// 配置: 空いているマスにだけ置く（建物のマスにも置ける。利用者指示 2026-09-27 で fgobj も）
 void PlaceAt(s32 tx, s32 ty) {
     u32 *item = ItemAtTile(tx, ty);
     if (item == nullptr || !IsEmpty(item))
@@ -610,8 +627,6 @@ void PlaceAt(s32 tx, s32 ty) {
         }
         return;
     }
-    if (id <= kFgobjMax && IsBuildingTile(tx, ty))
-        return;
     const u32 value = id;                   // 上位（旗）は 0
     if (SetItem(R32(kFieldPtr), &value, tx, ty, 0) != 0 && R32(kFgobjPtr) != 0)
         MarkDirty((u32)tx, (u32)ty, 1);
@@ -629,29 +644,86 @@ void EndHold(void) {
     s_pickProgress = -1.0f;
 }
 
-// タッチ（毎フレーム）。配置: 空きから始めたらなぞったマスに置く／アイテムから始めたら名前、長押しでスポイト。
-//   削除: なぞったマスのアイテムを消す
-void StepTouch(s32 vx, s32 vy) {
-    const bool down = s_touchDown && s_boardAnim == nullptr;    // 出入りの途中は受け付けない
-    const u16 px = s_touchX, py = s_touchY;
+// 画素 → 盤面のマス座標（小数。盤面の外でもそのまま）
+void TileCoord(u16 px, u16 py, float &fx, float &fy) {
+    const float lx = (float)px - 160.0f;
+    const float ly = 120.0f - (float)py;
+    const float half = (float)kView * 0.5f * kTile;
+    fx = (lx - (F(s_roomPane, kPaneGlobalX) - half)) / kTile;
+    fy = ((F(s_roomPane, kPaneGlobalY) + half) - ly) / kTile;
+}
+
+s32 FloorI(float v) {
+    const s32 i = (s32)v;
+    return (float)i > v ? i - 1 : i;
+}
+
+void TraceVisit(s32 vx, s32 vy, s32 cx, s32 cy) {
+    const bool inside = cx >= 0 && cy >= 0 && cx < kView && cy < kView;
+    const s32 tx = inside ? vx + cx : -1, ty = inside ? vy + cy : -1;
+    if (tx == s_touchLastX && ty == s_touchLastY)
+        return;
+    s_touchLastX = tx;
+    s_touchLastY = ty;
+    if (!inside)
+        return;
+    if (s_touchKind == TouchKind::Paint)
+        PlaceAt(tx, ty);
+    else if (s_touchKind == TouchKind::Erase)
+        EraseAt(tx, ty);
+}
+
+// なぞった線（直前の点 → 今の点）がまたぐマスを、通る順に全部処理する（格子の走査。角をかすめるマスも拾う）。
+//   以前は最後の点のマスだけで、速くなぞると間のマスを飛ばした（利用者報告 2026-09-27）。
+void Trace(s32 vx, s32 vy, u16 px, u16 py) {
+    float ax, ay, bx, by;
+    TileCoord(s_touchLastPx, s_touchLastPy, ax, ay);
+    TileCoord(px, py, bx, by);
+    s32 cx = FloorI(ax), cy = FloorI(ay);
+    const s32 ex = FloorI(bx), ey = FloorI(by);
+    const float dx = bx - ax, dy = by - ay;
+    const s32 sx = dx > 0.0f ? 1 : -1, sy = dy > 0.0f ? 1 : -1;
+    const float kFar = 1.0e30f;
+    const float tdx = dx != 0.0f ? (dx > 0.0f ? 1.0f / dx : -1.0f / dx) : kFar;
+    const float tdy = dy != 0.0f ? (dy > 0.0f ? 1.0f / dy : -1.0f / dy) : kFar;
+    float tmx = dx != 0.0f ? (dx > 0.0f ? (float)(cx + 1) - ax : ax - (float)cx) * tdx : kFar;
+    float tmy = dy != 0.0f ? (dy > 0.0f ? (float)(cy + 1) - ay : ay - (float)cy) * tdy : kFar;
+    TraceVisit(vx, vy, cx, cy);
+    for (u32 guard = 0; guard < 64 && (cx != ex || cy != ey); ++guard) {
+        if (tmx < tmy) {
+            cx += sx;
+            tmx += tdx;
+        } else {
+            cy += sy;
+            tmy += tdy;
+        }
+        TraceVisit(vx, vy, cx, cy);
+    }
+}
+
+void TouchRelease(void) {
+    s_touchPrevDown = false;
+    s_touchKind = TouchKind::None;
+    s_touchLastX = s_touchLastY = -1;
+    EndHold();
+}
+
+// 1 点。配置: 空きから始めたらなぞったマスに置く／アイテムから始めたら名前（長押しでスポイト）。削除: なぞったマスを消す
+void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
     if (!down) {
-        s_touchPrevDown = false;
-        s_touchKind = TouchKind::None;
-        s_touchLastX = s_touchLastY = -1;
-        EndHold();
+        TouchRelease();
         return;
     }
-    s32 tx = -1, ty = -1;
-    const bool inside = TouchTile(vx, vy, px, py, tx, ty);
-    if (!inside)
-        tx = ty = -1;
-    const bool moved = tx != s_touchLastX || ty != s_touchLastY;
     if (!s_touchPrevDown) {                 // 押し始め
         s_touchPrevDown = true;
-        s_touchStartX = px;
-        s_touchStartY = py;
+        s_touchStartX = s_touchLastPx = px;
+        s_touchStartY = s_touchLastPy = py;
         s_holdFrames = 0;
         s_noItemTold = false;
+        s32 tx = -1, ty = -1;
+        const bool inside = TouchTile(vx, vy, px, py, tx, ty);
+        s_touchLastX = inside ? tx : -1;
+        s_touchLastY = inside ? ty : -1;
         if (!inside) {
             HideName();
             s_touchKind = TouchKind::Ignore;
@@ -668,50 +740,60 @@ void StepTouch(s32 vx, s32 vy) {
                 s_holdTileY = ty;
                 s_pickX = px;
                 s_pickY = py;
-                s_pickProgress = 0.0f;
             } else {
                 HideName();
                 s_touchKind = TouchKind::Paint;
                 PlaceAt(tx, ty);
             }
         }
-    } else {
-        switch (s_touchKind) {
-        case TouchKind::Paint:
-            if (inside && moved)
-                PlaceAt(tx, ty);
-            break;
-        case TouchKind::Erase:
-            if (inside && moved)
-                EraseAt(tx, ty);
-            break;
-        case TouchKind::Hold: {
-            const float dx = (float)px - (float)s_touchStartX, dy = (float)py - (float)s_touchStartY;
-            if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop) {
-                s_touchKind = TouchKind::Ignore;    // 動かしたら長押しをやめる
-                EndHold();
-                break;
-            }
-            ++s_holdFrames;
-            if (s_holdFrames >= kPickFrames) {
-                const u32 *item = ItemAtTile(s_holdTileX, s_holdTileY);
-                if (item != nullptr && !IsEmpty(item)) {
-                    s_placeId = *item & 0x7FFFu;    // 埋めた印（0x8000）と上位の旗は落とす
-                    s_pickedSeq = s_pickedSeq + 1;
-                }
-                s_touchKind = TouchKind::Ignore;
-                EndHold();
-            } else {
-                s_pickProgress = (float)s_holdFrames / (float)kPickFrames;
-            }
-            break;
-        }
-        default:
-            break;
-        }
+        return;
     }
-    s_touchLastX = tx;
-    s_touchLastY = ty;
+    switch (s_touchKind) {
+    case TouchKind::Paint:
+    case TouchKind::Erase:
+        Trace(vx, vy, px, py);
+        break;
+    case TouchKind::Hold: {
+        const float dx = (float)px - (float)s_touchStartX, dy = (float)py - (float)s_touchStartY;
+        if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop) {
+            s_touchKind = TouchKind::Ignore;    // 動かしたら長押しをやめる
+            EndHold();
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    s_touchLastPx = px;
+    s_touchLastPy = py;
+}
+
+// 毎フレーム: 溜まった点を順に処理し、長押しを 1 フレーム進める
+void StepTouch(s32 vx, s32 vy) {
+    const u32 head = s_touchHead;
+    if (head - s_touchTail > kTouchRing)
+        s_touchTail = head - kTouchRing;    // 溢れた分（ゲームが止まっていた間）は捨てる
+    const bool busy = s_boardAnim != nullptr;   // 出入りの途中は受け付けない
+    while (s_touchTail != head) {
+        const u32 w = s_touchRing[s_touchTail % kTouchRing];
+        ++s_touchTail;
+        TouchSample(vx, vy, (w >> 31) != 0 && !busy, (u16)(w & 0x1FFu), (u16)((w >> 9) & 0xFFu));
+    }
+    if (s_touchKind != TouchKind::Hold || !s_touchPrevDown)
+        return;
+    ++s_holdFrames;
+    if (s_holdFrames >= kPickFrames) {
+        const u32 *item = ItemAtTile(s_holdTileX, s_holdTileY);
+        if (item != nullptr && !IsEmpty(item)) {
+            s_placeId = *item & 0x7FFFu;    // 埋めた印（0x8000）と上位の旗は落とす
+            s_pickedSeq = s_pickedSeq + 1;
+        }
+        s_touchKind = TouchKind::Ignore;
+        EndHold();
+    } else if (s_holdFrames >= kPickShowFrames) {
+        // バーは出た時点で空から伸び始める（全体は 0.5 秒のまま）
+        s_pickProgress = (float)(s_holdFrames - kPickShowFrames) / (float)(kPickFrames - kPickShowFrames);
+    }
 }
 
 void StepName(s32 vx, s32 vy) {
@@ -730,7 +812,7 @@ float ViewCenter(s32 v) {
 void CameraTarget(float out[3]) {
     out[0] = ViewCenter(s_viewX);
     out[1] = 0.0f;
-    out[2] = ViewCenter(s_viewY);
+    out[2] = ViewCenter(s_viewY) + 32.0f * kCameraSouthTiles;
     out[1] = GroundHeight(out, 0);
 }
 
@@ -742,6 +824,8 @@ bool s_running;
 bool s_failed;
 CursorRepeat s_repeat;                      // 十字キーとスライドパッドの押し続け（公共事業エディターと同じ規則）
 bool s_touchHeldAtStart;
+bool s_touchPushedDown;                     // 最後に積んだ点が「触れている」
+void PushTouch(bool down, u32 x, u32 y);
 u32 s_prevKeys;
 u32 s_pickedShown, s_noItemShown;
 s32 s_minX, s_minY, s_maxX, s_maxY;         // 盤面の左上にできる範囲
@@ -775,14 +859,8 @@ void MoveView(s32 dx, s32 dy) {
 }
 
 // 建物の衝突判定（公共事業エディターと同じ形）をコマにする
-void MarkBuilding(s32 x, s32 y) {
-    if (x >= 0 && y >= 0 && x < kTilesX && y < kTilesY)
-        s_buildMask[(y * kTilesX + x) >> 3] |= (u8)(1u << ((y * kTilesX + x) & 7));
-}
-
 void CollectBuildings(void) {
     u32 n = 0;
-    std::memset(s_buildMask, 0, sizeof(s_buildMask));
     for (u32 i = 0; i < PublicWorks::kSlots; ++i) {
         PublicWorks::Slot slot;
         if (!PublicWorks::ReadSlot(i, slot) || slot.id >= PublicWorks::kEmptyId)
@@ -794,7 +872,6 @@ void CollectBuildings(void) {
         s32 x0 = 0x7FFF, y0 = 0x7FFF, x1 = -0x7FFF, y1 = -0x7FFF;
         for (u32 k = 0; k < cells; ++k) {
             const s32 x = (s32)slot.x + dx[k], y = (s32)slot.y + dy[k];
-            MarkBuilding(x, y);
             if (x < x0) x0 = x;
             if (y < y0) y0 = y;
             if (x > x1) x1 = x;
@@ -844,7 +921,7 @@ bool Start(void) {
     s_viewY = (s32)py - kView / 2;
     MoveView(0, 0);
     s_error = "";
-    s_touchDown = false;
+    PushTouch(false, 0, 0);
     s_touchHeldAtStart = true;              // 押したまま始めたタッチは押し始めにしない
     s_prevKeys = 0xFFFFFFFFu;               // 押しっぱなしのボタンを最初の押下にしない
     s_mode = Mode::Place;
@@ -897,17 +974,29 @@ void NotifyEvents(void) {
     }
 }
 
+void PushTouch(bool down, u32 x, u32 y) {
+    if (!down && !s_touchPushedDown)
+        return;                             // 離れている間は積まない（離した瞬間の 1 点だけ）
+    if (x > 319) x = 319;
+    if (y > 239) y = 239;
+    const u32 head = s_touchHead;
+    s_touchRing[head % kTouchRing] = (down ? 0x80000000u : 0u) | x | (y << 9);
+    __sync_synchronize();                   // 点を書いてから通算を進める
+    s_touchHead = head + 1;
+    s_touchPushedDown = down;
+}
+
 void StepTouchInput(void) {
     const bool down = Touch::IsDown();
-    if (down) {
-        const UIntVector pos = Touch::GetPosition();
-        s_touchX = (u16)pos.x;
-        s_touchY = (u16)pos.y;
-    }
     // 押したまま始めたタッチは、一度離すまで使わない
     if (s_touchHeldAtStart && !down)
         s_touchHeldAtStart = false;
-    s_touchDown = down && !s_touchHeldAtStart;
+    if (!down || s_touchHeldAtStart) {
+        PushTouch(false, 0, 0);
+        return;
+    }
+    const UIntVector pos = Touch::GetPosition();
+    PushTouch(true, pos.x, pos.y);
 }
 
 }  // namespace
@@ -1069,7 +1158,7 @@ void Tick(u32 keys) {
     }
     NotifyEvents();
     if (GuiMenu::IsVisible()) {
-        s_touchDown = false;
+        PushTouch(false, 0, 0);
         return;
     }
     StepTouchInput();
