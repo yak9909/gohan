@@ -1477,7 +1477,7 @@ bool NearView(s32 vx, s32 vy, s32 x, s32 y) {
 }
 
 // 上画面の UnitCursor（青。メニュースレッドが GridCursor へ渡す）: 持ち上げ中は行き先のうち盤面の周りのマス、
-//   そうでなければ指が触れているマス（利用者指示 2026-09-27）
+//   そうでなければ指が触れているマスと範囲選択の中のマス（利用者指示 2026-09-27 / 28）
 void PublishCursor(s32 vx, s32 vy) {
     u32 n = 0;
     if (s_carry != Carry::None) {
@@ -1491,10 +1491,22 @@ void PublishCursor(s32 vx, s32 vy) {
             s_cursorY[n] = (u8)y;
             ++n;
         }
-    } else if (s_fingerX >= 0 && s_fingerY >= 0) {
-        s_cursorX[0] = (u8)s_fingerX;
-        s_cursorY[0] = (u8)s_fingerY;
-        n = 1;
+    } else {
+        if (s_fingerX >= 0 && s_fingerY >= 0) {
+            s_cursorX[0] = (u8)s_fingerX;
+            s_cursorY[0] = (u8)s_fingerY;
+            n = 1;
+        }
+        // 範囲選択の中の全部のマス（利用者指示 2026-09-28）。盤面の周りだけ・最大 64
+        if (s_mode == Mode::Select && s_sel.active)
+            for (s32 y = s_sel.y0; y <= s_sel.y1 && n < kMaxCursorTiles; ++y)
+                for (s32 x = s_sel.x0; x <= s_sel.x1 && n < kMaxCursorTiles; ++x) {
+                    if (!NearView(vx, vy, x, y) || (x == s_fingerX && y == s_fingerY))
+                        continue;
+                    s_cursorX[n] = (u8)x;
+                    s_cursorY[n] = (u8)y;
+                    ++n;
+                }
     }
     if (n != s_cursorCount || n != 0) {
         s_cursorCount = n;
@@ -1527,6 +1539,8 @@ u32 CollectClones(s32 vx, s32 vy) {
         s_clones[n].item = s_carried[k].value;
         s_clones[n].x = (u8)x;
         s_clones[n].y = (u8)y;
+        s_clones[n].srcX = (u8)s_carried[k].x;
+        s_clones[n].srcY = (u8)s_carried[k].y;
         ++n;
     }
     return n;
