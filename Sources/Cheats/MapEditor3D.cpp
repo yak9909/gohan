@@ -10,7 +10,10 @@
 //
 // ★村の実体（fgobj）の材質は書き換えない（F056）。材質の物体は同じモデルの実体で共有されていて（利用者報告: 触っていない
 //   同じモデルも赤くなった）、ゲームの簡易版の書き出し（0x4A17B8）が季節資源の未解決の参照表を読んで落ちた（0x4B0C54、実機）。
-//   赤も複製も、実体の体 +8 の資源から作った自前の体で描く（赤は実体の行列を写して少し大きく重ねる）。
+//   複製は実体の体 +8 の資源から作った自前の体で描く。
+// ★赤は体を作らない（F058）。村の実体の描画関数の表 off_948F90（2 語）を自前の包みへ差し替え、選んだマスの物体を描くときだけ
+//   材質を結んだ直後に TEV 段 5 へ赤を混ぜるコマンドを積む。描いたあとはゲームのフェード（obj+104 の 0x800）と同じ手順で
+//   材質・形状のキャッシュを捨てるので、同じモデルのほかの物体には漏れない。モデルの共有もヒープも関係なく何個でも赤くできる。
 // ★自前の体を壊す前に、写しの材質 +648 に繋いだ自前の TEV を外す（F057）。ゲームの材質の後片付け（0x4AF288 → 0x4AE2A4）は
 //   写しの +648 の TEV → +40 の参照表を辿って参照を +12 = 0 に外し（sub_4A7420）、TEV・表・参照を体のアロケータで解放する（sub_4AE958）。
 //   自前の TEV の表は元の季節資源の表なので、外さずに壊すと元のモデルの参照が外れ、ゲームがそのモデルを描いた所で落ちた（実機 3 回）。
@@ -32,7 +35,6 @@ const u32 kObjNext = 8, kObjX = 40, kObjY = 44, kObjNode = 92;     // ノード 
 const u32 kMaxWalk = 4096;
 // 体（nw::gfx::TransformNode / Model。ctor 0x497F4C）
 const u32 kNodeRes = 8;                     // ResModel（ctor の第 3 引数）
-const u32 kNodeMatrix = 0x4C;               // 行列 3x4（SetMatrix3x4 が書く所。GridCursorGameApi の kNodeLocalMatrix）
 const u32 kNodeScale = 0x7C;                // 拡大率 x, y, z
 
 typedef void *(*ItemPtrFn)(const void *item);
@@ -74,8 +76,6 @@ const u32 kRefDirect = 0x80000000u, kRefRelative = 0x40000000u;
 enum Style : u8 { kPreview, kRed };
 const u32 kRedColor = 0x004040FFu;          // 0x00BBGGRR（BuildingHighlight::kRed と同じ）
 const u8 kRedTint = 0xC0;
-const float kRedScale = 1.04f;              // 実体より少し大きく重ねる（同じ面で奥行きが競らないように）
-const float kRedLift = 0.5f;
 const u32 kWhite = 0x00FFFFFFu;
 const u8 kWhiteTint = 0x60;
 const u8 kPreviewAlpha = 0xA0;
@@ -284,6 +284,175 @@ void *ResolveModel(u32 value, s32 x, s32 y) {
     return HeapPtr(reinterpret_cast<u32>(model)) ? model : nullptr;
 }
 
+// ---- 赤（F058）: 村の実体の描画に割り込む ---------------------------------------------------------
+//   sub_59A918（fgobj の FuncNode のコールバック）が描画リストの物体ごとに off_948F90[obj+285] を (obj, ctx, &視点) で呼ぶ。
+//   表は 0x948E5C + 0x134（sub_59A918 の R10。全体で読むのはここだけ）、.data の初期値 {0x58F6B8, 0}, {0x58FA78, 0}。
+const u32 kDrawTable = 0x00948F90;
+const u32 kDrawKind0 = 0x0058F6B8;          // 材質番号のキャッシュ付き。材質・形状 → obj+120 → (0x800) → 描く
+const u32 kDrawKind1 = 0x0058FA78;          // キャッシュを捨ててからメッシュごとに sub_48D26C
+const u32 kLastShapeKey = 0x00948E94, kLastMatGroup = 0x00948E98, kLastShape = 0x00948E9C;
+const u32 kGpuCmdPtr = 0x0096EA94;          // g_GpuCmdPtr
+const u32 kObjPreDraw = 120;                // 描く直前の関数 (obj, ctx)（sub_58F6B8 0x58F864）
+const u32 kObjDrawNode = 264;               // 描く体（sub_58F6B8 / sub_58FA78 の obj+0x108）
+const u32 kNodeMeshBegin = 0x170, kNodeMeshEnd = 0x174;
+const u32 kResMeshCount = 180, kResMeshes = 184, kResShapes = 200;
+const u32 kMeshShape = 24, kMeshMaterial = 28, kMeshPrimitive = 40, kMeshTail = 104, kMeshTailBytes = 108;
+const u32 kCtxInner = 8, kInnerMaterial = 32;
+const u32 kTevStage5 = 5;
+const u32 kTilesX = 112, kTilesY = 96;
+
+typedef void (*DrawFn)(u32 obj, u32 ctx, const float *view);
+typedef void (*PreDrawFn)(u32 obj, u32 ctx);
+typedef void (*ResetCacheFn)(u32 mask);
+typedef void (*ModelViewFn)(u32 obj, const float *view);
+typedef void (*BindMaterialFn)(u32 inner, u32 zero);
+typedef void (*BindShapeFn)(u32 inner, u32 mesh);
+typedef void (*DrawMeshFn)(u32 ctx, u32 node, u32 shape, u32 primitive);
+typedef void (*CopyBytesFn)(void *dst, const void *src, u32 bytes);
+typedef void (*TevStageInitFn)(u8 *stage, u32 index);
+typedef u32 *(*TevStageEmitFn)(const u8 *stage, u32 *out);
+typedef void (*GpuPropertyFn)(u32 id, u32 *out);
+typedef u32 (*GpuAdvanceFn)(u32 bytes);
+
+const ResetCacheFn   ResetDrawCache = reinterpret_cast<ResetCacheFn>(0x004EF898);
+const ModelViewFn    ModelView      = reinterpret_cast<ModelViewFn>(0x0058F984);      // 体 +444 = 視点 × 体の行列
+const BindMaterialFn BindMaterial   = reinterpret_cast<BindMaterialFn>(0x00494B4C);   // gfx_RenderContext_BindMaterial
+const BindShapeFn    BindShape      = reinterpret_cast<BindShapeFn>(0x004957C4);
+const DrawMeshFn     DrawMesh       = reinterpret_cast<DrawMeshFn>(0x0048D51C);
+const CopyBytesFn    CopyBytes      = reinterpret_cast<CopyBytesFn>(0x0012EC54);      // Mem_CopyBytes
+const TevStageInitFn TevStageInit   = reinterpret_cast<TevStageInitFn>(0x0034A178);
+const TevStageEmitFn TevStageEmit   = reinterpret_cast<TevStageEmitFn>(0x0072721C);
+const GpuPropertyFn  GpuProperty    = reinterpret_cast<GpuPropertyFn>(0x00127EDC);    // 520 = g_GpuCmdPtr
+const GpuAdvanceFn   GpuAdvance     = reinterpret_cast<GpuAdvanceFn>(0x001280B4);
+
+u8 s_tintMap[kTilesX * kTilesY / 8];        // 赤くするマス（描画スレッドが Frame で書き、同じスレッドの描画で読む）
+bool s_tintAny;
+bool s_tableHooked;
+u32 s_chainPreDraw;                         // 包んでいる間だけ: 物体が元から持っていた描く直前の関数
+
+bool Tinted(u32 obj) {
+    const s32 x = (s32)R32(obj + kObjX), y = (s32)R32(obj + kObjY);
+    if (!s_tintAny || x < 0 || y < 0 || x >= (s32)kTilesX || y >= (s32)kTilesY)
+        return false;
+    const u32 i = (u32)y * kTilesX + (u32)x;
+    return ((s_tintMap[i >> 3] >> (i & 7u)) & 1u) != 0u;
+}
+
+// 段 5 = 定数色（赤）と前段の出力を定数アルファの割合で混ぜる（interpolate）。α は前段のまま。
+//   組み立てと書き出しはゲームのフェード sub_58F0D0 と同じ関数（sub_34A178 / sub_72721C）。
+void EmitTint(void) {
+    alignas(4) u8 st[24];
+    TevStageInit(st, kTevStage5);
+    st[0] = 4;                              // RGB: interpolate = 入力0 × 入力2 + 入力1 × (1 − 入力2)
+    st[1] = 0;                              // 演算子: 色 / 色 / アルファ
+    st[2] = 0;
+    st[3] = 2;
+    st[4] = 14;                             // 入力: 定数 / 前段 / 定数
+    st[5] = 15;
+    st[6] = 14;
+    st[18] = (u8)(kRedColor & 0xFFu);
+    st[19] = (u8)((kRedColor >> 8) & 0xFFu);
+    st[20] = (u8)((kRedColor >> 16) & 0xFFu);
+    st[21] = kRedTint;
+    u32 p = 0;
+    GpuProperty(520u, &p);
+    const u32 end = reinterpret_cast<u32>(TevStageEmit(st, reinterpret_cast<u32 *>(p)));
+    GpuAdvance((end - p) & ~3u);
+}
+
+// 描いたあと: 材質番号・形状のキャッシュと描画のキャッシュを捨てる（sub_58F6B8 の 0x800 のあとと同じ 0x58F8A8〜0x58F8C4）
+void ForgetDrawState(void) {
+    W32(kLastShapeKey, 0xFFFFFFFFu);
+    W32(kLastMatGroup, 0xFFFFFFFFu);
+    W32(kLastShape, 0u);
+    ResetDrawCache(0x1FFFu);
+}
+
+void TintPreDraw(u32 obj, u32 ctx) {
+    const u32 chain = s_chainPreDraw;
+    if (chain != 0u)
+        reinterpret_cast<PreDrawFn>(chain)(obj, ctx);
+    EmitTint();
+}
+
+void DrawTinted0(u32 obj, u32 ctx, const float *view) {
+    if (!Tinted(obj)) {
+        reinterpret_cast<DrawFn>(kDrawKind0)(obj, ctx, view);
+        return;
+    }
+    const u32 old = R32(obj + kObjPreDraw);
+    s_chainPreDraw = old;
+    W32(obj + kObjPreDraw, reinterpret_cast<u32>(&TintPreDraw));
+    reinterpret_cast<DrawFn>(kDrawKind0)(obj, ctx, view);
+    W32(obj + kObjPreDraw, old);
+    s_chainPreDraw = 0u;
+    ForgetDrawState();
+}
+
+// sub_48D26C と同じ手順で 1 メッシュ。材質を結んだ直後に赤を積む
+void DrawMeshTinted(u32 ctx, u32 mesh, u32 node) {
+    const u32 res = R32(node + kNodeRes);
+    const u32 shapesRel = R32(res + kResShapes);
+    const u32 shapes = shapesRel != 0u ? res + kResShapes + shapesRel : 0u;
+    const u32 entry = shapes + 4u * R32(mesh + kMeshShape);
+    const u32 shape = R32(entry) != 0u ? entry + R32(entry) : 0u;
+    const u32 inner = R32(ctx + kCtxInner);
+    W32(inner + kInnerMaterial, R32(R32(node + kModelMaterials) + 4u * R32(mesh + kMeshMaterial)));
+    BindMaterial(inner, 0u);
+    EmitTint();
+    BindShape(inner, mesh);
+    DrawMesh(ctx, node, shape, R32(mesh + kMeshPrimitive));
+    const u32 bytes = R32(mesh + kMeshTailBytes);
+    CopyBytes(reinterpret_cast<void *>(R32(kGpuCmdPtr)), reinterpret_cast<const void *>(R32(mesh + kMeshTail)), bytes);
+    W32(kGpuCmdPtr, R32(kGpuCmdPtr) + (bytes & ~3u));
+}
+
+// sub_58FA78 と同じ手順（メッシュの描き方だけ DrawMeshTinted）
+void DrawTinted1(u32 obj, u32 ctx, const float *view) {
+    if (!Tinted(obj)) {
+        reinterpret_cast<DrawFn>(kDrawKind1)(obj, ctx, view);
+        return;
+    }
+    const u32 node = R32(obj + kObjDrawNode);
+    ModelView(obj, view);
+    ForgetDrawState();
+    u32 it = R32(node + kNodeMeshBegin), end = R32(node + kNodeMeshEnd);
+    if (it == end) {
+        const u32 res = R32(node + kNodeRes);
+        const u32 rel = R32(res + kResMeshes);
+        it = rel != 0u ? res + kResMeshes + rel : 0u;
+        end = it + 4u * R32(res + kResMeshCount);
+    }
+    for (; it != end; it += 4u) {
+        const u32 r = R32(it);
+        if (r != 0u)
+            DrawMeshTinted(ctx, it + r, node);
+    }
+    ForgetDrawState();
+}
+
+// 表の差し替え・戻し。どちらも描画スレッド（sub_59A918 と同じスレッド）から。ほかの誰かが書き換えていたら触らない
+void HookDrawTable(void) {
+    if (s_tableHooked)
+        return;
+    if (R32(kDrawTable) != kDrawKind0 || R32(kDrawTable + 4) != 0u || R32(kDrawTable + 8) != kDrawKind1 || R32(kDrawTable + 12) != 0u)
+        return;
+    W32(kDrawTable, reinterpret_cast<u32>(&DrawTinted0));
+    W32(kDrawTable + 8, reinterpret_cast<u32>(&DrawTinted1));
+    s_tableHooked = true;
+}
+
+void UnhookDrawTable(void) {
+    s_tintAny = false;
+    if (!s_tableHooked)
+        return;
+    if (R32(kDrawTable) == reinterpret_cast<u32>(&DrawTinted0))
+        W32(kDrawTable, kDrawKind0);
+    if (R32(kDrawTable + 8) == reinterpret_cast<u32>(&DrawTinted1))
+        W32(kDrawTable + 8, kDrawKind1);
+    s_tableHooked = false;
+}
+
 // ---- 自前の体 ----------------------------------------------------------------------------------
 struct Slot {
     alignas(8) u8 holder[kNodeHolderBytes];
@@ -478,24 +647,8 @@ void PoseAtTile(Slot &s, s32 x, s32 y) {
     UpdateWorldAndSkeleton(s.holder);
 }
 
-// 実体の体の行列と拡大率を写す（赤）。少し大きく、少し上へ（自分の上向きに）
-void PoseLike(Slot &s, u32 srcNode) {
-    float matrix[12];
-    std::memcpy(matrix, reinterpret_cast<const void *>(srcNode + kNodeMatrix), sizeof(matrix));
-    matrix[3] += matrix[1] * kRedLift;
-    matrix[7] += matrix[5] * kRedLift;
-    matrix[11] += matrix[9] * kRedLift;
-    float scale[3];
-    std::memcpy(scale, reinterpret_cast<const void *>(srcNode + kNodeScale), sizeof(scale));
-    for (u32 i = 0; i < 3; ++i)
-        scale[i] *= kRedScale;
-    SetMatrix3x4(s.holder, matrix);
-    SetScale(s.holder, scale);
-    UpdateWorldAndSkeleton(s.holder);
-}
-
 // 要求（このフレームに描く物）
-struct Want { void *res; u32 srcNode; s16 x, y; u8 style; };
+struct Want { void *res; s16 x, y; u8 style; };
 const u32 kMaxWants = kMaxSlots;
 Want s_wants[kMaxWants];
 u32 s_wantCount;
@@ -529,12 +682,7 @@ void StepSlots(void) {
         }
         slot->used = true;
         slot->idle = 0;
-        if (w.style == kRed && !slot->tinted)
-            continue;                       // 赤くできない体は重ねない（ただの大きな写しになるので）
-        if (w.srcNode != 0)
-            PoseLike(*slot, w.srcNode);
-        else
-            PoseAtTile(*slot, w.x, w.y);
+        PoseAtTile(*slot, w.x, w.y);
         Submit(slot->holder, 0);
     }
     for (u32 i = 0; i < kMaxSlots; ++i)
@@ -576,14 +724,19 @@ void TearDown(bool sameScene) {
 
 void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
     if (s_heapMade && !SceneSame()) {       // 場面が変わった: 何も書かずに捨てる
+        s_tintAny = false;
         TearDown(false);
         return;
     }
     const u32 proc = R32(kProcPtr);
-    if (!HeapPtr(proc) || *reinterpret_cast<const volatile s8 *>(kOutdoorFlag) == 0)
+    if (!HeapPtr(proc) || *reinterpret_cast<const volatile s8 *>(kOutdoorFlag) == 0) {
+        s_tintAny = false;
         return;
-    // 実体を辿って、赤く重ねる物と、複製の元の資源を拾う（実体には書かない）
+    }
+    // 実体を辿って、赤くするマスと、複製の元の資源を拾う（実体には書かない）
     s_wantCount = 0;
+    std::memset(s_tintMap, 0, sizeof(s_tintMap));
+    bool anyTint = false;
     void *srcRes[kMaxClones];
     for (u32 c = 0; c < kMaxClones; ++c)
         srcRes[c] = nullptr;
@@ -600,8 +753,11 @@ void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
                 for (u32 c = 0; c < count && c < kMaxClones; ++c)
                     if (srcRes[c] == nullptr && clones[c].srcX == x && clones[c].srcY == y)
                         srcRes[c] = reinterpret_cast<void *>(res);
-                if (highlight != nullptr && s_wantCount < kMaxWants && highlight(x, y))
-                    s_wants[s_wantCount++] = { reinterpret_cast<void *>(res), node, (s16)x, (s16)y, kRed };
+                if (highlight != nullptr && highlight(x, y)) {
+                    const u32 i = (u32)y * kTilesX + (u32)x;
+                    s_tintMap[i >> 3] = (u8)(s_tintMap[i >> 3] | (1u << (i & 7u)));
+                    anyTint = true;
+                }
             }
         }
         obj = next;
@@ -609,8 +765,11 @@ void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
     for (u32 c = 0; c < count && c < kMaxClones && s_wantCount < kMaxWants; ++c) {
         void *res = srcRes[c] != nullptr ? srcRes[c] : ResolveModel(clones[c].item, clones[c].x, clones[c].y);
         if (res != nullptr)
-            s_wants[s_wantCount++] = { res, 0, (s16)clones[c].x, (s16)clones[c].y, kPreview };
+            s_wants[s_wantCount++] = { res, (s16)clones[c].x, (s16)clones[c].y, kPreview };
     }
+    if (anyTint)
+        HookDrawTable();
+    s_tintAny = anyTint && s_tableHooked;
     StepSlots();
     // 何も描かなくなったらしばらく待ってヒープを返す
     if (s_wantCount != 0) {
@@ -621,6 +780,7 @@ void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
 }
 
 bool Release(void) {
+    UnhookDrawTable();
     if (!s_heapMade) {
         ForgetAll();
         return true;
@@ -636,6 +796,7 @@ bool Release(void) {
 }
 
 void Abandon(void) {
+    UnhookDrawTable();
     if (s_heapMade)
         TearDown(SceneSame());
     else

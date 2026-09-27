@@ -1471,6 +1471,23 @@ bool UpdateGroup(s32 vx, s32 vy) {
     return true;
 }
 
+// 上画面に見せる選択: 範囲を引いている途中はいまの吸着した四角（離したときに選ばれる物と同じ計算。SelectRelease）、
+//   そうでなければ確定した範囲（利用者指示 2026-09-28: 引いている途中もカーソルと赤）
+bool ShownSel(SelRect &r) {
+    if (s_touchKind == TouchKind::SelDrag) {
+        const s32 gx0 = s_selGridX0 < s_selGridX1 ? s_selGridX0 : s_selGridX1;
+        const s32 gx1 = s_selGridX0 < s_selGridX1 ? s_selGridX1 : s_selGridX0;
+        const s32 gy0 = s_selGridY0 < s_selGridY1 ? s_selGridY0 : s_selGridY1;
+        const s32 gy1 = s_selGridY0 < s_selGridY1 ? s_selGridY1 : s_selGridY0;
+        if (gx0 == gx1 || gy0 == gy1)
+            return false;
+        r = { true, gx0, gy0, gx1 - 1, gy1 - 1 };
+        return true;
+    }
+    r = s_sel;
+    return s_sel.active;
+}
+
 bool NearView(s32 vx, s32 vy, s32 x, s32 y) {
     return x >= vx - kNearMargin && y >= vy - kNearMargin && x < vx + kView + kNearMargin && y < vy + kView + kNearMargin
         && x >= 0 && y >= 0 && x < kTilesX && y < kTilesY;
@@ -1497,10 +1514,11 @@ void PublishCursor(s32 vx, s32 vy) {
             s_cursorY[0] = (u8)s_fingerY;
             n = 1;
         }
-        // 範囲選択の中の全部のマス（利用者指示 2026-09-28）。盤面の周りだけ・最大 64
-        if (s_mode == Mode::Select && s_sel.active)
-            for (s32 y = s_sel.y0; y <= s_sel.y1 && n < kMaxCursorTiles; ++y)
-                for (s32 x = s_sel.x0; x <= s_sel.x1 && n < kMaxCursorTiles; ++x) {
+        // 範囲選択の中の全部のマス（利用者指示 2026-09-28。引いている途中も）。盤面の周りだけ・最大 64
+        SelRect r;
+        if (s_mode == Mode::Select && ShownSel(r))
+            for (s32 y = r.y0; y <= r.y1 && n < kMaxCursorTiles; ++y)
+                for (s32 x = r.x0; x <= r.x1 && n < kMaxCursorTiles; ++x) {
                     if (!NearView(vx, vy, x, y) || (x == s_fingerX && y == s_fingerY))
                         continue;
                     s_cursorX[n] = (u8)x;
@@ -1520,7 +1538,8 @@ bool HighlightTile(s32 x, s32 y) {
         return false;
     if (x == s_fingerX && y == s_fingerY)
         return true;
-    return s_mode == Mode::Select && InSel(x, y);
+    SelRect r;
+    return s_mode == Mode::Select && ShownSel(r) && x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
 }
 
 // 移動の複製（MapEditor3D）: 行き先が盤面の周りにある物だけ

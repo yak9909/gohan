@@ -429,12 +429,26 @@ static void StepBuild() {
             Stop(Fail::kNoParentHeap);
             return;
         }
+        // ★マス指定の形（公共事業・建物・マップエディター）は、親ヒープが足りなければ入る行数（8 体ずつ）で組み、
+        //   1 行も入らなければ止めずに次のフレームで見直す。以前は Failed で止まったまま二度と組み直さず、
+        //   マップエディターの複製が 256 KB を借りている間に組み直しが来るとカーソルが消えたままになった（2026-09-28 実機:
+        //   親の空き 503,480 B − 262,144 B < 24 体の 245,760 B）。足元の形（メニューの ON/OFF）は従来どおり止める。
+        u32 cursors = (u32)s_footprintW * (u32)s_footprintH;
         {
-            const u32 want = kResourceHeapBytes + (u32)s_footprintW * (u32)s_footprintH * kInstanceBytesPerCursor +
-                             kInstanceHeapSlack + kParentReserve;
-            if (HeapGetFreeSize(parent) < want) {
-                Stop(Fail::kInstanceHeap);
-                return;
+            const u32 fixedBytes = kResourceHeapBytes + kInstanceHeapSlack + kParentReserve;
+            const u32 freeBytes = HeapGetFreeSize(parent);
+            if (freeBytes < fixedBytes + cursors * kInstanceBytesPerCursor) {
+                if (!s_tileMode) {
+                    Stop(Fail::kInstanceHeap);
+                    return;
+                }
+                u32 fit = freeBytes > fixedBytes ? (freeBytes - fixedBytes) / kInstanceBytesPerCursor : 0u;
+                fit -= fit % kMaxSide;
+                if (fit == 0u) {
+                    s_failReason = Fail::kInstanceHeap;     // 表示用。段は AllocHeaps のまま
+                    return;
+                }
+                cursors = fit;
             }
         }
         s_sceneOwner = owner;
@@ -455,7 +469,8 @@ static void StepBuild() {
         }
         // 体数ぶんだけ取る。大きさを増やして入り切らなくなったときは SetFootprint が
         // 組み直しを頼むので、ここは「いま要る量」でよい。
-        s_heapCursors = (u32)s_footprintW * (u32)s_footprintH;
+        s_heapCursors = cursors;
+        s_failReason = Fail::kNone;
         const u32 instanceBytes = s_heapCursors * kInstanceBytesPerCursor + kInstanceHeapSlack;
         if (HeapCreateNamed(s_instanceAllocator, instanceBytes, parent, &s_heapName,
                             1, 0u) != 1 ||
@@ -738,6 +753,12 @@ extern "C" void FrameCallback(void) {
     // Once a second, and from this thread only: walking a heap's free list is cheap but it
     // is the game's heap, so it happens here rather than from the plugin thread.
     if ((s_frames % 60u) == 0u) {
+        // 入る数に減らして組んだあと、親ヒープが空いて形の体数が入るようになったら組み直す
+        const u32 cursors = (u32)s_footprintW * (u32)s_footprintH;
+        void* parent = *kParentHeap;
+        if (s_tileMode && s_heapCursors < cursors && IsHeapPointer(parent)
+            && HeapGetFreeSize(parent) >= kResourceHeapBytes + kInstanceHeapSlack + kParentReserve + cursors * kInstanceBytesPerCursor)
+            RequestRebuild();
         void* resourceHeap = *reinterpret_cast<void**>(Word(s_resourceAllocator, 4));
         void* instanceHeap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
         s_resourceFree = IsHeapPointer(resourceHeap) ? HeapGetFreeSize(resourceHeap) : 0u;
