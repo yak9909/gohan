@@ -141,24 +141,87 @@ const u8 kBuildWhite[4] = { 0xFF, 0xA0, 0x3C, 0xFF };
 const u32 kPictureMaterial = 316;           // nw::lyt::Picture +0x13C = Material*（ctor 0x4BAA68。F-291）
 const u32 kMatColors = 0x10;                // Material +0x10.. 色 7 個（[0] 黒色 / [1] 白色）
 const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送り直す（GameList と同じ）
-// ---- 範囲選択（段階 3）----
+// ---- 範囲選択（段階 3）。ゲームの模様替え（ModuleIndoor の CollectChip / Chip、ModuleFtr の移動）に合わせる（IDA-opus-5.5-F053）----
 const u32 kMaxCarry = 64;                   // 持ち上げる・写すアイテムの数（UnitCursor の最大と同じ）
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
 const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub_B0AD88）が渡す大きさ
-const u32 kListCmdBytes = 0x3700;           // ItemSelectWindow の組み立て（sub_2BA8B0）が渡す大きさ
-const u8 kListPriority = 0x9F;              // ItemSelectWindow / ItemSelectNameWindow と同じ（-97）
+// 範囲の点の吸着（CollectChip sub_B359D4）: u = 指 − 部屋の中心 に (1 マス × 0.5 − 1) を u の符号つきで足し、
+//   1 マスで割って 0 へ切り捨て、1 マスを掛ける = 最寄りの格子線（ちょうど半分はやや 0 寄り）
+const float kSnapBias = kTile * 0.5f - 1.0f;
+// 持ち上げたコマの行き先（ModuleFtr sub_B147EC）: 単位の境目から 2.0（世界の長さ。1 マス = 32）以内なら前の単位のまま
+const float kCarryHysteresis = 2.0f / 32.0f;
+const float kMoveSoundScale = 0.00625f;     // 移動の音の引数 = 行き先の世界 x × 0.00625（ModuleFtr 0xB070A8 の VLDR 0x3BCCCCCD）
+const float kWorldTile = 32.0f;
+// 音（名前は reference/old_project/SOUND/index/sounds.csv）
+const u32 kSndPolyStart = 0x0100051D;       // SE_SYS_FUR_POLY_START: 範囲を引き始めた（CollectChip Neutral 0xB0ABB0）
+const u32 kSndPolyOn = 0x0100051F;          // SE_SYS_FUR_POLY_ON: 範囲で 1 個以上選んだ（sub_B3D014）
+const u32 kSndPolyCancel = 0x01000520;      // SE_SYS_FUR_POLY_CANCEL: 選択を解いた（sub_B3D5B0）
+const u32 kSndFurOn = 0x01000521;           // SE_SYS_FUR_ON: コマを触った・持ち上げた
+const u32 kSndPut = 0x01000525;             // SE_SYS_FUR_PUT: まとめて置いた（ModuleFtr 0xB071DC）
+const u32 kSndBack = 0x01000526;            // SE_SYS_FUR_BACK: 置けずに戻した
+const u32 kSndPolyMove = 0x01000527;        // SE_SYS_FUR_POLY_MOVE: 行き先が変わった（置ける。ModuleFtr 0xB070BC）
+const u32 kSndPolyMoveOut = 0x01000528;     // SE_SYS_FUR_POLY_MOVE_OUT: 行き先が変わった（置けない）
+const u32 kSndListClose = 0x010003C6;       // SE_SYS_WIN_SELECT_ITEM_CLOSE（一覧を窓の外のタッチで閉じたときと同じ。sub_2BA608）
+typedef void (*SlideSoundFn)(float area);
+typedef void (*MoveSoundFn)(u32 id, float x);
+// 範囲を引いている間、毎フレーム呼ぶ（SE_SYS_FUR_POLY_MOVE_FOR_SLT を鳴らし続け、変数 15 = |面積| / 270。CollectChip sub_B0ABF8）
+const SlideSoundFn SlideSoundGame = reinterpret_cast<SlideSoundFn>(0x00583068);
+// 移動の音（sub_6B1530: BGM に合わせた音程。+0xC5C != 0 / +0xC5D == 0 / +0xCB8 == 2 のときだけ鳴る）
+const MoveSoundFn MoveSoundGame = reinterpret_cast<MoveSoundFn>(0x005827D0);
+const u32 kSoundMgrPtr = 0x00947080;
+const u32 kPlaySoundFn = 0x0058C7D4;        // Game_PlaySound
+// コマのアニメ（cip_01C_02x02。アニメの名前表 CRO 0xB8E1F4 の 5 touch / 6 select / 2 drag / 3 drop2 / 7 loop）。
+//   建物（P）は触れないので C だけ読む。値は全部 P_Btn_00 / P_Btn_01 / N_All に効き、マテリアルの色（fgobj の濃い緑）は触らない
+enum ChipAnim : u8 { kAnimTouch, kAnimSelect, kAnimDrag, kAnimDrop2, kAnimLoop, kChipAnims };
+const char *const kChipAnimNames[kChipAnims] = {
+    "cip_01C_02x02_touch.bclan", "cip_01C_02x02_select.bclan", "cip_01C_02x02_drag.bclan",
+    "cip_01C_02x02_drop2.bclan", "cip_01C_02x02_loop.bclan",
+};
+const float kAnimTapEnd = 1.0f;             // touch / select の終わり（2 フレーム）
+const u32 kAnimPulseEnd = 3;                // drag / drop2 の終わり（4 フレーム）
+const u32 kAnimLoopLen = 40;                // loop（縞の流れ。40 フレームで一周）
+enum ChipLook : u8 { kLookPlain, kLookSelected, kLookCarried, kLookDropped };
+// ---- 一覧 = ゲームの ItemSelectWindow（持ち物の選択窓。使い方は script::ChoiceStandardItem と持ち物欄 sub_23FB5C を写す）----
+typedef int (*ListStepFn)(void *win);
+typedef int (*ListBuildFn)(void *win, void *holder);
+typedef void (*ListOpenFn)(void *win, s32 cancelRow);
+typedef void (*ChangeStateFn)(void *obj, u32 calc, u32 adj);
+typedef void (*ListFn)(void *win);
+typedef void (*ListNameFn)(void *win, u32 visible);
+const u32 kListBytes = 2880;                // 2,832 B 以上（ctor 0x2BAFC0: +1488 からボタンの節 224 B × 6）
+const CtorFn         ListCtor       = reinterpret_cast<CtorFn>(0x002BAFC0);
+const CtorFn         ListDtor       = reinterpret_cast<CtorFn>(0x002BB13C);         // vt[0]（delete しない方）
+const ListStepFn     ListLoadStep   = reinterpret_cast<ListStepFn>(0x002BAC48);     // itm_slct_win.arc。済めば非 0
+const ListBuildFn    ListBuild      = reinterpret_cast<ListBuildFn>(0x002BA8B0);    // (窓, 0 = 自前の保持体)
+const ListOpenFn     ListOpen       = reinterpret_cast<ListOpenFn>(0x002BAF48);     // 待機なら +1224 = 取消の行、Select In へ
+const ChangeStateFn  ChangeState    = reinterpret_cast<ChangeStateFn>(0x00818528);  // 状態表から enter を引いて呼ぶ
+const ListFn         ListUpdate     = reinterpret_cast<ListFn>(0x002BABAC);         // 状態の calc → ボタン → Layout 計算
+const ListNameFn     ListNameVisible = reinterpret_cast<ListNameFn>(0x002B9F64);    // 名前の欄（N_itm_nm_00）の表示
+const u32 kListIdle = 0x002B9F5C, kListDecided = 0x002BA29C, kListClose = 0x002BA2A0;  // 状態の calc（表 0x8736F8）
+const u32 kListLayout = 624;                // Layout（描画 = AddLayout(mgr, 窓 + 624, 1)）
+const u32 kListState = 12;                  // 状態の calc（+16 = 調整）
+const u32 kListRowBase = 956, kListRowStride = 12;  // 行 i: +0 文字箱 T_slct_cntnt / +4 下線 P_undrLine / +8 決定音
+const u32 kListAnchorPane = 1204;           // 基準のペイン（sub_2B9D1C が +72/+76 の大きさだけ読む）
+const u32 kListResult = 1212, kListCancelled = 1228;
+const u32 kListAnchor = 1236;               // 基準の位置（持ち物欄は項目のペインの大域位置 +140/+156/+172。sub_71A250）
 const u32 kListRowCount = 4;
-const float kListFontW = 14.4f;             // T_slct_cntnt_0X の文字の大きさ（横）。全角 1 字の送り
-const float kListRowH = 20.0f;              // T_slct_cntnt_0X の高さ（sub_2B9A20 が行の高さに使う）
+const s32 kListCancelRow = 3;               // 「やめる」
+// 行の決定音はゲームの表（dword_88BA80: 選択肢の種類 → 音）から: 複製 = 9 COPY / 削除 = 8 ERASE / 埋める = 7 WIN_SELECT_ITEM_DECIDE / やめる = 1 CANCEL
+const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x010003C5, 0x01000392 };
 const u32 kTextAllocSlot = 28;              // TextBox vt[28] = 器の確保（GameList と同じ）
 const u32 kTextDraw = 260;
 typedef void (*AllocBufFn)(void *textBox, u32 chars, u32 flags);
 typedef void (*SetStringFn)(void *textBox, const u16 *str, u32 start, u32 len);
 const SetStringFn SetString = reinterpret_cast<SetStringFn>(0x004BACBC);    // nwlyt_TextBox_SetString（GameList と同じ）
-const u32 kPlaySoundFn = 0x0058C7D4;        // Game_PlaySound
-const u32 kSndListOpen = 0x010003C4;        // ItemSelectWindow を開いたとき（sub_2BA070）
-const u32 kSndListRow = 0x010003C3;         // 行（sub_2BAC8C が各行に置く音）
+// 文字の幅（ChoiceStandardItem sub_5E7838 は行ごとに文字箱と下線の幅 +72 を測った幅にする。測り方は sub_5E9430 と同じ）
+typedef void (*WriterScaleFn)(void *writer, float w, float h);
+typedef float (*MeasureFn)(void *writer, const u16 *str, u32 len);
+const CtorFn         WriterCtor     = reinterpret_cast<CtorFn>(0x007E8488);         // nw::font::TextWriter（100 B）
+const CtorFn         WriterDtor     = reinterpret_cast<CtorFn>(0x004D5BCC);
+const WriterScaleFn  WriterScale    = reinterpret_cast<WriterScaleFn>(0x004D51B0);  // nwfont_CharWriter_RecomputeScale（s0, s1 = 文字の大きさ）
+const MeasureFn      MeasureWidth   = reinterpret_cast<MeasureFn>(0x008268E0);      // 写しで CalcStringRect → 右 − 左（s0）
+const u32 kWriterBytes = 0x74;              // sub_5E9430 が積む大きさ（使うのは 100 B）
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
@@ -220,23 +283,29 @@ struct alignas(8) Chip {
     bool used;                              // このフレームで使う
     bool rotated;
     s16 tx, ty;                             // 受け持つマス（左上）
+    u8 look;                                // 焼いてある見た目（ChipLook）
     void *nAll;
     void *nRot;
     void *bBtn;
 };
 Chip s_chips[kMaxChips];
 u32 s_chipsMade;
+u8 s_chipLook[kMaxChips];                   // このフレームの見た目（AssignChips が決め、CalcChip が焼く）
+alignas(8) u8 s_chipAnim[kChipAnims][40];   // コマのアニメ（UiAnim。全部のコマで順に結んで焼いて外す）
+bool s_chipAnimsMade;
+u32 s_frameNo;                              // 縞の流れ（loop）の拍
 
-struct WantChip { u8 type; bool rotated; s16 tx, ty; u8 w, h; bool ghost; u8 gi; };
+struct WantChip { u8 type; bool rotated; s16 tx, ty; u8 w, h; bool ghost; u8 gi; u8 look; };
 WantChip s_wantChips[kMaxChips];
 u32 s_wantCount;
 Chip *s_drawOrder[kMaxChips];
 u32 s_drawCount;
 
 // タッチの状態（描画スレッドだけ）
-enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold, SelPendIn, SelPendOut, SelDrag, CarryDrag, ListTouch };
+enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold, SelPendIn, SelPendOut, SelDrag, CarryDrag };
 u32 s_touchTail;                            // 処理した点（通算）
 bool s_touchPrevDown;
+bool s_touchWaitUp;                         // 一覧が指を使っていた: 離すまで点を使わない
 u16 s_touchLastPx, s_touchLastPy;           // 直前の点（画素）
 TouchKind s_touchKind = TouchKind::None;
 s32 s_touchLastX = -1, s_touchLastY = -1;   // 直前のマス（盤面の外は -1）
@@ -260,18 +329,20 @@ s32 s_carryVx, s_carryVy;                   // 持ち上げたときの盤面
 u16 s_carryPressX, s_carryPressY;           // 動かし始めた指
 float s_carryBaseX, s_carryBaseY;           // 前のタッチまでの動き（複製は 2 回に分けて動かせる）
 float s_carryPixX, s_carryPixY;             // 指の動き（画素。下が +）
-s32 s_selStartTx, s_selStartTy;
-s32 s_listRow = -1;
+s32 s_carrySnapX, s_carrySnapY;             // 指の動きをマスに吸着したもの（境目の揺れはゲームと同じ 2.0 の遊びで抑える）
+s32 s_carrySoundX, s_carrySoundY;           // 最後に音を鳴らした行き先のずれ
+u32 s_carryFrames;                          // 持ち上げてからのフレーム（drag アニメ）
+u32 s_dropFrames = 0xFFFFFFFFu;             // 置いてからのフレーム（drop2 アニメ）
+s32 s_selStartTx, s_selStartTy;             // 押したマス（タップの判定）
+s32 s_selGridX0, s_selGridY0;               // 範囲の始点 = 押した点を吸着した格子線（村のマスの番号。左上の角 = そのマスの番号）
+s32 s_selGridX1, s_selGridY1;               // 範囲の終点（指）
 alignas(8) u8 s_group[332];
 bool s_groupMade, s_groupBuilt;
 void *s_gWin, *s_gStart, *s_gEnd;
-alignas(8) u8 s_list[332];
-alignas(8) u8 s_listIn[40];
-alignas(8) u8 s_listOut[40];
-bool s_listMade, s_listBuilt, s_listAnimsMade, s_listOpen, s_listClosing;
-void *s_listAnim;
-void *s_listAll, *s_listWin;
-void *s_listRowPane[6], *s_listText[6], *s_listBound[6];
+alignas(8) u8 s_listWin[kListBytes];        // ゲームの ItemSelectWindow
+alignas(8) u8 s_listAnchorPane[80];         // 一覧の基準のペインの代わり（+72/+76 = 1 マスの大きさだけ使われる）
+bool s_listMade, s_listLoaded, s_listBuilt;
+volatile bool s_listActive;                 // 描画 → メニュー: 一覧が出ている（ゲームのタッチを止めない）
 u32 s_ghostStart;                           // s_drawOrder の中で持ち上げたコマが始まる位置
 u32 s_cancelDone;
 
@@ -352,6 +423,15 @@ bool LoadStep(void) {
             return false;
         s_nameLoaded = true;
     }
+    if (!s_listMade) {                      // 一覧（持ち物の選択窓）。ゲームと同じく自分の保持体に itm_slct_win.arc を読む
+        ListCtor(s_listWin);
+        s_listMade = true;
+    }
+    if (!s_listLoaded) {
+        if (ListLoadStep(s_listWin) == 0)
+            return false;
+        s_listLoaded = true;
+    }
     return true;
 }
 
@@ -421,58 +501,28 @@ bool BuildStep(void) {
         }
         return false;
     }
-    if (!s_listBuilt) {                     // 一覧（持ち物の選択窓。資源は名前の吹き出しが読んだ itm_slct_win.arc）
-        void *holder = s_name + 36;         // ItemSelectNameWindow の保持体（組み立てで書体も登録済み）
-        if (!s_listMade) {
-            LayoutCtor(s_list);
-            s_listMade = true;
-        }
-        W(s_list, kLayoutHolder) = reinterpret_cast<u32>(holder);
-        if (LayoutBuild(s_list, "itm_slct_win.bclyt", nullptr, kListCmdBytes) == 0) {
-            s_error = u8"itm_slct_win.bclyt を組めません";
-            return false;
-        }
+    if (!s_listBuilt) {                     // 一覧 = ゲームの ItemSelectWindow をそのまま組む（アニメ・音・行のボタンは窓が持つ）
+        ListBuild(s_listWin, nullptr);
         s_listBuilt = true;
-        B(s_list, kLayoutPriority) = kListPriority;
-        AnimCtor(s_listIn);
-        AnimCtor(s_listOut);
-        s_listAnimsMade = true;
-        AnimLoad(s_listIn, "itm_slct_win_in_slct_win.bclan", holder);
-        AnimLoad(s_listOut, "itm_slct_win_out_slct_win.bclan", holder);
-        SetVisible(s_list, "N_itm_nm_00", false);
-        SetVisible(s_list, "N_slct_00", false);            // 十字キーのカーソル（タッチだけなので出さない）
-        s_listAll = FindPane(s_list, "N_all");
-        s_listWin = FindPane(s_list, "W_slct_00");
-        if (s_listAll == nullptr || s_listWin == nullptr) {
-            s_error = u8"itm_slct_win の部品がありません";
-            return false;
-        }
-        B(s_listAll, kPaneFlagsByte) &= 0xFEu;
-        char name[20];
-        for (u32 i = 0; i < 6; ++i) {
-            std::snprintf(name, sizeof(name), "N_slct_cntnt_%02u", (unsigned)i);
-            s_listRowPane[i] = FindPane(s_list, name);
-            std::snprintf(name, sizeof(name), "T_slct_cntnt_%02u", (unsigned)i);
-            s_listText[i] = FindPane(s_list, name);
-            std::snprintf(name, sizeof(name), "B_cntnts_%02u", (unsigned)i);
-            s_listBound[i] = FindPane(s_list, name);
-            if (s_listRowPane[i] == nullptr || s_listText[i] == nullptr || s_listBound[i] == nullptr) {
+        for (u32 i = 0; i < 6; ++i) {       // 行の文字箱に器（8 字）。文字は開くたびに入れる
+            void *box = reinterpret_cast<void *>(W(s_listWin, kListRowBase + kListRowStride * i));
+            if (box == nullptr) {
                 s_error = u8"itm_slct_win の行がありません";
                 return false;
             }
-        }
-        for (u32 i = 0; i < kListRowCount; ++i) {
-            void *box = s_listText[i];
             const u32 draw = W(box, kTextDraw);
             const u32 flags = draw != 0 ? *reinterpret_cast<const u8 *>(draw + 9) : 0;
             u32 *vt = *reinterpret_cast<u32 **>(box);
             reinterpret_cast<AllocBufFn>(vt[kTextAllocSlot])(box, 8, flags);
-            u32 n = 0;
-            while (kListRows[i][n] != 0)
-                ++n;
-            SetString(box, reinterpret_cast<const u16 *>(kListRows[i]), 0, n);
         }
         return false;
+    }
+    if (!s_chipAnimsMade) {                 // コマの見た目（選択・持ち上げ・置いた）のアニメ
+        for (u32 i = 0; i < kChipAnims; ++i) {
+            AnimCtor(s_chipAnim[i]);
+            AnimLoad(s_chipAnim[i], kChipAnimNames[i], s_holder);
+        }
+        s_chipAnimsMade = true;
     }
     return true;
 }
@@ -492,6 +542,10 @@ void DestroyAll(void) {
         c.made = c.built = c.used = false;
     }
     s_chipsMade = 0;
+    if (s_chipAnimsMade)
+        for (u32 i = 0; i < kChipAnims; ++i)
+            AnimDtor(s_chipAnim[i]);
+    s_chipAnimsMade = false;
     if (s_boardMade) {
         if (s_boardBuilt)
             LayoutUnbindAll(s_board);
@@ -520,15 +574,12 @@ void DestroyAll(void) {
     s_groupMade = s_groupBuilt = false;
     if (s_listMade) {
         if (s_listBuilt)
-            LayoutUnbindAll(s_list);
-        LayoutDtor(s_list);
+            LayoutUnbindAll(s_listWin + kListLayout);
+        ListDtor(s_listWin);
     }
-    if (s_listAnimsMade) {
-        AnimDtor(s_listIn);
-        AnimDtor(s_listOut);
-    }
-    s_listMade = s_listBuilt = s_listAnimsMade = s_listOpen = s_listClosing = false;
-    s_listAnim = nullptr;
+    s_listMade = s_listLoaded = s_listBuilt = false;
+    s_listActive = false;
+    s_touchWaitUp = false;
     s_sel.active = false;
     s_carry = Carry::None;
     s_carriedCount = 0;
@@ -571,7 +622,11 @@ void AddWant(u8 type, s32 tx, s32 ty, u8 w, u8 h, bool rotated) {
     c.h = h;
     c.ghost = false;
     c.gi = 0;
+    c.look = kLookPlain;
 }
+
+u8 ItemLook(s32 x, s32 y);
+void CarryOffset(s32 vx, s32 vy, s32 &ox, s32 &oy);
 
 bool Carried(s32 x, s32 y) {
     for (u32 k = 0; k < s_carriedCount; ++k)
@@ -604,14 +659,22 @@ void CollectWants(s32 vx, s32 vy) {
             if (s_carry == Carry::Move && Carried(vx + i, vy + j))
                 continue;                   // 持ち上げている間は元の場所に出さない
             AddWant(id <= kFgobjMax ? kFgobjC : kItemC, vx + i, vy + j, 1, 1, false);
+            s_wantChips[s_wantCount - 1].look = ItemLook(vx + i, vy + j);
         }
     }
-    // 持ち上げたコマ（写しを含む）。受け持つマスは村の外の番号にして、盤面のコマと混ぜない
+    // 持ち上げたコマ（写しを含む）。行き先のマスに吸着して描く（ゲームも下画面のコマは単位の位置）。盤面の外は出さない。
+    //   受け持つマスは村の外の番号にして、盤面のコマと混ぜない
     if (s_carry != Carry::None) {
+        s32 ox = 0, oy = 0;
+        CarryOffset(vx, vy, ox, oy);
         for (u32 k = 0; k < s_carriedCount && s_wantCount < kMaxChips; ++k) {
+            const s32 x = s_carried[k].x + ox, y = s_carried[k].y + oy;
+            if (x < vx || y < vy || x >= vx + kView || y >= vy + kView)
+                continue;
             AddWant(s_carried[k].type, 20000 + (s32)k, 20000, 1, 1, false);
             s_wantChips[s_wantCount - 1].ghost = true;
             s_wantChips[s_wantCount - 1].gi = (u8)k;
+            s_wantChips[s_wantCount - 1].look = kLookCarried;
         }
     }
 }
@@ -626,6 +689,7 @@ bool BuildChipLayout(Chip &c, u8 type) {
         return false;
     c.built = true;
     c.type = type;
+    c.look = kLookPlain;
     B(c.layout, kLayoutPriority) = 2;
     if (type == kFgobjC || type == kBuild11) {
         void *pic = FindPane(c.layout, "P_Btn_00");
@@ -643,7 +707,7 @@ bool BuildChipLayout(Chip &c, u8 type) {
 }
 
 // 欲しいコマに、組み立て済みのコマを割り当てる（同じマスを受け持っていたものを優先。足りなければ組み立てる）
-void AssignChips(void) {
+void AssignChips(s32 vx, s32 vy) {
     for (u32 i = 0; i < s_chipsMade; ++i)
         s_chips[i].used = false;
     s_drawCount = 0;
@@ -688,8 +752,10 @@ void AssignChips(void) {
     // 位置。盤面の中心 = N_Room_00 の大域位置、1 マス 20、y は下へ減る（ModuleFtr 0xB0F758）
     const float ox = F(s_roomPane, kPaneGlobalX);
     const float oy = F(s_roomPane, kPaneGlobalY);
-    const s32 vx = s_viewX, vy = s_viewY;
     const float half = (float)kView * 0.5f;
+    s32 carryOx = 0, carryOy = 0;
+    if (s_carry != Carry::None)
+        CarryOffset(vx, vy, carryOx, carryOy);
     // 描く順: 建物 → アイテム → 持ち上げたコマ（一番上）
     for (u32 pass = 0; pass < 3; ++pass) {
         if (pass == 2)
@@ -703,11 +769,12 @@ void AssignChips(void) {
             c->tx = w.tx;
             c->ty = w.ty;
             c->rotated = w.rotated;
-            if (w.ghost) {                  // 持ち上げたときの盤面での位置 + 指の動き（盤面を動かしても指の下に残る）
+            s_chipLook[c - s_chips] = w.look;
+            if (w.ghost) {                  // 行き先のマス（CollectWants で盤面の中だけにしてある）
                 const CarryItem &ci = s_carried[w.gi];
-                const float gx = (float)(ci.x - s_carryVx) + 0.5f - half;
-                const float gy = (float)(ci.y - s_carryVy) + 0.5f - half;
-                SetTranslate(c->nAll, ox + gx * kTile + s_carryPixX, oy - gy * kTile - s_carryPixY);
+                const float gx = (float)(ci.x + carryOx - vx) + 0.5f - half;
+                const float gy = (float)(ci.y + carryOy - vy) + 0.5f - half;
+                SetTranslate(c->nAll, ox + gx * kTile, oy - gy * kTile);
                 SetRotateZ(c->nRot, 0.0f);
                 s_drawOrder[s_drawCount++] = c;
                 continue;
@@ -719,6 +786,133 @@ void AssignChips(void) {
             s_drawOrder[s_drawCount++] = c;
         }
     }
+}
+
+// ---- 音 ----
+void Sound(u32 id) {
+    reinterpret_cast<void (*)(u32)>(kPlaySoundFn)(id);
+}
+
+void SlideSound(float area) {
+    SlideSoundGame(area);
+}
+
+// 移動の音はゲームと同じ sub_5827D0（BGM に合わせた音程）。その経路が鳴らない状態のときだけ Game_PlaySound で補う（自前）
+void MoveSound(u32 id, float worldX) {
+    const u32 mgr = R32(kSoundMgrPtr);
+    if (mgr != 0 && *reinterpret_cast<const u8 *>(mgr + 0xC5C) != 0 && *reinterpret_cast<const u8 *>(mgr + 0xC5D) == 0
+        && R32(mgr + 0xCB8) == 2)
+        MoveSoundGame(id, worldX * kMoveSoundScale);
+    else
+        Sound(id);
+}
+
+// ---- コマの見た目を焼いて計算する（アニメを結ぶ → フレーム → 計算 → 外す。値はペインに残る）----
+//   選択 = touch と select の終わり（sub_B43330）、解除 = 同じ 2 本の先頭（sub_B2EB04）、縞の流れ = loop（ゲームは常に結んでいる）、
+//   持ち上げ = drag、置いた = drop2（まだ選択のまま）
+void CalcChip(Chip &c, u8 look) {
+    if (!s_chipAnimsMade || c.type >= kBuild11 || (look == kLookPlain && c.look == kLookPlain)) {
+        LayoutCalc(c.layout);
+        return;
+    }
+    u8 ids[3];
+    float frames[3];
+    u32 n = 0;
+    const float loop = (float)(s_frameNo % kAnimLoopLen);
+    switch (look) {
+    case kLookPlain:
+        ids[n] = kAnimTouch, frames[n++] = 0.0f;
+        ids[n] = kAnimSelect, frames[n++] = 0.0f;
+        break;
+    case kLookSelected:
+        if (c.look != kLookSelected) {
+            ids[n] = kAnimTouch, frames[n++] = kAnimTapEnd;
+            ids[n] = kAnimSelect, frames[n++] = kAnimTapEnd;
+        }
+        ids[n] = kAnimLoop, frames[n++] = loop;
+        break;
+    case kLookCarried:
+        ids[n] = kAnimDrag, frames[n++] = (float)(s_carryFrames < kAnimPulseEnd ? s_carryFrames : kAnimPulseEnd);
+        ids[n] = kAnimLoop, frames[n++] = loop;
+        break;
+    default:
+        ids[n] = kAnimDrop2, frames[n++] = (float)(s_dropFrames < kAnimPulseEnd ? s_dropFrames : kAnimPulseEnd);
+        ids[n] = kAnimLoop, frames[n++] = loop;
+        break;
+    }
+    for (u32 i = 0; i < n; ++i) {
+        AnimBind(c.layout, s_chipAnim[ids[i]]);
+        AnimSetFrame(s_chipAnim[ids[i]], frames[i]);
+    }
+    LayoutCalc(c.layout);
+    for (u32 i = 0; i < n; ++i)
+        AnimUnbind(c.layout, s_chipAnim[ids[i]]);
+    c.look = look;
+}
+
+// ---- 一覧（ゲームの ItemSelectWindow）----
+bool ListBusy(void) {
+    return s_listBuilt && !(W(s_listWin, kListState) == kListIdle && W(s_listWin, kListState + 4) == 0);
+}
+
+// 文字箱の書体で文字列の幅を測る（sub_5E9430 と同じ: 折り返しなし）
+float MeasureText(void *box, const u16 *str, u32 len) {
+    alignas(8) u8 writer[kWriterBytes];
+    WriterCtor(writer);
+    W(writer, 60) = W(box, 224);            // 書体
+    WriterScale(writer, F(box, 228), F(box, 232));
+    W(writer, 84) = W(box, 236);
+    W(writer, 80) = W(box, 240);
+    W(writer, 76) = 0x7F7FFFFFu;            // 折り返しの幅 = FLT_MAX
+    const float w = MeasureWidth(writer, str, len);
+    WriterDtor(writer);
+    return w;
+}
+
+// 開く。行の文字・幅・決定音を入れ（ChoiceStandardItem sub_5E7838）、基準を置いて名前の欄を隠し（持ち物欄 sub_23FB5C）、sub_2BAF48 で開く
+void OpenList(s32 vx, s32 vy, s32 tx, s32 ty) {
+    if (!s_listBuilt || ListBusy())
+        return;
+    HideName();
+    static const u16 kEmpty[1] = { 0 };
+    for (u32 i = 0; i < 6; ++i) {
+        u8 *row = s_listWin + kListRowBase + kListRowStride * i;
+        void *box = reinterpret_cast<void *>(W(row, 0));
+        void *line = reinterpret_cast<void *>(W(row, 4));
+        if (i >= kListRowCount) {
+            SetString(box, kEmpty, 0, 0);   // 文字が無い行は出ない（sub_2B9A20 が +250 を見る）
+            continue;
+        }
+        const u16 *str = reinterpret_cast<const u16 *>(kListRows[i]);
+        u32 n = 0;
+        while (str[n] != 0)
+            ++n;
+        SetString(box, str, 0, n);
+        const float w = MeasureText(box, str, n);
+        F(box, 72) = w;                     // 文字箱と下線の幅 = 文字の幅（高さはそのまま）
+        if (line != nullptr)
+            F(line, 72) = w;
+        W(row, 8) = kListRowSounds[i];
+    }
+    // 基準 = タップしたマスの中心（大域の位置）、大きさ = 1 マス
+    const float half = (float)kView * 0.5f;
+    F(s_listWin, kListAnchor) = F(s_roomPane, kPaneGlobalX) + ((float)(tx - vx) + 0.5f - half) * kTile;
+    F(s_listWin, kListAnchor + 4) = F(s_roomPane, kPaneGlobalY) - ((float)(ty - vy) + 0.5f - half) * kTile;
+    F(s_listWin, kListAnchor + 8) = 0.0f;
+    F(s_listAnchorPane, 72) = kTile;
+    F(s_listAnchorPane, 76) = kTile;
+    W(s_listWin, kListAnchorPane) = reinterpret_cast<u32>(s_listAnchorPane);
+    ListNameVisible(s_listWin, 0);
+    ListOpen(s_listWin, kListCancelRow);
+    s_listActive = true;
+}
+
+// 閉じる（sub_2BAFA0 と同じ状態へ）。閉じ始めたら真
+bool CloseList(void) {
+    if (!ListBusy() || W(s_listWin, kListState) == kListClose)
+        return false;
+    ChangeState(s_listWin, kListClose, 0);
+    return true;
 }
 
 Chip *ChipAt(s32 tx, s32 ty, bool itemsOnly) {
@@ -865,11 +1059,12 @@ void Trace(s32 vx, s32 vy, u16 px, u16 py) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 範囲選択（段階 3。利用者の決定 2026-09-27）
-//   スライド = どこから始めても範囲を引く（範囲の外から）。タップ = そのマスだけを選ぶ（アイテムなら名前も）。
-//   範囲の中: 長押し（ゲームのチップと同じ 6 フレーム or 24 動く）で持ち上げて移動、タップで一覧（複製・削除・埋める・やめる）。
-//   持ち上げている間は十字・スライドパッドで盤面を動かせる（コマは指の下に残り、行き先は盤面の動いた分だけずれる）。
-//   行き先に物があれば上書き。盤面の外のタップと B で選択を解除
+// 範囲選択（段階 3）。操作は利用者の決定 2026-09-27、見た目・音・吸着はゲームの模様替え（IDA-opus-5.5-F053）
+//   スライド = 範囲を引く: 押した点と指を最寄りの格子線へ吸着し（CollectChip sub_B359D4）、その四角に丸ごと入るマスを選ぶ（sub_B5923C）。
+//   タップ = そのマスだけを選ぶ（アイテムなら名前も）。範囲の中: 長押し（6 フレーム or 24 動く）で持ち上げて移動、タップで一覧。
+//   持ち上げたコマは行き先のマスに吸着して描き、行き先が変わるたびに音（ModuleFtr sub_B06E44）。
+//   持ち上げている間は十字・スライドパッドで盤面を動かせる（行き先は盤面の動いた分だけずれる）。行き先に物があれば上書き。
+//   盤面の外のタップと B で選択を解く
 // ---------------------------------------------------------------------------------------------
 
 bool InSel(s32 x, s32 y) {
@@ -878,6 +1073,51 @@ bool InSel(s32 x, s32 y) {
 
 void ClearSel(void) {
     s_sel.active = false;
+}
+
+u32 ItemsInSel(void) {
+    if (!s_sel.active)
+        return 0;
+    u32 n = 0;
+    for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
+        for (s32 x = s_sel.x0; x <= s_sel.x1; ++x) {
+            const u32 *item = ItemAtTile(x, y);
+            if (item != nullptr && !IsEmpty(item))
+                ++n;
+        }
+    return n;
+}
+
+// 選択を解く。選ばれたコマがあれば POLY_CANCEL（ゲームの sub_B3D5B0）
+void CancelSel(void) {
+    if (ItemsInSel() != 0)
+        Sound(kSndPolyCancel);
+    ClearSel();
+}
+
+// 盤面のアイテムのコマの見た目: 範囲の中 = 選択（置いた直後の 4 フレームは drop2）
+u8 ItemLook(s32 x, s32 y) {
+    if (!InSel(x, y))
+        return kLookPlain;
+    return s_dropFrames <= kAnimPulseEnd ? kLookDropped : kLookSelected;
+}
+
+// CollectChip sub_B359D4 の吸着。u = 部屋の中心からの位置（ゲームの座標では部屋の中心が 0。原点 +129568 は ctor の 0.0 のまま）
+float SnapLine(float u) {
+    const float bias = u < 0.0f ? -kSnapBias : kSnapBias;
+    return (float)(s32)((u + bias) / kTile) * kTile;
+}
+
+// 画素 → 吸着した格子線の番号（村のマス。格子線 i = マス i の左・上の辺）。盤面の辺までに収める
+void GridAt(s32 vx, s32 vy, u16 px, u16 py, s32 &gx, s32 &gy) {
+    const float half = (float)kView * 0.5f;
+    const float ux = SnapLine(((float)px - 160.0f) - F(s_roomPane, kPaneGlobalX));
+    const float uy = SnapLine((120.0f - (float)py) - F(s_roomPane, kPaneGlobalY));
+    s32 ix = (s32)(ux / kTile + half), iy = (s32)(half - uy / kTile);      // 20 の倍数 / 20 なので割り切れる
+    ix = ix < 0 ? 0 : (ix > kView ? kView : ix);
+    iy = iy < 0 ? 0 : (iy > kView ? kView : iy);
+    gx = vx + ix;
+    gy = vy + iy;
 }
 
 // 範囲の中のアイテムを写す（持ち上げ・複製）。戻り値: 数
@@ -898,11 +1138,7 @@ u32 CaptureSel(void) {
     return s_carriedCount;
 }
 
-// 持ち上げる。基準 = 今の指の位置と今の盤面
-bool Lift(Carry mode, s32 vx, s32 vy, u16 px, u16 py) {
-    if (CaptureSel() == 0)
-        return false;
-    HideName();
+void StartCarry(Carry mode, s32 vx, s32 vy, u16 px, u16 py) {
     s_carry = mode;
     s_carryVx = vx;
     s_carryVy = vy;
@@ -910,14 +1146,60 @@ bool Lift(Carry mode, s32 vx, s32 vy, u16 px, u16 py) {
     s_carryPressY = py;
     s_carryBaseX = s_carryBaseY = 0.0f;
     s_carryPixX = s_carryPixY = 0.0f;
+    s_carrySnapX = s_carrySnapY = 0;
+    s_carrySoundX = s_carrySoundY = 0;
+    s_carryFrames = 0;
+    s_dropFrames = 0xFFFFFFFFu;
+    Sound(kSndFurOn);                       // コマを取った（ゲームのチップ Select → Drag と同じ音）
+}
+
+// 持ち上げる。基準 = 今の指の位置と今の盤面
+bool Lift(Carry mode, s32 vx, s32 vy, u16 px, u16 py) {
+    if (CaptureSel() == 0)
+        return false;
+    HideName();
+    StartCarry(mode, vx, vy, px, py);
     return true;
 }
 
-// 行き先のずれ（マス）= 指の動き（20 画素で 1 マス、四捨五入）+ 盤面を動かした分
+// 指の動き（画素）→ マスのずれ。四捨五入で、前のずれとの境目から 2.0（世界の長さ）以内なら前のまま（ModuleFtr sub_B147EC）
+s32 SnapAxis(float pix, s32 prev) {
+    const float f = pix / kTile;
+    const s32 r = FloorI(f + 0.5f);
+    if (r == prev)
+        return prev;
+    if (r == prev + 1 || r == prev - 1) {
+        const float d = f - ((float)(r < prev ? r : prev) + 0.5f);
+        if (d < kCarryHysteresis && d > -kCarryHysteresis)
+            return prev;
+    }
+    return r;
+}
+
+void MoveCarry(u16 px, u16 py) {
+    s_carryPixX = s_carryBaseX + (float)px - (float)s_carryPressX;
+    s_carryPixY = s_carryBaseY + (float)py - (float)s_carryPressY;
+    s_carrySnapX = SnapAxis(s_carryPixX, s_carrySnapX);
+    s_carrySnapY = SnapAxis(s_carryPixY, s_carrySnapY);
+}
+
+// 行き先のずれ（マス）= 吸着した指の動き + 盤面を動かした分
 void CarryOffset(s32 vx, s32 vy, s32 &ox, s32 &oy) {
-    const float fx = s_carryPixX / kTile, fy = s_carryPixY / kTile;
-    ox = FloorI(fx + 0.5f) + (vx - s_carryVx);
-    oy = FloorI(fy + 0.5f) + (vy - s_carryVy);
+    ox = s_carrySnapX + (vx - s_carryVx);
+    oy = s_carrySnapY + (vy - s_carryVy);
+}
+
+// 置けるか: 行き先が全部村の中（物があれば上書きするので、ほかに置けない場所は無い）
+bool CarryPlaceable(s32 ox, s32 oy) {
+    for (u32 k = 0; k < s_carriedCount; ++k)
+        if (ItemAtTile(s_carried[k].x + ox, s_carried[k].y + oy) == nullptr)
+            return false;
+    return true;
+}
+
+// 移動の音の引数（ゲームは行き先の世界 x × 0.00625）。持ち上げた先頭のアイテムの行き先の中心
+float CarryWorldX(s32 ox) {
+    return s_carriedCount != 0 ? ((float)(s_carried[0].x + ox) + 0.5f) * kWorldTile : 0.0f;
 }
 
 void CommitCarry(s32 vx, s32 vy) {
@@ -925,6 +1207,12 @@ void CommitCarry(s32 vx, s32 vy) {
     CarryOffset(vx, vy, ox, oy);
     const bool move = s_carry == Carry::Move;
     s_carry = Carry::None;
+    if (!CarryPlaceable(ox, oy)) {
+        Sound(kSndBack);                    // 置けないので元へ戻す（ModuleFtr sub_B07108 と同じ）
+        return;
+    }
+    Sound(kSndPut);
+    s_dropFrames = 0;
     if (ox == 0 && oy == 0)
         return;                             // 元の場所（移動なら何もしない・複製なら同じ物を上書きするだけ）
     if (move)
@@ -934,7 +1222,7 @@ void CommitCarry(s32 vx, s32 vy) {
         const s32 x = s_carried[k].x + ox, y = s_carried[k].y + oy;
         const u32 *item = ItemAtTile(x, y);
         if (item == nullptr)
-            continue;                       // 村の外
+            continue;
         if (!IsEmpty(item))
             DeleteItem(x, y, R32(kFieldPtr));   // 上書き（利用者の決定）
         const u32 value = s_carried[k].value;
@@ -952,129 +1240,14 @@ void CancelCarry(void) {
     s_carriedCount = 0;
 }
 
-// ---- 一覧（持ち物の選択窓 itm_slct_win の N_slct_win。ItemSelectWindow sub_2B9A20 の大きさの規則を写す）----
+// ---- 一覧の行を選んだ（StepList が呼ぶ。決定音は窓が行ごとの音で鳴らす）----
 enum ListAction : u8 { kActCopy, kActDelete, kActFill, kActCancel };
 
-void OpenList(u16 px, u16 py) {
-    if (!s_listBuilt)
-        return;
-    HideName();
-    // 大きさ: 文字の幅（全角 1 字 = 文字の大きさの横 14.4）の最大 + 15、枠はさらに + 30、高さ = 行の高さ × 行数 + 11
-    float textW = 0.0f;
-    for (u32 i = 0; i < kListRowCount; ++i) {
-        u32 n = 0;
-        while (kListRows[i][n] != 0)
-            ++n;
-        const float w = (float)n * kListFontW;
-        if (w > textW)
-            textW = w;
-    }
-    const float rowW = textW + 15.0f;
-    const float winW = rowW + 30.0f;
-    const float winH = kListRowH * (float)kListRowCount + 11.0f;
-    F(s_listWin, 72) = winW;
-    F(s_listWin, 76) = winH < 32.0f ? 32.0f : winH;
-    const float winX = F(s_listWin, kPaneTranslateX);
-    for (u32 i = 0; i < 6; ++i) {
-        void *row = s_listRowPane[i];
-        if (row == nullptr)
-            continue;
-        const bool on = i < kListRowCount;
-        B(row, kPaneFlagsByte) = (u8)((B(row, kPaneFlagsByte) & 0xFEu) | (on ? 1u : 0u));
-        if (!on)
-            continue;
-        F(s_listBound[i], 72) = rowW;
-        F(s_listText[i], 72) = rowW;
-        F(row, kPaneTranslateX) = -(rowW * 0.5f) - winX + 15.0f;
-        B(row, kPaneFlagsByte) &= 0xCFu;
-    }
-    // 置き場所: 窓の上端（W_slct_00 の基準点は上端中央）を指の少し下に。画面からはみ出すなら上へ、横は画面に収める
-    const float lx = (float)px - 160.0f, ly = 120.0f - (float)py;
-    float x = lx, y = ly - 12.0f;
-    const float h = F(s_listWin, 76);
-    if (y - h < -120.0f)
-        y = ly + 12.0f + h;
-    if (y > 120.0f)
-        y = 120.0f;
-    if (x - winW * 0.5f < -160.0f)
-        x = -160.0f + winW * 0.5f;
-    if (x + winW * 0.5f > 160.0f)
-        x = 160.0f - winW * 0.5f;
-    SetTranslate(s_listAll, x, y);
-    B(s_listAll, kPaneFlagsByte) |= 1u;
-    if (s_listAnim != nullptr)
-        AnimUnbind(s_list, s_listAnim);
-    AnimBind(s_list, s_listIn);
-    AnimSetFrame(s_listIn, 0.0f);
-    s_listAnim = s_listIn;
-    s_listOpen = true;
-    s_listClosing = false;
-    reinterpret_cast<void (*)(u32)>(kPlaySoundFn)(kSndListOpen);
-}
-
-void CloseList(void) {
-    if (!s_listOpen || s_listClosing)
-        return;
-    if (s_listAnim != nullptr)
-        AnimUnbind(s_list, s_listAnim);
-    AnimBind(s_list, s_listOut);
-    AnimSetFrame(s_listOut, 0.0f);
-    s_listAnim = s_listOut;
-    s_listClosing = true;
-}
-
-void StepListAnim(void) {
-    if (s_listAnim == nullptr)
-        return;
-    if (AnimFinished(s_listAnim)) {
-        AnimUnbind(s_list, s_listAnim);
-        s_listAnim = nullptr;
-        if (s_listClosing) {
-            s_listOpen = false;
-            s_listClosing = false;
-            B(s_listAll, kPaneFlagsByte) &= 0xFEu;
-        }
-    } else {
-        AnimStep(s_listAnim);
-    }
-}
-
-// 一覧の行（B_cntnts_0X の大域位置と大きさ。基準点は左中央）。無ければ -1
-s32 ListRowAt(u16 px, u16 py) {
-    if (!s_listOpen || s_listClosing || s_listAnim != nullptr)
-        return -1;
-    const float lx = (float)px - 160.0f, ly = 120.0f - (float)py;
-    for (u32 i = 0; i < kListRowCount; ++i) {
-        void *b = s_listBound[i];
-        const float gx = F(b, kPaneGlobalX), gy = F(b, kPaneGlobalY);
-        const float w = F(b, 72), h = F(b, 76);
-        if (lx >= gx && lx < gx + w && ly <= gy + h * 0.5f && ly > gy - h * 0.5f)
-            return (s32)i;
-    }
-    return -1;
-}
-
-bool InListWindow(u16 px, u16 py) {
-    if (!s_listOpen)
-        return false;
-    const float lx = (float)px - 160.0f, ly = 120.0f - (float)py;
-    const float x = F(s_listAll, kPaneTranslateX), y = F(s_listAll, kPaneTranslateY);
-    const float w = F(s_listWin, 72), h = F(s_listWin, 76);
-    return lx >= x - w * 0.5f && lx < x + w * 0.5f && ly <= y && ly > y - h;
-}
-
 void RunListAction(u32 row, s32 vx, s32 vy) {
-    reinterpret_cast<void (*)(u32)>(kPlaySoundFn)(kSndListRow);
-    CloseList();
     switch (row) {
     case kActCopy:
-        if (CaptureSel() != 0) {            // 写しが浮かび、次のタッチで動かして離した所に置く
-            s_carry = Carry::CopyArmed;
-            s_carryVx = vx;
-            s_carryVy = vy;
-            s_carryBaseX = s_carryBaseY = 0.0f;
-            s_carryPixX = s_carryPixY = 0.0f;
-        }
+        if (CaptureSel() != 0)              // 写しが浮かび、次のタッチで動かして離した所に置く
+            StartCarry(Carry::CopyArmed, vx, vy, 0, 0);
         break;
     case kActDelete:
         for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
@@ -1094,18 +1267,6 @@ void RunListAction(u32 row, s32 vx, s32 vy) {
 
 // ---- 範囲選択のタッチ ----
 void SelectPress(s32 vx, s32 vy, u16 px, u16 py, bool inside, s32 tx, s32 ty) {
-    if (s_listOpen) {
-        const s32 row = ListRowAt(px, py);
-        if (row >= 0) {
-            s_touchKind = TouchKind::ListTouch;
-            s_listRow = row;
-        } else {
-            if (!InListWindow(px, py))
-                CloseList();                // 窓の外を触ったら閉じる
-            s_touchKind = TouchKind::Ignore;
-        }
-        return;
-    }
     if (s_carry == Carry::CopyArmed) {
         if (inside) {                       // 次のタッチで写しを動かす
             s_carry = Carry::Copy;
@@ -1116,30 +1277,41 @@ void SelectPress(s32 vx, s32 vy, u16 px, u16 py, bool inside, s32 tx, s32 ty) {
             s_touchKind = TouchKind::CarryDrag;
         } else {
             CancelCarry();
+            Sound(kSndBack);
             s_touchKind = TouchKind::Ignore;
         }
         return;
     }
     if (!inside) {
         HideName();
-        ClearSel();
+        CancelSel();
         s_touchKind = TouchKind::Ignore;
         return;
     }
     s_selStartTx = tx;
     s_selStartTy = ty;
-    s_touchKind = InSel(tx, ty) ? TouchKind::SelPendIn : TouchKind::SelPendOut;
+    if (InSel(tx, ty)) {
+        s_touchKind = TouchKind::SelPendIn;
+        return;
+    }
+    CancelSel();                            // 範囲の外を押した = 前の選択を解く（ゲームも押した瞬間に解く）
+    GridAt(vx, vy, px, py, s_selGridX0, s_selGridY0);   // 始点 = 押した点を吸着（CollectChip も押した瞬間の点）
+    s_selGridX1 = s_selGridX0;
+    s_selGridY1 = s_selGridY0;
+    s_touchKind = TouchKind::SelPendOut;
 }
 
 void SelectMove(s32 vx, s32 vy, u16 px, u16 py) {
     switch (s_touchKind) {
     case TouchKind::SelPendIn: {
         const float dx = (float)px - (float)s_touchStartX, dy = (float)py - (float)s_touchStartY;
-        if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop)
-            s_touchKind = Lift(Carry::Move, vx, vy, s_touchStartX, s_touchStartY) ? TouchKind::CarryDrag : TouchKind::Ignore;
-        if (s_touchKind == TouchKind::CarryDrag) {
-            s_carryPixX = (float)px - (float)s_carryPressX;
-            s_carryPixY = (float)py - (float)s_carryPressY;
+        if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop) {
+            if (Lift(Carry::Move, vx, vy, s_touchStartX, s_touchStartY)) {
+                s_touchKind = TouchKind::CarryDrag;
+                MoveCarry(px, py);
+            } else {
+                s_touchKind = TouchKind::Ignore;
+            }
         }
         break;
     }
@@ -1148,12 +1320,16 @@ void SelectMove(s32 vx, s32 vy, u16 px, u16 py) {
         if (!TouchTile(vx, vy, px, py, tx, ty) || tx != s_selStartTx || ty != s_selStartTy) {
             HideName();                     // マスを出たら範囲を引く
             s_touchKind = TouchKind::SelDrag;
+            Sound(kSndPolyStart);
+            GridAt(vx, vy, px, py, s_selGridX1, s_selGridY1);
         }
         break;
     }
+    case TouchKind::SelDrag:
+        GridAt(vx, vy, px, py, s_selGridX1, s_selGridY1);
+        break;
     case TouchKind::CarryDrag:
-        s_carryPixX = s_carryBaseX + (float)px - (float)s_carryPressX;
-        s_carryPixY = s_carryBaseY + (float)py - (float)s_carryPressY;
+        MoveCarry(px, py);
         break;
     default:
         break;
@@ -1161,46 +1337,48 @@ void SelectMove(s32 vx, s32 vy, u16 px, u16 py) {
 }
 
 void SelectRelease(s32 vx, s32 vy) {
-    const u16 px = s_touchLastPx, py = s_touchLastPy;
     switch (s_touchKind) {
     case TouchKind::SelPendIn:
-        OpenList(px, py);                   // 範囲の中のタップ
+        OpenList(vx, vy, s_selStartTx, s_selStartTy);   // 範囲の中のタップ
         break;
-    case TouchKind::SelPendOut:             // 範囲の外のタップ: そのマスだけを選ぶ（アイテムなら名前も）
+    case TouchKind::SelPendOut: {           // 範囲の外のタップ: そのマスだけを選ぶ（アイテムなら名前も）
         s_sel.active = true;
         s_sel.x0 = s_sel.x1 = s_selStartTx;
         s_sel.y0 = s_sel.y1 = s_selStartTy;
+        s_dropFrames = 0xFFFFFFFFu;
+        if (ItemsInSel() != 0)
+            Sound(kSndFurOn);
         ShowNameAt(vx, vy, s_selStartTx, s_selStartTy);
         break;
-    case TouchKind::SelDrag: {              // 範囲 = 始めたマスから離したマス（盤面の中に収める）
-        float fx, fy;
-        TileCoord(px, py, fx, fy);
-        s32 ex = FloorI(fx), ey = FloorI(fy);
-        ex = ex < 0 ? 0 : (ex >= kView ? kView - 1 : ex);
-        ey = ey < 0 ? 0 : (ey >= kView ? kView - 1 : ey);
-        ex += vx;
-        ey += vy;
-        const s32 sx = s_selStartTx, sy = s_selStartTy;    // 始めたマス（村のマス。途中で盤面を動かしても同じ）
+    }
+    case TouchKind::SelDrag: {              // 吸着した 2 点の四角に丸ごと入るマス。幅か高さが 0 なら何も選ばない
+        const s32 gx0 = s_selGridX0 < s_selGridX1 ? s_selGridX0 : s_selGridX1;
+        const s32 gx1 = s_selGridX0 < s_selGridX1 ? s_selGridX1 : s_selGridX0;
+        const s32 gy0 = s_selGridY0 < s_selGridY1 ? s_selGridY0 : s_selGridY1;
+        const s32 gy1 = s_selGridY0 < s_selGridY1 ? s_selGridY1 : s_selGridY0;
+        if (gx0 == gx1 || gy0 == gy1) {
+            ClearSel();
+            break;
+        }
         s_sel.active = true;
-        s_sel.x0 = sx < ex ? sx : ex;
-        s_sel.x1 = sx < ex ? ex : sx;
-        s_sel.y0 = sy < ey ? sy : ey;
-        s_sel.y1 = sy < ey ? ey : sy;
+        s_sel.x0 = gx0;
+        s_sel.x1 = gx1 - 1;
+        s_sel.y0 = gy0;
+        s_sel.y1 = gy1 - 1;
+        s_dropFrames = 0xFFFFFFFFu;
+        if (ItemsInSel() != 0)
+            Sound(kSndPolyOn);              // 1 個以上選んだ（sub_B3D014）
         break;
     }
     case TouchKind::CarryDrag:
         CommitCarry(vx, vy);
-        break;
-    case TouchKind::ListTouch:
-        if (ListRowAt(px, py) == s_listRow)
-            RunListAction((u32)s_listRow, vx, vy);
         break;
     default:
         break;
     }
 }
 
-// 毎フレーム: 範囲の中の長押し（6 フレーム）で持ち上げる
+// 毎フレーム: 範囲の中の長押し（6 フレーム）で持ち上げる・範囲を引いている間の音・行き先が変わった音・置いたアニメの拍
 void SelectFrame(s32 vx, s32 vy) {
     if (s_touchKind == TouchKind::SelPendIn && s_touchPrevDown && ++s_holdFrames >= kLiftFrames) {
         if (Lift(Carry::Move, vx, vy, s_touchLastPx, s_touchLastPy))
@@ -1208,75 +1386,79 @@ void SelectFrame(s32 vx, s32 vy) {
         else
             s_touchKind = TouchKind::Ignore;
     }
+    if (s_touchKind == TouchKind::SelDrag)  // 面積（吸着した 2 点の差の積）で鳴らし続ける（sub_B0ABF8）
+        SlideSound((float)(s_selGridX1 - s_selGridX0) * kTile * (float)(s_selGridY1 - s_selGridY0) * kTile);
+    if (s_carry != Carry::None) {
+        ++s_carryFrames;
+        s32 ox = 0, oy = 0;
+        CarryOffset(vx, vy, ox, oy);
+        if (ox != s_carrySoundX || oy != s_carrySoundY) {
+            s_carrySoundX = ox;
+            s_carrySoundY = oy;
+            MoveSound(CarryPlaceable(ox, oy) ? kSndPolyMove : kSndPolyMoveOut, CarryWorldX(ox));
+        }
+    }
+    if (s_dropFrames <= kAnimPulseEnd)
+        ++s_dropFrames;
 }
 
-// 範囲選択モードを離れた・B: 一覧・持ち上げ・範囲を順に 1 段ずつ解く
+// 範囲選択モードの B: 一覧・持ち上げ・範囲を順に 1 段ずつ解く
 void SelectCancel(void) {
-    if (s_listOpen) {
-        CloseList();
+    if (ListBusy()) {
+        if (CloseList())
+            Sound(kSndListClose);
         return;
     }
     if (s_carry != Carry::None) {
         CancelCarry();
+        Sound(kSndBack);
         if (s_touchKind == TouchKind::CarryDrag)
             s_touchKind = TouchKind::Ignore;
         return;
     }
-    ClearSel();
     HideName();
+    CancelSel();
 }
 
+// 範囲選択モードを離れた: 音を出さずに全部解く
 void SelectReset(void) {
-    if (s_listOpen)
-        CloseList();
+    CloseList();
     CancelCarry();
     ClearSel();
 }
 
-// ---- 枠（cip_group_00）の見た目。引いている間は指に付いて伸び、決まったら範囲のマスを囲む ----
+// ---- 枠（cip_group_00）。引いている間 = ゲームの CollectChip と同じ（吸着した始点・終点、中点・|差| + 10）。
+//   ゲームは離すと枠を消してコマの縞で見せるが、空きマスも選べる（埋める）ので、離したあとも選んだマスの四角に W_Group だけ残す（自前）----
 bool UpdateGroup(s32 vx, s32 vy) {
     if (!s_groupBuilt)
         return false;
     const float ox = F(s_roomPane, kPaneGlobalX), oy = F(s_roomPane, kPaneGlobalY);
-    const float half = (float)kView * 0.5f * kTile;
+    const float half = (float)kView * 0.5f;
     float ax, ay, bx, by;
     bool markers = false;
-    if (s_touchKind == TouchKind::SelDrag) {    // ゲームの CollectChip sub_B0ABF8: 始点と指の中点・大きさ |差| + 10
-        ax = (float)s_touchStartX - 160.0f;
-        ay = 120.0f - (float)s_touchStartY;
-        bx = (float)s_touchLastPx - 160.0f;
-        by = 120.0f - (float)s_touchLastPy;
+    if (s_touchKind == TouchKind::SelDrag) {
+        ax = ox + ((float)(s_selGridX0 - vx) - half) * kTile;
+        ay = oy - ((float)(s_selGridY0 - vy) - half) * kTile;
+        bx = ox + ((float)(s_selGridX1 - vx) - half) * kTile;
+        by = oy - ((float)(s_selGridY1 - vy) - half) * kTile;
         markers = true;
-        const float dx = bx - ax, dy = by - ay;
-        SetTranslate(s_gWin, ax + dx * 0.5f, ay + dy * 0.5f);
-        F(s_gWin, 72) = (dx < 0 ? -dx : dx) + kGroupPad;
-        F(s_gWin, 76) = (dy < 0 ? -dy : dy) + kGroupPad;
-        SetTranslate(s_gStart, ax, ay);
-        SetTranslate(s_gEnd, bx, by);
     } else if (s_sel.active) {
-        // 決まった範囲: マスの四角（持ち上げ中は指と一緒に動く）
-        s32 bvx = vx, bvy = vy;
-        float px = 0.0f, py = 0.0f;
-        if (s_carry != Carry::None && s_carry != Carry::CopyArmed) {
-            bvx = s_carryVx;
-            bvy = s_carryVy;
-            px = s_carryPixX;
-            py = s_carryPixY;
-        } else if (s_carry == Carry::CopyArmed) {
-            bvx = s_carryVx;
-            bvy = s_carryVy;
-        }
-        const float left = ox - half + (float)(s_sel.x0 - bvx) * kTile + px;
-        const float right = ox - half + (float)(s_sel.x1 + 1 - bvx) * kTile + px;
-        const float top = oy + half - (float)(s_sel.y0 - bvy) * kTile - py;
-        const float bottom = oy + half - (float)(s_sel.y1 + 1 - bvy) * kTile - py;
-        SetTranslate(s_gWin, (left + right) * 0.5f, (top + bottom) * 0.5f);
-        F(s_gWin, 72) = right - left + kGroupPad;
-        F(s_gWin, 76) = top - bottom + kGroupPad;
+        s32 cx = 0, cy = 0;                 // 持ち上げている間は行き先に吸着して動く
+        if (s_carry != Carry::None)
+            CarryOffset(vx, vy, cx, cy);
+        ax = ox + ((float)(s_sel.x0 + cx - vx) - half) * kTile;
+        ay = oy - ((float)(s_sel.y0 + cy - vy) - half) * kTile;
+        bx = ox + ((float)(s_sel.x1 + 1 + cx - vx) - half) * kTile;
+        by = oy - ((float)(s_sel.y1 + 1 + cy - vy) - half) * kTile;
     } else {
         return false;
     }
-    B(s_gWin, kPaneFlagsByte) &= 0xCFu;
+    const float dx = bx - ax, dy = by - ay;
+    SetTranslate(s_gWin, ax + dx * 0.5f, ay + dy * 0.5f);
+    F(s_gWin, 72) = (dx < 0 ? -dx : dx) + kGroupPad;
+    F(s_gWin, 76) = (dy < 0 ? -dy : dy) + kGroupPad;
+    SetTranslate(s_gStart, ax, ay);
+    SetTranslate(s_gEnd, bx, by);
     B(s_gStart, kPaneFlagsByte) = (u8)((B(s_gStart, kPaneFlagsByte) & 0xFEu) | (markers ? 1u : 0u));
     B(s_gEnd, kPaneFlagsByte) = (u8)((B(s_gEnd, kPaneFlagsByte) & 0xFEu) | (markers ? 1u : 0u));
     LayoutCalc(s_group);
@@ -1286,7 +1468,7 @@ bool UpdateGroup(s32 vx, s32 vy) {
 // 持ち上げ中の行き先（上画面の UnitCursor。メニュースレッドが GridCursor へ渡す）
 void PublishCursor(s32 vx, s32 vy) {
     u32 n = 0;
-    if (s_carry == Carry::Move || s_carry == Carry::Copy || s_carry == Carry::CopyArmed) {
+    if (s_carry != Carry::None) {
         s32 ox = 0, oy = 0;
         CarryOffset(vx, vy, ox, oy);
         for (u32 k = 0; k < s_carriedCount && n < kMaxCarry; ++k) {
@@ -1313,6 +1495,19 @@ void TouchRelease(void) {
 
 // 1 点。配置: 空きから始めたらなぞったマスに置く／アイテムから始めたら名前（長押しでスポイト）。削除: なぞったマスを消す
 void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
+    // 一覧が出ている間はゲームがタッチを使う。閉じたあとも、その指を離すまでは使わない
+    if (s_touchWaitUp) {
+        if (!down)
+            s_touchWaitUp = false;
+        return;
+    }
+    if (ListBusy()) {
+        if (down) {
+            TouchRelease();
+            s_touchWaitUp = true;
+        }
+        return;
+    }
     if (!down) {
         if (s_touchPrevDown && s_mode == Mode::Select)
             SelectRelease(vx, vy);
@@ -1424,6 +1619,24 @@ void StepName(s32 vx, s32 vy) {
     // 盤面を動かした・そのマスのアイテムが無くなった（基準のコマがほかへ回った）ら消す
     if (vx != s_nameViewX || vy != s_nameViewY || ChipAt(s_nameTileX, s_nameTileY, true) != s_nameChip)
         HideName();
+}
+
+// 毎フレーム: 一覧を進め（状態の calc → 行のボタン → Layout 計算。ChoiceStandardItem sub_5E7B08 と同じ sub_2BABAC）、
+//   行が決まったら閉じて実行する。窓の外のタッチ（+1228）は取り消し
+void StepList(s32 vx, s32 vy) {
+    if (!ListBusy()) {
+        s_listActive = false;
+        return;
+    }
+    ListUpdate(s_listWin);
+    if (W(s_listWin, kListState) == kListDecided && W(s_listWin, kListState + 4) == 0) {
+        const s32 row = (s32)W(s_listWin, kListResult);
+        const bool cancelled = B(s_listWin, kListCancelled) != 0;
+        ChangeState(s_listWin, kListClose, 0);
+        if (!cancelled && row >= 0 && row < (s32)kListRowCount)
+            RunListAction((u32)row, vx, vy);
+    }
+    s_listActive = ListBusy();
 }
 
 float ViewCenter(s32 v) {
@@ -1680,7 +1893,7 @@ void FrameStep(void) {
         }
         break;
     case Stage::Leaving:
-        if (s_boardAnim == nullptr) {
+        if (s_boardAnim == nullptr && !ListBusy()) {    // 一覧も閉じ終わってから（閉じ終わりで手カーソルの状態をゲームが戻す）
             s_stage = Stage::Waiting;
             s_waitFrames = 0;
             return;
@@ -1696,13 +1909,16 @@ void FrameStep(void) {
     const s32 vx = s_viewX, vy = s_viewY;
     StepBoardAnim();
     LayoutCalc(s_board);                    // N_Room_00 の大域位置（コマの基準）を今のフレームにする
+    ++s_frameNo;
     s_ghostStart = 0xFFFFFFFFu;
     CollectWants(vx, vy);
-    AssignChips();
-    for (u32 k = 0; k < s_drawCount; ++k)
-        LayoutCalc(s_drawOrder[k]->layout);     // 吹き出しは基準のコマの大域位置を読むので先に計算する
+    AssignChips(vx, vy);
+    for (u32 k = 0; k < s_drawCount; ++k) {     // 吹き出しは基準のコマの大域位置を読むので先に計算する
+        Chip *c = s_drawOrder[k];
+        CalcChip(*c, s_chipLook[c - s_chips]);
+    }
     if (s_stage == Stage::Live) {
-        if (s_mode != Mode::Select && (s_sel.active || s_carry != Carry::None || s_listOpen))
+        if (s_mode != Mode::Select && (s_sel.active || s_carry != Carry::None || ListBusy()))
             SelectReset();                  // 範囲選択モードを離れた
         if (s_cancelSeq != s_cancelDone) {
             s_cancelDone = s_cancelSeq;
@@ -1713,16 +1929,12 @@ void FrameStep(void) {
         StepTouch(vx, vy);
     } else {
         EndHold();
-        if (s_listOpen)
-            CloseList();
+        CloseList();
         CancelCarry();
     }
     PublishCursor(vx, vy);
     const bool group = UpdateGroup(vx, vy);
-    if (s_listBuilt) {
-        StepListAnim();
-        LayoutCalc(s_list);
-    }
+    StepList(vx, vy);
     NameCalc();
     // 描画登録（リストは毎フレーム空になる）。盤面 → 建物 → アイテム → 名前
     if (mgr != nullptr) {
@@ -1735,8 +1947,8 @@ void FrameStep(void) {
         for (u32 k = ghosts; k < s_drawCount; ++k)
             AddLayout(mgr, s_drawOrder[k]->layout, 1);
         AddLayout(mgr, s_name + kNameLayout, 1);
-        if (s_listOpen)
-            AddLayout(mgr, s_list, 1);
+        if (ListBusy())
+            AddLayout(mgr, s_listWin + kListLayout, 1);
     }
 }
 
@@ -1803,7 +2015,8 @@ void Tick(u32 keys) {
     }
     // プレイヤーとゲームのタッチを止める（毎ティック頼み続けている間だけ効く）
     GuiMenu::BlockGameAll();
-    GuiMenu::BlockGameTouch();
+    if (!s_listActive)                      // 一覧（ゲームの ItemSelectWindow）はゲームのタッチで動く
+        GuiMenu::BlockGameTouch();
     StepMove(keys);                         // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
