@@ -8,10 +8,12 @@
 #include "GridCursorGameApi.hpp"
 #include "GuiDialog.hpp"
 #include "GuiMenu.hpp"
+#include "ItemNames.hpp"
 #include "PublicWorks.hpp"
 
 #include <3ds.h>
 #include <CTRPluginFramework.hpp>
+#include <cstdio>
 #include <cstring>
 
 using namespace CTRPluginFramework;
@@ -107,11 +109,26 @@ const u32 kNameStateFn = 12, kNameStateAdj = 16;    // 状態の calc（メン�
 typedef u32 *(*ItemAtFn)(u32 field, s32 x, s32 y, u32 zero);
 typedef float (*GroundHeightFn)(const float *pos, u32 zero);
 const ItemAtFn       ItemAt         = reinterpret_cast<ItemAtFn>(0x002FEE38);       // Field_GetItemAtXY（無ければ 0）
+// 置く・消す（IDA-opus-5.5-F051）。消すはゲームの Field_DeleteItemAt（空へ書き、記録を残し、fgobj があれば Field_MarkDirty）。
+//   置くは同じ形で: Field_SetItemAtWorldXY で書いて、fgobj（off_948E70）があれば Field_MarkDirty(x, y, 1)
+typedef int (*SetItemFn)(u32 field, const u32 *item, s32 x, s32 y, u32 zero);
+typedef void (*DeleteItemFn)(s32 x, s32 y, u32 field);
+typedef void (*MarkDirtyFn)(u32 x, u32 y, u32 destroy);
+const SetItemFn      SetItem        = reinterpret_cast<SetItemFn>(0x002FC950);      // Field_SetItemAtWorldXY
+const DeleteItemFn   DeleteItem     = reinterpret_cast<DeleteItemFn>(0x006FA828);   // Field_DeleteItemAt(x, y, 部屋データ)
+const MarkDirtyFn    MarkDirty      = reinterpret_cast<MarkDirtyFn>(0x0059DA7C);    // Field_MarkDirty（PublicWorks と同じ）
+const u32 kFgobjPtr = 0x00948E70;           // off_948E70: fgobj が居るか（sub_59CEC0）
 const GroundHeightFn GroundHeight   = reinterpret_cast<GroundHeightFn>(0x006C69C0);
 const u32 kFieldPtr = 0x009AEA04;           // u32: Field_GetMapManager 0x6A53DC が返す（+0/+4/+8/+C = エーカーの最小 x, y / 最大 x, y）
 const u16 kEmptyItem = 0x7FFE;              // Item_IsEmpty 0x2FCB24
 const u16 kFgobjMax = 0xFD;                 // Item_IsFieldObj 0x2FCCBC
 const s32 kTilesX = 112, kTilesY = 96;      // 村のマス（7 x 6 エーカー）
+// タッチ（ゲームの模様替えのチップ Select 状態 0xB429BC と同じ閾値: 押した点から 24.0 動いたら長押しをやめる）
+const float kHoldSlop = 24.0f;
+const u32 kPickFrames = 15;                 // スポイトの長押し（30fps で 0.5 秒）
+const u32 kNoItem = 0xFFFFFFFFu;
+// 建物のマス（メニュースレッドが開始時に作る。置けるかの判定: fgobj は建物の上に置けない）
+u8 s_buildMask[kTilesX * kTilesY / 8];
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
@@ -129,8 +146,15 @@ volatile u32 s_buildChipCount;
 // ---- メニュー → 描画 ----
 volatile bool s_want;
 volatile s32 s_viewX, s_viewY;              // 盤面の左上のマス
-volatile u32 s_touchSeq;                    // タッチの押し始めごとに増える
+volatile bool s_touchDown;                  // 今触れている（メニュースレッドが毎ティック書く）
 volatile u16 s_touchX, s_touchY;            // 下画面の画素
+volatile Mode s_mode = Mode::Place;
+volatile u32 s_placeId = kNoItem;           // 配置するアイテム（kNoItem = 未設定）
+// ---- 描画 → メニュー（スポイト）----
+volatile float s_pickProgress = -1.0f;      // 長押しの進み（0〜1、負 = 出さない）
+volatile u16 s_pickX, s_pickY;              // 長押しを始めた画素
+volatile u32 s_pickedSeq;                   // スポイトで取れたら増える（メニュースレッドが通知）
+volatile u32 s_noItemSeq;                   // 配置するアイテムが無いまま置こうとしたら増える
 // ---- 描画 → メニュー ----
 const char *volatile s_error = "";
 
@@ -171,7 +195,15 @@ u32 s_wantCount;
 Chip *s_drawOrder[kMaxChips];
 u32 s_drawCount;
 
-u32 s_touchDone;
+// タッチの状態（描画スレッドだけ）
+enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold };
+bool s_touchPrevDown;
+TouchKind s_touchKind = TouchKind::None;
+s32 s_touchLastX = -1, s_touchLastY = -1;   // 直前のマス（盤面の外は -1）
+u16 s_touchStartX, s_touchStartY;
+s32 s_holdTileX, s_holdTileY;               // 長押しを始めたマス（スポイトで取るアイテム）
+bool s_noItemTold;                          // このタッチで「配置するアイテムが無い」を知らせた
+u32 s_holdFrames;
 s32 s_nameTileX = -1, s_nameTileY = -1;
 Chip *s_nameChip;                           // 吹き出しの基準のコマ
 s32 s_nameViewX, s_nameViewY;
@@ -302,7 +334,10 @@ bool BuildStep(void) {
     return true;
 }
 
+void EndHold(void);
+
 void DestroyAll(void) {
+    EndHold();
     s_nameChip = nullptr;                   // 壊すだけなので退場の状態へは進めない
     s_nameTileX = s_nameTileY = -1;
     for (u32 i = 0; i < s_chipsMade; ++i) {
@@ -511,32 +546,44 @@ Chip *ChipAt(s32 tx, s32 ty, bool itemsOnly) {
     return nullptr;
 }
 
-// タッチ: アイテムのマスなら名前（建物は無視）
-void StepTouch(s32 vx, s32 vy) {
-    const u32 seq = s_touchSeq;
-    if (seq == s_touchDone)
-        return;
-    s_touchDone = seq;
-    if (s_boardAnim != nullptr)
-        return;                             // 出入りの途中は受け付けない
-    const float lx = (float)s_touchX - 160.0f;
-    const float ly = 120.0f - (float)s_touchY;
+bool IsBuildingTile(s32 x, s32 y) {
+    if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
+        return false;
+    return ((s_buildMask[(y * kTilesX + x) >> 3] >> ((y * kTilesX + x) & 7)) & 1u) != 0;
+}
+
+// 画素 → 盤面のマス。盤面の外なら偽
+bool TouchTile(s32 vx, s32 vy, u16 px, u16 py, s32 &tx, s32 &ty) {
+    const float lx = (float)px - 160.0f;
+    const float ly = 120.0f - (float)py;
     const float ox = F(s_roomPane, kPaneGlobalX);
     const float oy = F(s_roomPane, kPaneGlobalY);
     const float half = (float)kView * 0.5f * kTile;
     const float fx = (lx - (ox - half)) / kTile;
     const float fy = ((oy + half) - ly) / kTile;
-    if (fx < 0.0f || fy < 0.0f || fx >= (float)kView || fy >= (float)kView) {
-        HideName();
-        return;
-    }
-    const s32 tx = vx + (s32)fx, ty = vy + (s32)fy;
-    Chip *c = ChipAt(tx, ty, true);
+    if (fx < 0.0f || fy < 0.0f || fx >= (float)kView || fy >= (float)kView)
+        return false;
+    tx = vx + (s32)fx;
+    ty = vy + (s32)fy;
+    return true;
+}
+
+u32 *ItemAtTile(s32 tx, s32 ty) {
     const u32 field = R32(kFieldPtr);
-    const u32 *item = field != 0 ? ItemAt(field, tx, ty, 0) : nullptr;
-    if (c == nullptr || item == nullptr || (u16)(*item & 0x7FFFu) == kEmptyItem) {
+    return field != 0 ? ItemAt(field, tx, ty, 0) : nullptr;
+}
+
+bool IsEmpty(const u32 *item) {
+    return (u16)(*item & 0x7FFFu) == kEmptyItem;
+}
+
+// アイテムのマスなら名前（建物は無視）。出せたら真
+bool ShowNameAt(s32 vx, s32 vy, s32 tx, s32 ty) {
+    Chip *c = ChipAt(tx, ty, true);
+    const u32 *item = ItemAtTile(tx, ty);
+    if (c == nullptr || item == nullptr || IsEmpty(item)) {
         HideName();
-        return;
+        return false;
     }
     // 語はアイテムそのもの（上位の旗つき）から作る。没アイテムの自前の名前（ItemNames のフック）もここで効く
     void *word = ItemWord(s_word, reinterpret_cast<const u16 *>(item), 0);
@@ -547,6 +594,124 @@ void StepTouch(s32 vx, s32 vy) {
     s_nameTileY = ty;
     s_nameViewX = vx;
     s_nameViewY = vy;
+    return true;
+}
+
+// 配置: 空いているマスにだけ置く。fgobj は建物のマスに置けない（上に置ける家具に置けない家具）
+void PlaceAt(s32 tx, s32 ty) {
+    u32 *item = ItemAtTile(tx, ty);
+    if (item == nullptr || !IsEmpty(item))
+        return;
+    const u32 id = s_placeId;
+    if (id == kNoItem) {
+        if (!s_noItemTold) {                // 1 回のタッチで 1 回だけ知らせる
+            s_noItemTold = true;
+            s_noItemSeq = s_noItemSeq + 1;
+        }
+        return;
+    }
+    if (id <= kFgobjMax && IsBuildingTile(tx, ty))
+        return;
+    const u32 value = id;                   // 上位（旗）は 0
+    if (SetItem(R32(kFieldPtr), &value, tx, ty, 0) != 0 && R32(kFgobjPtr) != 0)
+        MarkDirty((u32)tx, (u32)ty, 1);
+}
+
+// 削除: アイテムだけ（建物は消さない）。ゲームの消し方そのもの
+void EraseAt(s32 tx, s32 ty) {
+    const u32 *item = ItemAtTile(tx, ty);
+    if (item == nullptr || IsEmpty(item))
+        return;
+    DeleteItem(tx, ty, R32(kFieldPtr));
+}
+
+void EndHold(void) {
+    s_pickProgress = -1.0f;
+}
+
+// タッチ（毎フレーム）。配置: 空きから始めたらなぞったマスに置く／アイテムから始めたら名前、長押しでスポイト。
+//   削除: なぞったマスのアイテムを消す
+void StepTouch(s32 vx, s32 vy) {
+    const bool down = s_touchDown && s_boardAnim == nullptr;    // 出入りの途中は受け付けない
+    const u16 px = s_touchX, py = s_touchY;
+    if (!down) {
+        s_touchPrevDown = false;
+        s_touchKind = TouchKind::None;
+        s_touchLastX = s_touchLastY = -1;
+        EndHold();
+        return;
+    }
+    s32 tx = -1, ty = -1;
+    const bool inside = TouchTile(vx, vy, px, py, tx, ty);
+    if (!inside)
+        tx = ty = -1;
+    const bool moved = tx != s_touchLastX || ty != s_touchLastY;
+    if (!s_touchPrevDown) {                 // 押し始め
+        s_touchPrevDown = true;
+        s_touchStartX = px;
+        s_touchStartY = py;
+        s_holdFrames = 0;
+        s_noItemTold = false;
+        if (!inside) {
+            HideName();
+            s_touchKind = TouchKind::Ignore;
+        } else if (s_mode == Mode::Remove) {
+            HideName();
+            s_touchKind = TouchKind::Erase;
+            EraseAt(tx, ty);
+        } else {
+            const u32 *item = ItemAtTile(tx, ty);
+            if (item != nullptr && !IsEmpty(item)) {
+                ShowNameAt(vx, vy, tx, ty);
+                s_touchKind = TouchKind::Hold;
+                s_holdTileX = tx;
+                s_holdTileY = ty;
+                s_pickX = px;
+                s_pickY = py;
+                s_pickProgress = 0.0f;
+            } else {
+                HideName();
+                s_touchKind = TouchKind::Paint;
+                PlaceAt(tx, ty);
+            }
+        }
+    } else {
+        switch (s_touchKind) {
+        case TouchKind::Paint:
+            if (inside && moved)
+                PlaceAt(tx, ty);
+            break;
+        case TouchKind::Erase:
+            if (inside && moved)
+                EraseAt(tx, ty);
+            break;
+        case TouchKind::Hold: {
+            const float dx = (float)px - (float)s_touchStartX, dy = (float)py - (float)s_touchStartY;
+            if (dx * dx + dy * dy >= kHoldSlop * kHoldSlop) {
+                s_touchKind = TouchKind::Ignore;    // 動かしたら長押しをやめる
+                EndHold();
+                break;
+            }
+            ++s_holdFrames;
+            if (s_holdFrames >= kPickFrames) {
+                const u32 *item = ItemAtTile(s_holdTileX, s_holdTileY);
+                if (item != nullptr && !IsEmpty(item)) {
+                    s_placeId = *item & 0x7FFFu;    // 埋めた印（0x8000）と上位の旗は落とす
+                    s_pickedSeq = s_pickedSeq + 1;
+                }
+                s_touchKind = TouchKind::Ignore;
+                EndHold();
+            } else {
+                s_pickProgress = (float)s_holdFrames / (float)kPickFrames;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    s_touchLastX = tx;
+    s_touchLastY = ty;
 }
 
 void StepName(s32 vx, s32 vy) {
@@ -576,7 +741,9 @@ void CameraTarget(float out[3]) {
 bool s_running;
 bool s_failed;
 CursorRepeat s_repeat;                      // 十字キーとスライドパッドの押し続け（公共事業エディターと同じ規則）
-bool s_touchPrev;
+bool s_touchHeldAtStart;
+u32 s_prevKeys;
+u32 s_pickedShown, s_noItemShown;
 s32 s_minX, s_minY, s_maxX, s_maxY;         // 盤面の左上にできる範囲
 
 // 盤面の左上にできる範囲 = アイテムのあるエーカー（部屋データ +0..+C）。取れなければ村全体
@@ -608,8 +775,14 @@ void MoveView(s32 dx, s32 dy) {
 }
 
 // 建物の衝突判定（公共事業エディターと同じ形）をコマにする
+void MarkBuilding(s32 x, s32 y) {
+    if (x >= 0 && y >= 0 && x < kTilesX && y < kTilesY)
+        s_buildMask[(y * kTilesX + x) >> 3] |= (u8)(1u << ((y * kTilesX + x) & 7));
+}
+
 void CollectBuildings(void) {
     u32 n = 0;
+    std::memset(s_buildMask, 0, sizeof(s_buildMask));
     for (u32 i = 0; i < PublicWorks::kSlots; ++i) {
         PublicWorks::Slot slot;
         if (!PublicWorks::ReadSlot(i, slot) || slot.id >= PublicWorks::kEmptyId)
@@ -621,6 +794,7 @@ void CollectBuildings(void) {
         s32 x0 = 0x7FFF, y0 = 0x7FFF, x1 = -0x7FFF, y1 = -0x7FFF;
         for (u32 k = 0; k < cells; ++k) {
             const s32 x = (s32)slot.x + dx[k], y = (s32)slot.y + dy[k];
+            MarkBuilding(x, y);
             if (x < x0) x0 = x;
             if (y < y0) y0 = y;
             if (x > x1) x1 = x;
@@ -670,9 +844,12 @@ bool Start(void) {
     s_viewY = (s32)py - kView / 2;
     MoveView(0, 0);
     s_error = "";
-    s_touchSeq = 0;
-    s_touchDone = 0;
-    s_touchPrev = true;                     // 押したまま始めたタッチは押し始めにしない
+    s_touchDown = false;
+    s_touchHeldAtStart = true;              // 押したまま始めたタッチは押し始めにしない
+    s_prevKeys = 0xFFFFFFFFu;               // 押しっぱなしのボタンを最初の押下にしない
+    s_mode = Mode::Place;
+    s_pickedShown = s_pickedSeq;
+    s_noItemShown = s_noItemSeq;
     s_repeat.Reset();
     s_startRoom = RoomId();
     FieldCamera::Want(CameraTarget, false);
@@ -698,15 +875,39 @@ void StepMove(u32 keys) {
         MoveView(dx, dy);
 }
 
+const char *ModeName(Mode m) {
+    return m == Mode::Remove ? u8"削除モード" : m == Mode::Select ? u8"範囲選択モード" : u8"配置モード";
+}
+
+// 描画スレッドからの出来事を通知する（スポイトで取れた・配置するアイテムが無い）
+void NotifyEvents(void) {
+    if (s_pickedSeq != s_pickedShown) {
+        s_pickedShown = s_pickedSeq;
+        const u32 id = s_placeId;
+        char name[64];
+        char msg[96];
+        if (!ItemNames::NameUtf8((u16)id, name, sizeof(name)))
+            name[0] = '\0';
+        std::snprintf(msg, sizeof(msg), u8"配置するアイテム: %04X %s", (unsigned)id, name);
+        GuiMenu::Notify(Cheats::kMeOn, msg);
+    }
+    if (s_noItemSeq != s_noItemShown) {
+        s_noItemShown = s_noItemSeq;
+        GuiMenu::NotifyRed(Cheats::kMeOn, u8"配置するアイテムをメニューかスポイトで選んでください");
+    }
+}
+
 void StepTouchInput(void) {
     const bool down = Touch::IsDown();
-    if (down && !s_touchPrev) {
+    if (down) {
         const UIntVector pos = Touch::GetPosition();
         s_touchX = (u16)pos.x;
         s_touchY = (u16)pos.y;
-        s_touchSeq = s_touchSeq + 1;
     }
-    s_touchPrev = down;
+    // 押したまま始めたタッチは、一度離すまで使わない
+    if (s_touchHeldAtStart && !down)
+        s_touchHeldAtStart = false;
+    s_touchDown = down && !s_touchHeldAtStart;
 }
 
 }  // namespace
@@ -780,6 +981,8 @@ void FrameStep(void) {
     if (s_stage == Stage::Live) {
         StepName(vx, vy);
         StepTouch(vx, vy);
+    } else {
+        EndHold();
     }
     NameCalc();
     // 描画登録（リストは毎フレーム空になる）。盤面 → 建物 → アイテム → 名前
@@ -797,6 +1000,24 @@ void FrameStep(void) {
 
 bool Running(void) {
     return s_running;
+}
+
+bool PickProgress(float &progress, int &x, int &y) {
+    const float p = s_pickProgress;
+    if (!s_running || p < 0.0f)
+        return false;
+    progress = p;
+    x = s_pickX;
+    y = s_pickY;
+    return true;
+}
+
+u32 PlaceItem(void) {
+    return s_placeId;
+}
+
+void SetPlaceItem(u32 id) {
+    s_placeId = id;
 }
 
 void Reset(void) {
@@ -837,8 +1058,20 @@ void Tick(u32 keys) {
     GuiMenu::BlockGameAll();
     GuiMenu::BlockGameTouch();
     StepMove(keys);                         // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
-    if (GuiMenu::IsVisible())
+    const u32 pressed = keys & ~s_prevKeys;
+    s_prevKeys = keys;
+    // L / R: モードを巡回（利用者の決定。範囲選択は段階 3 で足す）
+    if (pressed & ((u32)Key::L | (u32)Key::R)) {
+        const u32 count = kModesNow;
+        const u32 now = (u32)s_mode;
+        s_mode = (Mode)((pressed & (u32)Key::R) ? (now + 1) % count : (now + count - 1) % count);
+        GuiMenu::Notify(Cheats::kMeOn, ModeName(s_mode));
+    }
+    NotifyEvents();
+    if (GuiMenu::IsVisible()) {
+        s_touchDown = false;
         return;
+    }
     StepTouchInput();
 }
 
@@ -851,6 +1084,22 @@ namespace CTRPluginFramework
         namespace
         {
             int     g_mapEditorIndex = -1;
+            int     g_placeItemIndex = -1;
+
+            // 配置するアイテム（連動型: エディターの値を読み書きする。スポイトで変わる）。0xFFFF = 未設定
+            bool    PlaceItemRead(int index, s32 *value)
+            {
+                (void)index;
+                const u32 id = MapEditor::PlaceItem();
+                *value = id == 0xFFFFFFFFu ? 0xFFFF : (s32)id;
+                return true;
+            }
+
+            void    PlaceItemWrite(int index, s32 value)
+            {
+                (void)index;
+                MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
+            }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
             bool    MapEditorIsActive(int index)
@@ -900,6 +1149,9 @@ namespace CTRPluginFramework
             g_mapEditorIndex = GuiMenu::FindItem(kMeOn);
             if (g_mapEditorIndex >= 0)
                 GuiMenu::RegisterToggleEffect(g_mapEditorIndex, &kMapEditorFuncs);
+            g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
+            if (g_placeItemIndex >= 0)
+                GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
         }
     }
 }

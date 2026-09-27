@@ -20,12 +20,18 @@
 namespace MapEditor
 {
     const s32       kView = 8;                  // 盤面のマス数（縦横）
+    enum class Mode : u8 { Place, Remove, Select };
+    const u32       kModesNow = 2;              // L / R で巡回するモードの数（範囲選択は段階 3）
 
     // ---- メニュースレッド ----
     void            Tick(u32 keys);             // 項目が有効な間、毎ティック。keys は Controller::GetKeysDown(true)（メニュー表示中は 0）
     void            Stop(void);
     bool            Running(void);
     void            Reset(void);                // 失敗の記憶を消す（項目を外したとき）
+    // スポイトの長押しの進み（下画面のメニュー描画が進捗バーを描く）。出さないときは偽。x, y = 長押しを始めた画素
+    bool            PickProgress(float &progress, int &x, int &y);
+    u32             PlaceItem(void);            // 配置するアイテム（0xFFFFFFFF = 未設定）
+    void            SetPlaceItem(u32 id);
 
     // ---- 描画スレッド（PublicWorks::FrameStep から）----
     void            FrameStep(void);

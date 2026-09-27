@@ -213,6 +213,11 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kMeOn,
                         u8"模様替えの画面で村のアイテムを見渡します。十字キーかスライドパッドで範囲を動かし、アイテムをタッチすると名前を出します。"
                         u8"プレイヤーは動けません。");
+                // 連動型（エディターの値。スポイトでも変わる）。FFFF = 未設定
+                i = AddItem(ITEM_LINKED_VALUE, kMePlaceItem,
+                            u8"マップエディターの配置モードで置くアイテムの ID です。アイテムを押し続けるスポイトでも変わります。"
+                            u8"FFFF は未設定です。");
+                SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 
