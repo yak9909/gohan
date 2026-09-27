@@ -2216,7 +2216,10 @@ void Tick(u32 keys) {
         GuiMenu::BlockGameTouch();
     // 一覧が開いている間の十字・A は一覧へ（描画スレッドが窓の更新の間だけ渡す）。盤面は動かさない
     s_listKeys = s_listActive ? (keys & ((u32)Key::A | (u32)Key::B | (u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight)) : 0u;
-    StepMove(s_listActive ? 0u : keys);     // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
+    // 一覧が開いている間も、スライドパッドはカメラ（盤面の移動）に使う（利用者指示 2026-09-28。ゲームの一覧はスライドパッドでも
+    //   選べるが、一覧へ渡すのは十字・A・B だけ）。十字は一覧が受けるので盤面は動かさない
+    const u32 kPad = (u32)Key::CPadUp | (u32)Key::CPadDown | (u32)Key::CPadLeft | (u32)Key::CPadRight;
+    StepMove(s_listActive ? (keys & kPad) : keys);  // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
     // L / R: モードを巡回（利用者の決定。範囲選択は段階 3 で足す）
