@@ -334,6 +334,10 @@ s32 s_nameViewX, s_nameViewY;
 // ---- 範囲選択（描画スレッドだけ）----
 struct SelRect { bool active; s32 x0, y0, x1, y1; };      // 村のマス（両端を含む）
 SelRect s_sel;
+// 選択のマスごとの印（利用者指示 2026-09-28）。範囲を動かしたあとは四角の中でも「運んだ物が着いたマス」と「空きのマス」だけが選択。
+//   印が無い（s_selMasked == false）ときは四角の中が全部選択。
+u8 s_selMask[kTilesX * kTilesY / 8];
+bool s_selMasked;
 enum class Carry : u8 { None, Move, Copy, CopyArmed };
 Carry s_carry = Carry::None;
 struct CarryItem { s16 x, y; u32 value; u8 type; };
@@ -1080,12 +1084,27 @@ void Trace(s32 vx, s32 vy, u16 px, u16 py) {
 //   盤面の外のタップと B で選択を解く
 // ---------------------------------------------------------------------------------------------
 
+bool SelMaskBit(s32 x, s32 y) {
+    if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
+        return false;
+    const u32 i = (u32)y * (u32)kTilesX + (u32)x;
+    return ((s_selMask[i >> 3] >> (i & 7u)) & 1u) != 0u;
+}
+
+void SetSelMaskBit(s32 x, s32 y) {
+    if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
+        return;
+    const u32 i = (u32)y * (u32)kTilesX + (u32)x;
+    s_selMask[i >> 3] = (u8)(s_selMask[i >> 3] | (1u << (i & 7u)));
+}
+
 bool InSel(s32 x, s32 y) {
-    return s_sel.active && x >= s_sel.x0 && x <= s_sel.x1 && y >= s_sel.y0 && y <= s_sel.y1;
+    return s_sel.active && x >= s_sel.x0 && x <= s_sel.x1 && y >= s_sel.y0 && y <= s_sel.y1 && (!s_selMasked || SelMaskBit(x, y));
 }
 
 void ClearSel(void) {
     s_sel.active = false;
+    s_selMasked = false;
 }
 
 // 選択を解く（ゲームの sub_B3D5B0 は選んだチップがあれば POLY_CANCEL。こちらは空きマスだけの範囲も選択なので、範囲があれば鳴らす）
@@ -1126,7 +1145,7 @@ u32 CaptureSel(void) {
     for (s32 y = s_sel.y0; y <= s_sel.y1; ++y) {
         for (s32 x = s_sel.x0; x <= s_sel.x1; ++x) {
             const u32 *item = ItemAtTile(x, y);
-            if (item == nullptr || IsEmpty(item) || s_carriedCount >= kMaxCarry)
+            if (!InSel(x, y) || item == nullptr || IsEmpty(item) || s_carriedCount >= kMaxCarry)
                 continue;
             CarryItem &c = s_carried[s_carriedCount++];
             c.x = (s16)x;
@@ -1233,6 +1252,18 @@ void CommitCarry(s32 vx, s32 vy) {
     s_sel.x1 += ox;
     s_sel.y0 += oy;
     s_sel.y1 += oy;
+    // 移動後の選択 = 運んだ物が着いたマス + 空きのマス。行き先に元からあって運んでいない物は選ばない（利用者指示 2026-09-28）
+    for (u32 i = 0; i < sizeof(s_selMask); ++i)
+        s_selMask[i] = 0;
+    for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
+        for (s32 x = s_sel.x0; x <= s_sel.x1; ++x) {
+            const u32 *item = ItemAtTile(x, y);
+            if (item != nullptr && IsEmpty(item))
+                SetSelMaskBit(x, y);
+        }
+    for (u32 k = 0; k < s_carriedCount; ++k)
+        SetSelMaskBit(s_carried[k].x + ox, s_carried[k].y + oy);
+    s_selMasked = true;
 }
 
 void CancelCarry(void) {
@@ -1252,13 +1283,15 @@ void RunListAction(u32 row, s32 vx, s32 vy) {
     case kActDelete:
         for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
             for (s32 x = s_sel.x0; x <= s_sel.x1; ++x)
-                EraseAt(x, y);
+                if (InSel(x, y))
+                    EraseAt(x, y);
         break;
     case kActFill:
         s_noItemTold = false;
         for (s32 y = s_sel.y0; y <= s_sel.y1; ++y)
             for (s32 x = s_sel.x0; x <= s_sel.x1; ++x)
-                PlaceAt(x, y);
+                if (InSel(x, y))
+                    PlaceAt(x, y);
         break;
     default:
         break;
@@ -1345,6 +1378,7 @@ void SelectRelease(s32 vx, s32 vy) {
         break;
     case TouchKind::SelPendOut: {           // 範囲の外のタップ: そのマスだけを選ぶ（アイテムなら名前も）
         s_sel.active = true;
+        s_selMasked = false;
         s_sel.x0 = s_sel.x1 = s_selStartTx;
         s_sel.y0 = s_sel.y1 = s_selStartTy;
         s_dropFrames = 0xFFFFFFFFu;
@@ -1362,6 +1396,7 @@ void SelectRelease(s32 vx, s32 vy) {
             break;
         }
         s_sel.active = true;
+        s_selMasked = false;
         s_sel.x0 = gx0;
         s_sel.x1 = gx1 - 1;
         s_sel.y0 = gy0;
@@ -1488,6 +1523,13 @@ bool ShownSel(SelRect &r) {
     return s_sel.active;
 }
 
+// 見せる選択のマスか（引いている途中は四角の全部、確定した範囲は印も見る）
+bool ShownSelHas(const SelRect &r, s32 x, s32 y) {
+    if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1)
+        return false;
+    return s_touchKind == TouchKind::SelDrag || !s_selMasked || SelMaskBit(x, y);
+}
+
 bool NearView(s32 vx, s32 vy, s32 x, s32 y) {
     return x >= vx - kNearMargin && y >= vy - kNearMargin && x < vx + kView + kNearMargin && y < vy + kView + kNearMargin
         && x >= 0 && y >= 0 && x < kTilesX && y < kTilesY;
@@ -1509,17 +1551,26 @@ void PublishCursor(s32 vx, s32 vy) {
             ++n;
         }
     } else {
-        if (s_fingerX >= 0 && s_fingerY >= 0) {
+        // 指のマス。範囲を引いている間は出さない（範囲だけを見せる。利用者指示 2026-09-28）
+        const bool finger = s_fingerX >= 0 && s_fingerY >= 0 && s_touchKind != TouchKind::SelDrag;
+        if (finger) {
             s_cursorX[0] = (u8)s_fingerX;
             s_cursorY[0] = (u8)s_fingerY;
             n = 1;
+        }
+        // 配置モード: 名前を出しているアイテムのマスは出し続ける（利用者指示 2026-09-28）
+        if (s_mode == Mode::Place && s_nameChip != nullptr && s_nameTileX >= 0 && s_nameTileY >= 0
+            && !(finger && s_nameTileX == s_fingerX && s_nameTileY == s_fingerY) && NearView(vx, vy, s_nameTileX, s_nameTileY)) {
+            s_cursorX[n] = (u8)s_nameTileX;
+            s_cursorY[n] = (u8)s_nameTileY;
+            ++n;
         }
         // 範囲選択の中の全部のマス（利用者指示 2026-09-28。引いている途中も）。盤面の周りだけ・最大 64
         SelRect r;
         if (s_mode == Mode::Select && ShownSel(r))
             for (s32 y = r.y0; y <= r.y1 && n < kMaxCursorTiles; ++y)
                 for (s32 x = r.x0; x <= r.x1 && n < kMaxCursorTiles; ++x) {
-                    if (!NearView(vx, vy, x, y) || (x == s_fingerX && y == s_fingerY))
+                    if (!NearView(vx, vy, x, y) || (finger && x == s_fingerX && y == s_fingerY) || !ShownSelHas(r, x, y))
                         continue;
                     s_cursorX[n] = (u8)x;
                     s_cursorY[n] = (u8)y;
@@ -1536,10 +1587,12 @@ void PublishCursor(s32 vx, s32 vy) {
 bool HighlightTile(s32 x, s32 y) {
     if (s_carry != Carry::None)
         return false;
-    if (x == s_fingerX && y == s_fingerY)
-        return true;
+    if (x == s_fingerX && y == s_fingerY && s_touchKind != TouchKind::SelDrag)
+        return true;                        // 指のマス（範囲を引いている間は範囲だけ）
+    if (s_mode == Mode::Place && s_nameChip != nullptr && x == s_nameTileX && y == s_nameTileY)
+        return true;                        // 配置モードで名前を出しているアイテム
     SelRect r;
-    return s_mode == Mode::Select && ShownSel(r) && x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+    return s_mode == Mode::Select && ShownSel(r) && ShownSelHas(r, x, y);
 }
 
 // 移動の複製（MapEditor3D）: 行き先が盤面の周りにある物だけ
