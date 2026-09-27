@@ -365,6 +365,8 @@ static bool BuildCursor() {
         // 1 フレームで止める。キーは 4 つで 45/135/225/315 度。
         AnimSetFrame(rot, kRotateFrame45);
     }
+    // 深度を書かない（村の物体の下に描くので、あとから描く物体が必ず上になる。F061。資源は自前で読んだ物）
+    InstancedDraw::DisableDepthWrite(holder);
     // 描画ノード（340 B + 付属）。生成関数は確保の失敗を確かめないので残りを見てから
     if (HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_drawer, s_instanceAllocator)) {
         Stop(Fail::kHeapExhausted);
@@ -718,7 +720,9 @@ extern "C" void FrameCallback(void) {
         s_batch.holder = s_holder;
         s_batch.matrices = s_matrices;
         s_batch.count = s_placeCount < kMaxCursors ? s_placeCount : kMaxCursors;
-        InstancedDraw::Submit(s_drawer, &s_batch, 1);
+        // ★村の物体の下に描く（地面の後・物体の前。利用者指示 2026-09-28、F061）。村の物体の描画ノードが無ければ自前のノード
+        if (!InstancedDraw::SubmitUnder(s_drawer, &s_batch, 1))
+            InstancedDraw::Submit(s_drawer, &s_batch, 1);
         s_submits += s_batch.count;
     }
     s_animFrame += 1.0f;

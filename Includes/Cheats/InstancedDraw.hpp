@@ -28,6 +28,7 @@ namespace InstancedDraw
         u32             batchCount;
         u32             drawn;          // 描いた数（直近のフレーム。確認用）
         u32             skipped;        // コマンドバッファの残りが足りずに描かなかった数
+        bool            underArmed;     // 物体の下に描く分がこのフレームに登録された（描いたら落とす）
     };
 
     // FuncNode を作る。allocator は ssys::ma::HeapAllocator（vtable +8 で確保）。
@@ -39,6 +40,14 @@ namespace InstancedDraw
     void    Destroy(Drawer &d);
     // このフレームに描く束を渡して描画リストへ出す。束は描き終わるまで（このフレームの間）生きていること。
     void    Submit(Drawer &d, const Batch *batches, u32 count);
+    // ★村の物体（fgobj）の下に描く（IDA-opus-5.5-F061。利用者指示 2026-09-28: UnitCursor は常に対象マスのモデルより下／背面）。
+    //   村の物体の描画ノード（*0x948E70 + 0x45B0 の +4）の層 0 のコールバック（+0x148 = 0x59A900）を包み、その先頭で描く
+    //   = 地面の後・村の物体の前。束のメッシュは層を問わずこのとき描く。描けない場面（村の物体の描画ノードが無い）では false
+    //   （呼ぶ側が Submit に切り替える）。深度を書かない体にしておくこと（DisableDepthWrite）。
+    bool    SubmitUnder(Drawer &d, const Batch *batches, u32 count);
+    // 体の材質の深度書き込みを切る（フラグメント部分 M+0x50 の +280 bit1 を落とし、鍵 +720 を 0 に。汎用の書き出し 0x49CA94〜0x49CAF8）。
+    //   体ごとの写し（bufferOption 0x834）か自前の資源の体にだけ使うこと
+    void    DisableDepthWrite(void *holder);
 }
 
 #endif
