@@ -95,16 +95,18 @@ namespace GridCursor
     bool            ShowTiles(void);
     // heightId >= 0 なら全部を PublicWorks::CursorHeight(heightId, anchorX, anchorY) に揃える
     // （建物は基点の地面、橋はどこでも一定の橋の高さ）。
-    // dims（省略可）: マスごとに薄く描く（非 0）。マイデザインの上のマスは呼ぶ側に関係なく薄い（利用者指示 2026-09-28）
+    // dims（省略可）: マスごとの薄さの種類（0 = 普通、1〜kDimKinds = 薄い体 dims−1）。どのマスを薄くするかは呼ぶ側が決める
+    //   （利用者指示 2026-09-29: マイデザインの上を薄くするのはマップエディターだけ。公共事業エディターは薄くしない）
+    static const u32 kDimKinds = 2;
     void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY, const u8* dims = nullptr);
-    // 薄いカーソルのアルファ（0〜255。IDA-opus-5.5-F068: UnitCursor の TEV の段 4 = 前段のアルファ × Constant4 のアルファ）
-    void            SetDimAlpha(u8 alpha);
-    u8              DimAlpha(void);
+    // 薄い体 kind（0..kDimKinds−1）のアルファ（0〜255。IDA-opus-5.5-F068: UnitCursor の TEV の段 4 = 前段のアルファ × Constant4 のアルファ）
+    void            SetDimAlpha(u32 kind, u8 alpha);
+    u8              DimAlpha(u32 kind);
     // ---- マスの色（マップエディターの上画面。利用者指示 2026-09-28）----
-    // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白・1 = 青（利用者指示 2026-09-28 の 2 回目。
-    // 最初は白・赤・黄だった）。深度は書かない。UnitCursor とは別の体（2 体）。
+    // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白だけ（利用者指示 2026-09-29: 色を入れ替え、
+    // 上画面の青は描かない。以前は白・青、最初は白・赤・黄）。深度は書かない。UnitCursor とは別の体（1 体）。
     static const u32 kMaxMarks = 64;
-    static const u32 kMarkKinds = 2;
+    static const u32 kMarkKinds = 1;
     // 描くのは InstancedDraw::SubmitUnder（地面 → マイデザイン → マスの色 → カーソル → 残りの村の物体。IDA-opus-5.5-F066）。
     //   村の物体の描画ノードが無い場面は自前の描画ノード
     void            EnableMarks(bool on);   // ShowTiles の前に。偽ならマスの色の体を作らない

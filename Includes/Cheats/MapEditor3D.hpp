@@ -17,10 +17,14 @@ namespace MapEditor3D
     };
     static const u32 kMaxClones = 128;      // 盤面 8x8 の周り 1 マスで最大 100 か所
 
-    // 毎フレーム。highlight(x, y) が真のマスの実体を赤くし、clones を描く。
-    void    Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count);
-    // 実体を塗る色（0x00BBGGRR）。既定は赤（BuildingHighlight::kRed）。スポイトモードは青（利用者指示 2026-09-28）
-    void    SetHighlightColor(u32 color);
+    // ハイライトの種類（利用者指示 2026-09-29: 赤 = 選択・削除、青 = スポイト、白 = 配置モードの中心マス）
+    static const u8 kHighlightNone = 0, kHighlightRed = 1, kHighlightBlue = 2, kHighlightWhite = 3;
+    static const u8 kHighlightKinds = 3;
+    // 毎フレーム。highlight(x, y) が返す種類（0 = 無し）の色でマスの実体を塗り、clones を描く。
+    void    Frame(u8 (*highlight)(s32 x, s32 y), const Clone *clones, u32 count);
+    // 種類ごとの濃さ（TEV 段 5 の定数アルファ = 色を混ぜる割合。0〜255）
+    void    SetHighlightStrength(u8 kind, u8 strength);
+    u8      HighlightStrength(u8 kind);
     // エディターを止める: 赤を戻し、複製を壊し、ヒープを返す（数フレームかけて。終わったら真）。
     bool    Release(void);
     // すぐに片付ける（描くのはもうやめてある前提）。場面が同じなら赤を戻して複製を壊し、変わっていればゲームの物には触らずにヒープだけ返す。

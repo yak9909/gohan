@@ -108,7 +108,11 @@ namespace CTRPluginFramework
         static const char kBeOn[]      = u8"公共事業エディター";
         static const char kMeOn[]      = u8"マップエディター";
         static const char kMePlaceItem[] = u8"配置するアイテム";
-        static const char kMeDimAlpha[] = u8"薄いカーソルの濃さ";
+        static const char kMeDimRange[] = u8"薄いカーソルの濃さ（実行範囲）";
+        static const char kMeDimDesign[] = u8"薄いカーソルの濃さ（マイデザインの上）";
+        static const char kMeHlRed[] = u8"赤いハイライトの濃さ";
+        static const char kMeHlBlue[] = u8"青いハイライトの濃さ";
+        static const char kMeHlWhite[] = u8"白いハイライトの濃さ";
         static const char kBpAlpha[]   = u8"プレビューの不透明度";
         static const char kBpWave[]    = u8"プレビューの揺れ幅";
         static const char kBpSpeed[]   = u8"プレビューの揺れの速さ";

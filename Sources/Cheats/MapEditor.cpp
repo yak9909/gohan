@@ -97,7 +97,8 @@ const float kGridTexels = 128.0f, kGridFirstTexel = 48.0f, kGridScale = 1.25f, k
 // 中心から 5x5 の輪郭のマス（中心から 2 マス = チェビシェフ距離 2）と真ん中: 盤面は真っ白、上画面は白。ほかは上画面で青
 //   （利用者指示 2026-09-28。1 回目は真ん中 = 赤・ほか = 黄、2 回目で真ん中 = 白・ほか = 青）
 const s32 kMarkRing = 2;
-const u8 kMarkWhite = 0, kMarkBlue = 1;     // GridCursor::SetMarks の種類
+const u8 kMarkWhite = 0;                    // GridCursor::SetMarks の種類（白だけ。利用者指示 2026-09-29: 上画面の青は描かない）
+const u8 kMarkNone = 0xFF;                  // このマスには置かない（5x5 の輪郭と中心）
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
@@ -171,11 +172,13 @@ const u8 kCursorTint = 0xB0;                // 公共事業エディターと同
 //   スポイト = 青。スポイトの間は実体のハイライト（MapEditor3D）も青
 const u32 kCursorRed = 0x000000FFu, kCursorSpoit = 0x00FF2000u;   // 0x00BBGGRR
 const u8 kCursorStrongTint = 0xE0;
-const u32 kHighlightRed = 0x004040FFu, kHighlightSpoit = 0x00FF6020u;
 // 下画面左上の箱（GameLabel の箱 0。公共事業エディターと同じ部品を下画面へ）: 「配置: {アイテム名}」、左揃え
 const u32 kPlaceLabelSlot = 0;
 // 実行範囲の一辺の上限（利用者指示 2026-09-28: 奇数 x 奇数、最大 7x7）
 const s32 kMaxRange = 7;
+// カーソルの薄さの種類（GridCursor::SetTiles の dims = 薄い体 + 1）と、マイデザインのアイテム（Item_IsMyDesign 0x7683E4）
+const u8 kDimRange = 1, kDimDesign = 2;
+const u16 kMyDesignItem = 0x9D;
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
 const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub_B0AD88）が渡す大きさ
@@ -246,8 +249,8 @@ const u32 kListResult = 1212, kListCancelled = 1228;
 const u32 kListAnchor = 1236;               // 基準の位置（持ち物欄は項目のペインの大域位置 +140/+156/+172。sub_71A250）
 // u8: 閉じ終わりに手カーソルを戻すか（sub_2BA2A0: 真かつ開く前に出ていた（+1249）なら BsHandCursor_Show、偽なら隠す。ゲームも行によって 0 にする: sub_2BA608）
 const u32 kListRestoreCursor = 1251;
-const u32 kListRowCount = 4;
-const s32 kListCancelRow = 3;               // 「やめる」
+const u32 kListRowCount = 5;
+const s32 kListCancelRow = 4;               // 「やめる」
 // ---- 一覧のキー操作（IDA-opus-5.5-F060。利用者指示 2026-09-28: ゲームと同じく十字で選択・A で決定・B でやめる）----
 //   窓の部品（窓 +1256。vtable 0x8F0F64、ctor 0x33E4A4）は窓の更新（ItemSelectWindow_Update → sub_2F7744 → sub_2F7768）の中で
 //   BsMenuMgr（*0x949D4C）+68 の sead::ControllerWrapper の +72（押した瞬間）/ +80（リピート）を読む:
@@ -266,7 +269,8 @@ const u32 kMenuKeyUp = 0x400u, kMenuKeyDown = 0x800u, kMenuKeyLeft = 0x1000u, kM
 const u32 kMenuRepeatMask = 0x77F00u, kMenuRepeatDelay = 20, kMenuRepeatEvery = 5;
 // 行の決定音はゲームの表（dword_88BA80: 選択肢の種類 → 音）から: 複製 = 9 COPY / 削除 = 8 ERASE / 埋める = 0 DECIDE / やめる = 1 CANCEL。
 //   ※7 WIN_SELECT_ITEM_DECIDE は CSEQ が大域変数 31 を鳴らすたびに +1 して 3 段階に音程を上げる（利用者報告 2026-09-27: 選ぶたびに上がる）ので使わない
-const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x0100038E, 0x01000392 };
+//   移動 = 0 DECIDE（表に移動の種類は無い。持ち上げたときは StartCarry が PickUp を鳴らす）
+const u32 kListRowSounds[kListRowCount] = { 0x01000395, 0x01000393, 0x0100038E, 0x0100038E, 0x01000392 };
 const u32 kTextAllocSlot = 28;              // TextBox vt[28] = 器の確保（GameList と同じ）
 const u32 kTextDraw = 260;
 typedef void (*AllocBufFn)(void *textBox, u32 chars, u32 flags);
@@ -414,7 +418,7 @@ SelRect s_sel;
 //   印が無い（s_selMasked == false）ときは四角の中が全部選択。
 u8 s_selMask[kTilesX * kTilesY / 8];
 bool s_selMasked;
-enum class Carry : u8 { None, Move, Copy, CopyArmed };
+enum class Carry : u8 { None, Move, Copy, CopyArmed, MoveArmed };   // *Armed = 一覧で選び、次のタッチ（か A）を待っている
 Carry s_carry = Carry::None;
 struct CarryItem { s16 x, y; u32 value; u8 type; };
 CarryItem s_carried[kMaxCarry];
@@ -535,10 +539,17 @@ bool ExpandBoard(void) {
         u8 floor[4];
         std::memcpy(floor, reinterpret_cast<const void *>(baseMat + kMatColors + 4), 4);   // 地の白色（テクスチャは全部 255 なのでこの色）
         floor[3] = 255;
+        // ★色を入れ替えた（利用者指示 2026-09-29）: 輪郭（5x5）と中心 = 地の色、それ以外 = 白。
+        //   地（P_Room_00、7x7 全部）を白にし、その上に 地の色 5x5 → 白 3x3 → 地の色 1x1 を重ねる。地の材質も自分の Layout の物
+        std::memcpy(reinterpret_cast<void *>(baseMat + kMatColors), kWhite, 4);
+        std::memcpy(reinterpret_cast<void *>(baseMat + kMatColors + 4), kWhite, 4);
+        *reinterpret_cast<u8 *>(baseMat + kMatFlags) &= ~4u;
+        for (u32 i = 0; i < 4; ++i)
+            W(base, kPicVtxColor + 4 * i) = 0xFFFFFFFFu;
         const float sizes[3] = { (float)(2 * kMarkRing + 1) * kTile, (float)(2 * kMarkRing - 1) * kTile, kTile };
         void *const plates[3] = { white, inner, centre };
         void *const parents[3] = { windows, windows, doors };
-        const u8 *const colours[3] = { kWhite, floor, kWhite };
+        const u8 *const colours[3] = { floor, kWhite, floor };
         for (u32 k = 0; k < 3; ++k) {
             void *pl = plates[k];
             const u32 mat = W(pl, kPicMaterial);
@@ -556,7 +567,7 @@ bool ExpandBoard(void) {
             SetRotateZ(pl, 0.0f);
             B(pl, kPaneFlagsByte) |= 1u;
             PaneRemove(parents[k], pl);
-            PaneInsert(s_roomPane, grid, pl);   // 地の後・方眼の前（入れた順 = 描く順: 白 5x5 → 地の色 3x3 → 白 1x1）
+            PaneInsert(s_roomPane, grid, pl);   // 地の後・方眼の前（入れた順 = 描く順: 地の色 5x5 → 白 3x3 → 地の色 1x1）
         }
     }
     return true;
@@ -581,7 +592,7 @@ void HideName(void) {
     s_nameTileX = s_nameTileY = -1;
 }
 
-const char16_t *const kListRows[kListRowCount] = { u"複製", u"削除", u"埋める", u"やめる" };
+const char16_t *const kListRows[kListRowCount] = { u"複製", u"削除", u"埋める", u"移動", u"やめる" };
 
 // ---- 組み立て（1 フレームに 1 段）。戻り値: 完了 ----
 bool LoadStep(void) {
@@ -855,7 +866,7 @@ void CollectWants(s32 vx, s32 vy) {
             const u16 id = (u16)(*item & 0x7FFFu);
             if (id == kEmptyItem)
                 continue;
-            if (s_carry == Carry::Move && Carried(vx + i, vy + j))
+            if ((s_carry == Carry::Move || s_carry == Carry::MoveArmed) && Carried(vx + i, vy + j))
                 continue;                   // 持ち上げている間は元の場所に出さない
             AddWant(id <= kFgobjMax ? kFgobjC : kItemC, vx + i, vy + j, 1, 1, false);
             s_wantChips[s_wantCount - 1].look = ItemLook(vx + i, vy + j);
@@ -1441,7 +1452,7 @@ float CarryWorldX(s32 ox) {
 void CommitCarry(s32 vx, s32 vy) {
     s32 ox = 0, oy = 0;
     CarryOffset(vx, vy, ox, oy);
-    const bool move = s_carry == Carry::Move;
+    const bool move = s_carry == Carry::Move || s_carry == Carry::MoveArmed;
     s_carry = Carry::None;
     if (!CarryPlaceable(ox, oy)) {
         Sound(kSndInvalid);                 // 置けないので元へ戻す（ModuleFtr sub_B07108 と同じ動き）
@@ -1489,7 +1500,7 @@ void CancelCarry(void) {
 }
 
 // ---- 一覧の行を選んだ（StepList が呼ぶ。決定音は窓が行ごとの音で鳴らす）----
-enum ListAction : u8 { kActCopy, kActDelete, kActFill, kActCancel };
+enum ListAction : u8 { kActCopy, kActDelete, kActFill, kActMove, kActCancel };
 
 void RunListAction(u32 row, s32 vx, s32 vy) {
     switch (row) {
@@ -1502,6 +1513,10 @@ void RunListAction(u32 row, s32 vx, s32 vy) {
             for (s32 x = s_sel.x0; x <= s_sel.x1; ++x)
                 if (InSel(x, y))
                     EraseAt(x, y);
+        break;
+    case kActMove:                          // 浮かべて、次のタッチで動かして離した所へ（元は消える）。A でも置ける
+        if (CaptureSel() != 0)
+            StartCarry(Carry::MoveArmed, vx, vy, 0, 0);
         break;
     case kActFill:
         s_noItemTold = false;
@@ -1517,9 +1532,9 @@ void RunListAction(u32 row, s32 vx, s32 vy) {
 
 // ---- 範囲選択のタッチ ----
 void SelectPress(s32 vx, s32 vy, u16 px, u16 py, bool inside, s32 tx, s32 ty) {
-    if (s_carry == Carry::CopyArmed) {
-        if (inside) {                       // 次のタッチで写しを動かす
-            s_carry = Carry::Copy;
+    if (s_carry == Carry::CopyArmed || s_carry == Carry::MoveArmed) {
+        if (inside) {                       // 次のタッチで写し（移動なら元の物）を動かす
+            s_carry = s_carry == Carry::CopyArmed ? Carry::Copy : Carry::Move;
             s_carryPressX = px;
             s_carryPressY = py;
             s_carryBaseX = s_carryPixX;
@@ -1785,6 +1800,11 @@ void StepCenter(s32 vx, s32 vy) {
     s_aDone = s_aSeq;
     const bool shown = CenterShown();
     const SelRect r = CenterRange(vx, vy);
+    // 「複製」「移動」で浮かべて待っている間の A = いまの盤面の分だけずらして置く（スライドパッドで動かしてから A）
+    if (pressed && (s_carry == Carry::CopyArmed || s_carry == Carry::MoveArmed) && !s_touchPrevDown && !ListBusy()) {
+        CommitCarry(vx, vy);
+        return;
+    }
     if (pressed && shown) {
         switch (s_mode) {
         case Mode::Place:
@@ -1814,6 +1834,9 @@ void StepCenter(s32 vx, s32 vy) {
     }
     if (s_aSelecting) {
         if (!s_aHeld || s_mode != Mode::Select || !shown || !s_sel.active) {
+            // A を離した: 選んだ範囲の一覧を出す（利用者指示 2026-09-29。タッチで範囲の中をタップしたときと同じ一覧）
+            if (!s_aHeld && s_mode == Mode::Select && shown && s_sel.active)
+                OpenList(vx, vy, vx + kView / 2, vy + kView / 2);
             s_aSelecting = false;
         } else {                            // 押したときの範囲と今の範囲を囲む四角
             const SelRect e = { true, s_aAnchor.x0 < r.x0 ? s_aAnchor.x0 : r.x0, s_aAnchor.y0 < r.y0 ? s_aAnchor.y0 : r.y0,
@@ -1887,9 +1910,15 @@ void PublishCursor(s32 vx, s32 vy) {
                     continue;
                 s_cursorX[n] = (u8)x;
                 s_cursorY[n] = (u8)y;
-                s_cursorDim[n] = (x == cx && y == cy) ? 0u : 1u;
+                s_cursorDim[n] = (x == cx && y == cy) ? 0u : kDimRange;
                 ++n;
             }
+    }
+    // マイデザインの上のカーソルはもっと薄く（利用者指示 2026-09-29。GridCursor の薄い体 1 = 50、実行範囲の真ん中以外は体 0 = 90）
+    for (u32 i = 0; i < n; ++i) {
+        const u32 *item = ItemAtTile(s_cursorX[i], s_cursorY[i]);
+        if (item != nullptr && (*item & 0x7FFFu) == kMyDesignItem)
+            s_cursorDim[i] = kDimDesign;
     }
     if (n != s_cursorCount || n != 0) {
         s_cursorCount = n;
@@ -1898,20 +1927,27 @@ void PublishCursor(s32 vx, s32 vy) {
 }
 
 // 赤くするマス（MapEditor3D）: 持ち上げ中は無し（元の実体の赤を戻す。利用者指示）。指が触れているアイテムと、範囲選択の中
-bool HighlightTile(s32 x, s32 y) {
+// 戻り値 = ハイライトの種類（MapEditor3D::kHighlight*。0 = 無し）。赤 = 触れている・選んでいる・削除する物、青 = スポイト、
+//   白 = 配置モードの中心マス（利用者指示 2026-09-29）
+u8 HighlightTile(s32 x, s32 y) {
     if (s_carry != Carry::None)
-        return false;
+        return MapEditor3D::kHighlightNone;
+    const u8 mark = s_mode == Mode::Spoit ? MapEditor3D::kHighlightBlue : MapEditor3D::kHighlightRed;
     if (x == s_fingerX && y == s_fingerY && s_touchKind != TouchKind::SelDrag)
-        return true;                        // 指のマス（範囲を引いている間は範囲だけ）
+        return mark;                        // 指のマス（範囲を引いている間は範囲だけ）
     if (s_mode == Mode::Place && s_nameChip != nullptr && x == s_nameTileX && y == s_nameTileY)
-        return true;                        // 配置モードで名前を出しているアイテム
-    if (s_mode != Mode::Place && CenterShown()) {   // 真ん中の実行範囲のアイテム（削除・範囲選択・スポイト。利用者指示 2026-09-28）
+        return mark;                        // 配置モードで名前を出しているアイテム
+    if (CenterShown()) {                    // 真ん中の実行範囲のアイテム（削除・範囲選択・スポイト。利用者指示 2026-09-28）
         const SelRect c = CenterRange(s_centerVx, s_centerVy);
-        if (x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1)
-            return true;
+        if (s_mode == Mode::Place) {        // 配置: 中心マスの物を白く（2026-09-29）
+            if (x == s_centerVx + kView / 2 && y == s_centerVy + kView / 2)
+                return MapEditor3D::kHighlightWhite;
+        } else if (x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1) {
+            return mark;
+        }
     }
     SelRect r;
-    return s_mode == Mode::Select && ShownSel(r) && ShownSelHas(r, x, y);
+    return s_mode == Mode::Select && ShownSel(r) && ShownSelHas(r, x, y) ? mark : MapEditor3D::kHighlightNone;
 }
 
 // 移動の複製（MapEditor3D）: 行き先が盤面の周りにある物だけ
@@ -2001,16 +2037,16 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         } else {
             const u32 *item = ItemAtTile(tx, ty);
             if (item != nullptr && !IsEmpty(item)) {
-                ShowNameAt(vx, vy, tx, ty);
+                ShowNameAtPoint(vx, vy, tx, ty, px, py);    // 指に追従（利用者指示 2026-09-29: スポイトと同じ）
                 s_touchKind = TouchKind::Hold;
                 s_holdTileX = tx;
                 s_holdTileY = ty;
                 s_pickX = px;
                 s_pickY = py;
             } else {
-                HideName();
                 s_touchKind = TouchKind::Paint;
                 PlaceAt(tx, ty);
+                ShowNameAtPoint(vx, vy, tx, ty, px, py);    // 置いた物の名前（置けなければ消える）
             }
         }
         return;
@@ -2032,8 +2068,7 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         // 指が長押しのマスを出たら配置に切り替え、なぞった先に置く（利用者指示 2026-09-27。長押しのマス自体は物があるので置かない）
         s32 tx = -1, ty = -1;
         if (!TouchTile(vx, vy, px, py, tx, ty) || tx != s_holdTileX || ty != s_holdTileY) {
-            EndHold();
-            HideName();
+            EndHold();                      // 名前は下で指の下のマスに付け替える
             s_touchKind = TouchKind::Paint;
             s_touchLastX = s_holdTileX;
             s_touchLastY = s_holdTileY;
@@ -2059,6 +2094,13 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         fx = fy = -1;
     s_fingerX = fx;
     s_fingerY = fy;
+    // 配置モードの名前は指に追従し、指の下のマスの名前にする（利用者指示 2026-09-29: スポイトと同じ）。物が無ければ消す
+    if (s_mode == Mode::Place) {
+        if (fx >= 0 && fy >= 0)
+            ShowNameAtPoint(vx, vy, fx, fy, px, py);
+        else
+            HideName();
+    }
 }
 
 // 毎フレーム: 溜まった点を順に処理し、長押しを 1 フレーム進める
@@ -2348,7 +2390,6 @@ void ApplyModeLook(void) {
     case Mode::Spoit:  GridCursor::SetTint(kCursorSpoit, kCursorStrongTint); break;
     default:           GridCursor::SetTint(0, 0); break;           // 配置: 色合成なし（0 で元の見た目）
     }
-    MapEditor3D::SetHighlightColor(m == (u8)Mode::Spoit ? kHighlightSpoit : kHighlightRed);
 }
 
 // 下画面左上の箱「配置: {アイテム名}」（利用者指示 2026-09-28。名前は没アイテム表示と同じ ItemNames::NameUtf8）
@@ -2423,7 +2464,7 @@ u8 MarkKind(s32 i, s32 j) {
     const s32 c = kView / 2;
     const s32 dx = i > c ? i - c : c - i, dy = j > c ? j - c : c - j;
     const s32 ring = dx > dy ? dx : dy;
-    return (ring == 0 || ring == kMarkRing) ? kMarkWhite : kMarkBlue;
+    return (ring == 0 || ring == kMarkRing) ? kMarkNone : kMarkWhite;   // 色を入れ替えた（2026-09-29）: 輪郭と中心以外が白
 }
 
 void ForwardMarks(void) {
@@ -2439,9 +2480,12 @@ void ForwardMarks(void) {
             const s32 x = vx + i, y = vy + j;
             if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
                 continue;
+            const u8 kind = MarkKind(i, j);
+            if (kind == kMarkNone)
+                continue;
             xs[n] = (u8)x;
             ys[n] = (u8)y;
-            kinds[n] = MarkKind(i, j);
+            kinds[n] = kind;
             ++n;
         }
     }
@@ -2637,7 +2681,6 @@ void Stop(void) {
     s_want = false;
     s_holdWanted = false;                   // 描画スレッドが（組む前なら Off で、組んだあとなら DestroyAll で）依頼を返す
     GameLabel::Hide(kPlaceLabelSlot);
-    MapEditor3D::SetHighlightColor(kHighlightRed);
     GridCursor::EnableMarks(false);
     GridCursor::Hide();
     FieldCamera::Release();
@@ -2762,18 +2805,33 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
-            int     g_dimAlphaIndex = -1;
-            bool    DimAlphaRead(int index, s32 *value)
+            // 濃さの項目（0〜255）: 項目の番号 → どの値か
+            int     g_shadeIndex[5] = { -1, -1, -1, -1, -1 };   // 実行範囲 / マイデザイン / 赤 / 青 / 白
+            int     ShadeSlot(int index)
             {
-                (void)index;
-                *value = (s32)GridCursor::DimAlpha();
+                for (int k = 0; k < 5; ++k)
+                    if (g_shadeIndex[k] == index)
+                        return k;
+                return -1;
+            }
+
+            bool    ShadeRead(int index, s32 *value)
+            {
+                const int k = ShadeSlot(index);
+                if (k < 0)
+                    return false;
+                *value = k < 2 ? (s32)GridCursor::DimAlpha((u32)k) : (s32)MapEditor3D::HighlightStrength((u8)(k - 1));
                 return true;
             }
 
-            void    DimAlphaWrite(int index, s32 value)
+            void    ShadeWrite(int index, s32 value)
             {
-                (void)index;
-                GridCursor::SetDimAlpha((u8)(value < 0 ? 0 : (value > 255 ? 255 : value)));
+                const int k = ShadeSlot(index);
+                const u8 v = (u8)(value < 0 ? 0 : (value > 255 ? 255 : value));
+                if (k >= 0 && k < 2)
+                    GridCursor::SetDimAlpha((u32)k, v);
+                else if (k >= 2)
+                    MapEditor3D::SetHighlightStrength((u8)(k - 1), v);    // 2 → 赤 1、3 → 青 2、4 → 白 3
             }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
@@ -2827,9 +2885,12 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
-            g_dimAlphaIndex = GuiMenu::FindItem(kMeDimAlpha);
-            if (g_dimAlphaIndex >= 0)
-                GuiMenu::RegisterLinked(g_dimAlphaIndex, DimAlphaRead, DimAlphaWrite);
+            static const char *const kShadeItems[5] = { kMeDimRange, kMeDimDesign, kMeHlRed, kMeHlBlue, kMeHlWhite };
+            for (int k = 0; k < 5; ++k) {
+                g_shadeIndex[k] = GuiMenu::FindItem(kShadeItems[k]);
+                if (g_shadeIndex[k] >= 0)
+                    GuiMenu::RegisterLinked(g_shadeIndex[k], ShadeRead, ShadeWrite);
+            }
         }
     }
 }

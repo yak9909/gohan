@@ -49,16 +49,18 @@ static InstancedDraw::Batch s_batch;
 // ★薄いカーソル（IDA-opus-5.5-F068。利用者指示 2026-09-28: マイデザインの上と、マップエディターの実行範囲の真ん中以外）。
 //   UnitCursor.bcres の TEV は段 0・1 だけを使い段 2〜5 は素通し（ファイル 0xCD0）。色付けが段 5 と Constant5 を使うので、
 //   段 4 を「アルファ = 前段 × Constant4 のアルファ、色 = 前段」にする（資源の TEV は全インスタンスで共有）。
-//   Constant4 は体ごと（bufferOption 0x834）なので、普通の体は 0xFF、薄い体は s_dimAlpha。アニメ（0x1148 / 0x161C）が書くのは
+//   Constant4 は体ごと（bufferOption 0x834）なので、普通の体は 0xFF、薄い体は種類ごとの s_dimAlpha。アニメ（0x1148 / 0x161C）が書くのは
 //   Constant0・Constant1・TexCoord1 だけで、Constant4 / 5 は書かない（CANM の DICT 0x1170 / 0x1380 / 0x1644）。
-static u8 s_dimHolder[kNodeHolderBytes] GC_ALIGNED;
-static u8 s_dimAnim[kMaterialAnimBytes] GC_ALIGNED;
-static u8 s_dimRotAnim[kMaterialAnimBytes] GC_ALIGNED;
-static bool s_dimBuilt, s_dimAnimBuilt, s_dimRotBuilt, s_dimStageOk;
+static u8 s_dimHolder[kDimKinds][kNodeHolderBytes] GC_ALIGNED;
+static u8 s_dimAnim[kDimKinds][kMaterialAnimBytes] GC_ALIGNED;
+static u8 s_dimRotAnim[kDimKinds][kMaterialAnimBytes] GC_ALIGNED;
+static bool s_dimBuilt[kDimKinds], s_dimAnimBuilt[kDimKinds], s_dimRotBuilt[kDimKinds], s_dimShares[kDimKinds];
+static bool s_dimStageOk;
 static float s_drawMatrices[kMaxCursors][12] GC_ALIGNED;    // 描く順に詰めた行列（普通 → 薄い）
-static InstancedDraw::Batch s_batches[2];
+static InstancedDraw::Batch s_batches[1 + kDimKinds];
 static u8 s_tileDim[kMaxCursors];
-static volatile u8 s_dimAlpha = 0x60;
+// 種類ごとの濃さ（利用者の決定 2026-09-29: 0 = 実行範囲の真ん中以外 90、1 = マイデザインの上 50）
+static volatile u8 s_dimAlpha[kDimKinds] = { 90, 50 };
 // マスの色（EnableMarks / SetMarks）
 static u8 s_markHolder[kMarkKinds][kNodeHolderBytes] GC_ALIGNED;
 static float s_markMatrices[kMaxMarks][12] GC_ALIGNED;  // 種類の順に詰める（白 → 赤 → 黄）
@@ -76,7 +78,7 @@ static u32 s_markTakenSeq = 0xFFFFFFFFu;
 static u32 s_markCount[kMarkKinds];
 static volatile u8 s_markAlpha = 50;       // 利用者の決定（2026-09-28）
 // 色（0x00BBGGRR）: 白・青（利用者指示: 5x5 の輪郭と真ん中 = 白、ほか = 青）
-static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu, 0x00FF0000u };
+static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu };
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -102,9 +104,9 @@ static const float kRotateFrame45 = 0.0f;
 // ★足りないまま建てるとゲーム側が落ちる（F034）ので、建てる前に残りを見る（kHeapExhausted）。
 static const u32 kInstanceBytesPerCursor = 6144;
 static const u32 kInstanceHeapSlack = 0x4000;
-// ★マスの色の体 kMarkKinds（= 2）つぶん（1 体ずつ）と、その描画ノード 1 つも足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
-// ★薄いカーソルの体 1 つも（アニメ込み。IDA-opus-5.5-F068）
-static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (2 + kMarkKinds) + InstancedDraw::kCreateBytes * 2 + kInstanceHeapSlack;
+// ★マスの色の体 kMarkKinds（= 1）つぶんと、その描画ノード 1 つも足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
+// ★薄いカーソルの体 kDimKinds つも（アニメ込み。IDA-opus-5.5-F068）
+static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (1 + kDimKinds + kMarkKinds) + InstancedDraw::kCreateBytes * 2 + kInstanceHeapSlack;
 // ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
 static const u32 kParentReserve = 0xC000;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
@@ -513,46 +515,47 @@ static void DrawMarks() {
 
 // 薄い体（マス指定の形だけ）。作れなくてもカーソルは止めない（全部を普通の体で描く）
 static void DestroyDimCursor() {
-    if (*Word(s_dimHolder, 4) != 0u)
-        ModelInstanceDestroy(s_dimHolder);  // 普通の体と同じ手順（DestroyCursors）
-    if (s_dimAnimBuilt)
-        MaterialAnimReleaseBuilt(s_dimAnim);
-    if (s_dimRotBuilt)
-        MaterialAnimReleaseBuilt(s_dimRotAnim);
-    std::memset(s_dimHolder, 0, sizeof(s_dimHolder));
-    s_dimAnimBuilt = false;
-    s_dimRotBuilt = false;
-    s_dimBuilt = false;
+    for (u32 d = 0; d < kDimKinds; ++d) {
+        if (*Word(s_dimHolder[d], 4) != 0u)
+            ModelInstanceDestroy(s_dimHolder[d]);   // 普通の体と同じ手順（DestroyCursors）
+        if (s_dimAnimBuilt[d])
+            MaterialAnimReleaseBuilt(s_dimAnim[d]);
+        if (s_dimRotBuilt[d])
+            MaterialAnimReleaseBuilt(s_dimRotAnim[d]);
+        std::memset(s_dimHolder[d], 0, sizeof(s_dimHolder[d]));
+        s_dimAnimBuilt[d] = s_dimRotBuilt[d] = s_dimBuilt[d] = s_dimShares[d] = false;
+    }
     s_dimStageOk = false;
 }
 
-static void BuildDimCursor() {
-    s_dimBuilt = false;
+static void BuildDimCursor(u32 d) {
+    s_dimBuilt[d] = false;
     void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
     if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor)
         return;
-    NodeHolderCtor(s_dimHolder);
-    const int created = ModelInstanceCreate(s_dimHolder, s_model, s_instanceAllocator, s_instanceAllocator, 0x834u, 1u, 3u);
-    void* node = *reinterpret_cast<void**>(Word(s_dimHolder, 4));
+    void* holder = s_dimHolder[d];
+    NodeHolderCtor(holder);
+    const int created = ModelInstanceCreate(holder, s_model, s_instanceAllocator, s_instanceAllocator, 0x834u, 1u, 3u);
+    void* node = *reinterpret_cast<void**>(Word(holder, 4));
     // 確かめ方は普通の体（BuildCursor）と同じ。だめなら使わない（片付けは DestroyCursors → DestroyDimCursor）
     if (created != 1 || !IsHeapPointer(node) || *Word(node, kNodeVtable) != kSkeletalModelVtable
         || !IsHeapPointer(*reinterpret_cast<void**>(Word(node, kNodeMaterialActivator)))
         || *Word(node, kNodeMeshArrayBegin) == *Word(node, kNodeMeshArrayEnd))
         return;
     // アニメは普通の体と同じ（slot 0 = 常に回るアニメ、slot 2 = 向き 45 度）
-    MaterialAnimCtor(s_dimAnim);
-    if (MaterialAnimBuildFromRes(s_dimAnim, s_dimHolder, reinterpret_cast<u8*>(s_resource) + kCanmOffset, s_instanceAllocator, 0) != 1)
+    MaterialAnimCtor(s_dimAnim[d]);
+    if (MaterialAnimBuildFromRes(s_dimAnim[d], holder, reinterpret_cast<u8*>(s_resource) + kCanmOffset, s_instanceAllocator, 0) != 1)
         return;
-    s_dimAnimBuilt = true;
-    BindAnimSlot(s_dimHolder, s_dimAnim, 0);
-    MaterialAnimCtor(s_dimRotAnim);
-    if (MaterialAnimBuildFromRes(s_dimRotAnim, s_dimHolder, reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset, s_instanceAllocator, 0) != 1)
+    s_dimAnimBuilt[d] = true;
+    BindAnimSlot(holder, s_dimAnim[d], 0);
+    MaterialAnimCtor(s_dimRotAnim[d]);
+    if (MaterialAnimBuildFromRes(s_dimRotAnim[d], holder, reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset, s_instanceAllocator, 0) != 1)
         return;
-    s_dimRotBuilt = true;
-    BindAnimSlot(s_dimHolder, s_dimRotAnim, 2);
-    AnimSetFrame(s_dimRotAnim, kRotateFrame45);
-    InstancedDraw::DisableDepthWrite(s_dimHolder);
-    s_dimBuilt = true;
+    s_dimRotBuilt[d] = true;
+    BindAnimSlot(holder, s_dimRotAnim[d], 2);
+    AnimSetFrame(s_dimRotAnim[d], kRotateFrame45);
+    InstancedDraw::DisableDepthWrite(holder);
+    s_dimBuilt[d] = true;
 }
 
 static bool BuildCursor() {
@@ -633,7 +636,8 @@ static bool BuildCursor() {
     InstancedDraw::DisableDepthWrite(holder);
     // 薄い体（マス指定の形だけ。IDA-opus-5.5-F068）。マスの色の体より先に作る（ヒープはその分も取ってある）
     if (s_tileMode)
-        BuildDimCursor();
+        for (u32 d = 0; d < kDimKinds; ++d)
+            BuildDimCursor(d);
     // 描画ノード（340 B + 付属）。生成関数は確保の失敗を確かめないので残りを見てから
     if (HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_drawer, s_instanceAllocator)) {
         Stop(Fail::kHeapExhausted);
@@ -865,12 +869,11 @@ static void PrepareTint() {
         }
         std::memcpy(reinterpret_cast<void*>(tev), work, kTevBytes);
         // 薄い体も同じ資源の TEV を指していること（体ごとの TEV なら段 4 も色付けも届かない）
-        if (s_dimStageOk && s_dimBuilt) {
-            const u32 dnode = *Word(s_dimHolder, 4);
+        for (u32 d = 0; d < kDimKinds; ++d) {
+            const u32 dnode = s_dimBuilt[d] ? *Word(s_dimHolder[d], 4) : 0u;
             const u32 darr = dnode != 0u && BuildingHighlight::SafeReadable(dnode + kModelMaterials, 4) ? Rd32(dnode + kModelMaterials) : 0u;
             const u32 dm = darr != 0u && BuildingHighlight::SafeReadable(darr + 4 * k, 4) ? Rd32(darr + 4 * k) : 0u;
-            if (!BuildingHighlight::LooksLikeMaterial(dm) || Rd32(dm + kMatTev) != tevres)
-                s_dimStageOk = false;
+            s_dimShares[d] = BuildingHighlight::LooksLikeMaterial(dm) && Rd32(dm + kMatTev) == tevres;
         }
         *reinterpret_cast<volatile u32*>(tevres + kResTevKey) = 0;     // 毎回書き出させる
         if (plan == 3)
@@ -900,17 +903,9 @@ static void ApplyTintTo(void* holder, u32 value, u32 const4) {
 static void ApplyTint() {
     const u32 value = BuildingHighlight::TintConstant(s_tintColor, s_tintStrength, s_tintPremultiplied);
     ApplyTintTo(s_holder, value, 0xFF000000u);
-    if (s_dimBuilt)
-        ApplyTintTo(s_dimHolder, value, (u32)s_dimAlpha << 24);
-}
-
-// マイデザイン（Item_IsMyDesign 0x7683E4: (item & 0x7FFF) == 0x9D）のマスか。村のアイテム = Field_GetItemAtXY 0x2FEE38(*0x9AEA04, x, y, 0)
-typedef u32* (*FieldItemAtFn)(u32 field, s32 x, s32 y, u32 zero);
-static const FieldItemAtFn FieldItemAt = reinterpret_cast<FieldItemAtFn>(0x002FEE38);
-static const u32 kFieldPtr = 0x009AEA04;
-static bool MyDesignAt(u32 field, u32 x, u32 y) {
-    const u32* item = field != 0u ? FieldItemAt(field, (s32)x, (s32)y, 0) : nullptr;
-    return item != nullptr && (*item & 0x7FFFu) == 0x9Du;
+    for (u32 d = 0; d < kDimKinds; ++d)
+        if (s_dimBuilt[d])
+            ApplyTintTo(s_dimHolder[d], value, (u32)s_dimAlpha[d] << 24);
 }
 
 // Grow or shrink to the requested footprint without rebuilding what is already there.
@@ -1026,31 +1021,37 @@ extern "C" void FrameCallback(void) {
         s_batch.count = s_placeCount < kMaxCursors ? s_placeCount : kMaxCursors;
         u32 batchCount = 1;
         const InstancedDraw::Batch* batches = &s_batch;
-        // ★薄いカーソル（マス指定の形。F068）: 呼ぶ側の印か、マイデザインの上。普通 → 薄いの順に詰めて 2 つの束に
-        if (s_tileMode && s_dimBuilt && s_dimStageOk && *Word(s_dimHolder, 4) != 0u) {
-            AnimSetFrame(s_dimAnim, s_animFrame);
-            EvaluateAndApplyAnims(s_dimHolder);
-            const u32 field = *reinterpret_cast<volatile u32*>(kFieldPtr);
+        // ★薄いカーソル（マス指定の形。F068）: 呼ぶ側の印（1〜kDimKinds）で体を選ぶ。使えない体の印は普通の体で描く。
+        //   普通 → 薄い種類の順に詰めて束に
+        if (s_tileMode && s_dimStageOk) {
+            bool usable[1 + kDimKinds] = { true };
+            for (u32 d = 0; d < kDimKinds; ++d) {
+                usable[1 + d] = s_dimBuilt[d] && s_dimShares[d] && *Word(s_dimHolder[d], 4) != 0u;
+                if (usable[1 + d]) {
+                    AnimSetFrame(s_dimAnim[d], s_animFrame);
+                    EvaluateAndApplyAnims(s_dimHolder[d]);
+                }
+            }
             const u32 count = s_batch.count < s_tileCount ? s_batch.count : s_tileCount;
-            u32 plain = 0;
-            for (u32 pass = 0; pass < 2; ++pass) {
-                const u32 start = plain;
+            u32 start = 0;
+            for (u32 pass = 0; pass <= kDimKinds; ++pass) {
                 u32 n = 0;
                 for (u32 i = 0; i < count; ++i) {
-                    const bool dim = s_tileDim[i] != 0u || MyDesignAt(field, s_tileX[i], s_tileY[i]);
-                    if (dim != (pass == 1))
+                    u32 kind = s_tileDim[i] <= kDimKinds ? s_tileDim[i] : 0u;
+                    if (!usable[kind])
+                        kind = 0;
+                    if (kind != pass)
                         continue;
                     std::memcpy(s_drawMatrices[start + n], s_matrices[i], sizeof(s_matrices[i]));
                     ++n;
                 }
-                if (pass == 0)
-                    plain = n;
-                s_batches[pass].holder = pass == 0 ? static_cast<void*>(s_holder) : static_cast<void*>(s_dimHolder);
+                s_batches[pass].holder = pass == 0 ? static_cast<void*>(s_holder) : static_cast<void*>(s_dimHolder[pass - 1]);
                 s_batches[pass].matrices = s_drawMatrices + start;
-                s_batches[pass].count = n;
+                s_batches[pass].count = usable[pass] ? n : 0u;
+                start += n;
             }
             batches = s_batches;
-            batchCount = 2;
+            batchCount = 1 + kDimKinds;
         }
         // ★村の物体の下に描く（地面の後・物体の前。利用者指示 2026-09-28、F061）。村の物体の描画ノードが無ければ自前のノード。
         //   エディター（マス指定の形）のときだけマイデザインより上（F066。利用者指示 2026-09-29: 描画順の変更はエディターの間だけ）
@@ -1182,8 +1183,11 @@ void SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count) {
 }
 
 void SetMarkAlpha(u8 alpha) { s_markAlpha = alpha; }
-void SetDimAlpha(u8 alpha) { s_dimAlpha = alpha; }
-u8 DimAlpha(void) { return s_dimAlpha; }
+void SetDimAlpha(u32 kind, u8 alpha) {
+    if (kind < kDimKinds)
+        s_dimAlpha[kind] = alpha;
+}
+u8 DimAlpha(u32 kind) { return kind < kDimKinds ? s_dimAlpha[kind] : 0u; }
 u8 MarkAlpha(void) { return s_markAlpha; }
 u32 MarkFailReason(void) { return s_markFail; }
 

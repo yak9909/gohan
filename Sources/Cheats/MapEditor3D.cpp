@@ -78,7 +78,10 @@ const u32 kRefDirect = 0x80000000u, kRefRelative = 0x40000000u;
 enum Style : u8 { kPreview, kRed };
 const u32 kRedColor = 0x004040FFu;          // 0x00BBGGRR（BuildingHighlight::kRed と同じ）
 const u8 kRedTint = 0xC0;
-volatile u32 s_hlColor = kRedColor;         // 段 5 の定数色（SetHighlightColor。描画スレッドが読む）
+// ハイライトの種類ごとの色と濃さ（利用者指示 2026-09-29: 赤・青・白、濃さは項目で。描画スレッドが読む）
+const u32 kHighlightColor[kHighlightKinds] = { kRedColor, 0x00FF6020u, 0x00FFFFFFu };   // 赤 / 青（スポイト）/ 白（配置の中心）
+volatile u8 s_hlStrength[kHighlightKinds] = { kRedTint, kRedTint, 0x80 };
+u8 s_curKind = kHighlightRed;               // いま描いている物体の種類（DrawTinted0 / 1 が決め、EmitTint が読む）
 const u32 kWhite = 0x00FFFFFFu;
 const u8 kWhiteTint = 0x60;
 const u8 kPreviewAlpha = 0xA0;
@@ -336,17 +339,17 @@ const TevStageEmitFn TevStageEmit   = reinterpret_cast<TevStageEmitFn>(0x0072721
 const GpuPropertyFn  GpuProperty    = reinterpret_cast<GpuPropertyFn>(0x00127EDC);    // 520 = g_GpuCmdPtr
 const GpuAdvanceFn   GpuAdvance     = reinterpret_cast<GpuAdvanceFn>(0x001280B4);
 
-u8 s_tintMap[kTilesX * kTilesY / 8];        // 赤くするマス（描画スレッドが Frame で書き、同じスレッドの描画で読む）
+u8 s_tintMap[kTilesX * kTilesY];            // マスごとのハイライトの種類（0 = 無し。描画スレッドが Frame で書き、同じスレッドの描画で読む）
 bool s_tintAny;
 bool s_tableHooked;
 u32 s_chainPreDraw;                         // 包んでいる間だけ: 物体が元から持っていた描く直前の関数
 
-bool Tinted(u32 obj) {
+u8 TintKind(u32 obj) {
     const s32 x = (s32)R32(obj + kObjX), y = (s32)R32(obj + kObjY);
     if (!s_tintAny || x < 0 || y < 0 || x >= (s32)kTilesX || y >= (s32)kTilesY)
-        return false;
-    const u32 i = (u32)y * kTilesX + (u32)x;
-    return ((s_tintMap[i >> 3] >> (i & 7u)) & 1u) != 0u;
+        return kHighlightNone;
+    const u8 k = s_tintMap[(u32)y * kTilesX + (u32)x];
+    return k <= kHighlightKinds ? k : kHighlightNone;
 }
 
 // 段 5 = 定数色（赤）と前段の出力を定数アルファの割合で混ぜる（interpolate）。α は前段のまま。
@@ -361,11 +364,12 @@ void EmitTint(void) {
     st[4] = 14;                             // 入力: 定数 / 前段 / 定数
     st[5] = 15;
     st[6] = 14;
-    const u32 color = s_hlColor;
+    const u8 kind = s_curKind >= 1 && s_curKind <= kHighlightKinds ? s_curKind : kHighlightRed;
+    const u32 color = kHighlightColor[kind - 1];
     st[18] = (u8)(color & 0xFFu);
     st[19] = (u8)((color >> 8) & 0xFFu);
     st[20] = (u8)((color >> 16) & 0xFFu);
-    st[21] = kRedTint;
+    st[21] = s_hlStrength[kind - 1];
     u32 p = 0;
     GpuProperty(520u, &p);
     const u32 end = reinterpret_cast<u32>(TevStageEmit(st, reinterpret_cast<u32 *>(p)));
@@ -388,10 +392,12 @@ void TintPreDraw(u32 obj, u32 ctx) {
 }
 
 void DrawTinted0(u32 obj, u32 ctx, const float *view) {
-    if (!Tinted(obj)) {
+    const u8 kind = TintKind(obj);
+    if (kind == kHighlightNone) {
         reinterpret_cast<DrawFn>(kDrawKind0)(obj, ctx, view);
         return;
     }
+    s_curKind = kind;
     const u32 old = R32(obj + kObjPreDraw);
     s_chainPreDraw = old;
     W32(obj + kObjPreDraw, reinterpret_cast<u32>(&TintPreDraw));
@@ -421,10 +427,12 @@ void DrawMeshTinted(u32 ctx, u32 mesh, u32 node) {
 
 // sub_58FA78 と同じ手順（メッシュの描き方だけ DrawMeshTinted）
 void DrawTinted1(u32 obj, u32 ctx, const float *view) {
-    if (!Tinted(obj)) {
+    const u8 kind = TintKind(obj);
+    if (kind == kHighlightNone) {
         reinterpret_cast<DrawFn>(kDrawKind1)(obj, ctx, view);
         return;
     }
+    s_curKind = kind;
     const u32 node = R32(obj + kObjDrawNode);
     ModelView(obj, view);
     ForgetDrawState();
@@ -752,7 +760,7 @@ void TearDown(bool sameScene) {
 
 }  // namespace
 
-void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
+void Frame(u8 (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
     if (s_heapMade && !SceneSame()) {       // 場面が変わった: 何も書かずに捨てる
         s_tintAny = false;
         TearDown(false);
@@ -783,9 +791,9 @@ void Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count) {
                 for (u32 c = 0; c < count && c < kMaxClones; ++c)
                     if (srcRes[c] == nullptr && clones[c].srcX == x && clones[c].srcY == y)
                         srcRes[c] = reinterpret_cast<void *>(res);
-                if (highlight != nullptr && highlight(x, y)) {
-                    const u32 i = (u32)y * kTilesX + (u32)x;
-                    s_tintMap[i >> 3] = (u8)(s_tintMap[i >> 3] | (1u << (i & 7u)));
+                const u8 kind = highlight != nullptr ? highlight(x, y) : kHighlightNone;
+                if (kind != kHighlightNone && kind <= kHighlightKinds) {
+                    s_tintMap[(u32)y * kTilesX + (u32)x] = kind;
                     anyTint = true;
                 }
             }
@@ -833,8 +841,13 @@ void Abandon(void) {
         ForgetAll();
 }
 
-void SetHighlightColor(u32 color) {
-    s_hlColor = color & 0x00FFFFFFu;
+void SetHighlightStrength(u8 kind, u8 strength) {
+    if (kind >= 1 && kind <= kHighlightKinds)
+        s_hlStrength[kind - 1] = strength;
+}
+
+u8 HighlightStrength(u8 kind) {
+    return kind >= 1 && kind <= kHighlightKinds ? s_hlStrength[kind - 1] : 0u;
 }
 
 }  // namespace MapEditor3D
