@@ -294,6 +294,18 @@ volatile u32 s_buildChipCount;
 
 // ---- メニュー → 描画 ----
 volatile bool s_want;
+volatile bool s_holdWanted;                 // 元の下画面 UI を隠す依頼を持っていたい（Start で立て Stop で落とす。返すのは描画スレッド）
+
+// 依頼が要らなくなっていれば返す（描画スレッド）。★返した直後に Start が立てていたら取り直す
+//   （Start は s_holdWanted を立ててから HoldField(true) を呼ぶので、どちらの順に割り込まれても最後は「持つ」になる）
+void ReleaseHoldIfUnwanted(void) {
+    if (s_holdWanted)
+        return;
+    GameList::HoldField(false);
+    __sync_synchronize();
+    if (s_holdWanted)
+        GameList::HoldField(true);
+}
 volatile s32 s_viewX, s_viewY;              // 盤面の左上のマス
 s32 s_marksViewX = -1, s_marksViewY = -1;   // 上画面のマスの色を最後に渡したときの盤面（メニュースレッド）
 u32 s_markFailTold;                          // 知らせたマスの色の失敗の理由
@@ -771,7 +783,7 @@ void DestroyAll(void) {
         ArcDtor(s_holder);
     s_holderMade = s_arcLoaded = false;
     s_stage = Stage::Off;
-    GameList::HoldField(false);             // 元の下画面 UI を戻してよい（地図の arc を取り直す）
+    ReleaseHoldIfUnwanted();                // 元の下画面 UI を戻してよい（地図の arc を取り直す）。すぐ入れ直していたら残す
 }
 
 void PlayBoard(void *anim) {
@@ -2169,7 +2181,9 @@ bool Start(void) {
     GameLabel::SetAlert(kPlaceLabelSlot, false);
     GridCursor::SetTiles(nullptr, nullptr, 0, -1, 0, 0);
     s_cursorShown = 0xFFFFFFFFu;
+    s_holdWanted = true;                    // 描画スレッドが依頼を返さないように、先に立てる
     if (!GameList::HoldField(true)) {
+        s_holdWanted = false;
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"下画面を使えません");
         return false;
     }
@@ -2355,6 +2369,9 @@ void FrameStep(void) {
     }
     switch (s_stage) {
     case Stage::Off:
+        // ★組む前に切られた（Stop）: DestroyAll は走らないので、ここで下画面を隠す依頼を返す（IDA-opus-5.5-F067。
+        //   以前は依頼が残り、エディターを切っても元の下画面 UI を隠し続けようとした）
+        ReleaseHoldIfUnwanted();
         if (!want || s_error[0] != 0 || !GameList::FieldHidden())
             return;
         s_startRoom = RoomId();
@@ -2508,6 +2525,7 @@ void Stop(void) {
         return;
     s_running = false;
     s_want = false;
+    s_holdWanted = false;                   // 描画スレッドが（組む前なら Off で、組んだあとなら DestroyAll で）依頼を返す
     GameLabel::Hide(kPlaceLabelSlot);
     MapEditor3D::SetHighlightColor(kHighlightRed);
     GridCursor::EnableMarks(false);
