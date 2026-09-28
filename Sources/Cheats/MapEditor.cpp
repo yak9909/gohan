@@ -11,6 +11,7 @@
 #include "GuiMenu.hpp"
 #include "ItemNames.hpp"
 #include "MapEditor3D.hpp"
+#include "MapModeList.hpp"
 #include "PublicWorks.hpp"
 
 #include <3ds.h>
@@ -275,6 +276,15 @@ const u32 kTouchRing = 64;
 volatile u32 s_touchRing[kTouchRing];
 volatile u32 s_touchHead;                   // メニュースレッドだけが書く（通算）
 volatile Mode s_mode = Mode::Place;
+// 下画面左端のモード一覧（MapModeList）で決まったモード。描画スレッドが書き、メニュースレッドの Tick が s_mode へ移す
+volatile u32 s_modeReqSeq, s_modeReqDone;
+volatile u8 s_modeReqValue;
+// 一覧が受け持つ指（エディターの指が無いときに一覧の矩形で始まった指。描画スレッドだけが触る）
+bool s_modeStroke;                          // 指が一覧のもの
+bool s_modeHeld;                            // 一覧へ渡す「押している」
+bool s_modeShownDown;                       // 押したことを一覧へ 1 フレーム以上渡した
+bool s_modeUpNext;                          // 同じフレームで押して離した: このフレームは押し、次のフレームで離す
+u16 s_modeX, s_modeY;
 volatile u32 s_placeId = kNoItem;           // 配置するアイテム（kNoItem = 未設定）
 // ---- 描画 → メニュー（スポイト）----
 volatile float s_pickProgress = -1.0f;      // 長押しの進み（0〜1、負 = 出さない）
@@ -470,6 +480,11 @@ bool LoadStep(void) {
             return false;
         s_listLoaded = true;
     }
+    if (!MapModeList::LoadStep()) {         // モード一覧（map_village.arc）
+        if (MapModeList::Error()[0] != 0)
+            s_error = MapModeList::Error();
+        return false;
+    }
     return true;
 }
 
@@ -562,6 +577,11 @@ bool BuildStep(void) {
         }
         s_chipAnimsMade = true;
     }
+    if (!MapModeList::BuildStep(LytRoom(), (u8)s_mode)) {   // モード一覧（1 フレームに 1 段）
+        if (MapModeList::Error()[0] != 0)
+            s_error = MapModeList::Error();
+        return false;
+    }
     return true;
 }
 
@@ -569,6 +589,8 @@ void EndHold(void);
 
 void DestroyAll(void) {
     EndHold();
+    MapModeList::Destroy();
+    s_modeStroke = s_modeHeld = s_modeShownDown = s_modeUpNext = false;
     MapEditor3D::Abandon();                 // 場面が同じなら赤を戻して複製を壊す。変わっていれば何も書かずにヒープだけ返す
     s_nameChip = nullptr;                   // 壊すだけなので退場の状態へは進めない
     s_nameTileX = s_nameTileY = -1;
@@ -1748,7 +1770,31 @@ void StepTouch(s32 vx, s32 vy) {
     while (s_touchTail != head) {
         const u32 w = s_touchRing[s_touchTail % kTouchRing];
         ++s_touchTail;
-        TouchSample(vx, vy, (w >> 31) != 0 && !busy, (u16)(w & 0x1FFu), (u16)((w >> 9) & 0xFFu));
+        const bool down = (w >> 31) != 0;
+        const u16 px = (u16)(w & 0x1FFu), py = (u16)((w >> 9) & 0xFFu);
+        // モード一覧の指: エディターの指が無いときに一覧の上で始まった指は、離すまで一覧だけが受ける
+        if (s_modeStroke) {
+            if (down) {
+                s_modeX = px;
+                s_modeY = py;
+            } else {
+                s_modeStroke = false;
+                if (s_modeShownDown)
+                    s_modeHeld = false;
+                else
+                    s_modeUpNext = true;
+            }
+            continue;
+        }
+        if (down && !busy && !s_touchPrevDown && !ListBusy() && MapModeList::Contains(px, py)) {
+            s_modeStroke = true;
+            s_modeHeld = true;
+            s_modeShownDown = s_modeUpNext = false;
+            s_modeX = px;
+            s_modeY = py;
+            continue;
+        }
+        TouchSample(vx, vy, down && !busy, px, py);
     }
     if (s_mode == Mode::Select)
         SelectFrame(vx, vy);
@@ -2078,17 +2124,20 @@ void FrameStep(void) {
         }
         s_stage = Stage::Live;
         PlayBoard(s_boardIn);
+        MapModeList::Enter();
         break;
     case Stage::Live:
         if (!want) {
             HideName();
             PlayBoard(s_boardOut);
+            MapModeList::Leave();
+            s_modeStroke = s_modeHeld = s_modeShownDown = s_modeUpNext = false;
             s_stage = Stage::Leaving;
         }
         break;
     case Stage::Leaving:
         // 一覧も閉じ終わってから（閉じ終わりで手カーソルの状態をゲームが戻す）。上画面の赤・複製も戻し終わってから
-        if (s_boardAnim == nullptr && !ListBusy() && MapEditor3D::Release()) {
+        if (s_boardAnim == nullptr && !ListBusy() && !MapModeList::Animating() && MapEditor3D::Release()) {
             s_stage = Stage::Waiting;
             s_waitFrames = 0;
             return;
@@ -2133,8 +2182,25 @@ void FrameStep(void) {
     const bool group = UpdateGroup(vx, vy);
     StepList(vx, vy);
     NameCalc();
+    {
+        // 見た目を合わせるモード = まだ移していない要求があればそれ（一覧で決めた直後に元へ戻さない）
+        const u8 want = s_modeReqSeq != s_modeReqDone ? s_modeReqValue : (u8)s_mode;
+        const s32 decided = MapModeList::Frame(want, s_stage == Stage::Live && s_modeHeld, s_modeX, s_modeY);
+        if (s_modeHeld)
+            s_modeShownDown = true;
+        if (s_modeUpNext) {                 // 同じフレームで押して離した指: 次のフレームで離す
+            s_modeHeld = false;
+            s_modeUpNext = false;
+        }
+        if (decided >= 0 && decided < (s32)kModesNow) {
+            s_modeReqValue = (u8)decided;
+            __sync_synchronize();           // 値を書いてから通算を進める
+            s_modeReqSeq = s_modeReqSeq + 1;
+        }
+    }
     // 描画登録（リストは毎フレーム空になる）。盤面 → 建物 → アイテム → 名前
     if (mgr != nullptr) {
+        MapModeList::Draw(mgr);             // 盤面より先 = 下（重ならない配置だが、はみ出したときも盤面が上）
         AddLayout(mgr, s_board, 1);
         const u32 ghosts = s_ghostStart < s_drawCount ? s_ghostStart : s_drawCount;
         for (u32 k = 0; k < ghosts; ++k)
@@ -2222,6 +2288,17 @@ void Tick(u32 keys) {
     StepMove(s_listActive ? (keys & kPad) : keys);  // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
+    // 下画面左端のモード一覧で決まったモード（描画スレッドから）
+    if (s_modeReqSeq != s_modeReqDone) {
+        const u32 seq = s_modeReqSeq;
+        __sync_synchronize();
+        const u8 m = s_modeReqValue;
+        s_modeReqDone = seq;
+        if (m < kModesNow && (u8)s_mode != m) {
+            s_mode = (Mode)m;
+            GuiMenu::Notify(Cheats::kMeOn, ModeName(s_mode));
+        }
+    }
     // L / R: モードを巡回（利用者の決定。範囲選択は段階 3 で足す）
     if (pressed & ((u32)Key::L | (u32)Key::R)) {
         const u32 count = kModesNow;
