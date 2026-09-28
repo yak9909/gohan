@@ -174,6 +174,8 @@ const u8 kCursorStrongTint = 0xE0;
 const u32 kHighlightRed = 0x004040FFu, kHighlightSpoit = 0x00FF6020u;
 // 下画面左上の箱（GameLabel の箱 0。公共事業エディターと同じ部品を下画面へ）: 「配置: {アイテム名}」、左揃え
 const u32 kPlaceLabelSlot = 0;
+// 実行範囲の一辺の上限（利用者指示 2026-09-28: 奇数 x 奇数、最大 7x7）
+const s32 kMaxRange = 7;
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
 const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub_B0AD88）が渡す大きさ
@@ -341,6 +343,7 @@ u32 s_listPrevKeys;
 u32 s_listHold[32];                         // メニュー側のビットごとの押し続け（sead の +44 + 4i と同じ数え方）
 // ---- 描画 → メニュー（持ち上げ中の行き先。メニュースレッドが GridCursor へ渡す）----
 volatile u8 s_cursorX[kMaxCursorTiles], s_cursorY[kMaxCursorTiles];
+volatile u8 s_cursorDim[kMaxCursorTiles];   // 薄く描く（実行範囲の真ん中以外。GridCursor::SetTiles の dims）
 volatile u32 s_cursorCount, s_cursorSeq;
 // ---- 描画 → メニュー ----
 const char *volatile s_error = "";
@@ -1746,6 +1749,84 @@ bool NearView(s32 vx, s32 vy, s32 x, s32 y) {
         && x >= 0 && y >= 0 && x < kTilesX && y < kTilesY;
 }
 
+// ---- 真ん中のカーソルと A（利用者指示 2026-09-28。FOXXY のマップエディターと同じ操作）----
+//   盤面に触れていない間は、盤面の真ん中を中心に実行範囲（一辺 1/3/5/7。十字上下。盤面はスライドパッドだけで動く）の UnitCursor を出し、
+//   A でモードの操作をする。配置 = 範囲の空きマスに置く / 削除 = 範囲のアイテムを消す / 範囲選択 = 範囲を選ぶ（タッチで範囲を引いたのと
+//   同じ選択。A を押したまま盤面を動かすと、その方向へ選択を広げる）/ スポイト = 真ん中（範囲は 1x1 に固定し、ほかのモードでは元の範囲）。
+//   削除・範囲選択・スポイトでは範囲の中のアイテムを赤く（スポイトは青）。カーソルは真ん中以外を薄く（GridCursor の薄い体）、
+//   範囲選択のカーソルと重なるマスは 1 つだけ。
+volatile u8 s_range = 1;                    // 実行範囲の一辺（メニュースレッドが十字上下で変える）
+volatile u32 s_aSeq;                        // A を押した通算（メニュースレッド）
+volatile bool s_aHeld;                      // A を押し続けている（メニュースレッド）
+u32 s_aDone;
+bool s_aSelecting;                          // 範囲選択モードで A を押してから離すまで
+SelRect s_aAnchor;                          // A を押したときの実行範囲
+s32 s_centerVx, s_centerVy;                 // 今のフレームの盤面（HighlightTile が読む）
+
+s32 RangeSide(void) {
+    const s32 r = (s32)s_range;
+    return s_mode == Mode::Spoit ? 1 : (r < 1 ? 1 : (r > kView ? kView : r));
+}
+
+// 真ん中のカーソルを出すとき: 盤面に触れていない・持ち上げていない・一覧が出ていない
+bool CenterShown(void) {
+    return s_carry == Carry::None && !ListBusy() && !s_touchPrevDown;
+}
+
+SelRect CenterRange(s32 vx, s32 vy) {
+    const s32 h = RangeSide() / 2, cx = vx + kView / 2, cy = vy + kView / 2;
+    return { true, cx - h, cy - h, cx + h, cy + h };
+}
+
+void StepCenter(s32 vx, s32 vy) {
+    s_centerVx = vx;
+    s_centerVy = vy;
+    const bool pressed = s_aSeq != s_aDone;
+    s_aDone = s_aSeq;
+    const bool shown = CenterShown();
+    const SelRect r = CenterRange(vx, vy);
+    if (pressed && shown) {
+        switch (s_mode) {
+        case Mode::Place:
+            s_noItemTold = false;
+            for (s32 y = r.y0; y <= r.y1; ++y)
+                for (s32 x = r.x0; x <= r.x1; ++x)
+                    PlaceAt(x, y);
+            break;
+        case Mode::Remove:
+            for (s32 y = r.y0; y <= r.y1; ++y)
+                for (s32 x = r.x0; x <= r.x1; ++x)
+                    EraseAt(x, y);
+            break;
+        case Mode::Select:
+            HideName();
+            s_sel = r;
+            s_selMasked = false;
+            s_dropFrames = 0xFFFFFFFFu;
+            Sound(kSndSelectOn);            // タッチで範囲を引いて離したときと同じ（SelectRelease）
+            s_aAnchor = r;
+            s_aSelecting = true;
+            break;
+        case Mode::Spoit:
+            PickAt(r.x0, r.y0);
+            break;
+        }
+    }
+    if (s_aSelecting) {
+        if (!s_aHeld || s_mode != Mode::Select || !shown || !s_sel.active) {
+            s_aSelecting = false;
+        } else {                            // 押したときの範囲と今の範囲を囲む四角
+            const SelRect e = { true, s_aAnchor.x0 < r.x0 ? s_aAnchor.x0 : r.x0, s_aAnchor.y0 < r.y0 ? s_aAnchor.y0 : r.y0,
+                                s_aAnchor.x1 > r.x1 ? s_aAnchor.x1 : r.x1, s_aAnchor.y1 > r.y1 ? s_aAnchor.y1 : r.y1 };
+            if (e.x0 != s_sel.x0 || e.y0 != s_sel.y0 || e.x1 != s_sel.x1 || e.y1 != s_sel.y1) {
+                s_sel = e;
+                s_selMasked = false;
+                MoveSound(kSndRangeStep, ((float)r.x0) * kWorldTile);   // 範囲を引いて格子 1 本動いたときと同じ音
+            }
+        }
+    }
+}
+
 // 上画面の UnitCursor（青。メニュースレッドが GridCursor へ渡す）: 持ち上げ中は行き先のうち盤面の周りのマス、
 //   そうでなければ指が触れているマスと範囲選択の中のマス（利用者指示 2026-09-27 / 28）
 void PublishCursor(s32 vx, s32 vy) {
@@ -1788,6 +1869,28 @@ void PublishCursor(s32 vx, s32 vy) {
                     ++n;
                 }
     }
+    for (u32 i = 0; i < n; ++i)
+        s_cursorDim[i] = 0;
+    // 真ん中の実行範囲（盤面に触れていない間）。ほかのカーソルと同じマスは足さない（二重に出さない）。真ん中以外は薄く
+    if (CenterShown()) {
+        const SelRect c = CenterRange(vx, vy);
+        const s32 cx = vx + kView / 2, cy = vy + kView / 2;
+        const u32 before = n;
+        for (s32 y = c.y0; y <= c.y1 && n < kMaxCursorTiles; ++y)
+            for (s32 x = c.x0; x <= c.x1 && n < kMaxCursorTiles; ++x) {
+                if (!NearView(vx, vy, x, y))
+                    continue;
+                bool dup = false;
+                for (u32 i = 0; i < before && !dup; ++i)
+                    dup = s_cursorX[i] == (u8)x && s_cursorY[i] == (u8)y;
+                if (dup)
+                    continue;
+                s_cursorX[n] = (u8)x;
+                s_cursorY[n] = (u8)y;
+                s_cursorDim[n] = (x == cx && y == cy) ? 0u : 1u;
+                ++n;
+            }
+    }
     if (n != s_cursorCount || n != 0) {
         s_cursorCount = n;
         s_cursorSeq = s_cursorSeq + 1;
@@ -1802,6 +1905,11 @@ bool HighlightTile(s32 x, s32 y) {
         return true;                        // 指のマス（範囲を引いている間は範囲だけ）
     if (s_mode == Mode::Place && s_nameChip != nullptr && x == s_nameTileX && y == s_nameTileY)
         return true;                        // 配置モードで名前を出しているアイテム
+    if (s_mode != Mode::Place && CenterShown()) {   // 真ん中の実行範囲のアイテム（削除・範囲選択・スポイト。利用者指示 2026-09-28）
+        const SelRect c = CenterRange(s_centerVx, s_centerVy);
+        if (x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1)
+            return true;
+    }
     SelRect r;
     return s_mode == Mode::Select && ShownSel(r) && ShownSelHas(r, x, y);
 }
@@ -2207,7 +2315,7 @@ bool Start(void) {
     return true;
 }
 
-// 十字キーとスライドパッドのどちらでも動かす（利用者指示 2026-09-27。押し続けは公共事業エディターと同じ）
+// 盤面を動かす（スライドパッドだけ。利用者指示 2026-09-28: 十字は実行範囲。押し続けは公共事業エディターと同じ）
 void StepMove(u32 keys) {
     u32 held = 0;
     if (keys & ((u32)Key::DPadUp | (u32)Key::CPadUp)) held |= CursorRepeat::kUp;
@@ -2297,15 +2405,16 @@ void ForwardCursor(void) {
     if (seq == s_cursorShown)
         return;
     s_cursorShown = seq;
-    u8 xs[kMaxCursorTiles], ys[kMaxCursorTiles];
+    u8 xs[kMaxCursorTiles], ys[kMaxCursorTiles], dims[kMaxCursorTiles];
     u32 n = s_cursorCount;
     if (n > kMaxCursorTiles)
         n = kMaxCursorTiles;
     for (u32 i = 0; i < n; ++i) {
         xs[i] = s_cursorX[i];
         ys[i] = s_cursorY[i];
+        dims[i] = s_cursorDim[i];
     }
-    GridCursor::SetTiles(xs, ys, n, -1, 0, 0);
+    GridCursor::SetTiles(xs, ys, n, -1, 0, 0, dims);
 }
 
 // 上画面のマスの色（利用者指示 2026-09-28）: 盤面の 7x7 に、中心から 5x5 の輪郭と真ん中 = 白、ほか = 青
@@ -2445,6 +2554,7 @@ void FrameStep(void) {
             s_spoitCenterDone = s_spoitCenterSeq;
             PickAt(vx + kView / 2, vy + kView / 2);
         }
+        StepCenter(vx, vy);                 // 真ん中のカーソルと A（盤面に触れていない間）
     } else {
         EndHold();
         CloseList();
@@ -2563,10 +2673,27 @@ void Tick(u32 keys) {
     s_listKeys = s_listActive ? (keys & ((u32)Key::A | (u32)Key::B | (u32)Key::DPadUp | (u32)Key::DPadDown | (u32)Key::DPadLeft | (u32)Key::DPadRight)) : 0u;
     // 一覧が開いている間も、スライドパッドはカメラ（盤面の移動）に使う（利用者指示 2026-09-28。ゲームの一覧はスライドパッドでも
     //   選べるが、一覧へ渡すのは十字・A・B だけ）。十字は一覧が受けるので盤面は動かさない
+    // ★盤面はスライドパッドだけで動かす（利用者指示 2026-09-28: 十字上下は実行範囲、十字左右は何もしない）
     const u32 kPad = (u32)Key::CPadUp | (u32)Key::CPadDown | (u32)Key::CPadLeft | (u32)Key::CPadRight;
-    StepMove(s_listActive ? (keys & kPad) : keys);  // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
+    StepMove(keys & kPad);                  // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
+    // 実行範囲（一辺 1/3/5/7）。スポイトは 1x1 に固定なので変えない（ほかのモードへ戻れば元の範囲）
+    if (!s_listActive && s_mode != Mode::Spoit && (pressed & ((u32)Key::DPadUp | (u32)Key::DPadDown))) {
+        const s32 now = (s32)s_range;
+        s32 next = (pressed & (u32)Key::DPadUp) ? now + 2 : now - 2;
+        next = next < 1 ? 1 : (next > kMaxRange ? kMaxRange : next);
+        if (next != now) {
+            s_range = (u8)next;
+            char msg[48];
+            std::snprintf(msg, sizeof(msg), u8"実行範囲 %dx%d", (int)next, (int)next);
+            GuiMenu::Notify(Cheats::kMeOn, msg);
+        }
+    }
+    // A: 真ん中の実行範囲にモードの操作（描画スレッドが盤面に触れていない間だけ行う）。押し続けは範囲選択を広げる
+    if ((pressed & (u32)Key::A) && !s_listActive)
+        s_aSeq = s_aSeq + 1;
+    s_aHeld = !s_listActive && (keys & (u32)Key::A) != 0;
     // 下画面左端のモード一覧で決まったモード（描画スレッドから）
     if (s_modeReqSeq != s_modeReqDone) {
         const u32 seq = s_modeReqSeq;
@@ -2635,6 +2762,19 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
+            int     g_dimAlphaIndex = -1;
+            bool    DimAlphaRead(int index, s32 *value)
+            {
+                (void)index;
+                *value = (s32)GridCursor::DimAlpha();
+                return true;
+            }
+
+            void    DimAlphaWrite(int index, s32 value)
+            {
+                (void)index;
+                GridCursor::SetDimAlpha((u8)(value < 0 ? 0 : (value > 255 ? 255 : value)));
+            }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
             bool    MapEditorIsActive(int index)
@@ -2687,6 +2827,9 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
+            g_dimAlphaIndex = GuiMenu::FindItem(kMeDimAlpha);
+            if (g_dimAlphaIndex >= 0)
+                GuiMenu::RegisterLinked(g_dimAlphaIndex, DimAlphaRead, DimAlphaWrite);
         }
     }
 }

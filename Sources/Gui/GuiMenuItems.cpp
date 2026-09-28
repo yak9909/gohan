@@ -218,6 +218,10 @@ namespace CTRPluginFramework
                             u8"マップエディターの配置モードで置くアイテムの ID です。アイテムを押し続けるスポイトでも変わります。"
                             u8"FFFF は未設定です。");
                 SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
+                // 連動型（GridCursor の薄い体の Constant4 のアルファ。利用者指示 2026-09-28: 真ん中以外は透明度を下げる、項目でいじれるように）
+                i = AddItem(ITEM_LINKED_VALUE, kMeDimAlpha,
+                            u8"マップエディターの実行範囲の真ん中以外と、マイデザインの上に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
+                SetValue(i, FMT_DEC, 96, 0, 255, 1);
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 

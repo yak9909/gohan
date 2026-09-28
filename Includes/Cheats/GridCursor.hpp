@@ -95,7 +95,11 @@ namespace GridCursor
     bool            ShowTiles(void);
     // heightId >= 0 なら全部を PublicWorks::CursorHeight(heightId, anchorX, anchorY) に揃える
     // （建物は基点の地面、橋はどこでも一定の橋の高さ）。
-    void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY);
+    // dims（省略可）: マスごとに薄く描く（非 0）。マイデザインの上のマスは呼ぶ側に関係なく薄い（利用者指示 2026-09-28）
+    void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY, const u8* dims = nullptr);
+    // 薄いカーソルのアルファ（0〜255。IDA-opus-5.5-F068: UnitCursor の TEV の段 4 = 前段のアルファ × Constant4 のアルファ）
+    void            SetDimAlpha(u8 alpha);
+    u8              DimAlpha(void);
     // ---- マスの色（マップエディターの上画面。利用者指示 2026-09-28）----
     // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白・1 = 青（利用者指示 2026-09-28 の 2 回目。
     // 最初は白・赤・黄だった）。深度は書かない。UnitCursor とは別の体（2 体）。
