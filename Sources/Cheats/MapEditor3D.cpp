@@ -80,7 +80,8 @@ const u32 kRedColor = 0x004040FFu;          // 0x00BBGGRR（BuildingHighlight::k
 const u8 kRedTint = 0xC0;
 // ハイライトの種類ごとの色と濃さ（利用者指示 2026-09-29: 赤・青・白、濃さは項目で。描画スレッドが読む）
 const u32 kHighlightColor[kHighlightKinds] = { kRedColor, 0x00FF6020u, 0x00FFFFFFu };   // 赤 / 青（スポイト）/ 白（配置の中心）
-volatile u8 s_hlStrength[kHighlightKinds] = { kRedTint, kRedTint, 0x80 };
+// 濃さは利用者の決定（2026-09-29）: 赤 150・青 80・白 40（調整用の項目は外した）
+volatile u8 s_hlStrength[kHighlightKinds] = { 150, 80, 40 };
 u8 s_curKind = kHighlightRed;               // いま描いている物体の種類（DrawTinted0 / 1 が決め、EmitTint が読む）
 const u32 kWhite = 0x00FFFFFFu;
 const u8 kWhiteTint = 0x60;

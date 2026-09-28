@@ -225,16 +225,6 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_LINKED_VALUE, kMeDimDesign,
                             u8"マップエディターでマイデザインの上に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
                 SetValue(i, FMT_DEC, 50, 0, 255, 1);
-                // 連動型（MapEditor3D のハイライトの TEV 段 5 の定数アルファ = 色を混ぜる割合。利用者指示 2026-09-29）
-                i = AddItem(ITEM_LINKED_VALUE, kMeHlRed,
-                            u8"マップエディターで選んだ物・消す物を赤く塗る濃さです（0〜255、0 = 塗らない）。");
-                SetValue(i, FMT_DEC, 192, 0, 255, 1);
-                i = AddItem(ITEM_LINKED_VALUE, kMeHlBlue,
-                            u8"マップエディターのスポイトで物を青く塗る濃さです（0〜255、0 = 塗らない）。");
-                SetValue(i, FMT_DEC, 192, 0, 255, 1);
-                i = AddItem(ITEM_LINKED_VALUE, kMeHlWhite,
-                            u8"マップエディターの配置モードで中心マスの物を白く塗る濃さです（0〜255、0 = 塗らない）。");
-                SetValue(i, FMT_DEC, 128, 0, 255, 1);
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 

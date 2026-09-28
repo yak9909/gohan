@@ -100,9 +100,12 @@ const s32 kMarkRing = 2;
 const u8 kMarkWhite = 0;                    // GridCursor::SetMarks の種類（白だけ。利用者指示 2026-09-29: 上画面の青は描かない）
 const u8 kMarkNone = 0xFF;                  // このマスには置かない（5x5 の輪郭と中心）
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
-enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
+// 利用者指示 2026-09-29: 岩 = 少し灰色寄りの白、花 + 枯れた花 = ピンク、雑草・クローバー類 = 黄緑（C の元の色のまま）、アイテム = 黄色、
+//   埋まっている物 = 茶色、マイデザイン = 水色。ほかの fgobj（木・株など）は濃い緑のまま。★建物（kBuild11）は最後に置く（>= で見分ける）
+enum ChipType : u8 { kItemC, kFgobjC, kRockC, kFlowerC, kYellowC, kBuriedC, kDesignC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
-    "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01P_02x02.bclyt",
+    "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt",
+    "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01P_02x02.bclyt",
 };
 const u32 kMaxChips = 224;                  // 9x9 でも足りる数（7x7 はアイテム 49 + 建物のコマ 49）
 const u32 kBuildsPerFrame = 8;              // 1 フレームで組み立てるコマの数（組み立ての山を平らにする）
@@ -153,10 +156,26 @@ const u32 kNoItem = 0xFFFFFFFFu;
 const float kCameraSouthTiles = 1.0f;
 // コマの色（利用者指示 2026-09-27）。テクスチャは灰色（LA4）で、色はマテリアルの黒色・白色（Material +0x10 / +0x14。F-291）。
 //   元は C = #3F930F/#B4FF14（黄緑）、N・P = #1B7348/#00CA79（青緑）。fgobj = 通常アイテムより濃い緑、建物 = オレンジ
-const u8 kFgobjBlack[4] = { 0x1C, 0x4F, 0x07, 0x00 };
-const u8 kFgobjWhite[4] = { 0x5D, 0xAE, 0x12, 0xFF };
-const u8 kBuildBlack[4] = { 0x7A, 0x3E, 0x10, 0x00 };
-const u8 kBuildWhite[4] = { 0xFF, 0xA0, 0x3C, 0xFF };
+// 種類ごとの黒色・白色（kItemC は塗らない = C の元の黄緑）
+struct ChipColour { u8 black[4]; u8 white[4]; };
+const ChipColour kChipColours[kChipTypes] = {
+    { { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },                             // kItemC（使わない）
+    { { 0x1C, 0x4F, 0x07, 0x00 }, { 0x5D, 0xAE, 0x12, 0xFF } },     // kFgobjC: 濃い緑
+    { { 0x70, 0x70, 0x6A, 0x00 }, { 0xE8, 0xE8, 0xE0, 0xFF } },     // kRockC: 少し灰色寄りの白
+    { { 0x8C, 0x3C, 0x64, 0x00 }, { 0xFF, 0x9C, 0xCC, 0xFF } },     // kFlowerC: ピンク
+    { { 0x8C, 0x6E, 0x00, 0x00 }, { 0xFF, 0xE0, 0x40, 0xFF } },     // kYellowC: 黄色（アイテム）
+    { { 0x4A, 0x2C, 0x10, 0x00 }, { 0xB0, 0x78, 0x40, 0xFF } },     // kBuriedC: 茶色
+    { { 0x2A, 0x78, 0xA8, 0x00 }, { 0x90, 0xDC, 0xFF, 0xFF } },     // kDesignC: 水色
+    { { 0x7A, 0x3E, 0x10, 0x00 }, { 0xFF, 0xA0, 0x3C, 0xFF } },     // kBuild11: オレンジ
+};
+// アイテムの分類はゲームの関数と同じ規則で決める:
+//   Item_GetCategory 0x2FCCD4（id > 0xFD なら 29、ほかは Fg.bin +0x0A、0x1D 以上は 0）・Item_IsFlowerCategory 0x2FCE5C（11〜17・20・27・28）・
+//   Item_IsBuriedFlag 0x2FCBA0（*(u16 *)(item + 2) の bit15 = 32 ビットの bit31）
+typedef u32 (*ItemCategoryFn)(const void *item);
+typedef bool (*CategoryTestFn)(u32 category);
+const ItemCategoryFn ItemCategory     = reinterpret_cast<ItemCategoryFn>(0x002FCCD4);
+const CategoryTestFn IsFlowerCategory = reinterpret_cast<CategoryTestFn>(0x002FCE5C);
+const u32 kCatWeed = 9, kCatRock = 10, kCatWiltedFlower = 19, kCatClover = 21, kCatMyDesign = 24;
 const u32 kPictureMaterial = 316;           // nw::lyt::Picture +0x13C = Material*（ctor 0x4BAA68。F-291）
 const u32 kMatColors = 0x10;                // Material +0x10.. 色 7 個（[0] 黒色 / [1] 白色）
 const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送り直す（GameList と同じ）
@@ -820,6 +839,24 @@ void StepBoardAnim(void) {
 }
 
 // ---- 盤面に出すコマ ----
+// アイテム 1 マスのコマの種類（色）
+u8 ChipTypeFor(u32 value) {
+    if ((value >> 31) != 0u)                // Item_IsBuriedFlag
+        return kBuriedC;
+    if ((value & 0x7FFFu) > kFgobjMax)
+        return kYellowC;
+    const u32 cat = ItemCategory(&value);
+    if (cat == kCatRock)
+        return kRockC;
+    if (cat == kCatMyDesign)
+        return kDesignC;
+    if (cat == kCatWeed || cat == kCatClover)
+        return kItemC;
+    if (cat == kCatWiltedFlower || IsFlowerCategory(cat))
+        return kFlowerC;
+    return kFgobjC;
+}
+
 void AddWant(u8 type, s32 tx, s32 ty, u8 w, u8 h, bool rotated) {
     if (s_wantCount >= kMaxChips)
         return;
@@ -868,7 +905,7 @@ void CollectWants(s32 vx, s32 vy) {
                 continue;
             if ((s_carry == Carry::Move || s_carry == Carry::MoveArmed) && Carried(vx + i, vy + j))
                 continue;                   // 持ち上げている間は元の場所に出さない
-            AddWant(id <= kFgobjMax ? kFgobjC : kItemC, vx + i, vy + j, 1, 1, false);
+            AddWant(ChipTypeFor(*item), vx + i, vy + j, 1, 1, false);
             s_wantChips[s_wantCount - 1].look = ItemLook(vx + i, vy + j);
         }
     }
@@ -901,12 +938,12 @@ bool BuildChipLayout(Chip &c, u8 type) {
     c.type = type;
     c.look = kLookPlain;
     B(c.layout, kLayoutPriority) = 2;
-    if (type == kFgobjC || type == kBuild11) {
+    if (type != kItemC && type < kChipTypes) {
         void *pic = FindPane(c.layout, "P_Btn_00");
         const u32 mat = pic != nullptr ? W(pic, kPictureMaterial) : 0u;
         if (mat != 0) {
-            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), type == kFgobjC ? kFgobjBlack : kBuildBlack, 4);
-            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), type == kFgobjC ? kFgobjWhite : kBuildWhite, 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), kChipColours[type].black, 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), kChipColours[type].white, 4);
             *reinterpret_cast<u8 *>(mat + kMatFlags) &= ~4u;
         }
     }
@@ -1379,7 +1416,7 @@ u32 CaptureSel(void) {
             c.x = (s16)x;
             c.y = (s16)y;
             c.value = *item;                // 旗ごとそのまま運ぶ
-            c.type = (u16)(*item & 0x7FFFu) <= kFgobjMax ? kFgobjC : kItemC;
+            c.type = ChipTypeFor(*item);
         }
     }
     return s_carriedCount;
@@ -1932,7 +1969,9 @@ void PublishCursor(s32 vx, s32 vy) {
 u8 HighlightTile(s32 x, s32 y) {
     if (s_carry != Carry::None)
         return MapEditor3D::kHighlightNone;
-    const u8 mark = s_mode == Mode::Spoit ? MapEditor3D::kHighlightBlue : MapEditor3D::kHighlightRed;
+    // 配置モードで触れている所・名前を出している物は白（利用者指示 2026-09-29）、スポイトは青、ほかは赤
+    const u8 mark = s_mode == Mode::Spoit ? MapEditor3D::kHighlightBlue
+                  : s_mode == Mode::Place ? MapEditor3D::kHighlightWhite : MapEditor3D::kHighlightRed;
     if (x == s_fingerX && y == s_fingerY && s_touchKind != TouchKind::SelDrag)
         return mark;                        // 指のマス（範囲を引いている間は範囲だけ）
     if (s_mode == Mode::Place && s_nameChip != nullptr && x == s_nameTileX && y == s_nameTileY)
@@ -2227,10 +2266,12 @@ float ViewCenter(s32 v) {
 
 // カメラの目標 = 盤面の中心（FieldCamera が描画スレッドで呼ぶ）
 void CameraTarget(float out[3]) {
-    out[0] = ViewCenter(s_viewX);
-    out[1] = 0.0f;
-    out[2] = ViewCenter(s_viewY) + 32.0f * kCameraSouthTiles;
-    out[1] = GroundHeight(out, 0);
+    // 高さは中心マスの地面（利用者指示 2026-09-29: 1 マス南のマスの高さになっていた）。見る位置だけ 1 マス南（2026-09-27）
+    float centre[3] = { ViewCenter(s_viewX), 0.0f, ViewCenter(s_viewY) };
+    const float ground = GroundHeight(centre, 0);
+    out[0] = centre[0];
+    out[1] = ground;
+    out[2] = centre[2] + 32.0f * kCameraSouthTiles;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2374,9 +2415,6 @@ void StepMove(u32 keys) {
         MoveView(dx, dy);
 }
 
-const char *ModeName(Mode m) {
-    return m == Mode::Remove ? u8"削除モード" : m == Mode::Select ? u8"範囲選択モード" : m == Mode::Spoit ? u8"スポイトモード" : u8"配置モード";
-}
 
 // モードごとの UnitCursor と実体のハイライトの色（利用者指示 2026-09-28）
 void ApplyModeLook(void) {
@@ -2721,10 +2759,10 @@ void Tick(u32 keys) {
     StepMove(keys & kPad);                  // メニュー表示中は keys = 0（押し続けが切れる。公共事業エディターと同じ）
     const u32 pressed = keys & ~s_prevKeys;
     s_prevKeys = keys;
-    // 実行範囲（一辺 1/3/5/7）。スポイトは 1x1 に固定なので変えない（ほかのモードへ戻れば元の範囲）
-    if (!s_listActive && s_mode != Mode::Spoit && (pressed & ((u32)Key::DPadUp | (u32)Key::DPadDown))) {
+    // 実行範囲（一辺 1/3/5/7。利用者指示 2026-09-29: L = 縮小、R = 拡大）。スポイトは 1x1 に固定なので変えない（ほかのモードへ戻れば元の範囲）
+    if (!s_listActive && s_mode != Mode::Spoit && (pressed & ((u32)Key::L | (u32)Key::R))) {
         const s32 now = (s32)s_range;
-        s32 next = (pressed & (u32)Key::DPadUp) ? now + 2 : now - 2;
+        s32 next = (pressed & (u32)Key::R) ? now + 2 : now - 2;
         next = next < 1 ? 1 : (next > kMaxRange ? kMaxRange : next);
         if (next != now) {
             s_range = (u8)next;
@@ -2743,17 +2781,14 @@ void Tick(u32 keys) {
         __sync_synchronize();
         const u8 m = s_modeReqValue;
         s_modeReqDone = seq;
-        if (m < kModesNow && (u8)s_mode != m) {
-            s_mode = (Mode)m;
-            GuiMenu::Notify(Cheats::kMeOn, ModeName(s_mode));
-        }
+        if (m < kModesNow && (u8)s_mode != m)
+            s_mode = (Mode)m;               // 通知は出さない（利用者指示 2026-09-29。一覧の見た目と音で分かる）
     }
-    // L / R: モードを巡回（利用者の決定。範囲選択は段階 3 で足す）
-    if (pressed & ((u32)Key::L | (u32)Key::R)) {
+    // 十字上下: モードを巡回（利用者指示 2026-09-29: L / R と入れ替え。上 = 一覧の 1 つ上、下 = 1 つ下）。通知は出さない（一覧の音と見た目）
+    if (!s_listActive && (pressed & ((u32)Key::DPadUp | (u32)Key::DPadDown))) {
         const u32 count = kModesNow;
         const u32 now = (u32)s_mode;
-        s_mode = (Mode)((pressed & (u32)Key::R) ? (now + 1) % count : (now + count - 1) % count);
-        GuiMenu::Notify(Cheats::kMeOn, ModeName(s_mode));
+        s_mode = (Mode)((pressed & (u32)Key::DPadDown) ? (now + 1) % count : (now + count - 1) % count);
     }
     if ((pressed & (u32)Key::B) && s_mode == Mode::Select && !s_listActive)
         s_cancelSeq = s_cancelSeq + 1;      // 持ち上げ・範囲を 1 段ずつ解く（一覧の B は一覧が受ける）
@@ -2805,11 +2840,11 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
-            // 濃さの項目（0〜255）: 項目の番号 → どの値か
-            int     g_shadeIndex[5] = { -1, -1, -1, -1, -1 };   // 実行範囲 / マイデザイン / 赤 / 青 / 白
+            // 濃さの項目（0〜255）: 項目の番号 → どの値か（ハイライトの濃さは固定にした。2026-09-29）
+            int     g_shadeIndex[2] = { -1, -1 };   // 実行範囲 / マイデザイン
             int     ShadeSlot(int index)
             {
-                for (int k = 0; k < 5; ++k)
+                for (int k = 0; k < 2; ++k)
                     if (g_shadeIndex[k] == index)
                         return k;
                 return -1;
@@ -2820,7 +2855,7 @@ namespace CTRPluginFramework
                 const int k = ShadeSlot(index);
                 if (k < 0)
                     return false;
-                *value = k < 2 ? (s32)GridCursor::DimAlpha((u32)k) : (s32)MapEditor3D::HighlightStrength((u8)(k - 1));
+                *value = (s32)GridCursor::DimAlpha((u32)k);
                 return true;
             }
 
@@ -2828,10 +2863,8 @@ namespace CTRPluginFramework
             {
                 const int k = ShadeSlot(index);
                 const u8 v = (u8)(value < 0 ? 0 : (value > 255 ? 255 : value));
-                if (k >= 0 && k < 2)
+                if (k >= 0)
                     GridCursor::SetDimAlpha((u32)k, v);
-                else if (k >= 2)
-                    MapEditor3D::SetHighlightStrength((u8)(k - 1), v);    // 2 → 赤 1、3 → 青 2、4 → 白 3
             }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
@@ -2885,8 +2918,8 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
-            static const char *const kShadeItems[5] = { kMeDimRange, kMeDimDesign, kMeHlRed, kMeHlBlue, kMeHlWhite };
-            for (int k = 0; k < 5; ++k) {
+            static const char *const kShadeItems[2] = { kMeDimRange, kMeDimDesign };
+            for (int k = 0; k < 2; ++k) {
                 g_shadeIndex[k] = GuiMenu::FindItem(kShadeItems[k]);
                 if (g_shadeIndex[k] >= 0)
                     GuiMenu::RegisterLinked(g_shadeIndex[k], ShadeRead, ShadeWrite);
