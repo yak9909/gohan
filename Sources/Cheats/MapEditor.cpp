@@ -101,7 +101,7 @@ const u8 kMarkWhite = 0;                    // GridCursor::SetMarks の種類（
 const u8 kMarkNone = 0xFF;                  // このマスには置かない（5x5 の輪郭と中心）
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 // コマの種類 = 色（分類は 2026-09-29 の利用者指示: 岩・花 + 枯れた花・雑草 + クローバー類・アイテム・埋まっている物・マイデザイン・ほかの fgobj・建物。
-//   色は色覚の多様性に配慮した Okabe-Ito の配色（kChipColours）。★建物（kBuild11）は最後に置く（>= で見分ける）
+//   色は kChipColours。★建物（kBuild11）は最後に置く（>= で見分ける）
 enum ChipType : u8 { kItemC, kFgobjC, kRockC, kFlowerC, kYellowC, kBuriedC, kDesignC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
     "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt",
@@ -156,18 +156,18 @@ const u32 kNoItem = 0xFFFFFFFFu;
 const float kCameraSouthTiles = 1.0f;
 // コマの色（利用者指示 2026-09-27）。テクスチャは灰色（LA4）で、色はマテリアルの黒色・白色（Material +0x10 / +0x14。F-291）。
 //   元は C = #3F930F/#B4FF14（黄緑）、N・P = #1B7348/#00CA79（青緑）。fgobj = 通常アイテムより濃い緑、建物 = オレンジ
-// 種類ごとの黒色・白色。★色覚の多様性に配慮した配色（利用者指示 2026-09-29「お任せ」）: Okabe-Ito の 8 色から割り当て、
-//   岩だけ明るい灰色（明るさで見分ける）。白色 = その色、黒色 = 白色 × 0.45（計算は script。色の割り当ては F068 の追記 3）
+// 種類ごとの黒色・白色（kItemC は塗らない = C の元の黄緑）。利用者指示 2026-09-29: 色覚向けの配色は戻し、
+//   岩をもう少し灰色に、マイデザインをもう少し濃く、アイテムをもっと濃い黄色に
 struct ChipColour { u8 black[4]; u8 white[4]; };
 const ChipColour kChipColours[kChipTypes] = {
-    { { 0x00, 0x47, 0x34, 0x00 }, { 0x00, 0x9E, 0x73, 0xFF } },     // kItemC: 雑草・クローバー類 = 青みの緑 #009E73
-    { { 0x00, 0x33, 0x50, 0x00 }, { 0x00, 0x72, 0xB2, 0xFF } },     // kFgobjC: 木・株・竹など = 青 #0072B2
-    { { 0x63, 0x63, 0x63, 0x00 }, { 0xDC, 0xDC, 0xDC, 0xFF } },     // kRockC: 岩 = 明るい灰色 #DCDCDC
-    { { 0x5C, 0x36, 0x4B, 0x00 }, { 0xCC, 0x79, 0xA7, 0xFF } },     // kFlowerC: 花・枯れた花 = 赤紫 #CC79A7
-    { { 0x6C, 0x67, 0x1E, 0x00 }, { 0xF0, 0xE4, 0x42, 0xFF } },     // kYellowC: アイテム = 黄 #F0E442
-    { { 0x60, 0x2A, 0x00, 0x00 }, { 0xD5, 0x5E, 0x00, 0xFF } },     // kBuriedC: 埋まっている物 = 朱 #D55E00
-    { { 0x27, 0x51, 0x69, 0x00 }, { 0x56, 0xB4, 0xE9, 0xFF } },     // kDesignC: マイデザイン = 空色 #56B4E9
-    { { 0x68, 0x48, 0x00, 0x00 }, { 0xE6, 0x9F, 0x00, 0xFF } },     // kBuild11: 建物 = 橙 #E69F00
+    { { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },                             // kItemC（使わない）
+    { { 0x1C, 0x4F, 0x07, 0x00 }, { 0x5D, 0xAE, 0x12, 0xFF } },     // kFgobjC: 濃い緑
+    { { 0x5A, 0x5A, 0x55, 0x00 }, { 0xC0, 0xC0, 0xB8, 0xFF } },     // kRockC: 灰色寄りの白
+    { { 0x8C, 0x3C, 0x64, 0x00 }, { 0xFF, 0x9C, 0xCC, 0xFF } },     // kFlowerC: ピンク
+    { { 0x7A, 0x5C, 0x00, 0x00 }, { 0xF0, 0xC0, 0x00, 0xFF } },     // kYellowC: 濃い黄色（アイテム）
+    { { 0x4A, 0x2C, 0x10, 0x00 }, { 0xB0, 0x78, 0x40, 0xFF } },     // kBuriedC: 茶色
+    { { 0x1E, 0x5C, 0x8C, 0x00 }, { 0x60, 0xB0, 0xE8, 0xFF } },     // kDesignC: 水色（濃いめ）
+    { { 0x7A, 0x3E, 0x10, 0x00 }, { 0xFF, 0xA0, 0x3C, 0xFF } },     // kBuild11: オレンジ
 };
 // アイテムの分類はゲームの関数と同じ規則で決める:
 //   Item_GetCategory 0x2FCCD4（id > 0xFD なら 29、ほかは Fg.bin +0x0A、0x1D 以上は 0）・Item_IsFlowerCategory 0x2FCE5C（11〜17・20・27・28）・
@@ -939,7 +939,7 @@ bool BuildChipLayout(Chip &c, u8 type) {
     c.type = type;
     c.look = kLookPlain;
     B(c.layout, kLayoutPriority) = 2;
-    if (type < kChipTypes) {                // 全部の種類を塗る（雑草・クローバーも。2026-09-29 の配色）
+    if (type != kItemC && type < kChipTypes) {  // 雑草・クローバー（kItemC）は C の元の色のまま
         void *pic = FindPane(c.layout, "P_Btn_00");
         const u32 mat = pic != nullptr ? W(pic, kPictureMaterial) : 0u;
         if (mat != 0) {
