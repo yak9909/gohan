@@ -2617,19 +2617,6 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
-            int     g_markPhaseIndex = -1;
-            bool    MarkPhaseRead(int index, s32 *value)
-            {
-                (void)index;
-                *value = (s32)GridCursor::MarkPhase();
-                return true;
-            }
-
-            void    MarkPhaseWrite(int index, s32 value)
-            {
-                (void)index;
-                GridCursor::SetMarkPhase((u8)(value < 0 ? 0 : (value > 2 ? 2 : value)));
-            }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
             bool    MapEditorIsActive(int index)
@@ -2682,9 +2669,6 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
-            g_markPhaseIndex = GuiMenu::FindItem(kMeMarkPhase);
-            if (g_markPhaseIndex >= 0)
-                GuiMenu::RegisterLinked(g_markPhaseIndex, MarkPhaseRead, MarkPhaseWrite);
         }
     }
 }

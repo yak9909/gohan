@@ -62,7 +62,6 @@ static volatile u32 s_markPendCount, s_markPendSeq;
 static u32 s_markTakenSeq = 0xFFFFFFFFu;
 static u32 s_markCount[kMarkKinds];
 static volatile u8 s_markAlpha = 50;       // 利用者の決定（2026-09-28）
-static volatile u8 s_markPhase = 2;       // 描く段（SetMarkPhase の説明）
 // 色（0x00BBGGRR）: 白・青（利用者指示: 5x5 の輪郭と真ん中 = 白、ほか = 青）
 static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu, 0x00FF0000u };
 
@@ -487,13 +486,9 @@ static void DrawMarks() {
     const u32 a = s_markAlpha;
     for (u32 k = 0; k < kMarkKinds; ++k)          // Constant5 = 0xAABBGGRR（毎フレーム。活性化が毎回読む。GridCursor::ApplyTint と同じ）
         MarkWr(s_markConst5[k], (a << 24) | (kMarkColour[k] & 0x00FFFFFFu));
-    const u8 phase = s_markPhase;
-    if (phase == 0)
-        InstancedDraw::SubmitOver(s_markDrawer, s_markBatches, kMarkKinds);
-    else if (phase == 1)
-        InstancedDraw::SubmitBeforeLayer1(s_markDrawer, s_markBatches, kMarkKinds);
-    else
-        InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
+    // 自前の描画ノード（層 1 の段）。利用者の実機確認 2026-09-28: 村の物体の層 0 の後・層 1 の前ではマイデザインの下、
+    //   自前の描画ノードのときだけマイデザインの上に出た
+    InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
 }
 
 static bool BuildCursor() {
@@ -1053,8 +1048,6 @@ void SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count) {
 }
 
 void SetMarkAlpha(u8 alpha) { s_markAlpha = alpha; }
-void SetMarkPhase(u8 phase) { s_markPhase = phase <= 2 ? phase : 2; }
-u8 MarkPhase(void) { return s_markPhase; }
 u8 MarkAlpha(void) { return s_markAlpha; }
 u32 MarkFailReason(void) { return s_markFail; }
 

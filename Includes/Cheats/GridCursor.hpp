@@ -101,11 +101,7 @@ namespace GridCursor
     // 最初は白・赤・黄だった）。深度は書かない。UnitCursor とは別の体（2 体）。
     static const u32 kMaxMarks = 64;
     static const u32 kMarkKinds = 2;
-    // 描く段（★一時的。利用者指示 2026-09-28: 層 0 の後ではマイデザインより下に出た。実機で正しい段を確かめる）
-    //   0 = 村の物体の層 0 の後（SubmitOver）/ 1 = 村の物体の層 1 の前（SubmitBeforeLayer1）/ 2 = 自前の描画ノード（層 1 の段。
-    //   F061 より前の UnitCursor と同じ描き方で、そのときはマイデザインの上に出ていた = 既定）
-    void            SetMarkPhase(u8 phase);
-    u8              MarkPhase(void);
+    // 描くのは自前の描画ノード（層 1 の段）。村の物体の層 0 の後・層 1 の前ではマイデザインより下に出た（利用者の実機確認 2026-09-28）
     void            EnableMarks(bool on);   // ShowTiles の前に。偽ならマスの色の体を作らない
     void            SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count);
     void            SetMarkAlpha(u8 alpha); // 2 色に共通のアルファ（利用者の決定 50）

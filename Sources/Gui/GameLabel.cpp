@@ -76,6 +76,11 @@ const u32 kTextDraw = 260;                  // TextBox の描画用の器（+9 �
 const u32 kTextPosition = 252, kTextDirty = 254;   // 文字の配置（横 + 縦×3）/ bit0 = 作り直し
 const u32 kAnimTotal = 4, kAnimCur = 8;
 const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
+// 投影の幅・高さ（Layout +0x28 / +0x2C）。組み立て（nw::lyt::Layout::Build sub_4B9474）が bclyt の lyt1 の大きさ（+12 の 8 byte）を写し、
+//   正射影（sub_73BAC0: ±幅/2, ±高さ/2）がこれを読む。time_bel_win.bclyt は上画面用の 400x240 なので、下画面（320 幅）に出すと
+//   横が 320/400 に縮み中心へ寄る（利用者の下画面の写真で箱 x 45..180 を実測）。下画面に出すときは 320 にする（下画面の bclyt と同じ）
+const u32 kLayoutProjW = 0x28;
+const float kLowerScreenW = 320.0f;
 
 // ---- 見た目（利用者の指示）----
 // 箱: 上画面（400x240、中心が原点・上が +y）の左上の端から**横に並べる**（利用者指示。最初は縦に並べていた）。
@@ -123,6 +128,7 @@ struct Label {
     float bellX, bellY;                     // 登場し終えたときの N_bell の位置
     float width;                            // 箱の幅（ApplyText が決める）
     float placedX;                          // いま置いている箱の左端（並べ直しが要るかの判定）
+    float projW;                            // bclyt の投影の幅（上画面に出すとき）
     // メニューのスレッドが書く
     volatile bool want;
     volatile bool alert;
@@ -283,6 +289,7 @@ bool BuildLabel(Label &l) {
     }
     l.built = true;
     B(l.layout, kLayoutPriority) = kPriority;
+    l.projW = F(l.layout, kLayoutProjW);
     AnimCtor(l.in);
     AnimCtor(l.out);
     l.anims = true;
@@ -367,7 +374,8 @@ void ApplyText(Label &l) {
     const float w = kBaseW * scale;
     F(l.base, kPaneScaleX) = scale;
     F(l.shadow, kPaneScaleX) = scale;
-    F(l.text, kPaneWidth) = w - 16.0f;
+    // 文字の枠: 中央揃えは左右 8。左揃えは余白（kPad）の半分ずつを左右に取る（箱の丸い端に文字が掛からないように。利用者 2026-09-28）
+    F(l.text, kPaneWidth) = l.leftAlign ? w - kPad : w - 16.0f;
     Touch(l.base);
     Touch(l.shadow);
     Touch(l.text);
@@ -431,6 +439,7 @@ bool StepLabel(Label &l, float left, void *mgr) {
             AnimStep(anim);
         }
     }
+    F(l.layout, kLayoutProjW) = l.lower ? kLowerScreenW : l.projW;
     LayoutCalc(l.layout);
     if (mgr != nullptr)
         AddLayout(mgr, l.layout, l.lower ? 1u : 0u);
