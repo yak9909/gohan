@@ -82,12 +82,25 @@ const u32 kChipCmdBytes = 1280;             // Chip の組み立て（sub_B420C4
 //   8x8 のうちゲームが使う 4.0 にする（扉は隠す）
 const float kKindFrame = 4.0f;
 const float kTile = 20.0f;                  // 盤面の 1 マス（エディター +129560）
+// ---- 9x9 へ広げる（利用者指示 2026-09-28。ゲームの kind は 4x4/6x6/8x8 だけなので、8x8 を焼いたあと大きさを書く）----
+//   見本と検算: tools/layout/board9_preview.mjs（数値は同じ。verify_map_editor が突き合わせる）
+//   部屋 = kView × 1 マス（P_Room_00・P_RoomGrid_00・N_Sound_00・B_Room_00）、壁の窓 = 部屋 + 28（W_Wall_00・N_SoundW_00。kind のキー 108/148/188 − 80/120/160）
+const float kWallPad = 28.0f;
+// 盤面を右へ 11: 壁の左端が 160 + 11 − (180 + 28) / 2 = 67 = 左端のモード一覧の右端の次（mode_list_rect.json の x1）
+const float kRoomX = 11.0f;
+// 方眼 P_RoomGrid_00（my_min_Grid08_00 128x128、ミラー、線はテクセル 7.5 + 20k）。部屋の左端の画素がテクセル 28（線 27/28）を読み、
+//   1 画素 = 1 テクセル。texSRT（kind フレーム 4: 倍率 1.25、平行移動 0.5）はそのまま、Picture のテクスチャ座標 c を
+//   t = (c − 0.5) × 1.25 + 0.5 + 0.5 から解く（8x8 は c = 0..1 で t = 48..208 テクセル）
+const float kGridTexels = 128.0f, kGridFirstTexel = 28.0f, kGridScale = 1.25f, kGridTrans = 0.5f;
+// 真ん中のマス（kView が奇数のとき）: 隠した扉 P_door_00 を借りて P_Room_00 のマテリアルで方眼の直前に描き、頂点色で赤みを付ける。
+//   地の色 (255,236,174) → (255,210,165) 目安（G 210/236、B 165/174 を 255 倍）
+const u8 kCenterTint[4] = { 255, 227, 242, 255 };
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
     "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01P_02x02.bclyt",
 };
-const u32 kMaxChips = 160;                  // 8x8 のアイテム 64 + 建物のコマ（1x1 に割っても 64）+ 余裕
+const u32 kMaxChips = 224;                  // 9x9 のアイテム 81 + 建物のコマ（1x1 に割っても 81）+ 余裕
 const u32 kBuildsPerFrame = 8;              // 1 フレームで組み立てるコマの数（組み立ての山を平らにする）
 const u32 kLytReserve = 192 * 1024;         // nw::lyt ヒープにこれだけは残す（ほかの UI の分）
 const u32 kTeardownWaitFrames = 3;          // 描画登録をやめてから壊すまで（GPU がまだ読んでいるかもしれない）
@@ -147,7 +160,7 @@ const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送�
 // 持ち上げる・写すアイテムの数。以前は 64（UnitCursor の最大）で、大きな範囲は 65 個目から掴めなかった（利用者報告 2026-09-27）。
 //   上画面のカーソル・複製と下画面のコマは盤面の周りだけ作るので、ここは村の物の数だけ持てればよい
 const u32 kMaxCarry = 2048;
-const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 8x8 の周り 1 マスで最大 100 か所（GridCursor::kMaxCursors 256 以下）
+const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 9x9 の周り 1 マスで最大 121 か所（GridCursor::kMaxCursors 256 以下）
 const s32 kNearMargin = 1;                  // 盤面の周り何マスまで上画面に出すか（カーソル・複製）
 const u32 kCursorBlue = 0x00FFB060u;        // BuildingHighlight::kBlue（公共事業エディターの移動の色）
 const u8 kCursorTint = 0xB0;                // 公共事業エディターと同じ強さ
@@ -157,6 +170,9 @@ const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub
 // 範囲の点の吸着（CollectChip sub_B359D4）: u = 指 − 部屋の中心 に (1 マス × 0.5 − 1) を u の符号つきで足し、
 //   1 マスで割って 0 へ切り捨て、1 マスを掛ける = 最寄りの格子線（ちょうど半分はやや 0 寄り）
 const float kSnapBias = kTile * 0.5f - 1.0f;
+// 吸着の原点 O（式 x' = trunc((x + bias·sgn(x) + O) / 1 マス) · 1 マス − O の O。ゲームは +129568 = 0.0 = 偶数マスの部屋）。
+//   奇数マス（9x9）は格子線が中心から半マスずれるので O = 半マス
+const float kSnapOrigin = (kView % 2 != 0) ? kTile * 0.5f : 0.0f;
 // 持ち上げたコマの行き先（ModuleFtr sub_B147EC）: 単位の境目から 2.0（世界の長さ。1 マス = 32）以内なら前の単位のまま
 const float kCarryHysteresis = 2.0f / 32.0f;
 const float kMoveSoundScale = 0.00625f;     // 移動の音の引数 = 行き先の世界 x × 0.00625（ModuleFtr 0xB070A8 の VLDR 0x3BCCCCCD）
@@ -314,6 +330,8 @@ alignas(8) u8 s_word[96];
 bool s_holderMade, s_arcLoaded, s_boardMade, s_boardBuilt, s_animsMade, s_nameMade, s_nameLoaded, s_nameBuilt;
 void *s_boardAnim;                          // 再生中の盤面のアニメ（in / out）
 void *s_roomPane;                           // N_Room_00（盤面の中心）
+void *s_centerPane;                         // 真ん中のマスに借りた P_door_00（無ければ 0）
+u32 s_centerMaterial;                       // その元のマテリアル（壊す前に戻す）
 u32 s_waitFrames;
 u32 s_startRoom;
 
@@ -428,6 +446,74 @@ void SetRotateZ(void *pane, float deg) {
     B(pane, kPaneFlagsByte) &= 0xCFu;
 }
 
+// ---- 盤面を 9x9 へ（kind フレーム 4 の 8x8 を焼いたあと。数値は上の定数と board9_preview.mjs）----
+const u32 kPaneSizeX = 72, kPaneSizeY = 76, kPaneScaleX = 64, kPaneScaleY = 68, kPaneBasePos = 182;
+const u32 kPicUvDone = 212, kPicMaterial = 316, kPicVtxColor = 320, kPicTexCoords = 340;    // Picture（F291 / F062）
+typedef void (*PaneChildFn)(void *parent, void *child);
+typedef void (*PaneInsertFn)(void *parent, void *next, void *child);
+const PaneChildFn  PaneRemove = reinterpret_cast<PaneChildFn>(0x004B6130);      // nwlyt_Pane_RemoveChild
+const PaneInsertFn PaneInsert = reinterpret_cast<PaneInsertFn>(0x004B6100);     // nwlyt_Pane_InsertChild（next の直前へ）
+
+void SetTexCoords(void *pic, float c0, float c1) {
+    float *tc = reinterpret_cast<float *>(W(pic, kPicTexCoords));   // 4 隅の (u, v)（左上・右上・左下・右下）
+    tc[0] = c0; tc[1] = c0; tc[2] = c1; tc[3] = c0;
+    tc[4] = c0; tc[5] = c1; tc[6] = c1; tc[7] = c1;
+    B(pic, kPicUvDone) = 0;                 // 次の描画で UV を作り直す（nwlyt_Picture_DrawToCommandList 0x73CB88）
+}
+
+bool ExpandBoard(void) {
+    const float room = (float)kView * kTile, wall = room + kWallPad;
+    static const char *const kRoomPanes[] = { "P_Room_00", "P_RoomGrid_00", "N_Sound_00", "B_Room_00" };
+    static const char *const kWallPanes[] = { "W_Wall_00", "N_SoundW_00" };
+    for (const char *n : kRoomPanes) {
+        void *p = FindPane(s_board, n);
+        if (p == nullptr)
+            return false;
+        F(p, kPaneSizeX) = room;
+        F(p, kPaneSizeY) = room;
+        B(p, kPaneFlagsByte) &= 0xCFu;
+    }
+    for (const char *n : kWallPanes) {
+        void *p = FindPane(s_board, n);
+        if (p == nullptr)
+            return false;
+        F(p, kPaneSizeX) = wall;
+        F(p, kPaneSizeY) = wall;
+        B(p, kPaneFlagsByte) &= 0xCFu;
+    }
+    // 方眼: 左端の画素 = テクセル kGridFirstTexel、1 画素 = 1 テクセル
+    void *grid = FindPane(s_board, "P_RoomGrid_00");
+    const float t0 = kGridFirstTexel / kGridTexels, t1 = (kGridFirstTexel + room) / kGridTexels;
+    SetTexCoords(grid, (t0 - 0.5f - kGridTrans) / kGridScale + 0.5f, (t1 - 0.5f - kGridTrans) / kGridScale + 0.5f);
+    // 盤面を右へ（左端のモード一覧と重ならない）
+    SetTranslate(s_roomPane, kRoomX, F(s_roomPane, kPaneTranslateY));
+    // 真ん中のマス（奇数マスのとき）
+    if (kView % 2 != 0) {
+        void *door = FindPane(s_board, "P_door_00");
+        void *doors = FindPane(s_board, "N_door_00");
+        void *base = FindPane(s_board, "P_Room_00");
+        if (door == nullptr || doors == nullptr || base == nullptr)
+            return false;
+        s_centerPane = door;
+        s_centerMaterial = W(door, kPicMaterial);
+        W(door, kPicMaterial) = W(base, kPicMaterial);
+        for (u32 i = 0; i < 4; ++i)
+            W(door, kPicVtxColor + 4 * i) = (u32)kCenterTint[0] | ((u32)kCenterTint[1] << 8) | ((u32)kCenterTint[2] << 16) | ((u32)kCenterTint[3] << 24);
+        B(door, kPaneBasePos) = (u8)((B(door, kPaneBasePos) & 0xF0u) | 4u);    // 中央揃え
+        F(door, kPaneSizeX) = kTile;
+        F(door, kPaneSizeY) = kTile;
+        F(door, kPaneScaleX) = 1.0f;
+        F(door, kPaneScaleY) = 1.0f;
+        SetTranslate(door, 0.0f, 0.0f);
+        SetRotateZ(door, 0.0f);
+        SetTexCoords(door, 0.0f, 1.0f);
+        B(door, kPaneFlagsByte) |= 1u;
+        PaneRemove(doors, door);            // 地（P_Room_00）の後・方眼の前に描く
+        PaneInsert(s_roomPane, grid, door);
+    }
+    return true;
+}
+
 // ---- 名前の吹き出し ----
 void NameCalc(void) {
     u32 fn = W(s_name, kNameStateFn);
@@ -526,6 +612,10 @@ bool BuildStep(void) {
             s_error = u8"N_Room_00 がありません";
             return false;
         }
+        if (!ExpandBoard()) {
+            s_error = u8"chip_room_00 の部品がありません";
+            return false;
+        }
         return false;
     }
     if (!s_nameBuilt) {
@@ -587,6 +677,13 @@ bool BuildStep(void) {
 
 void EndHold(void);
 
+void RestoreBoardParts(void) {
+    if (s_centerPane != nullptr) {          // 借りた扉のマテリアルを戻す（Picture の dtor が自分のマテリアルを返す）
+        W(s_centerPane, kPicMaterial) = s_centerMaterial;
+        s_centerPane = nullptr;
+    }
+}
+
 void DestroyAll(void) {
     EndHold();
     MapModeList::Destroy();
@@ -607,6 +704,7 @@ void DestroyAll(void) {
         for (u32 i = 0; i < kChipAnims; ++i)
             AnimDtor(s_chipAnim[i]);
     s_chipAnimsMade = false;
+    RestoreBoardParts();
     if (s_boardMade) {
         if (s_boardBuilt)
             LayoutUnbindAll(s_board);
@@ -1165,7 +1263,7 @@ u8 ItemLook(s32 x, s32 y) {
 // CollectChip sub_B359D4 の吸着。u = 部屋の中心からの位置（ゲームの座標では部屋の中心が 0。原点 +129568 は ctor の 0.0 のまま）
 float SnapLine(float u) {
     const float bias = u < 0.0f ? -kSnapBias : kSnapBias;
-    return (float)(s32)((u + bias) / kTile) * kTile;
+    return (float)(s32)((u + bias + kSnapOrigin) / kTile) * kTile - kSnapOrigin;
 }
 
 // 画素 → 吸着した格子線の番号（村のマス。格子線 i = マス i の左・上の辺）。盤面の辺までに収める
@@ -1173,7 +1271,7 @@ void GridAt(s32 vx, s32 vy, u16 px, u16 py, s32 &gx, s32 &gy) {
     const float half = (float)kView * 0.5f;
     const float ux = SnapLine(((float)px - 160.0f) - F(s_roomPane, kPaneGlobalX));
     const float uy = SnapLine((120.0f - (float)py) - F(s_roomPane, kPaneGlobalY));
-    s32 ix = (s32)(ux / kTile + half), iy = (s32)(half - uy / kTile);      // 20 の倍数 / 20 なので割り切れる
+    s32 ix = (s32)(ux / kTile + half), iy = (s32)(half - uy / kTile);      // (20 の倍数 − O) / 20 + half は整数
     ix = ix < 0 ? 0 : (ix > kView ? kView : ix);
     iy = iy < 0 ? 0 : (iy > kView ? kView : iy);
     gx = vx + ix;
@@ -1880,7 +1978,7 @@ void StepList(s32 vx, s32 vy) {
 }
 
 float ViewCenter(s32 v) {
-    return 32.0f * (float)(v + kView / 2);
+    return 32.0f * ((float)v + (float)kView * 0.5f);
 }
 
 // カメラの目標 = 盤面の中心（FieldCamera が描画スレッドで呼ぶ）

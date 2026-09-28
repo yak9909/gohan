@@ -95,6 +95,7 @@ const s32 kAnimIn = 0, kAnimOut = 5;        // list_00_in / list_00_out（表 0x
 const u32 kListNodes = 7;                   // レイアウトの行 B_name_00..06
 const u32 kBacFlags = 212, kBacState = 184, kBacStateAdj = 188;
 const u32 kNodeSelected = 215, kNodeEnabled = 217, kNodeTouchOk = 112, kNodeSelectOk = 152, kNodePlaySlot = 52;
+const u32 kNodeDecideSoundSlot = 56;      // ButtonActionNode vt+56 0x71C338 = 決定音 +204（+218 が真のとき。行は SetupButtons が 0x1000485・+218 = 1）
 // Layout / Pane / Picture / TextBox の欄（F291 / F040 / F062）
 const u32 kLayoutPriority = 12;
 const u32 kPaneTranslateX = 40, kPaneTranslateY = 44, kPaneScaleX = 64, kPaneScaleY = 68, kPaneSizeX = 72, kPaneSizeY = 76;
@@ -281,6 +282,13 @@ void TouchReset(void) {
 }
 
 // 選んだ行の見た目を戻す（sub_22392C の末尾 0x223B58〜0x223B88 と同じ: +215 = 1、touch_ok と select_ok を最後のフレームへ）
+// 行の決定音（一覧で選んだときに StartDecide 0x2B6F34 が鳴らすのと同じ vt+56）
+void PlayDecideSound(u32 row) {
+    void *node = Node(row);
+    const u32 *vt = *reinterpret_cast<u32 **>(node);
+    reinterpret_cast<void (*)(void *)>(vt[kNodeDecideSoundSlot / 4])(node);
+}
+
 void RestoreSelectedLook(u32 row) {
     void *node = Node(row);
     B(node, kNodeSelected) = 1;
@@ -437,8 +445,10 @@ s32 Frame(u8 mode, bool held, u16 x, u16 y) {
     const bool idle = !held && (W(bac, kBacFlags) & 3u) == 0 && W(bac, kBacState) == kBacWaitState && W(bac, kBacStateAdj) == 0;
     const u32 want = decided >= 0 ? (u32)decided : (u32)mode;
     if (idle && want < kRows) {
-        if (S(s_list, kListSelRow) != (s32)want)
+        if (S(s_list, kListSelRow) != (s32)want) {
             ListSelectById(s_list, 0, (s32)want);           // L / R で変わった（地図アイコンからの選択と同じ）
+            PlayDecideSound(want);                          // 利用者指示 2026-09-28: 一覧で選んだときと同じ音
+        }
         else if (B(Node(want), kNodeSelected) == 0)
             RestoreSelectedLook(want);                      // 押したまま外へ出して離した
     }
