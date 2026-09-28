@@ -24,8 +24,8 @@
 namespace MapEditor
 {
     const s32       kView = 7;                  // 盤面のマス数（縦横。利用者指示 2026-09-28 で 8 → 9 → 7）
-    enum class Mode : u8 { Place, Remove, Select };
-    const u32       kModesNow = 3;              // L / R で巡回するモードの数（配置 → 削除 → 範囲選択）
+    enum class Mode : u8 { Place, Remove, Select, Spoit };
+    const u32       kModesNow = 4;              // L / R で巡回するモードの数（配置 → 削除 → 範囲選択 → スポイト。スポイトは 2026-09-28）
 
     // ---- メニュースレッド ----
     void            Tick(u32 keys);             // 項目が有効な間、毎ティック。keys は Controller::GetKeysDown(true)（メニュー表示中は 0）

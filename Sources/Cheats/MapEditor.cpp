@@ -4,6 +4,7 @@
 #include "Cheats.hpp"
 #include "CursorRepeat.hpp"
 #include "FieldCamera.hpp"
+#include "GameLabel.hpp"
 #include "GameList.hpp"
 #include "GridCursor.hpp"
 #include "GridCursorGameApi.hpp"
@@ -83,7 +84,7 @@ const u32 kChipCmdBytes = 1280;             // Chip の組み立て（sub_B420C4
 const float kKindFrame = 4.0f;
 const float kTile = 20.0f;                  // 盤面の 1 マス（エディター +129560）
 // ---- kView マス（7x7）にする（利用者指示 2026-09-28。ゲームの kind は 4x4/6x6/8x8 だけなので、8x8 を焼いたあと大きさを書く）----
-//   見本と検算: tools/layout/board9_preview.mjs（数値は同じ。verify_map_editor が突き合わせる）
+//   見本と検算: tools/layout/board_preview.mjs（数値は同じ。verify_map_editor が突き合わせる）
 //   部屋 = kView × 1 マス（P_Room_00・P_RoomGrid_00・N_Sound_00・B_Room_00）、壁の窓 = 部屋 + 28（W_Wall_00・N_SoundW_00。kind のキー 108/148/188 − 80/120/160）
 const float kWallPad = 28.0f;
 // 盤面の横位置: 真ん中のまま（利用者指示 2026-09-28。9x9 のときは右へ 11 寄せていた）。7x7 の壁の左端は 76 で一覧（x < 67）と重ならない
@@ -93,12 +94,10 @@ const float kRoomX = 0.0f;
 //   1 画素 = 1 テクセル。texSRT（kind フレーム 4: 倍率 1.25、平行移動 0.5）はそのまま、Picture のテクスチャ座標 c を
 //   t = (c − 0.5) × 1.25 + 0.5 + 0.5 から解く（8x8 は c = 0..1 で t = 48..208 テクセル）
 const float kGridTexels = 128.0f, kGridFirstTexel = 48.0f, kGridScale = 1.25f, kGridTrans = 0.5f;
-// 真ん中のマス（kView が奇数のとき）: 隠した扉 P_door_00 を借りて P_Room_00 のマテリアルで方眼の直前に描き、頂点色で赤みを付ける。
-//   地の色 (255,236,174) → (255,185,150) 目安（G 185/236、B 150/174 を 255 倍。利用者指示 2026-09-28: もう少し濃く）
-const u8 kCenterTint[4] = { 255, 200, 220, 255 };
-// 中心から 5x5 の輪郭のマス（中心から 2 マス = チェビシェフ距離 2）: 盤面は真っ白、上画面は白（利用者指示 2026-09-28）
+// 中心から 5x5 の輪郭のマス（中心から 2 マス = チェビシェフ距離 2）と真ん中: 盤面は真っ白、上画面は白。ほかは上画面で青
+//   （利用者指示 2026-09-28。1 回目は真ん中 = 赤・ほか = 黄、2 回目で真ん中 = 白・ほか = 青）
 const s32 kMarkRing = 2;
-const u8 kMarkWhite = 0, kMarkRed = 1, kMarkYellow = 2;    // GridCursor::SetMarks の種類
+const u8 kMarkWhite = 0, kMarkBlue = 1;     // GridCursor::SetMarks の種類
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
@@ -168,6 +167,13 @@ const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 
 const s32 kNearMargin = 1;                  // 盤面の周り何マスまで上画面に出すか（カーソル・複製）
 const u32 kCursorBlue = 0x00FFB060u;        // BuildingHighlight::kBlue（公共事業エディターの移動の色）
 const u8 kCursorTint = 0xB0;                // 公共事業エディターと同じ強さ
+// モードごとの UnitCursor の色（利用者指示 2026-09-28）: 配置 = 色合成なし、削除 = 赤、範囲選択 = いまの色（kCursorBlue。見た目は白っぽい）、
+//   スポイト = 青。スポイトの間は実体のハイライト（MapEditor3D）も青
+const u32 kCursorRed = 0x000000FFu, kCursorSpoit = 0x00FF2000u;   // 0x00BBGGRR
+const u8 kCursorStrongTint = 0xE0;
+const u32 kHighlightRed = 0x004040FFu, kHighlightSpoit = 0x00FF6020u;
+// 下画面左上の箱（GameLabel の箱 0。公共事業エディターと同じ部品を下画面へ）: 「配置: {アイテム名}」、左揃え
+const u32 kPlaceLabelSlot = 0;
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
 const u32 kGroupCmdBytes = 4096;            // CollectChip の組み立て（sub_B0AD88）が渡す大きさ
@@ -312,6 +318,10 @@ volatile u32 s_placeId = kNoItem;           // 配置するアイテム（kNoIte
 volatile float s_pickProgress = -1.0f;      // 長押しの進み（0〜1、負 = 出さない）
 volatile u16 s_pickX, s_pickY;              // 長押しを始めた画素
 volatile u32 s_pickedSeq;                   // スポイトで取れたら増える（メニュースレッドが通知）
+volatile u32 s_spoitCenterSeq;              // Y: 盤面の真ん中のマスをスポイトする（メニュースレッドが増やし、描画スレッドが拾う）
+u32 s_spoitCenterDone;
+u8 s_lookMode = 0xFF;                       // UnitCursor とハイライトの色を合わせたモード（メニュースレッド）
+u32 s_labelId = 0xFFFFFFFEu;                // 下画面左上の箱に書いたアイテム（メニュースレッド）
 volatile u32 s_noItemSeq;                   // 配置するアイテムが無いまま置こうとしたら増える
 volatile u32 s_cancelSeq;                   // B（範囲選択の取り消し）ごとに増える
 volatile u32 s_listKeys;                    // 一覧が開いている間の十字・A・B（メニューのスレッドが書く。CTRPF の Key）
@@ -336,8 +346,6 @@ alignas(8) u8 s_word[96];
 bool s_holderMade, s_arcLoaded, s_boardMade, s_boardBuilt, s_animsMade, s_nameMade, s_nameLoaded, s_nameBuilt;
 void *s_boardAnim;                          // 再生中の盤面のアニメ（in / out）
 void *s_roomPane;                           // N_Room_00（盤面の中心）
-void *s_centerPane;                         // 真ん中のマスに借りた P_door_00（無ければ 0）
-u32 s_centerMaterial;                       // その元のマテリアル（壊す前に戻す）
 u32 s_waitFrames;
 u32 s_startRoom;
 
@@ -368,7 +376,7 @@ Chip *s_drawOrder[kMaxChips];
 u32 s_drawCount;
 
 // タッチの状態（描画スレッドだけ）
-enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold, SelPendIn, SelPendOut, SelDrag, CarryDrag };
+enum class TouchKind : u8 { None, Ignore, Paint, Erase, Hold, SelPendIn, SelPendOut, SelDrag, CarryDrag, Spoit };
 u32 s_touchTail;                            // 処理した点（通算）
 bool s_touchPrevDown;
 bool s_touchWaitUp;                         // 一覧が指を使っていた: 離すまで点を使わない
@@ -493,44 +501,30 @@ bool ExpandBoard(void) {
     SetTexCoords(grid, (t0 - 0.5f - kGridTrans) / kGridScale + 0.5f, (t1 - 0.5f - kGridTrans) / kGridScale + 0.5f);
     // 盤面を右へ（左端のモード一覧と重ならない）
     SetTranslate(s_roomPane, kRoomX, F(s_roomPane, kPaneTranslateY));
-    // 真ん中のマス（奇数マスのとき）
+    // 中心から 5x5 の輪郭と真ん中のマスを真っ白に（利用者指示 2026-09-28。真ん中は最初赤だったが 2 回目の指示で白）:
+    //   隠した窓 P_Window_00（5x5 の白い板）・P_Window_01（3x3 の地の色の板）・扉 P_door_00（真ん中 1 マスの白い板）を地の後・方眼の前に重ねる。
+    //   色は自分のマテリアルの黒色・白色を同じ値にする（テクスチャに依らず一色。出力 = lerp(黒色, 白色, テクセル) × 頂点色、F040）。
+    //   コマの色と同じく +0x4D bit2 を落として送り直させる。マテリアルは差し替えないので戻す物は無い
     if (kView % 2 != 0) {
-        void *door = FindPane(s_board, "P_door_00");
+        void *windows = FindPane(s_board, "N_Window_00");
         void *doors = FindPane(s_board, "N_door_00");
         void *base = FindPane(s_board, "P_Room_00");
-        if (door == nullptr || doors == nullptr || base == nullptr)
-            return false;
-        s_centerPane = door;
-        s_centerMaterial = W(door, kPicMaterial);
-        W(door, kPicMaterial) = W(base, kPicMaterial);
-        for (u32 i = 0; i < 4; ++i)
-            W(door, kPicVtxColor + 4 * i) = (u32)kCenterTint[0] | ((u32)kCenterTint[1] << 8) | ((u32)kCenterTint[2] << 16) | ((u32)kCenterTint[3] << 24);
-        B(door, kPaneBasePos) = (u8)((B(door, kPaneBasePos) & 0xF0u) | 4u);    // 中央揃え
-        F(door, kPaneSizeX) = kTile;
-        F(door, kPaneSizeY) = kTile;
-        F(door, kPaneScaleX) = 1.0f;
-        F(door, kPaneScaleY) = 1.0f;
-        SetTranslate(door, 0.0f, 0.0f);
-        SetRotateZ(door, 0.0f);
-        SetTexCoords(door, 0.0f, 1.0f);
-        B(door, kPaneFlagsByte) |= 1u;
-        // 中心から 5x5 の輪郭を真っ白に（利用者指示 2026-09-28）: 隠した窓 P_Window_00（5x5 の白い板）と P_Window_01（3x3 の地の色の板）を
-        //   地の後・真ん中の前に重ねる。色は自分のマテリアルの黒色・白色を同じ値にする（テクスチャに依らず一色。
-        //   出力 = lerp(黒色, 白色, テクセル) × 頂点色、F040）。コマの色と同じく +0x4D bit2 を落として送り直させる
-        void *windows = FindPane(s_board, "N_Window_00");
         void *white = FindPane(s_board, "P_Window_00");
         void *inner = FindPane(s_board, "P_Window_01");
-        if (windows == nullptr || white == nullptr || inner == nullptr || kView < 2 * kMarkRing + 1)
+        void *centre = FindPane(s_board, "P_door_00");
+        if (windows == nullptr || doors == nullptr || base == nullptr || white == nullptr || inner == nullptr || centre == nullptr
+            || kView < 2 * kMarkRing + 1)
             return false;
         const u32 baseMat = W(base, kPicMaterial);
         static const u8 kWhite[4] = { 255, 255, 255, 255 };
         u8 floor[4];
         std::memcpy(floor, reinterpret_cast<const void *>(baseMat + kMatColors + 4), 4);   // 地の白色（テクスチャは全部 255 なのでこの色）
         floor[3] = 255;
-        const float sizes[2] = { (float)(2 * kMarkRing + 1) * kTile, (float)(2 * kMarkRing - 1) * kTile };
-        void *const plates[2] = { white, inner };
-        const u8 *const colours[2] = { kWhite, floor };
-        for (u32 k = 0; k < 2; ++k) {
+        const float sizes[3] = { (float)(2 * kMarkRing + 1) * kTile, (float)(2 * kMarkRing - 1) * kTile, kTile };
+        void *const plates[3] = { white, inner, centre };
+        void *const parents[3] = { windows, windows, doors };
+        const u8 *const colours[3] = { kWhite, floor, kWhite };
+        for (u32 k = 0; k < 3; ++k) {
             void *pl = plates[k];
             const u32 mat = W(pl, kPicMaterial);
             std::memcpy(reinterpret_cast<void *>(mat + kMatColors), colours[k], 4);
@@ -546,11 +540,9 @@ bool ExpandBoard(void) {
             SetTranslate(pl, 0.0f, 0.0f);
             SetRotateZ(pl, 0.0f);
             B(pl, kPaneFlagsByte) |= 1u;
-            PaneRemove(windows, pl);
-            PaneInsert(s_roomPane, grid, pl);   // 地の後・方眼の前（入れた順 = 描く順: 白 → 地の色 → 真ん中）
+            PaneRemove(parents[k], pl);
+            PaneInsert(s_roomPane, grid, pl);   // 地の後・方眼の前（入れた順 = 描く順: 白 5x5 → 地の色 3x3 → 白 1x1）
         }
-        PaneRemove(doors, door);            // 地（P_Room_00）の後・方眼の前に描く
-        PaneInsert(s_roomPane, grid, door);
     }
     return true;
 }
@@ -718,13 +710,6 @@ bool BuildStep(void) {
 
 void EndHold(void);
 
-void RestoreBoardParts(void) {
-    if (s_centerPane != nullptr) {          // 借りた扉のマテリアルを戻す（Picture の dtor が自分のマテリアルを返す）
-        W(s_centerPane, kPicMaterial) = s_centerMaterial;
-        s_centerPane = nullptr;
-    }
-}
-
 void DestroyAll(void) {
     EndHold();
     MapModeList::Destroy();
@@ -745,7 +730,6 @@ void DestroyAll(void) {
         for (u32 i = 0; i < kChipAnims; ++i)
             AnimDtor(s_chipAnim[i]);
     s_chipAnimsMade = false;
-    RestoreBoardParts();
     if (s_boardMade) {
         if (s_boardBuilt)
             LayoutUnbindAll(s_board);
@@ -1165,6 +1149,44 @@ bool ShowNameAt(s32 vx, s32 vy, s32 tx, s32 ty) {
     s_nameTileY = ty;
     s_nameViewX = vx;
     s_nameViewY = vy;
+    return true;
+}
+
+// スポイト: 名前の吹き出しを指の位置へ（利用者指示 2026-09-28: スライドすると名前の枠がタッチ座標に追従し、指の下のマスの名前になる）。
+//   基準のペインを盤面の中心（N_Room_00）にし、ずれを指の位置 − 盤面の中心にする。出せたら真
+bool ShowNameAtPoint(s32 vx, s32 vy, s32 tx, s32 ty, u16 px, u16 py) {
+    Chip *c = ChipAt(tx, ty, true);
+    const u32 *item = ItemAtTile(tx, ty);
+    if (c == nullptr || item == nullptr || IsEmpty(item)) {
+        HideName();
+        return false;
+    }
+    void *word = ItemWord(s_word, reinterpret_cast<const u16 *>(item), 0);
+    const float offset[3] = { ((float)px - 160.0f) - F(s_roomPane, kPaneGlobalX), (120.0f - (float)py) - F(s_roomPane, kPaneGlobalY), 0.0f };
+    NameShow(s_name, word, s_roomPane, offset);
+    s_nameChip = c;
+    s_nameTileX = tx;
+    s_nameTileY = ty;
+    s_nameViewX = vx;
+    s_nameViewY = vy;
+    return true;
+}
+
+// モードを変える（描画スレッドから。メニュースレッドの Tick が s_mode へ移す。モード一覧で選んだときと同じ道）
+void RequestMode(Mode m) {
+    s_modeReqValue = (u8)m;
+    __sync_synchronize();                   // 値を書いてから通算を進める
+    s_modeReqSeq = s_modeReqSeq + 1;
+}
+
+// スポイト: そのマスのアイテムを配置するアイテムにし、配置モードへ（利用者指示 2026-09-28）。拾えたら真
+bool PickAt(s32 tx, s32 ty) {
+    const u32 *item = ItemAtTile(tx, ty);
+    if (item == nullptr || IsEmpty(item))
+        return false;
+    s_placeId = *item & 0x7FFFu;            // 埋めた印（0x8000）と上位の旗は落とす（長押しのスポイトと同じ）
+    s_pickedSeq = s_pickedSeq + 1;
+    RequestMode(Mode::Place);
     return true;
 }
 
@@ -1821,6 +1843,11 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
     if (!down) {
         if (s_touchPrevDown && s_mode == Mode::Select)
             SelectRelease(vx, vy);
+        if (s_touchPrevDown && s_touchKind == TouchKind::Spoit) {   // 離したマスでスポイト
+            if (s_fingerX >= 0 && s_fingerY >= 0)
+                PickAt(s_fingerX, s_fingerY);
+            HideName();
+        }
         TouchRelease();
         return;
     }
@@ -1838,6 +1865,12 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
         s_fingerY = s_touchLastY;
         if (s_mode == Mode::Select) {
             SelectPress(vx, vy, px, py, inside, tx, ty);
+        } else if (s_mode == Mode::Spoit) {
+            s_touchKind = TouchKind::Spoit;
+            if (inside)
+                ShowNameAtPoint(vx, vy, tx, ty, px, py);
+            else
+                HideName();
         } else if (!inside) {
             HideName();
             s_touchKind = TouchKind::Ignore;
@@ -1867,6 +1900,14 @@ void TouchSample(s32 vx, s32 vy, bool down, u16 px, u16 py) {
     case TouchKind::Erase:
         Trace(vx, vy, px, py);
         break;
+    case TouchKind::Spoit: {                // 名前は指に付いていき、指の下のマスの名前になる
+        s32 tx = -1, ty = -1;
+        if (TouchTile(vx, vy, px, py, tx, ty))
+            ShowNameAtPoint(vx, vy, tx, ty, px, py);
+        else
+            HideName();
+        break;
+    }
     case TouchKind::Hold: {
         // 指が長押しのマスを出たら配置に切り替え、なぞった先に置く（利用者指示 2026-09-27。長押しのマス自体は物があるので置かない）
         s32 tx = -1, ty = -1;
@@ -2118,7 +2159,14 @@ bool Start(void) {
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"グリッドカーソルを先に止めてください");
         return false;
     }
-    GridCursor::SetTint(kCursorBlue, kCursorTint);     // 青（利用者指示 2026-09-27）
+    s_lookMode = 0xFF;                      // UnitCursor の色はモードごと（ApplyModeLook。最初の Tick で当てる）
+    s_labelId = 0xFFFFFFFEu;                // 下画面左上の箱（UpdatePlaceLabel。最初の Tick で書く）
+    s_spoitCenterDone = s_spoitCenterSeq;
+    GameLabel::SetLower(kPlaceLabelSlot, true);
+    GameLabel::SetLeftAlign(kPlaceLabelSlot, true);
+    GameLabel::SetRow(kPlaceLabelSlot, 0);
+    GameLabel::SetBottom(kPlaceLabelSlot, false);
+    GameLabel::SetAlert(kPlaceLabelSlot, false);
     GridCursor::SetTiles(nullptr, nullptr, 0, -1, 0, 0);
     s_cursorShown = 0xFFFFFFFFu;
     if (!GameList::HoldField(true)) {
@@ -2163,7 +2211,39 @@ void StepMove(u32 keys) {
 }
 
 const char *ModeName(Mode m) {
-    return m == Mode::Remove ? u8"削除モード" : m == Mode::Select ? u8"範囲選択モード" : u8"配置モード";
+    return m == Mode::Remove ? u8"削除モード" : m == Mode::Select ? u8"範囲選択モード" : m == Mode::Spoit ? u8"スポイトモード" : u8"配置モード";
+}
+
+// モードごとの UnitCursor と実体のハイライトの色（利用者指示 2026-09-28）
+void ApplyModeLook(void) {
+    const u8 m = (u8)s_mode;
+    if (m == s_lookMode)
+        return;
+    s_lookMode = m;
+    switch ((Mode)m) {
+    case Mode::Remove: GridCursor::SetTint(kCursorRed, kCursorStrongTint); break;
+    case Mode::Select: GridCursor::SetTint(kCursorBlue, kCursorTint); break;
+    case Mode::Spoit:  GridCursor::SetTint(kCursorSpoit, kCursorStrongTint); break;
+    default:           GridCursor::SetTint(0, 0); break;           // 配置: 色合成なし（0 で元の見た目）
+    }
+    MapEditor3D::SetHighlightColor(m == (u8)Mode::Spoit ? kHighlightSpoit : kHighlightRed);
+}
+
+// 下画面左上の箱「配置: {アイテム名}」（利用者指示 2026-09-28。名前は没アイテム表示と同じ ItemNames::NameUtf8）
+void UpdatePlaceLabel(void) {
+    const u32 id = s_placeId;
+    if (id == s_labelId)
+        return;
+    s_labelId = id;
+    char name[64];
+    static char text[96];
+    if (id == kNoItem)
+        std::snprintf(name, sizeof(name), u8"未設定");
+    else if (!ItemNames::NameUtf8((u16)id, name, sizeof(name)))
+        std::snprintf(name, sizeof(name), "%04X", (unsigned)id);
+    std::snprintf(text, sizeof(text), u8"配置: %s", name);
+    GameLabel::SetText(kPlaceLabelSlot, text);
+    GameLabel::Show(kPlaceLabelSlot);
 }
 
 // 描画スレッドからの出来事を通知する（スポイトで取れた・配置するアイテムが無い）
@@ -2214,13 +2294,13 @@ void ForwardCursor(void) {
     GridCursor::SetTiles(xs, ys, n, -1, 0, 0);
 }
 
-// 上画面のマスの色（利用者指示 2026-09-28）: 盤面の 7x7 に、中心から 5x5 の輪郭 = 白、真ん中 = 赤、ほか = 黄
+// 上画面のマスの色（利用者指示 2026-09-28）: 盤面の 7x7 に、中心から 5x5 の輪郭と真ん中 = 白、ほか = 青
 
 u8 MarkKind(s32 i, s32 j) {
     const s32 c = kView / 2;
     const s32 dx = i > c ? i - c : c - i, dy = j > c ? j - c : c - j;
     const s32 ring = dx > dy ? dx : dy;
-    return ring == 0 ? kMarkRed : (ring == kMarkRing ? kMarkWhite : kMarkYellow);
+    return (ring == 0 || ring == kMarkRing) ? kMarkWhite : kMarkBlue;
 }
 
 void ForwardMarks(void) {
@@ -2344,6 +2424,10 @@ void FrameStep(void) {
         }
         StepName(vx, vy);
         StepTouch(vx, vy);
+        if (s_spoitCenterSeq != s_spoitCenterDone) {    // Y: 盤面の真ん中のマス（長押し無し・すぐ。利用者指示 2026-09-28）
+            s_spoitCenterDone = s_spoitCenterSeq;
+            PickAt(vx + kView / 2, vy + kView / 2);
+        }
     } else {
         EndHold();
         CloseList();
@@ -2424,6 +2508,8 @@ void Stop(void) {
         return;
     s_running = false;
     s_want = false;
+    GameLabel::Hide(kPlaceLabelSlot);
+    MapEditor3D::SetHighlightColor(kHighlightRed);
     GridCursor::EnableMarks(false);
     GridCursor::Hide();
     FieldCamera::Release();
@@ -2483,6 +2569,10 @@ void Tick(u32 keys) {
     }
     if ((pressed & (u32)Key::B) && s_mode == Mode::Select && !s_listActive)
         s_cancelSeq = s_cancelSeq + 1;      // 持ち上げ・範囲を 1 段ずつ解く（一覧の B は一覧が受ける）
+    if ((pressed & (u32)Key::Y) && !s_listActive)
+        s_spoitCenterSeq = s_spoitCenterSeq + 1;    // 真ん中のマスをスポイト（描画スレッドが拾う）
+    ApplyModeLook();
+    UpdatePlaceLabel();
     ForwardCursor();
     ForwardMarks();
     NotifyEvents();
@@ -2527,18 +2617,18 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
-            int     g_markAlphaIndex = -1;
-            bool    MarkAlphaRead(int index, s32 *value)
+            int     g_markPhaseIndex = -1;
+            bool    MarkPhaseRead(int index, s32 *value)
             {
                 (void)index;
-                *value = (s32)GridCursor::MarkAlpha();
+                *value = (s32)GridCursor::MarkPhase();
                 return true;
             }
 
-            void    MarkAlphaWrite(int index, s32 value)
+            void    MarkPhaseWrite(int index, s32 value)
             {
                 (void)index;
-                GridCursor::SetMarkAlpha((u8)(value < 0 ? 0 : (value > 255 ? 255 : value)));
+                GridCursor::SetMarkPhase((u8)(value < 0 ? 0 : (value > 2 ? 2 : value)));
             }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
@@ -2592,9 +2682,9 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
-            g_markAlphaIndex = GuiMenu::FindItem(kMeMarkAlpha);
-            if (g_markAlphaIndex >= 0)
-                GuiMenu::RegisterLinked(g_markAlphaIndex, MarkAlphaRead, MarkAlphaWrite);
+            g_markPhaseIndex = GuiMenu::FindItem(kMeMarkPhase);
+            if (g_markPhaseIndex >= 0)
+                GuiMenu::RegisterLinked(g_markPhaseIndex, MarkPhaseRead, MarkPhaseWrite);
         }
     }
 }

@@ -61,9 +61,10 @@ static u8 s_markPendX[kMaxMarks], s_markPendY[kMaxMarks], s_markPendKind[kMaxMar
 static volatile u32 s_markPendCount, s_markPendSeq;
 static u32 s_markTakenSeq = 0xFFFFFFFFu;
 static u32 s_markCount[kMarkKinds];
-static volatile u8 s_markAlpha = 0x80;
-// 色（0x00BBGGRR）: 白・赤・黄（利用者指示: 5x5 の輪郭 = 白、真ん中 = 赤、ほか = 黄）
-static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu, 0x000000FFu, 0x0000FFFFu };
+static volatile u8 s_markAlpha = 50;       // 利用者の決定（2026-09-28）
+static volatile u8 s_markPhase = 2;       // 描く段（SetMarkPhase の説明）
+// 色（0x00BBGGRR）: 白・青（利用者指示: 5x5 の輪郭と真ん中 = 白、ほか = 青）
+static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu, 0x00FF0000u };
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -89,8 +90,8 @@ static const float kRotateFrame45 = 0.0f;
 // ★足りないまま建てるとゲーム側が落ちる（F034）ので、建てる前に残りを見る（kHeapExhausted）。
 static const u32 kInstanceBytesPerCursor = 6144;
 static const u32 kInstanceHeapSlack = 0x4000;
-// ★マスの色の体 3 つぶん（kMarkKinds × 1 体）も足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
-static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (1 + kMarkKinds) + InstancedDraw::kCreateBytes + kInstanceHeapSlack;
+// ★マスの色の体 kMarkKinds（= 2）つぶん（1 体ずつ）と、その描画ノード 1 つも足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
+static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (1 + kMarkKinds) + InstancedDraw::kCreateBytes * 2 + kInstanceHeapSlack;
 // ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
 static const u32 kParentReserve = 0xC000;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
@@ -428,6 +429,11 @@ static bool BuildMarks() {
             return false;
         }
     }
+    // 自前の描画ノード（段 2 のとき）。生成関数は確保の失敗を確かめないので残りを見てから
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_markDrawer, s_instanceAllocator)) {
+        s_markFail = Fail::kHeapExhausted;
+        return false;
+    }
     s_marksBuilt = true;
     s_markTakenSeq = 0xFFFFFFFFu;
     return true;
@@ -481,7 +487,13 @@ static void DrawMarks() {
     const u32 a = s_markAlpha;
     for (u32 k = 0; k < kMarkKinds; ++k)          // Constant5 = 0xAABBGGRR（毎フレーム。活性化が毎回読む。GridCursor::ApplyTint と同じ）
         MarkWr(s_markConst5[k], (a << 24) | (kMarkColour[k] & 0x00FFFFFFu));
-    InstancedDraw::SubmitOver(s_markDrawer, s_markBatches, kMarkKinds);
+    const u8 phase = s_markPhase;
+    if (phase == 0)
+        InstancedDraw::SubmitOver(s_markDrawer, s_markBatches, kMarkKinds);
+    else if (phase == 1)
+        InstancedDraw::SubmitBeforeLayer1(s_markDrawer, s_markBatches, kMarkKinds);
+    else
+        InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
 }
 
 static bool BuildCursor() {
@@ -1041,6 +1053,8 @@ void SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count) {
 }
 
 void SetMarkAlpha(u8 alpha) { s_markAlpha = alpha; }
+void SetMarkPhase(u8 phase) { s_markPhase = phase <= 2 ? phase : 2; }
+u8 MarkPhase(void) { return s_markPhase; }
 u8 MarkAlpha(void) { return s_markAlpha; }
 u32 MarkFailReason(void) { return s_markFail; }
 

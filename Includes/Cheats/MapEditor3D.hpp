@@ -19,6 +19,8 @@ namespace MapEditor3D
 
     // 毎フレーム。highlight(x, y) が真のマスの実体を赤くし、clones を描く。
     void    Frame(bool (*highlight)(s32 x, s32 y), const Clone *clones, u32 count);
+    // 実体を塗る色（0x00BBGGRR）。既定は赤（BuildingHighlight::kRed）。スポイトモードは青（利用者指示 2026-09-28）
+    void    SetHighlightColor(u32 color);
     // エディターを止める: 赤を戻し、複製を壊し、ヒープを返す（数フレームかけて。終わったら真）。
     bool    Release(void);
     // すぐに片付ける（描くのはもうやめてある前提）。場面が同じなら赤を戻して複製を壊し、変わっていればゲームの物には触らずにヒープだけ返す。

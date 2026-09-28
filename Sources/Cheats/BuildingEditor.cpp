@@ -381,6 +381,10 @@ void UpdateCapacityLabels(bool force) {
         std::snprintf(line3, sizeof(line3), u8"-");
     // 利用者 2026-09-25（2 回目）: 左下ではなく、設置上限・新しい種類と同じ上の段の右へ。時計とは重ならないので隠さない
     GameLabel::SetText(2, line3);
+    for (u32 i = 0; i < 3; ++i) {           // 上画面・中央揃え（マップエディターが箱 0 を下画面・左揃えで使うので毎回決める）
+        GameLabel::SetLower(i, false);
+        GameLabel::SetLeftAlign(i, false);
+    }
     GameLabel::SetRow(2, 0);
     GameLabel::SetBottom(2, false);
     GameLabel::HideGameClock(false);

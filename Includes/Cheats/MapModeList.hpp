@@ -13,7 +13,7 @@
 // ★呼ぶのはゲームのスレッド（MapEditor::FrameStep）だけ。
 namespace MapModeList
 {
-    const u32       kRows = 3;                  // 配置・削除・範囲選択（MapEditor::Mode の順）
+    const u32       kRows = 4;                  // 配置・削除・範囲選択・スポイト（MapEditor::Mode の順。スポイトは 2026-09-28 の 2 回目）
 
     bool            LoadStep(void);             // arc を読む。済めば真（毎フレーム呼ぶ）
     // 組み立て（1 フレームに 1 段）。済めば真。heapOk = nw::lyt のヒープに余裕がある。mode = 最初に選ぶ行

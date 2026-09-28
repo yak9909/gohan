@@ -44,6 +44,7 @@ const u32 kMeshMaterial = 28, kMeshVisible = 36, kMeshVisIndex = 38;
 const u32 kAllLayers = 0xFFFFFFFFu;
 // 村の物体の描画ノード（fgobj_Proc_Setup 0x59CDD0 が proc + 0x45B0 に作り、g3d_FuncNode_SetCallbacks で cb0 = 0x59A900 / cb1 = 0x59BFEC）
 const u32 kFgobjProcPtr = 0x00948E70, kFgobjFuncHolder = 0x45B0, kFuncNodeCb0 = 0x148, kFgobjDrawCb0 = 0x0059A900;
+const u32 kFuncNodeCb1 = 0x14C, kFgobjDrawCb1 = 0x0059BFEC;    // 層 1（fgobj_DrawCallbackLayer1 → fgobj_DrawList(proc, ctx, proc+13752)）
 const u32 kFuncNodeVtable = 0x008FCF10;     // vtbl_g3d_FuncNode
 // 材質のフラグメント部分（汎用の書き出し 0x49CA24〜: a3[20] = M+0x50、+280 の bit1 = 深度書き込み、+720 = 鍵）
 const u32 kMatFrag = 0x50, kFragOpFlags = 280, kFragKey = 720, kMaxDepthMats = 16;
@@ -147,6 +148,17 @@ void UnderCb0(u32 ctx, u32 userdata) {
     }
 }
 
+void UnderCb1(u32 ctx, u32 userdata) {
+    for (u32 i = 0; i < kMaxUnder; ++i) {                           // 層 1 の前に描く分（SubmitBeforeLayer1）
+        Drawer *d = s_under[i];
+        if (d == nullptr || !d->layer1Armed)
+            continue;
+        d->layer1Armed = false;
+        DrawBatches(ctx, *d, kAllLayers);
+    }
+    reinterpret_cast<FuncNodeCbFn>(kFgobjDrawCb1)(ctx, userdata);   // 村の物体の層 1（fgobj_DrawCallbackLayer1 0x59BFEC）
+}
+
 // いまの場面の村の物体の描画ノード（無ければ 0）
 u32 FgobjFuncNode(u32 &proc) {
     proc = R32(kFgobjProcPtr);
@@ -163,6 +175,8 @@ void Unhook(void) {
     const u32 node = FgobjFuncNode(proc);
     if (node != 0u && node == s_underNode && proc == s_underProc && R32(node + kFuncNodeCb0) == reinterpret_cast<u32>(&UnderCb0))
         W32(node + kFuncNodeCb0, kFgobjDrawCb0);
+    if (node != 0u && node == s_underNode && proc == s_underProc && R32(node + kFuncNodeCb1) == reinterpret_cast<u32>(&UnderCb1))
+        W32(node + kFuncNodeCb1, kFgobjDrawCb1);
     s_underNode = s_underProc = 0u;
 }
 
@@ -174,6 +188,7 @@ bool Create(Drawer &d, void *allocator) {
     d.batchCount = 0;
     d.underArmed = false;
     d.overArmed = false;
+    d.layer1Armed = false;
     FuncNodeCreate(d.holder, allocator);
     if (R32(reinterpret_cast<u32>(d.holder) + 4) == 0u)
         return false;
@@ -196,6 +211,7 @@ void Destroy(Drawer &d) {
         Unhook();
     d.underArmed = false;
     d.overArmed = false;
+    d.layer1Armed = false;
     d.batches = nullptr;
     d.batchCount = 0;
     if (Created(d))
@@ -205,7 +221,8 @@ void Destroy(Drawer &d) {
 
 namespace {
 // 村の物体の描画ノードの層 0 を包み、d を登録する（SubmitUnder / SubmitOver 共通）
-bool Arm(Drawer &d, const Batch *batches, u32 count, bool over) {
+// where: 0 = 層 0 の前、1 = 層 0 の後、2 = 層 1 の前
+bool Arm(Drawer &d, const Batch *batches, u32 count, u32 where) {
     u32 proc = 0;
     const u32 node = FgobjFuncNode(proc);
     if (node == 0u)
@@ -217,6 +234,13 @@ bool Arm(Drawer &d, const Batch *batches, u32 count, bool over) {
         s_underProc = proc;
     } else if (cb != reinterpret_cast<u32>(&UnderCb0)) {
         return false;                       // 誰かが別の物に替えている。触らない
+    }
+    if (where == 2) {
+        const u32 cb1 = R32(node + kFuncNodeCb1);
+        if (cb1 == kFgobjDrawCb1)
+            W32(node + kFuncNodeCb1, reinterpret_cast<u32>(&UnderCb1));
+        else if (cb1 != reinterpret_cast<u32>(&UnderCb1))
+            return false;
     }
     u32 slot = kMaxUnder;
     for (u32 i = 0; i < kMaxUnder && slot == kMaxUnder; ++i)
@@ -231,18 +255,23 @@ bool Arm(Drawer &d, const Batch *batches, u32 count, bool over) {
     d.batches = batches;
     d.batchCount = count;
     d.drawn = 0;
-    d.underArmed = !over && count != 0u;
-    d.overArmed = over && count != 0u;
+    d.underArmed = where == 0 && count != 0u;
+    d.overArmed = where == 1 && count != 0u;
+    d.layer1Armed = where == 2 && count != 0u;
     return true;
 }
 }  // namespace
 
 bool SubmitUnder(Drawer &d, const Batch *batches, u32 count) {
-    return Arm(d, batches, count, false);
+    return Arm(d, batches, count, 0);
 }
 
 bool SubmitOver(Drawer &d, const Batch *batches, u32 count) {
-    return Arm(d, batches, count, true);
+    return Arm(d, batches, count, 1);
+}
+
+bool SubmitBeforeLayer1(Drawer &d, const Batch *batches, u32 count) {
+    return Arm(d, batches, count, 2);
 }
 
 void DisableDepthWrite(void *holder) {

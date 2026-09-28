@@ -78,6 +78,7 @@ const u32 kRefDirect = 0x80000000u, kRefRelative = 0x40000000u;
 enum Style : u8 { kPreview, kRed };
 const u32 kRedColor = 0x004040FFu;          // 0x00BBGGRR（BuildingHighlight::kRed と同じ）
 const u8 kRedTint = 0xC0;
+volatile u32 s_hlColor = kRedColor;         // 段 5 の定数色（SetHighlightColor。描画スレッドが読む）
 const u32 kWhite = 0x00FFFFFFu;
 const u8 kWhiteTint = 0x60;
 const u8 kPreviewAlpha = 0xA0;
@@ -360,9 +361,10 @@ void EmitTint(void) {
     st[4] = 14;                             // 入力: 定数 / 前段 / 定数
     st[5] = 15;
     st[6] = 14;
-    st[18] = (u8)(kRedColor & 0xFFu);
-    st[19] = (u8)((kRedColor >> 8) & 0xFFu);
-    st[20] = (u8)((kRedColor >> 16) & 0xFFu);
+    const u32 color = s_hlColor;
+    st[18] = (u8)(color & 0xFFu);
+    st[19] = (u8)((color >> 8) & 0xFFu);
+    st[20] = (u8)((color >> 16) & 0xFFu);
     st[21] = kRedTint;
     u32 p = 0;
     GpuProperty(520u, &p);
@@ -829,6 +831,10 @@ void Abandon(void) {
         TearDown(SceneSame());
     else
         ForgetAll();
+}
+
+void SetHighlightColor(u32 color) {
+    s_hlColor = color & 0x00FFFFFFu;
 }
 
 }  // namespace MapEditor3D

@@ -218,10 +218,11 @@ namespace CTRPluginFramework
                             u8"マップエディターの配置モードで置くアイテムの ID です。アイテムを押し続けるスポイトでも変わります。"
                             u8"FFFF は未設定です。");
                 SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
-                // ★一時的な項目（利用者指示 2026-09-28: 上画面のマスの色のアルファを探す。決まったら外す）
-                i = AddItem(ITEM_LINKED_VALUE, kMeMarkAlpha,
-                            u8"マップエディターの上画面に置くマスの色（白・赤・黄）の不透明度です。0 = 透明、255 = 不透明。");
-                SetValue(i, FMT_DEC, 128, 0, 255, 1);
+                // ★一時的な項目（2026-09-28: 上画面のマスの色がマイデザインの上に出る描き方を実機で確かめる。決まったら外す）
+                i = AddItem(ITEM_LINKED_VALUE, kMeMarkPhase,
+                            u8"マップエディターの上画面のマスの色を描く段です。0 = 村の物体の層 0 の後、1 = 村の物体の層 1 の前、"
+                            u8"2 = 自前の描画ノード（既定）。マイデザインの上・ほかの物の下に出る番号を探します。");
+                SetValue(i, FMT_DEC, 2, 0, 2, 1);
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 

@@ -82,6 +82,7 @@ const u32            kBacWaitState  = 0x002F6810;                               
 // nw::lyt::Pane の子（IDA-opus-5.5-F062: sub_4B6100 = InsertChild(next, child) = next の直前へ。描く順も next の直前）
 const PaneRemoveFn   PaneRemove     = reinterpret_cast<PaneRemoveFn>(0x004B6130);
 const PaneInsertFn   PaneInsert     = reinterpret_cast<PaneInsertFn>(0x004B6100);
+const PaneRemoveFn   PaneAppend     = reinterpret_cast<PaneRemoveFn>(0x004B60DC);   // nwlyt_Pane_AppendChild（末尾へ）
 // ゲームのタッチの構造体（sub_1B7874 がフレームごとに作る。+0 押している / +1 変わった / +2,+4 生の位置 / +6,+8 押し始め /
 //   +10,+12 位置 / +14 押しているフレーム / +15 離しているフレーム / +16..+29 前のフレームの写し（+26 = 前の +0）/ +32,+36 レイアウト座標）
 const u32 kTouchAddr = 0x00ACF6E0;
@@ -105,22 +106,31 @@ const u32 kPicUvDone = 212, kPicMaterial = 316, kPicVtxColor = 320, kPicTexCoord
 const u32 kTextPosition = 252, kTextDirty = 254;
 
 // ---- 見た目（tools/layout/mode_list_preview.mjs の K と同じ。tools/strc/verify_map_editor.py が突き合わせる）----
-const float kListX = -221.6f;               // N_list の x（開いた状態は 43）。P_tag の右端が盤面の枠の左端 67 に来る
-const float kWinH = 90.5f;                  // W_list_win_00 の高さ（基準点を下 = 7 にして上端を保つ = 90.5 詰める）
-const u8 kWinOrigin = 7;
-const float kMidH = 57.5f;                  // P_list_win_01（148 − 90.5）
-const float kMidY = -27.75f;                // P_list_win_01 の y（上端 77 を保つ）
-const float kCapY = -56.5f;                 // P_list_win_02 の y（−147 + 90.5）
+const float kListX = -214.6f;               // N_list の x（開いた状態は 43）。P_tag の右端が 74（7x7 の壁の左端 76 の手前）
+// ★4 行（2026-09-28 の 2 回目）。3 行分 60 + 下の余白 10.5 = 70.5 詰める。窓 W_list_win_00 は行・紙の親で、行のアニメは N_icon の y を
+//   絶対値で書くので窓は動かせない。そこで窓の子を使わない行 N_icon_06（代わりの親、元の窓の位置）へ移し、子の無い窓を置き直す（窓の拡張）
+const float kWinH = 110.5f;                 // W_list_win_00 の高さ（181 − 70.5）
+const float kWinY = 33.25f;                 // W_list_win_00 の y（上端 = 元の窓の上端（−2 + 181/2）を保つ = −2 + (181/2 − 110.5/2)）
+const float kProxyX = 16.0f, kProxyY = -2.0f;   // 代わりの親 N_icon_06 の位置 = 元の窓の位置（N_list から）
+const u32 kProxyRow = 6;                    // 代わりの親にする行
+const u32 kRowPane = 5988, kRowSaved = 5992, kRowStride = 228;   // 行の N_icon と保存した位置（sub_2245AC。sub_224164 が戻す）
+const float kMidH = 77.5f;                  // P_list_win_01（148 − 70.5）
+const float kMidY = -37.75f;                // P_list_win_01 の y（上端 77 を保つ）
+const float kCapY = -76.5f;                 // P_list_win_02 の y（−147 + 70.5）
 const float kMidFullH = 148.0f;
-const u32 kNoteCut = 148;                   // 紙の上の段 = テクスチャの行 [0, 148)（行 2 の下の罫線を落とす）
-const u32 kNoteLow = 240;                   // 紙の下の段 = [240, 256)（細縞の周期 4 の倍数 92 を詰める）
+const u32 kNoteCut = 168;                   // 紙の上の段 = テクスチャの行 [0, 168)（行 3 の下の罫線を落とす）
+const u32 kNoteLow = 240;                   // 紙の下の段 = [240, 256)（細縞の周期 4 の倍数 72 を詰める）
 const float kNoteTexH = 256.0f;
-const float kNoteTopY = 100.0f;             // 上の段の y（上端 174 を保つ）
-const float kNoteLowY = 18.0f;              // 下の段の y（上端 26 = 上の段の下端）
+const float kNoteTopY = 90.0f;              // 上の段の y（上端 174 を保つ）
+const float kNoteLowY = -2.0f;              // 下の段の y（上端 6 = 上の段の下端）
 const u8 kTextPos = 5;                      // 横 2 = 右、縦 1 = 中央
+// 文字の欄 = 見える幅（右端は窓から 77 のまま）。ゲームの sub_5E91F0 が「測った幅 + 1 > 欄の幅 × 倍率」なら比を返し、
+//   sub_224B88 がそれを書体の横幅に掛けて収める（4 文字の「スポイト」は横 0.62 倍）
+const float kTextW = 36.4f, kTextX = 70.8f;
+const float kListDown = 20.0f;              // 一覧全体を下げる（下画面の左上のテキストボックスの下。N_All の y）
 const u8 kLayoutPrio = 2;                   // 盤面と同じ。盤面とコマの後に登録するので盤面より手前（MapEditor::FrameStep）
 // 一覧が描く画素の外接矩形（mode_list_preview.mjs の mode_list_rect.json）。ここで始まった指は一覧が受け持つ
-const u32 kRectX0 = 0, kRectX1 = 67, kRectY0 = 16, kRectY1 = 119;
+const u32 kRectX0 = 0, kRectX1 = 74, kRectY0 = 36, kRectY1 = 159;
 
 // 行の語（script::WordPtr {vtbl 0x90491C, 文字列, 容量}。vt+12 = 文字列、vt+16 = 容量 → sub_5E91F0 が 容量 − 1 字を測る）
 struct WordPtr { u32 vtbl; const char16_t *text; u32 cap; };
@@ -129,6 +139,7 @@ const WordPtr kWords[kRows] = {
     { kWordPtrVtbl, u"配置", 3 },
     { kWordPtrVtbl, u"削除", 3 },
     { kWordPtrVtbl, u"選択", 3 },
+    { kWordPtrVtbl, u"スポイト", 5 },
 };
 const WordPtr kEmptyWord = { kWordPtrVtbl, u"", 1 };
 
@@ -187,10 +198,6 @@ bool Shape(void) {
     // ページ送り（ボタンの BAC は回さないので押せない）
     B(btnR, kPaneFlags) &= 0xFEu;
     B(btnL, kPaneFlags) &= 0xFEu;
-    // 窓: 子（行・紙）の親なので位置は動かさず、基準点を下にして高さを縮める。辺は角の端を伸ばし中身は単色なので切ったのと同じ見た目
-    B(win, kPaneBasePos) = (u8)((B(win, kPaneBasePos) & 0xF0u) | kWinOrigin);
-    F(win, kPaneSizeY) = kWinH;
-    Touched(win);
     // オレンジの中段: 上端を保って縮め、テクスチャは上端側（画面の上 = v 1。倍率 −1 で上下が逆）を同じ密度で使う
     F(mid, kPaneSizeY) = kMidH;
     F(mid, kPaneTranslateY) = kMidY;
@@ -230,9 +237,45 @@ bool Shape(void) {
             return false;
         B(t, kTextPosition) = kTextPos;
         B(t, kTextDirty) |= 1u;
+        F(t, kPaneSizeX) = kTextW;
+        F(t, kPaneTranslateX) = kTextX;
+        Touched(t);
     }
     F(nlist, kPaneTranslateX) = kListX;
     Touched(nlist);
+    // 窓の拡張: 窓の子を代わりの親（使わない行 N_icon_06）へ同じ順で移し、子の無い窓を 4 行ぶんに置く。
+    //   窓の辺は角の端を伸ばし中身は単色なので、高さを変えても切ったのと同じ見た目（F062）
+    void *proxy = FindPane(L, "N_icon_06");
+    void *bname = FindPane(L, "B_name_00");
+    void *all = FindPane(L, "N_All");
+    if (proxy == nullptr || bname == nullptr || all == nullptr)
+        return false;
+    PaneRemove(win, proxy);
+    PaneInsert(nlist, bname, proxy);        // N_list の子で窓の直後（窓 → 中身 → 行の当たり判定の順は変わらない）
+    F(proxy, kPaneTranslateX) = kProxyX;
+    F(proxy, kPaneTranslateY) = kProxyY;
+    Touched(proxy);
+    B(proxy, kPaneFlags) |= 1u;
+    // sub_224164（SelectById が呼ぶ）は行の N_icon の位置を保存値へ戻すので、代わりの親の保存値も同じ位置にしておく
+    F(s_list, kRowSaved + kRowStride * kProxyRow) = kProxyX;
+    F(s_list, kRowSaved + 4 + kRowStride * kProxyRow) = kProxyY;
+    F(s_list, kRowSaved + 8 + kRowStride * kProxyRow) = 0.0f;
+    static const char *const kWinChildren[] = {
+        "P_list_win_00", "P_tag", "P_list_note_00", "P_list_arrow_00", "N_slct_00",
+        "N_icon_00", "N_icon_01", "N_icon_02", "N_icon_03", "N_icon_04", "N_icon_05", "P_list_btn_R", "P_list_btn_L",
+    };
+    for (const char *n : kWinChildren) {
+        void *c = FindPane(L, n);
+        if (c == nullptr)
+            return false;
+        PaneRemove(win, c);
+        PaneAppend(proxy, c);
+    }
+    F(win, kPaneSizeY) = kWinH;
+    F(win, kPaneTranslateY) = kWinY;
+    Touched(win);
+    F(all, kPaneTranslateY) = -kListDown;
+    Touched(all);
     B(L, kLayoutPriority) = kLayoutPrio;
     return true;
 }
@@ -363,6 +406,8 @@ bool BuildStep(bool heapOk, u8 mode) {
             s_error = u8"list_00 の部品がありません";
             return false;
         }
+        for (u32 i = 0; i < kRows; ++i)     // 欄の幅を見える幅にしたので入れ直す（ゲームがその幅へ収める）
+            ListSetRow(s_list, (s32)i, (s32)i, &kWords[i], 1);
         TouchReset();
         ListSelectById(s_list, 0, mode < kRows ? mode : 0);
         LayoutCalc(s_layout);

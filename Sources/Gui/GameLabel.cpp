@@ -84,6 +84,8 @@ const u32 kPicMaterial = 0x13C, kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags 
 // 箱の元の幅は 98 を横 1.3 倍（127px）。文字の幅（全角 15px・半角 9px の見積もり。「配置モード」5 文字 ≒ 75px を実機で確認）
 //   に左右 16px を足した幅がこれより広ければ横に伸ばす。
 const float kLeft = -192.0f, kTop = 96.0f, kGap = 6.0f, kRowPitch = 36.0f;
+// 下画面（320x240）: 左の余白は上画面と同じ 8px（上画面 −200 + 8 = −192、下画面 −160 + 8 = −152）。上下は同じ kTop
+const float kLeftLower = -152.0f;
 // 全体の縮尺（利用者 2026-09-25: 箱と文字を 3/5 くらいに）。N_all の拡大率に入れるので、箱・影・文字・出入りのアニメが一緒に縮む。
 // 画面の端からの距離（上下の端 = kTop ± 箱の高さ/2、左端 = kLeft）は元の大きさのときと同じに保ち、段の間と箱の間も同じ比で縮める。
 // 利用者 2026-09-25（2 回目）: 今の 1.2 倍 → 0.6 × 1.2
@@ -127,6 +129,8 @@ struct Label {
     bool alertShown;                        // いま塗っている色（組み立て直後は通常色）
     volatile u32 row;
     volatile bool bottom;
+    volatile bool lower;                    // 下画面に置く
+    volatile bool leftAlign;                // 文字を左揃え
     u16 pend[kMaxChars + 1];
     volatile u32 textSeq;
 };
@@ -356,6 +360,7 @@ void ApplyText(Label &l) {
         ++len;
     }
     SetString(l.text, l.pend, 0, len);
+    B(l.text, kTextPosition) = l.leftAlign ? 3 : 4;     // 横 0 = 左 / 1 = 中央、縦 1 = 中央（横 + 縦×3）
     float scale = (width + kPad) / kBaseW;
     if (scale < kMinScale)
         scale = kMinScale;
@@ -428,7 +433,7 @@ bool StepLabel(Label &l, float left, void *mgr) {
     }
     LayoutCalc(l.layout);
     if (mgr != nullptr)
-        AddLayout(mgr, l.layout, 0);
+        AddLayout(mgr, l.layout, l.lower ? 1u : 0u);
     return true;
 }
 
@@ -466,6 +471,18 @@ void SetRow(u32 slot, u32 row) {
 void SetBottom(u32 slot, bool bottom) {
     if (slot < kSlots)
         s_labels[slot].bottom = bottom;
+}
+
+void SetLower(u32 slot, bool lower) {
+    if (slot < kSlots)
+        s_labels[slot].lower = lower;
+}
+
+void SetLeftAlign(u32 slot, bool left) {
+    if (slot >= kSlots)
+        return;
+    s_labels[slot].leftAlign = left;
+    s_labels[slot].textSeq = s_labels[slot].textSeq + 1;    // 書き直させる
 }
 
 void SetAlert(u32 slot, bool alert) {
@@ -516,13 +533,15 @@ void FrameStep(void) {
     }
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
     // 段ごとに左から順に並べる。出したい箱か、まだ描いている（退場中の）箱だけが場所を取る
-    float left[2][kSlots];                  // [上/下][段]
-    for (u32 r = 0; r < kSlots; ++r)
-        left[0][r] = left[1][r] = kLeft;
+    float left[2][2][kSlots];               // [上画面/下画面][上の段/下の段][段]
+    for (u32 r = 0; r < kSlots; ++r) {
+        left[0][0][r] = left[0][1][r] = kLeft;
+        left[1][0][r] = left[1][1][r] = kLeftLower;
+    }
     for (u32 i = 0; i < kSlots; ++i) {
         Label &l = s_labels[i];
         const u32 row = l.row < kSlots ? l.row : kSlots - 1;
-        float &x = left[l.bottom ? 1 : 0][row];
+        float &x = left[l.lower ? 1 : 0][l.bottom ? 1 : 0][row];
         const bool takesRoom = l.want || l.live;
         StepLabel(l, x, mgr);
         if (takesRoom && l.width > 0.0f)

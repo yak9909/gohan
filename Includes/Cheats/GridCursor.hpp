@@ -97,13 +97,18 @@ namespace GridCursor
     // （建物は基点の地面、橋はどこでも一定の橋の高さ）。
     void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY);
     // ---- マスの色（マップエディターの上画面。利用者指示 2026-09-28）----
-    // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白・1 = 赤・2 = 黄。
-    // マイデザインなど村の物体の層 0 の後に、深度を書かずに描く（InstancedDraw::SubmitOver）。UnitCursor とは別の体（3 体）。
+    // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白・1 = 青（利用者指示 2026-09-28 の 2 回目。
+    // 最初は白・赤・黄だった）。深度は書かない。UnitCursor とは別の体（2 体）。
     static const u32 kMaxMarks = 64;
-    static const u32 kMarkKinds = 3;
+    static const u32 kMarkKinds = 2;
+    // 描く段（★一時的。利用者指示 2026-09-28: 層 0 の後ではマイデザインより下に出た。実機で正しい段を確かめる）
+    //   0 = 村の物体の層 0 の後（SubmitOver）/ 1 = 村の物体の層 1 の前（SubmitBeforeLayer1）/ 2 = 自前の描画ノード（層 1 の段。
+    //   F061 より前の UnitCursor と同じ描き方で、そのときはマイデザインの上に出ていた = 既定）
+    void            SetMarkPhase(u8 phase);
+    u8              MarkPhase(void);
     void            EnableMarks(bool on);   // ShowTiles の前に。偽ならマスの色の体を作らない
     void            SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count);
-    void            SetMarkAlpha(u8 alpha); // 3 色に共通のアルファ（一時的な項目。利用者が値を探す）
+    void            SetMarkAlpha(u8 alpha); // 2 色に共通のアルファ（利用者の決定 50）
     u8              MarkAlpha(void);
     u32             MarkFailReason(void);   // 0 = 問題なし。組めなかった理由（Fail の番号、材質の形が違えば 100 番台）
     // マス指定の形の色（0x00BBGGRR と強さ 0〜255。0 で元の見た目）。
