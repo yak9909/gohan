@@ -118,7 +118,7 @@ const float kNoteTexH = 256.0f;
 const float kNoteTopY = 100.0f;             // 上の段の y（上端 174 を保つ）
 const float kNoteLowY = 18.0f;              // 下の段の y（上端 26 = 上の段の下端）
 const u8 kTextPos = 5;                      // 横 2 = 右、縦 1 = 中央
-const u8 kLayoutPrio = 2;                   // 盤面と同じ。先に登録するので盤面の下
+const u8 kLayoutPrio = 2;                   // 盤面と同じ。盤面とコマの後に登録するので盤面より手前（MapEditor::FrameStep）
 // 一覧が描く画素の外接矩形（mode_list_preview.mjs の mode_list_rect.json）。ここで始まった指は一覧が受け持つ
 const u32 kRectX0 = 0, kRectX1 = 67, kRectY0 = 16, kRectY1 = 119;
 

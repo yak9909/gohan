@@ -82,25 +82,26 @@ const u32 kChipCmdBytes = 1280;             // Chip の組み立て（sub_B420C4
 //   8x8 のうちゲームが使う 4.0 にする（扉は隠す）
 const float kKindFrame = 4.0f;
 const float kTile = 20.0f;                  // 盤面の 1 マス（エディター +129560）
-// ---- 9x9 へ広げる（利用者指示 2026-09-28。ゲームの kind は 4x4/6x6/8x8 だけなので、8x8 を焼いたあと大きさを書く）----
+// ---- kView マス（7x7）にする（利用者指示 2026-09-28。ゲームの kind は 4x4/6x6/8x8 だけなので、8x8 を焼いたあと大きさを書く）----
 //   見本と検算: tools/layout/board9_preview.mjs（数値は同じ。verify_map_editor が突き合わせる）
 //   部屋 = kView × 1 マス（P_Room_00・P_RoomGrid_00・N_Sound_00・B_Room_00）、壁の窓 = 部屋 + 28（W_Wall_00・N_SoundW_00。kind のキー 108/148/188 − 80/120/160）
 const float kWallPad = 28.0f;
-// 盤面を右へ 11: 壁の左端が 160 + 11 − (180 + 28) / 2 = 67 = 左端のモード一覧の右端の次（mode_list_rect.json の x1）
-const float kRoomX = 11.0f;
-// 方眼 P_RoomGrid_00（my_min_Grid08_00 128x128、ミラー、線はテクセル 7.5 + 20k）。部屋の左端の画素がテクセル 28（線 27/28）を読み、
+// 盤面の横位置: 真ん中のまま（利用者指示 2026-09-28。9x9 のときは右へ 11 寄せていた）。7x7 の壁の左端は 76 で一覧（x < 67）と重ならない
+const float kRoomX = 0.0f;
+// 方眼 P_RoomGrid_00（my_min_Grid08_00 128x128、ミラー、線はテクセル 7.5 + 20k）。部屋の左端の画素がテクセル 48（線 47/48 = 8x8 と同じ。
+//   7x7 の右端の画素は 187 → ミラーで 68 = 線 67/68）を読み、
 //   1 画素 = 1 テクセル。texSRT（kind フレーム 4: 倍率 1.25、平行移動 0.5）はそのまま、Picture のテクスチャ座標 c を
 //   t = (c − 0.5) × 1.25 + 0.5 + 0.5 から解く（8x8 は c = 0..1 で t = 48..208 テクセル）
-const float kGridTexels = 128.0f, kGridFirstTexel = 28.0f, kGridScale = 1.25f, kGridTrans = 0.5f;
+const float kGridTexels = 128.0f, kGridFirstTexel = 48.0f, kGridScale = 1.25f, kGridTrans = 0.5f;
 // 真ん中のマス（kView が奇数のとき）: 隠した扉 P_door_00 を借りて P_Room_00 のマテリアルで方眼の直前に描き、頂点色で赤みを付ける。
-//   地の色 (255,236,174) → (255,210,165) 目安（G 210/236、B 165/174 を 255 倍）
-const u8 kCenterTint[4] = { 255, 227, 242, 255 };
+//   地の色 (255,236,174) → (255,185,150) 目安（G 185/236、B 150/174 を 255 倍。利用者指示 2026-09-28: もう少し濃く）
+const u8 kCenterTint[4] = { 255, 200, 220, 255 };
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
     "cip_01C_02x02.bclyt", "cip_01C_02x02.bclyt", "cip_01P_02x02.bclyt",
 };
-const u32 kMaxChips = 224;                  // 9x9 のアイテム 81 + 建物のコマ（1x1 に割っても 81）+ 余裕
+const u32 kMaxChips = 224;                  // 9x9 でも足りる数（7x7 はアイテム 49 + 建物のコマ 49）
 const u32 kBuildsPerFrame = 8;              // 1 フレームで組み立てるコマの数（組み立ての山を平らにする）
 const u32 kLytReserve = 192 * 1024;         // nw::lyt ヒープにこれだけは残す（ほかの UI の分）
 const u32 kTeardownWaitFrames = 3;          // 描画登録をやめてから壊すまで（GPU がまだ読んでいるかもしれない）
@@ -160,7 +161,7 @@ const u32 kMatFlags = 0x4D;                 // bit2 を落とすと GPU へ送�
 // 持ち上げる・写すアイテムの数。以前は 64（UnitCursor の最大）で、大きな範囲は 65 個目から掴めなかった（利用者報告 2026-09-27）。
 //   上画面のカーソル・複製と下画面のコマは盤面の周りだけ作るので、ここは村の物の数だけ持てればよい
 const u32 kMaxCarry = 2048;
-const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 9x9 の周り 1 マスで最大 121 か所（GridCursor::kMaxCursors 256 以下）
+const u32 kMaxCursorTiles = 128;            // 上画面の UnitCursor。盤面 7x7 の周り 1 マスで最大 81 か所（GridCursor::kMaxCursors 256 以下）
 const s32 kNearMargin = 1;                  // 盤面の周り何マスまで上画面に出すか（カーソル・複製）
 const u32 kCursorBlue = 0x00FFB060u;        // BuildingHighlight::kBlue（公共事業エディターの移動の色）
 const u8 kCursorTint = 0xB0;                // 公共事業エディターと同じ強さ
@@ -2298,11 +2299,12 @@ void FrameStep(void) {
     }
     // 描画登録（リストは毎フレーム空になる）。盤面 → 建物 → アイテム → 名前
     if (mgr != nullptr) {
-        MapModeList::Draw(mgr);             // 盤面より先 = 下（重ならない配置だが、はみ出したときも盤面が上）
         AddLayout(mgr, s_board, 1);
         const u32 ghosts = s_ghostStart < s_drawCount ? s_ghostStart : s_drawCount;
         for (u32 k = 0; k < ghosts; ++k)
             AddLayout(mgr, s_drawOrder[k]->layout, 1);
+        // モード一覧は盤面と盤面のコマより手前（利用者指示 2026-09-28）。範囲の枠・持ち上げたコマ・名前・選択肢はさらに手前
+        MapModeList::Draw(mgr);
         if (group)
             AddLayout(mgr, s_group, 1);     // 枠は盤面のコマの上、持ち上げたコマの下
         for (u32 k = ghosts; k < s_drawCount; ++k)

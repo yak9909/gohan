@@ -26,7 +26,7 @@ namespace MapModeList
     // 毎フレーム。mode = いまのモード（見た目をこれに合わせる）。held / x / y = 一覧が受け持つ指（下画面の画素）。
     // 戻り値: 一覧で決まったモード（無ければ −1）
     s32             Frame(u8 mode, bool held, u16 x, u16 y);
-    void            Draw(void *layoutMgr);      // 描画登録（盤面より先に呼ぶ = 盤面の下）
+    void            Draw(void *layoutMgr);      // 描画登録（盤面と盤面のコマの後に呼ぶ = 盤面より手前）
     bool            Contains(u32 x, u32 y);     // この画素で始まった指は一覧が受け持つ
     void            Destroy(void);              // 描画登録をやめて数フレーム後に
 }
