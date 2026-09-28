@@ -434,6 +434,7 @@ static bool BuildMarks() {
         return false;
     }
     s_markDrawer.underFirst = true;         // カーソルより先に描く（カーソルがマスの色の上）
+    s_markDrawer.groundFirst = true;        // マイデザインより上（マップエディターだけが作る）
     s_marksBuilt = true;
     s_markTakenSeq = 0xFFFFFFFFu;
     return true;
@@ -924,7 +925,9 @@ extern "C" void FrameCallback(void) {
         s_batch.holder = s_holder;
         s_batch.matrices = s_matrices;
         s_batch.count = s_placeCount < kMaxCursors ? s_placeCount : kMaxCursors;
-        // ★村の物体の下に描く（地面の後・物体の前。利用者指示 2026-09-28、F061）。村の物体の描画ノードが無ければ自前のノード
+        // ★村の物体の下に描く（地面の後・物体の前。利用者指示 2026-09-28、F061）。村の物体の描画ノードが無ければ自前のノード。
+        //   エディター（マス指定の形）のときだけマイデザインより上（F066。利用者指示 2026-09-29: 描画順の変更はエディターの間だけ）
+        s_drawer.groundFirst = s_tileMode;
         if (!InstancedDraw::SubmitUnder(s_drawer, &s_batch, 1))
             InstancedDraw::Submit(s_drawer, &s_batch, 1);
         s_submits += s_batch.count;

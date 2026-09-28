@@ -197,11 +197,13 @@ void DrawUnder(u32 ctx, bool first) {
 }
 
 void UnderCb0(u32 ctx, u32 userdata) {
+    // ★並べ替えるのは、マイデザインより上に描きたい物（groundFirst。エディターのカーソルとマスの色）が登録されたフレームだけ
+    //   （利用者指示 2026-09-29: 描画順の変更はエディターを起動している間だけ）。ほかのフレームはゲームの描き方のまま
     bool any = false;
     for (u32 i = 0; i < kMaxUnder; ++i)
-        any = any || (s_under[i] != nullptr && s_under[i]->underArmed);
+        any = any || (s_under[i] != nullptr && s_under[i]->underArmed && s_under[i]->groundFirst);
     if (any && userdata == s_underProc)
-        DrawGroundFirst(ctx, userdata);     // 描く物があるときだけ並べ替える（エディターを出していなければゲームのまま）
+        DrawGroundFirst(ctx, userdata);
     DrawUnder(ctx, true);                   // マスの色が先、カーソルが上
     DrawUnder(ctx, false);
     reinterpret_cast<FuncNodeCbFn>(kFgobjDrawCb0)(ctx, userdata);   // 村の物体の層 0（fgobj_DrawCallbackLayer0 0x59A900 → fgobj_DrawList(proc, ctx, proc+13740)。先頭でキャッシュを捨てる）
@@ -256,6 +258,7 @@ bool Create(Drawer &d, void *allocator) {
     d.overArmed = false;
     d.layer1Armed = false;
     d.underFirst = false;
+    d.groundFirst = false;
     FuncNodeCreate(d.holder, allocator);
     if (R32(reinterpret_cast<u32>(d.holder) + 4) == 0u)
         return false;
