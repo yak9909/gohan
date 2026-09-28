@@ -130,14 +130,80 @@ const u32 kMaxUnder = 4;
 Drawer *s_under[kMaxUnder];
 u32 s_underProc, s_underNode;               // 包んだ描画ノードとその持ち主（場面が変わったら触らない）
 
-void UnderCb0(u32 ctx, u32 userdata) {
+// ---- 地面に張り付いた物を先に描く（IDA-opus-5.5-F066。利用者指示 2026-09-28: UnitCursor とマスの色は
+//   「地面に張り付いた物（当面マイデザインだけ）より上・それ以外より下」。建物の入口など平らな所で Z-Fighting しないよう、
+//   深度で競わせず描く順で決める: 地面 → マイデザイン → カーソル・マスの色（深度を書かない）→ 残りの村の物体）
+//   マイデザインは fgobj_Object_SetupDrawKind 0x58F3B4 が obj+104 |= 0x20000 にするので層 1 の一覧（proc+13752、cb1 0x59BFEC）で描かれる。
+//   その一覧からマイデザインのノードだけを自分の一覧へ移し、ゲームの fgobj_DrawList 0x59A918(proc, ctx, 一覧) で描く
+//   （描く中身はゲームのまま。最後に一覧を空にし、前後で描画のキャッシュを戻すのも同じ関数）。
+//   一覧 = {+0 ?, +4 先頭, +8 末尾}、ノード = obj+12 {+4 前, +8 次, +12 = 物体}（sub_13F84C / sead_List_UnlinkAll 0x133B20）。
+//   一覧は Proc の slot 12 sub_59C8FC が描画ノードを出す前に組むので、cb0 のときには揃っている。
+typedef void (*FgobjDrawListFn)(u32 proc, u32 ctx, u32 list);
+const FgobjDrawListFn FgobjDrawList = reinterpret_cast<FgobjDrawListFn>(0x0059A918);
+const u32 kFgobjList1 = 13752;
+const u32 kListHead = 4, kListTail = 8, kLinkPrev = 4, kLinkNext = 8, kLinkObj = 12;
+const u32 kObjItem = 100;                   // アイテム（fgobj_Object_BuildForItem 0x58FB40 の Item_Copy）
+const u16 kMyDesignItem = 0x9D;             // Item_IsMyDesign 0x7683E4（(item & 0x7FFF) == 157）
+const u32 kMaxListWalk = 4096;
+alignas(4) u32 s_groundList[3];
+
+bool Plausible(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
+
+void DrawGroundFirst(u32 ctx, u32 proc) {
+    const u32 list = proc + kFgobjList1;
+    const u32 own = reinterpret_cast<u32>(s_groundList);
+    s_groundList[0] = s_groundList[1] = s_groundList[2] = 0u;
+    u32 n = R32(list + kListHead);
+    for (u32 k = 0; n != 0u && k < kMaxListWalk; ++k) {
+        if (!Plausible(n))
+            break;                          // 壊れていたら辿るのをやめる（移した分は下で必ず描いて外す）
+        const u32 next = R32(n + kLinkNext);
+        const u32 obj = R32(n + kLinkObj);
+        if (Plausible(obj) && (*reinterpret_cast<const volatile u16 *>(obj + kObjItem) & 0x7FFFu) == kMyDesignItem) {
+            const u32 prev = R32(n + kLinkPrev);
+            if (prev != 0u)
+                W32(prev + kLinkNext, next);
+            else
+                W32(list + kListHead, next);
+            if (next != 0u)
+                W32(next + kLinkPrev, prev);
+            else
+                W32(list + kListTail, prev);
+            W32(n + kLinkNext, 0u);
+            if (s_groundList[1] != 0u) {
+                W32(s_groundList[2] + kLinkNext, n);
+                W32(n + kLinkPrev, s_groundList[2]);
+            } else {
+                s_groundList[1] = n;
+                W32(n + kLinkPrev, 0u);
+            }
+            s_groundList[2] = n;
+        }
+        n = next;
+    }
+    // ★移したノードは必ずここで描いて一覧から外す（外さないと前後が 0 でなくなり、次のフレームで一覧へ入らず消える）
+    if (s_groundList[1] != 0u)
+        FgobjDrawList(proc, ctx, own);
+}
+
+void DrawUnder(u32 ctx, bool first) {
     for (u32 i = 0; i < kMaxUnder; ++i) {
         Drawer *d = s_under[i];
-        if (d == nullptr || !d->underArmed)
+        if (d == nullptr || !d->underArmed || d->underFirst != first)
             continue;
         d->underArmed = false;
         DrawBatches(ctx, *d, kAllLayers);
     }
+}
+
+void UnderCb0(u32 ctx, u32 userdata) {
+    bool any = false;
+    for (u32 i = 0; i < kMaxUnder; ++i)
+        any = any || (s_under[i] != nullptr && s_under[i]->underArmed);
+    if (any && userdata == s_underProc)
+        DrawGroundFirst(ctx, userdata);     // 描く物があるときだけ並べ替える（エディターを出していなければゲームのまま）
+    DrawUnder(ctx, true);                   // マスの色が先、カーソルが上
+    DrawUnder(ctx, false);
     reinterpret_cast<FuncNodeCbFn>(kFgobjDrawCb0)(ctx, userdata);   // 村の物体の層 0（fgobj_DrawCallbackLayer0 0x59A900 → fgobj_DrawList(proc, ctx, proc+13740)。先頭でキャッシュを捨てる）
     for (u32 i = 0; i < kMaxUnder; ++i) {                           // 層 0 の後に描く分（SubmitOver）
         Drawer *d = s_under[i];
@@ -189,6 +255,7 @@ bool Create(Drawer &d, void *allocator) {
     d.underArmed = false;
     d.overArmed = false;
     d.layer1Armed = false;
+    d.underFirst = false;
     FuncNodeCreate(d.holder, allocator);
     if (R32(reinterpret_cast<u32>(d.holder) + 4) == 0u)
         return false;

@@ -31,6 +31,7 @@ namespace InstancedDraw
         bool            underArmed;     // 物体の下に描く分がこのフレームに登録された（描いたら落とす）
         bool            overArmed;      // 村の物体の層 0 の後に描く分がこのフレームに登録された（描いたら落とす）
         bool            layer1Armed;    // 村の物体の層 1 の前に描く分がこのフレームに登録された（描いたら落とす）
+        bool            underFirst;     // SubmitUnder の中でほかより先に描く（マスの色。カーソルをその上に）。Create のあとに立てる
     };
 
     // FuncNode を作る。allocator は ssys::ma::HeapAllocator（vtable +8 で確保）。
@@ -46,6 +47,8 @@ namespace InstancedDraw
     //   村の物体の描画ノード（*0x948E70 + 0x45B0 の +4）の層 0 のコールバック（+0x148 = 0x59A900）を包み、その先頭で描く
     //   = 地面の後・村の物体の前。束のメッシュは層を問わずこのとき描く。描けない場面（村の物体の描画ノードが無い）では false
     //   （呼ぶ側が Submit に切り替える）。深度を書かない体にしておくこと（DisableDepthWrite）。
+    //   ★その前に、村の物体の層 1 の一覧からマイデザインだけを抜いてゲームの fgobj_DrawList で先に描く（IDA-opus-5.5-F066）
+    //   = 地面 → マイデザイン → ここで描く物 → 残りの村の物体。登録が 1 つも無いフレームは並べ替えない。
     bool    SubmitUnder(Drawer &d, const Batch *batches, u32 count);
     // ★村の物体の層 0（マイデザインなど地面の物を含む）の後に描く（利用者指示 2026-09-28: マップエディターのマスの色は
     //   マイデザインより上・それ以外より下）。SubmitUnder と同じ包みで、0x59A900 を呼んだあとに描く。描画ノードは作らなくてよい

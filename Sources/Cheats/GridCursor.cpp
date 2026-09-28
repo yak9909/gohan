@@ -433,6 +433,7 @@ static bool BuildMarks() {
         s_markFail = Fail::kHeapExhausted;
         return false;
     }
+    s_markDrawer.underFirst = true;         // カーソルより先に描く（カーソルがマスの色の上）
     s_marksBuilt = true;
     s_markTakenSeq = 0xFFFFFFFFu;
     return true;
@@ -486,9 +487,11 @@ static void DrawMarks() {
     const u32 a = s_markAlpha;
     for (u32 k = 0; k < kMarkKinds; ++k)          // Constant5 = 0xAABBGGRR（毎フレーム。活性化が毎回読む。GridCursor::ApplyTint と同じ）
         MarkWr(s_markConst5[k], (a << 24) | (kMarkColour[k] & 0x00FFFFFFu));
-    // 自前の描画ノード（層 1 の段）。利用者の実機確認 2026-09-28: 村の物体の層 0 の後・層 1 の前ではマイデザインの下、
-    //   自前の描画ノードのときだけマイデザインの上に出た
-    InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
+    // 村の物体の下（InstancedDraw::SubmitUnder: 地面 → マイデザイン → ここ → 残りの村の物体。IDA-opus-5.5-F066）。
+    //   利用者の実機確認 2026-09-28: 層 0 の後・層 1 の前（マイデザインより前）では下、自前の描画ノード（後）では上だった。
+    //   村の物体の描画ノードが無い場面だけ自前の描画ノード
+    if (!InstancedDraw::SubmitUnder(s_markDrawer, s_markBatches, kMarkKinds))
+        InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
 }
 
 static bool BuildCursor() {

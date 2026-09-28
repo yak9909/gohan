@@ -101,7 +101,8 @@ namespace GridCursor
     // 最初は白・赤・黄だった）。深度は書かない。UnitCursor とは別の体（2 体）。
     static const u32 kMaxMarks = 64;
     static const u32 kMarkKinds = 2;
-    // 描くのは自前の描画ノード（層 1 の段）。村の物体の層 0 の後・層 1 の前ではマイデザインより下に出た（利用者の実機確認 2026-09-28）
+    // 描くのは InstancedDraw::SubmitUnder（地面 → マイデザイン → マスの色 → カーソル → 残りの村の物体。IDA-opus-5.5-F066）。
+    //   村の物体の描画ノードが無い場面は自前の描画ノード
     void            EnableMarks(bool on);   // ShowTiles の前に。偽ならマスの色の体を作らない
     void            SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count);
     void            SetMarkAlpha(u8 alpha); // 2 色に共通のアルファ（利用者の決定 50）
