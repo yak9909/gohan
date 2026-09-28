@@ -96,6 +96,9 @@ const float kGridTexels = 128.0f, kGridFirstTexel = 48.0f, kGridScale = 1.25f, k
 // 真ん中のマス（kView が奇数のとき）: 隠した扉 P_door_00 を借りて P_Room_00 のマテリアルで方眼の直前に描き、頂点色で赤みを付ける。
 //   地の色 (255,236,174) → (255,185,150) 目安（G 185/236、B 150/174 を 255 倍。利用者指示 2026-09-28: もう少し濃く）
 const u8 kCenterTint[4] = { 255, 200, 220, 255 };
+// 中心から 5x5 の輪郭のマス（中心から 2 マス = チェビシェフ距離 2）: 盤面は真っ白、上画面は白（利用者指示 2026-09-28）
+const s32 kMarkRing = 2;
+const u8 kMarkWhite = 0, kMarkRed = 1, kMarkYellow = 2;    // GridCursor::SetMarks の種類
 // 利用者指示 2026-09-27: fgobj は通常アイテムと同じ C（色だけ濃い緑）、建物は全部 1x1 の P（色はオレンジ）
 enum ChipType : u8 { kItemC, kFgobjC, kBuild11, kChipTypes };
 const char *const kChipLayouts[kChipTypes] = {
@@ -286,6 +289,8 @@ volatile u32 s_buildChipCount;
 // ---- メニュー → 描画 ----
 volatile bool s_want;
 volatile s32 s_viewX, s_viewY;              // 盤面の左上のマス
+s32 s_marksViewX = -1, s_marksViewY = -1;   // 上画面のマスの色を最後に渡したときの盤面（メニュースレッド）
+u32 s_markFailTold;                          // 知らせたマスの色の失敗の理由
 // タッチはメニュースレッドが毎ティック（約 16ms）読んだ点を全部リングに積み、描画スレッド（30fps）がまとめて処理する。
 //   以前は最後の 1 点だけを見ていて、速くなぞると間のマスを飛ばした（利用者報告 2026-09-27）。
 //   1 語 = bit31 触れている / bit0-8 x / bit9-16 y（1 語で書くので途中の値を読まない）
@@ -509,6 +514,41 @@ bool ExpandBoard(void) {
         SetRotateZ(door, 0.0f);
         SetTexCoords(door, 0.0f, 1.0f);
         B(door, kPaneFlagsByte) |= 1u;
+        // 中心から 5x5 の輪郭を真っ白に（利用者指示 2026-09-28）: 隠した窓 P_Window_00（5x5 の白い板）と P_Window_01（3x3 の地の色の板）を
+        //   地の後・真ん中の前に重ねる。色は自分のマテリアルの黒色・白色を同じ値にする（テクスチャに依らず一色。
+        //   出力 = lerp(黒色, 白色, テクセル) × 頂点色、F040）。コマの色と同じく +0x4D bit2 を落として送り直させる
+        void *windows = FindPane(s_board, "N_Window_00");
+        void *white = FindPane(s_board, "P_Window_00");
+        void *inner = FindPane(s_board, "P_Window_01");
+        if (windows == nullptr || white == nullptr || inner == nullptr || kView < 2 * kMarkRing + 1)
+            return false;
+        const u32 baseMat = W(base, kPicMaterial);
+        static const u8 kWhite[4] = { 255, 255, 255, 255 };
+        u8 floor[4];
+        std::memcpy(floor, reinterpret_cast<const void *>(baseMat + kMatColors + 4), 4);   // 地の白色（テクスチャは全部 255 なのでこの色）
+        floor[3] = 255;
+        const float sizes[2] = { (float)(2 * kMarkRing + 1) * kTile, (float)(2 * kMarkRing - 1) * kTile };
+        void *const plates[2] = { white, inner };
+        const u8 *const colours[2] = { kWhite, floor };
+        for (u32 k = 0; k < 2; ++k) {
+            void *pl = plates[k];
+            const u32 mat = W(pl, kPicMaterial);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors), colours[k], 4);
+            std::memcpy(reinterpret_cast<void *>(mat + kMatColors + 4), colours[k], 4);
+            *reinterpret_cast<u8 *>(mat + kMatFlags) &= ~4u;
+            for (u32 i = 0; i < 4; ++i)
+                W(pl, kPicVtxColor + 4 * i) = 0xFFFFFFFFu;
+            B(pl, kPaneBasePos) = (u8)((B(pl, kPaneBasePos) & 0xF0u) | 4u);
+            F(pl, kPaneSizeX) = sizes[k];
+            F(pl, kPaneSizeY) = sizes[k];
+            F(pl, kPaneScaleX) = 1.0f;
+            F(pl, kPaneScaleY) = 1.0f;
+            SetTranslate(pl, 0.0f, 0.0f);
+            SetRotateZ(pl, 0.0f);
+            B(pl, kPaneFlagsByte) |= 1u;
+            PaneRemove(windows, pl);
+            PaneInsert(s_roomPane, grid, pl);   // 地の後・方眼の前（入れた順 = 描く順: 白 → 地の色 → 真ん中）
+        }
         PaneRemove(doors, door);            // 地（P_Room_00）の後・方眼の前に描く
         PaneInsert(s_roomPane, grid, door);
     }
@@ -2071,6 +2111,9 @@ bool Start(void) {
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"村の屋外で使ってください");
         return false;
     }
+    GridCursor::EnableMarks(true);          // 上画面のマスの色（利用者指示 2026-09-28）
+    s_marksViewX = s_marksViewY = -1;
+    s_markFailTold = 0;
     if (!GridCursor::ShowTiles()) {         // 持ち上げ中の行き先に UnitCursor（公共事業エディターと同じ出し方）
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"グリッドカーソルを先に止めてください");
         return false;
@@ -2169,6 +2212,37 @@ void ForwardCursor(void) {
         ys[i] = s_cursorY[i];
     }
     GridCursor::SetTiles(xs, ys, n, -1, 0, 0);
+}
+
+// 上画面のマスの色（利用者指示 2026-09-28）: 盤面の 7x7 に、中心から 5x5 の輪郭 = 白、真ん中 = 赤、ほか = 黄
+
+u8 MarkKind(s32 i, s32 j) {
+    const s32 c = kView / 2;
+    const s32 dx = i > c ? i - c : c - i, dy = j > c ? j - c : c - j;
+    const s32 ring = dx > dy ? dx : dy;
+    return ring == 0 ? kMarkRed : (ring == kMarkRing ? kMarkWhite : kMarkYellow);
+}
+
+void ForwardMarks(void) {
+    const s32 vx = s_viewX, vy = s_viewY;
+    if (vx == s_marksViewX && vy == s_marksViewY)
+        return;
+    s_marksViewX = vx;
+    s_marksViewY = vy;
+    u8 xs[kView * kView], ys[kView * kView], kinds[kView * kView];
+    u32 n = 0;
+    for (s32 j = 0; j < kView; ++j) {
+        for (s32 i = 0; i < kView; ++i) {
+            const s32 x = vx + i, y = vy + j;
+            if (x < 0 || y < 0 || x >= kTilesX || y >= kTilesY)
+                continue;
+            xs[n] = (u8)x;
+            ys[n] = (u8)y;
+            kinds[n] = MarkKind(i, j);
+            ++n;
+        }
+    }
+    GridCursor::SetMarks(xs, ys, kinds, n);
 }
 
 void StepTouchInput(void) {
@@ -2350,6 +2424,7 @@ void Stop(void) {
         return;
     s_running = false;
     s_want = false;
+    GridCursor::EnableMarks(false);
     GridCursor::Hide();
     FieldCamera::Release();
     // カメラは描画スレッドが戻す。盤面は退場アニメのあと描画スレッドが片付け、元の下画面 UI を戻す（DestroyAll）。
@@ -2409,7 +2484,17 @@ void Tick(u32 keys) {
     if ((pressed & (u32)Key::B) && s_mode == Mode::Select && !s_listActive)
         s_cancelSeq = s_cancelSeq + 1;      // 持ち上げ・範囲を 1 段ずつ解く（一覧の B は一覧が受ける）
     ForwardCursor();
+    ForwardMarks();
     NotifyEvents();
+    {   // 上画面のマスの色が組めなかった（材質の形が想定と違う・ヒープ不足）。黙って消えないよう 1 回だけ知らせる
+        const u32 why = GridCursor::MarkFailReason();
+        if (why != 0u && why != s_markFailTold) {
+            s_markFailTold = why;
+            char msg[80];
+            std::snprintf(msg, sizeof(msg), u8"上画面のマスの色を出せません（理由 %u）", (unsigned)why);
+            GuiMenu::NotifyRed(Cheats::kMeOn, msg);
+        }
+    }
     if (GuiMenu::IsVisible()) {
         PushTouch(false, 0, 0);
         return;
@@ -2441,6 +2526,19 @@ namespace CTRPluginFramework
             {
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
+            }
+            int     g_markAlphaIndex = -1;
+            bool    MarkAlphaRead(int index, s32 *value)
+            {
+                (void)index;
+                *value = (s32)GridCursor::MarkAlpha();
+                return true;
+            }
+
+            void    MarkAlphaWrite(int index, s32 value)
+            {
+                (void)index;
+                GridCursor::SetMarkAlpha((u8)(value < 0 ? 0 : (value > 255 ? 255 : value)));
             }
             bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
 
@@ -2494,6 +2592,9 @@ namespace CTRPluginFramework
             g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
+            g_markAlphaIndex = GuiMenu::FindItem(kMeMarkAlpha);
+            if (g_markAlphaIndex >= 0)
+                GuiMenu::RegisterLinked(g_markAlphaIndex, MarkAlphaRead, MarkAlphaWrite);
         }
     }
 }

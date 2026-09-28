@@ -29,6 +29,7 @@ namespace InstancedDraw
         u32             drawn;          // 描いた数（直近のフレーム。確認用）
         u32             skipped;        // コマンドバッファの残りが足りずに描かなかった数
         bool            underArmed;     // 物体の下に描く分がこのフレームに登録された（描いたら落とす）
+        bool            overArmed;      // 村の物体の層 0 の後に描く分がこのフレームに登録された（描いたら落とす）
     };
 
     // FuncNode を作る。allocator は ssys::ma::HeapAllocator（vtable +8 で確保）。
@@ -45,6 +46,10 @@ namespace InstancedDraw
     //   = 地面の後・村の物体の前。束のメッシュは層を問わずこのとき描く。描けない場面（村の物体の描画ノードが無い）では false
     //   （呼ぶ側が Submit に切り替える）。深度を書かない体にしておくこと（DisableDepthWrite）。
     bool    SubmitUnder(Drawer &d, const Batch *batches, u32 count);
+    // ★村の物体の層 0（マイデザインなど地面の物を含む）の後に描く（利用者指示 2026-09-28: マップエディターのマスの色は
+    //   マイデザインより上・それ以外より下）。SubmitUnder と同じ包みで、0x59A900 を呼んだあとに描く。描画ノードは作らなくてよい
+    //   （Create 不要）。深度は書かない体にしておくこと。層 0 の物体の手前の画素は深度テストで隠れる。
+    bool    SubmitOver(Drawer &d, const Batch *batches, u32 count);
     // 体の材質の深度書き込みを切る（フラグメント部分 M+0x50 の +280 bit1 を落とし、鍵 +720 を 0 に。汎用の書き出し 0x49CA94〜0x49CAF8）。
     //   体ごとの写し（bufferOption 0x834）か自前の資源の体にだけ使うこと
     void    DisableDepthWrite(void *holder);

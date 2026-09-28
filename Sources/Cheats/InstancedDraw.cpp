@@ -138,6 +138,13 @@ void UnderCb0(u32 ctx, u32 userdata) {
         DrawBatches(ctx, *d, kAllLayers);
     }
     reinterpret_cast<FuncNodeCbFn>(kFgobjDrawCb0)(ctx, userdata);   // 村の物体の層 0（fgobj_DrawCallbackLayer0 0x59A900 → fgobj_DrawList(proc, ctx, proc+13740)。先頭でキャッシュを捨てる）
+    for (u32 i = 0; i < kMaxUnder; ++i) {                           // 層 0 の後に描く分（SubmitOver）
+        Drawer *d = s_under[i];
+        if (d == nullptr || !d->overArmed)
+            continue;
+        d->overArmed = false;
+        DrawBatches(ctx, *d, kAllLayers);
+    }
 }
 
 // いまの場面の村の物体の描画ノード（無ければ 0）
@@ -166,6 +173,7 @@ bool Create(Drawer &d, void *allocator) {
     d.batches = nullptr;
     d.batchCount = 0;
     d.underArmed = false;
+    d.overArmed = false;
     FuncNodeCreate(d.holder, allocator);
     if (R32(reinterpret_cast<u32>(d.holder) + 4) == 0u)
         return false;
@@ -187,6 +195,7 @@ void Destroy(Drawer &d) {
     if (!any)
         Unhook();
     d.underArmed = false;
+    d.overArmed = false;
     d.batches = nullptr;
     d.batchCount = 0;
     if (Created(d))
@@ -194,7 +203,9 @@ void Destroy(Drawer &d) {
     std::memset(d.holder, 0, sizeof(d.holder));
 }
 
-bool SubmitUnder(Drawer &d, const Batch *batches, u32 count) {
+namespace {
+// 村の物体の描画ノードの層 0 を包み、d を登録する（SubmitUnder / SubmitOver 共通）
+bool Arm(Drawer &d, const Batch *batches, u32 count, bool over) {
     u32 proc = 0;
     const u32 node = FgobjFuncNode(proc);
     if (node == 0u)
@@ -220,8 +231,18 @@ bool SubmitUnder(Drawer &d, const Batch *batches, u32 count) {
     d.batches = batches;
     d.batchCount = count;
     d.drawn = 0;
-    d.underArmed = count != 0u;
+    d.underArmed = !over && count != 0u;
+    d.overArmed = over && count != 0u;
     return true;
+}
+}  // namespace
+
+bool SubmitUnder(Drawer &d, const Batch *batches, u32 count) {
+    return Arm(d, batches, count, false);
+}
+
+bool SubmitOver(Drawer &d, const Batch *batches, u32 count) {
+    return Arm(d, batches, count, true);
 }
 
 void DisableDepthWrite(void *holder) {

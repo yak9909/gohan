@@ -46,6 +46,24 @@ static u8 s_rotAnim[kMaterialAnimBytes] GC_ALIGNED;
 static float s_matrices[kMaxCursors][12] GC_ALIGNED;    // 置き場ごとの行列（描画スレッドが Pose で書き、描画で読む）
 static InstancedDraw::Drawer s_drawer;
 static InstancedDraw::Batch s_batch;
+// マスの色（EnableMarks / SetMarks）
+static u8 s_markHolder[kMarkKinds][kNodeHolderBytes] GC_ALIGNED;
+static float s_markMatrices[kMaxMarks][12] GC_ALIGNED;  // 種類の順に詰める（白 → 赤 → 黄）
+static u8 s_markTev[kMarkKinds][244] __attribute__((aligned(4)));   // 体ごとの TEV の写し（活性化が CPU で読んでコマンドへ写す）
+static InstancedDraw::Drawer s_markDrawer;
+static InstancedDraw::Batch s_markBatches[kMarkKinds];
+static volatile bool s_marksWanted;
+static bool s_marksBuilt;
+static u32 s_markHolders;                // 作った体の数（壊すときに使う）
+static volatile u32 s_markFail;
+static u32 s_markConst5[kMarkKinds];     // 体ごとの Constant5 の番地
+static u8 s_markPendX[kMaxMarks], s_markPendY[kMaxMarks], s_markPendKind[kMaxMarks];
+static volatile u32 s_markPendCount, s_markPendSeq;
+static u32 s_markTakenSeq = 0xFFFFFFFFu;
+static u32 s_markCount[kMarkKinds];
+static volatile u8 s_markAlpha = 0x80;
+// 色（0x00BBGGRR）: 白・赤・黄（利用者指示: 5x5 の輪郭 = 白、真ん中 = 赤、ほか = 黄）
+static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu, 0x000000FFu, 0x0000FFFFu };
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -71,7 +89,8 @@ static const float kRotateFrame45 = 0.0f;
 // ★足りないまま建てるとゲーム側が落ちる（F034）ので、建てる前に残りを見る（kHeapExhausted）。
 static const u32 kInstanceBytesPerCursor = 6144;
 static const u32 kInstanceHeapSlack = 0x4000;
-static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor + InstancedDraw::kCreateBytes + kInstanceHeapSlack;
+// ★マスの色の体 3 つぶん（kMarkKinds × 1 体）も足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
+static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (1 + kMarkKinds) + InstancedDraw::kCreateBytes + kInstanceHeapSlack;
 // ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
 static const u32 kParentReserve = 0xC000;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
@@ -291,6 +310,180 @@ static void PoseAll() {
 // Build and teardown, both on the game's draw thread.
 // ---------------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------------
+// マスの色（マップエディター）。UnitCursor と同じ資源から 3 体を作り、それぞれの材質を
+//   TEV = 段 0 で Constant5 の色とアルファをそのまま（REPLACE）、段 1〜5 は前段のまま
+//   ブレンド = SRC_A / 1 − SRC_A（色）、ONE / 1 − SRC_A（アルファ）、深度は書かない
+// にする。材質は bufferOption 0x834 で体ごとの写し（IDA-opus-5-F022/F023: 資源を潰しても CPU は落ちない）。
+// TEV だけは資源と共有のことがあるので、BuildingHighlight::ApplyMaterial（F011〜F013、実機で使用）と同じく
+// gohan の配列へ写し、体の色の部分の未使用 +648 から相対で指し、材質 +72 を色の部分へ向ける。
+// ---------------------------------------------------------------------------------------
+
+static const u32 kMarkModelMaterials = 0x164;   // nw::gfx::Model: Material* の配列（BuildingHighlight と同じ）
+static const u32 kMarkMatColour = 48, kMarkMatTev = 72, kMarkMatFrag = 80;
+static const u32 kMarkTevRel = 648, kMarkTevKey = 712, kMarkConst5 = 36 + 4 * 54;
+static const u32 kMarkTevBytes = 244, kMarkTevStage0 = 44, kMarkTevStageBytes = 28, kMarkTevLutRel = 40;
+static const u32 kMarkFragOpFlags = 280, kMarkFragFbRead = 300, kMarkFragCheckA = 320, kMarkFragCheckB = 324;
+static const u32 kMarkFragBlend = 328, kMarkFragKey = 720;
+// PICA 0x101: 色の式 0（加算）、アルファの式 0、色 src 6（SRC_A）dst 7（1 − SRC_A）、アルファ src 1（ONE）dst 7
+static const u32 kMarkBlend = (6u << 16) | (7u << 20) | (1u << 24) | (7u << 28);
+
+static inline u32 MarkRd(u32 a) { return *reinterpret_cast<volatile u32*>(a); }
+static inline void MarkWr(u32 a, u32 v) { *reinterpret_cast<volatile u32*>(a) = v; }
+
+// 材質 1 つを単色にする。戻り値 0 = 済み、ほかは失敗の番号（100 番台）
+static u32 MarkMaterial(u32 m, u32 kind) {
+    const u32 colour = MarkRd(m + kMarkMatColour);
+    const u32 tevres = MarkRd(m + kMarkMatTev);
+    const u32 frag = MarkRd(m + kMarkMatFrag);
+    if (!BuildingHighlight::SafeReadable(colour, kMarkTevKey + 4) || !BuildingHighlight::SafeReadable(tevres, kMarkTevKey + 4))
+        return 101;
+    // フラグメントの設定が体のもの（色の部分と同じ物で、0x100 / 0x101 の既定の形）でなければ、ブレンドは変えられない
+    if (frag != colour || MarkRd(frag + kMarkFragCheckA) != 0x00E40100u || MarkRd(frag + kMarkFragCheckB) != 0x803F0100u)
+        return 102;
+    const u32 rel = MarkRd(tevres + kMarkTevRel);
+    if (rel == 0u)
+        return 103;
+    const u32 tev = tevres + kMarkTevRel + rel;
+    if (!BuildingHighlight::SafeReadable(tev, kMarkTevBytes))
+        return 104;
+    u8* work = s_markTev[kind];
+    std::memcpy(work, reinterpret_cast<const void*>(tev), kMarkTevBytes);
+    for (u32 i = 0; i < 6; ++i) {
+        u32* s = reinterpret_cast<u32*>(work + kMarkTevStage0 + kMarkTevStageBytes * i);
+        // [0] 定数の選択 [1] 入力 rgb | a<<16（4bit×3、E = 定数、F = 前段）[3] オペランド [4] 合成（0 = REPLACE）[6] 倍率
+        s[0] = 5;
+        s[1] = i == 0 ? 0x000E000Eu : 0x000F000Fu;
+        s[3] = 0;
+        s[4] = 0;
+        s[6] = 0;
+    }
+    if (colour != tevres) {
+        if (MarkRd(colour + kMarkTevRel) != 0u)
+            return 105;
+        const u32 dst = reinterpret_cast<u32>(work);
+        const u32 lut = *reinterpret_cast<u32*>(work + kMarkTevLutRel);
+        if (lut != 0u)
+            *reinterpret_cast<u32*>(work + kMarkTevLutRel) = tev + kMarkTevLutRel + lut - (dst + kMarkTevLutRel);
+        MarkWr(colour + kMarkTevRel, dst - (colour + kMarkTevRel));
+        MarkWr(m + kMarkMatTev, colour);
+    } else {
+        std::memcpy(reinterpret_cast<void*>(tev), work, kMarkTevBytes);
+    }
+    MarkWr(colour + kMarkTevKey, 0u);
+    MarkWr(frag + kMarkFragFbRead, 0u);
+    MarkWr(frag + kMarkFragBlend, kMarkBlend);
+    MarkWr(frag + kMarkFragOpFlags, MarkRd(frag + kMarkFragOpFlags) & ~2u);     // 深度を書かない（F061）
+    MarkWr(frag + kMarkFragKey, 0u);
+    s_markConst5[kind] = colour + kMarkConst5;
+    return 0;
+}
+
+static void DestroyMarks() {
+    InstancedDraw::Destroy(s_markDrawer);
+    for (u32 k = 0; k < s_markHolders; ++k)
+        if (*Word(s_markHolder[k], 4) != 0u)
+            ModelInstanceDestroy(s_markHolder[k]);
+    s_markHolders = 0;
+    s_marksBuilt = false;
+}
+
+static bool BuildMarks() {
+    void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
+    for (u32 k = 0; k < kMarkKinds; ++k) {
+        if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor) {
+            s_markFail = Fail::kHeapExhausted;
+            return false;
+        }
+        void* holder = s_markHolder[k];
+        NodeHolderCtor(holder);
+        const int created = ModelInstanceCreate(holder, s_model, s_instanceAllocator, s_instanceAllocator, 0x834u, 1u, 3u);
+        void* node = *reinterpret_cast<void**>(Word(holder, 4));
+        if (created != 1 || !IsHeapPointer(node)) {
+            s_markFail = Fail::kCreateFailed;
+            return false;
+        }
+        s_markHolders = k + 1;
+        if (*Word(node, kNodeVtable) != kSkeletalModelVtable) {
+            s_markFail = Fail::kNodeWrongVtable;
+            return false;
+        }
+        if (!IsHeapPointer(*reinterpret_cast<void**>(Word(node, kNodeMaterialActivator)))) {
+            s_markFail = Fail::kActivatorNull;
+            return false;
+        }
+        if (*Word(node, kNodeMeshArrayBegin) == *Word(node, kNodeMeshArrayEnd)) {
+            s_markFail = Fail::kSharedMeshArray;
+            return false;
+        }
+        const u32 arr = *Word(node, kMarkModelMaterials);
+        if (!BuildingHighlight::SafeReadable(arr, 8) || !BuildingHighlight::LooksLikeMaterial(MarkRd(arr))
+            || BuildingHighlight::LooksLikeMaterial(MarkRd(arr + 4))) {
+            s_markFail = 106;                   // UnitCursor の材質は 1 つ（m_UnitCursor）のはず
+            return false;
+        }
+        const u32 why = MarkMaterial(MarkRd(arr), k);
+        if (why != 0u) {
+            s_markFail = why;
+            return false;
+        }
+    }
+    s_marksBuilt = true;
+    s_markTakenSeq = 0xFFFFFFFFu;
+    return true;
+}
+
+// 村のマス (x, y) の中心・地面の高さに 1 マス（UnitCursor の板 32x32、倍率 1）
+static void PoseMark(u32 index, u32 tx, u32 ty) {
+    float pos[3] = { (float)(32 * tx + 16), 0.0f, (float)(32 * ty + 16) };
+    pos[1] = GroundHeight(pos, 0);
+    float out[3] = { pos[0], pos[1], pos[2] };
+    u16 angle = 0;
+    if (RoomIsCurved())
+        angle = FieldPositionToRenderSpace(out, pos);
+    float* m = s_markMatrices[index];
+    for (u32 i = 0; i < 12; ++i)
+        m[i] = 0.0f;
+    m[0] = m[5] = m[10] = 1.0f;
+    m[3] = out[0];
+    m[7] = out[1];
+    m[11] = out[2];
+    if (angle != 0)
+        AppendRotationX16(m, angle);
+}
+
+static void PoseMarks() {
+    const u32 seq = s_markPendSeq;
+    u32 count = s_markPendCount;
+    if (count > kMaxMarks)
+        count = kMaxMarks;
+    u32 at = 0;
+    for (u32 k = 0; k < kMarkKinds; ++k) {
+        s_markCount[k] = 0;
+        s_markBatches[k].holder = s_markHolder[k];
+        s_markBatches[k].matrices = &s_markMatrices[at];
+        for (u32 i = 0; i < count; ++i) {
+            if (s_markPendKind[i] != k)
+                continue;
+            PoseMark(at++, s_markPendX[i], s_markPendY[i]);
+            ++s_markCount[k];
+        }
+        s_markBatches[k].count = s_markCount[k];
+    }
+    s_markTakenSeq = seq;
+}
+
+static void DrawMarks() {
+    if (!s_marksBuilt || !s_marksWanted)
+        return;
+    if (s_markTakenSeq != s_markPendSeq)
+        PoseMarks();
+    const u32 a = s_markAlpha;
+    for (u32 k = 0; k < kMarkKinds; ++k)          // Constant5 = 0xAABBGGRR（毎フレーム。活性化が毎回読む。GridCursor::ApplyTint と同じ）
+        MarkWr(s_markConst5[k], (a << 24) | (kMarkColour[k] & 0x00FFFFFFu));
+    InstancedDraw::SubmitOver(s_markDrawer, s_markBatches, kMarkKinds);
+}
+
 static bool BuildCursor() {
     // ★これを戻り値で済ませてはいけない。instance ヒープが尽きると
     //   `nwgfx_SkeletalModel_Create 0x0049693C` は失敗した確保の null をそのまま辿り、
@@ -376,6 +569,7 @@ static bool BuildCursor() {
 }
 
 static void DestroyCursors() {
+    DestroyMarks();
     // 描画ノードが先（コールバックが体を読むので）。どちらもこのスレッドで、描画リストへ出すのをやめて数フレーム後
     InstancedDraw::Destroy(s_drawer);
     if (*Word(s_holder, 4) != 0u) {
@@ -725,6 +919,10 @@ extern "C" void FrameCallback(void) {
             InstancedDraw::Submit(s_drawer, &s_batch, 1);
         s_submits += s_batch.count;
     }
+    // マスの色（マップエディター）。失敗しても UnitCursor は止めない
+    if (s_tileMode && s_marksWanted && !s_marksBuilt && s_markFail == Fail::kNone && !BuildMarks())
+        DestroyMarks();
+    DrawMarks();
     s_animFrame += 1.0f;
     if (s_animFrame >= kCanmFrames)
         s_animFrame -= kCanmFrames;
@@ -823,6 +1021,28 @@ void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u
     s_pendCount = count;
     ++s_pendSeq;                        // 数が変わっても組み直さない（置き場の行列だけ。描画スレッドが写す）
 }
+
+void EnableMarks(bool on) {
+    s_marksWanted = on;
+    if (on)
+        s_markFail = Fail::kNone;           // 次に組むときにもう一度試す
+}
+
+void SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count) {
+    if (count > kMaxMarks)
+        count = kMaxMarks;
+    for (u32 i = 0; i < count; ++i) {
+        s_markPendX[i] = xs[i];
+        s_markPendY[i] = ys[i];
+        s_markPendKind[i] = kinds[i] < kMarkKinds ? kinds[i] : 0;
+    }
+    s_markPendCount = count;
+    ++s_markPendSeq;
+}
+
+void SetMarkAlpha(u8 alpha) { s_markAlpha = alpha; }
+u8 MarkAlpha(void) { return s_markAlpha; }
+u32 MarkFailReason(void) { return s_markFail; }
 
 void SetTint(u32 color, u8 strength) {
     s_tintColor = color;

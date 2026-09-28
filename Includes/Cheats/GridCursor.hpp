@@ -96,6 +96,16 @@ namespace GridCursor
     // heightId >= 0 なら全部を PublicWorks::CursorHeight(heightId, anchorX, anchorY) に揃える
     // （建物は基点の地面、橋はどこでも一定の橋の高さ）。
     void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY);
+    // ---- マスの色（マップエディターの上画面。利用者指示 2026-09-28）----
+    // マス指定の形（ShowTiles）のとき、村のマスごとに単色の四角形を置く。種類 0 = 白・1 = 赤・2 = 黄。
+    // マイデザインなど村の物体の層 0 の後に、深度を書かずに描く（InstancedDraw::SubmitOver）。UnitCursor とは別の体（3 体）。
+    static const u32 kMaxMarks = 64;
+    static const u32 kMarkKinds = 3;
+    void            EnableMarks(bool on);   // ShowTiles の前に。偽ならマスの色の体を作らない
+    void            SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count);
+    void            SetMarkAlpha(u8 alpha); // 3 色に共通のアルファ（一時的な項目。利用者が値を探す）
+    u8              MarkAlpha(void);
+    u32             MarkFailReason(void);   // 0 = 問題なし。組めなかった理由（Fail の番号、材質の形が違えば 100 番台）
     // マス指定の形の色（0x00BBGGRR と強さ 0〜255。0 で元の見た目）。
     void            SetTint(u32 color, u8 strength);
     // プロセス終了時に 1 回。フック語を元の NOP へ戻し、置き場を消す。
