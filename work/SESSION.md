@@ -3,6 +3,7 @@
 - `work/coord-sync-map-editor` の `a990946fb6859083f9d83f34b90f6d41d4df565c` はoriginへpush済み。マップエディターを含む読取り診断3gxは親 `artifacts/plugins/coord_sync_map_editor/`、SHA-256 `99A0D0A3BF5F81BA6915EAEAC819D891BF2C59C40ED692C33D541E49455E2A24`。実機未確認。
 - 次の目的は既存依頼の下位種別12による自己XYZ→相手XYZの1回送信を作業枝 `work/coord-sync-send` に実装すること。両端末の接続中アドレスは一致するが Net/M/F/T の生値は未測定。町外コピーでは受信完了分岐が毎回走るため連続送信にしない。送信は実機未適用、1回操作、屋外・基点・接続・相手1人などのガードを設け、静的ビルドと逆アセンブル後に試験する。計測値が異なると送信しない。
 - 実装: `root/テスト/相手へ座標を1回送る`。room0、Town/XYZ固定実測値、prefix=0x10EA、Net<4、slot=Net、F=11、T=1、相手マスク1人をガード。本文 `[0x11514BA, X, Y, Z]` 16Bを `NetTransfer_SendSegments 0x616E10` へ1回送る。`make -j4 ...` PASS。ELF `TownSyncSendExecute 0x0702D8D8` の逆アセンブルでLDRリテラル（0x616E10/0x33099E50/0x31F49A80）、SP 8B整列、R0-R3とstack5引数（1/12/0/1/0）、branchとガードを確認。逆アセンブルログは親 `work/logs/coord_sync_send_elf_20261004.txt`。`verify_map_editor.py` 0失敗、しずえフック検査PASS、差分検査PASS。3gx SHA-256 `E302E88B378B6B7871DCCC87214ACEF6AA858AD1C73F4DAD953F7DA3A7E59161`。送信試験・受信確認なし。
+- 上記コードと文書をcommit `d334a8fc0d79e69b75b9884665389b15b3139cbd` としてoriginの `work/coord-sync-send` へpush済み。親側 artifact `artifacts/plugins/coord_sync_send/manifest.json` はこのコードcommitを指し、SHA照合PASS。
 
 # 2026-10-04 端末2台の実測とマップエディター統合 / gpt-6-sol
 
