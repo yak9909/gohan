@@ -165,8 +165,8 @@ namespace CTRPluginFramework
                                                                       12, 0, 1, 0);
                 char message[96];
                 std::snprintf(message, sizeof(message),
-                              accepted ? u8"送信関数は受理しました。相手側で確認してください。(Net=%lu)"
-                                       : u8"送信関数が拒否しました。(Net=%lu)",
+                              accepted ? u8"送信処理を試みました。相手側で確認してください。(Net=%lu)"
+                                       : u8"送信条件で拒否されました。(Net=%lu)",
                               (unsigned long)destination);
                 GuiDialog::ShowMessage(kTownSyncSend, message, false);
             }
