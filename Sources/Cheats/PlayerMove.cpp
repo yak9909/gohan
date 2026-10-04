@@ -88,7 +88,7 @@ namespace CTRPluginFramework
                 char message[160];
 
                 std::snprintf(message, sizeof(message),
-                              "room=%u slot=%u\nGarden=%08lX\nTown=%08lX\nPlayer=%08lX\nXYZ=%08lX",
+                              "room=%u slot=%u\nGarden=0x%08lX\nTown=0x%08lX\nPlayer=0x%08lX\nXYZ=0x%08lX",
                               (unsigned)room, (unsigned)playerIndex,
                               (unsigned long)garden, (unsigned long)town,
                               (unsigned long)player, (unsigned long)xyz);
