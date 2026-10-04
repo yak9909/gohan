@@ -31,6 +31,7 @@ namespace CTRPluginFramework
             const u32   kTownPrefixSize  = 0x0094D64C;
             const u32   kSendSegments    = 0x00616E10;
             const u32   kCanQueuePeer    = 0x0061849C;
+            const u32   kPeerUnackedCount = 0x0075DF68;
             const u32   kOffX            = 0x14;
             const u32   kOffZ            = 0x1C;
             const u32   kOffState        = 0x1A9;
@@ -46,6 +47,7 @@ namespace CTRPluginFramework
                                           u32 enforcePeerMasks, u32 preserveSequence);
             typedef int (*CanQueuePeerFn)(u32 manager, u32 destination,
                                           u32 hasPayload, u32 enforcePeerMasks);
+            typedef int (*PeerUnackedCountFn)(u32 managerFrameState, u32 peer);
 
             enum MoveKey  { KEY_DPAD = 0, KEY_CIRCLE, KEY_CSTICK };
             enum MoveMode { MODE_FREE = 0, MODE_GRID };
@@ -101,14 +103,24 @@ namespace CTRPluginFramework
                 const u8 gameType = netManager != 0 ? *(const volatile u8 *)(netManager + 78493) : 0xFF;
                 const u32 town = garden != 0 ? garden + 0x80 : 0;
                 const u32 xyz = player != 0 ? player + kOffX : 0;
-                char message[192];
+                const u32 tx0 = netManager != 0 ? ((PeerUnackedCountFn)kPeerUnackedCount)(netManager + 120, 0) : 0;
+                const u32 tx1 = netManager != 0 ? ((PeerUnackedCountFn)kPeerUnackedCount)(netManager + 120, 1) : 0;
+                const u32 tx2 = netManager != 0 ? ((PeerUnackedCountFn)kPeerUnackedCount)(netManager + 120, 2) : 0;
+                const u32 tx3 = netManager != 0 ? ((PeerUnackedCountFn)kPeerUnackedCount)(netManager + 120, 3) : 0;
+                const u8 ack0 = netManager != 0 ? *(const volatile u8 *)(netManager + 112) : 0;
+                const u8 ack1 = netManager != 0 ? *(const volatile u8 *)(netManager + 113) : 0;
+                const u8 ack2 = netManager != 0 ? *(const volatile u8 *)(netManager + 114) : 0;
+                const u8 ack3 = netManager != 0 ? *(const volatile u8 *)(netManager + 115) : 0;
+                char message[256];
 
                 std::snprintf(message, sizeof(message),
-                              "room=%u slot=%u\nNet=%u M=0x%02X F=%u%u T=%u\nGarden=0x%08lX\nTown=0x%08lX\nPlayer=0x%08lX\nXYZ=0x%08lX",
+                              "room=%u slot=%u\nNet=%u M=0x%02X F=%u%u T=%u\nGarden=0x%08lX\nTown=0x%08lX\nPlayer=0x%08lX\nXYZ=0x%08lX\nTx=%lu,%lu,%lu,%lu Ack=%u,%u,%u,%u",
                               (unsigned)room, (unsigned)playerIndex, (unsigned)netSlot,
                               (unsigned)peerMask, (unsigned)(flagA != 0), (unsigned)(flagB != 0), (unsigned)gameType,
                               (unsigned long)garden, (unsigned long)town,
-                              (unsigned long)player, (unsigned long)xyz);
+                              (unsigned long)player, (unsigned long)xyz,
+                              (unsigned long)tx0, (unsigned long)tx1, (unsigned long)tx2, (unsigned long)tx3,
+                              (unsigned)ack0, (unsigned)ack1, (unsigned)ack2, (unsigned)ack3);
                 GuiDialog::ShowMessage(kTownSyncProbe, message, false);
             }
 
@@ -154,24 +166,6 @@ namespace CTRPluginFramework
                 while ((targets & (1u << destination)) == 0)
                     ++destination;
 
-                // F008: 通常の町送信は4種の相手マスクも検査する。
-                // 送信者の移動/アクション中にそこだけ閉じる場合は、ゲーム自身が制御片に使う
-                // enforcePeerMasks=0 を試す。接続とフレーム使用中の検査は残る。
-                const int normalReady = ((CanQueuePeerFn)kCanQueuePeer)(manager, destination, 1, 1);
-                const int baseReady = normalReady ? 1
-                    : ((CanQueuePeerFn)kCanQueuePeer)(manager, destination, 1, 0);
-                if (!baseReady)
-                {
-                    const u8 busy = *(const volatile u8 *)(manager + 156 + destination);
-                    char message[96];
-                    std::snprintf(message, sizeof(message),
-                                  u8"接続か転送枠が使用中です。\nNet=%lu Busy=%u",
-                                  (unsigned long)destination, (unsigned)busy);
-                    GuiDialog::ShowMessage(kTownSyncSend, message, false);
-                    return;
-                }
-                const u32 enforcePeerMasks = normalReady ? 1 : 0;
-
                 // 本文 = 累積オフセット4B + XYZ 12B。通常の町サイズ制限を通さず、
                 // generic SendSegments の同期コピーで一片だけ構築する。受信側では完了分岐も走る。
                 u32 fragment[4];
@@ -181,14 +175,41 @@ namespace CTRPluginFramework
                 fragment[3] = *(const volatile u32 *)(xyz + 8);
                 const void *segments[1] = { fragment };
                 const u32 lengths[1] = { sizeof(fragment) };
-                const int accepted = ((SendSegmentsFn)kSendSegments)(manager, destination,
-                                                                      segments, lengths, 1,
-                                                                      12, 0, enforcePeerMasks, 0);
+                // F009: 旧版で成功した順序を復元し、最初は通常の送信APIだけを呼ぶ。
+                // 0のときのみ診断する。Tx>0ならどちらのmaskモードも本文を拒否する。
+                const int normalAccepted = ((SendSegmentsFn)kSendSegments)(manager, destination,
+                                                                            segments, lengths, 1,
+                                                                            12, 0, 1, 0);
+                if (normalAccepted)
+                {
+                    GuiDialog::ShowMessage(kTownSyncSend,
+                                           u8"送信を試みました。相手側で確認してください。\nGate=1", false);
+                    return;
+                }
+
+                const u32 unacked = ((PeerUnackedCountFn)kPeerUnackedCount)(manager + 120, destination);
+                const u8 ackPending = *(const volatile u8 *)(manager + 112 + destination);
                 char message[96];
+                if (unacked != 0)
+                {
+                    std::snprintf(message, sizeof(message),
+                                  u8"未確認の送信が残っています。\nNet=%lu Tx=%lu Ack=%u",
+                                  (unsigned long)destination, (unsigned long)unacked,
+                                  (unsigned)ackPending);
+                    GuiDialog::ShowMessage(kTownSyncSend, message, false);
+                    return;
+                }
+
+                // maskだけが不許可の場合は、ゲームの制御片と同じ引数で1回だけ再試行。
+                const int baseReady = ((CanQueuePeerFn)kCanQueuePeer)(manager, destination, 1, 0);
+                const int fallbackAccepted = baseReady
+                    ? ((SendSegmentsFn)kSendSegments)(manager, destination,
+                                                       segments, lengths, 1, 12, 0, 0, 0)
+                    : 0;
                 std::snprintf(message, sizeof(message),
-                              accepted ? u8"送信を試みました。相手側で確認してください。\nNet=%lu Gate=%lu"
-                                       : u8"送信APIが拒否しました。\nNet=%lu Gate=%lu",
-                              (unsigned long)destination, (unsigned long)enforcePeerMasks);
+                              fallbackAccepted ? u8"送信を試みました。相手側で確認してください。\nNet=%lu Gate=0"
+                                               : u8"送信APIが拒否しました。\nNet=%lu Tx=0 Ack=%u",
+                              (unsigned long)destination, (unsigned)ackPending);
                 GuiDialog::ShowMessage(kTownSyncSend, message, false);
             }
 
