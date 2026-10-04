@@ -4,7 +4,7 @@
 - branchは実機確認済みmain `8ef65fe` から分岐。`PlayerMove.cpp` の実ゲーム関数/ポインタを使い、`root/テスト/村データを見る` で room/slot、Garden、Town、Player、XYZのアドレスを表示する読取り専用の診断を実装。送信/パッチは未実装。仕様 `gohan.md §18`。親側根拠 `work/evidence/network/coord_sync_oob_20261004.md`（`IDA-gpt-6-sol-F006`）。
 - 追加したラベルは内蔵UIフォントを照合し、初案の「転」「宛」は未収録なので使用しない。`verify_menu_port.py` はメニュー104項目/110 scene、4,517 scenarioコマンド＋fuzz6系列すべてPASS。`make -j4 DEVKITPRO=/c/devkitPro DEVKITARM=/c/devkitPro/devkitARM` PASS。gohan.elfの`TownSyncProbeExecute`は読取りとスタックへの整形・ダイアログ呼出しのみ、linked address/literal/分岐を逆アセンブル確認。`verify_shizue_hook_registers.py --artifact` PASS。3gx SHA-256 `1C4B5E7EED0F75F720923A6D559DDFD05DA40EF0CFE76B02CFA134CBF741C629`。`git -c core.whitespace=cr-at-eol diff --check` PASS。
 - `verify_plugin_port_v2.py` は既存フォントアトラス/CWDH/CMAP不一致など4件でNG（今回のコードの失敗ではない）。2回目ビルド時に生成depfileのWindowsドライブ記法がGNU makeの`multiple target patterns`を起こしたため、無追跡の生成`.d`のみ`/c/devkitPro`へ置換してビルド再実行PASS。実機への適用/送信/書込み/Resumeなし。
-- 次の1手: 差分とhashを再確認、作業ブランチをcommit/push。受信側が接続中に診断の値を測定してから、配送・完了分岐の実機影響を最小試験で確認。未測定の宛先オフセットを仮定して送らない。
+- 次の1手: 受信側が接続中に診断の値を測定してから、配送・完了分岐の実機影響を最小試験で確認。未測定の宛先オフセットを仮定して送らない。コード2件は作業ブランチへpush済み。
 - 表示値を `0x` 付き16進へ統一した追補。再ビルドPASS、Shizue回帰PASS。新3gx SHA-256 `1C4B5E7EED0F75F720923A6D559DDFD05DA40EF0CFE76B02CFA134CBF741C629`。前項の検証値はこの追補後の値へ置換済み。実機未確認のまま。
 
 # UnitCursor 屋外表示の実機確認（2026-09-18 開始・以前の記録）
