@@ -10,7 +10,9 @@
 #include <CTRPluginFramework.hpp>
 
 #include "Cheats.hpp"
+#include "GuiDialog.hpp"
 #include "GuiMenu.hpp"
+#include <cstdio>
 
 namespace CTRPluginFramework
 {
@@ -24,6 +26,7 @@ namespace CTRPluginFramework
             const u32   kGetWorldCoords  = 0x005BFCE4;  // GetWorldCoords(&x, &y, pIndex, 1) -> bool
             const u32   kMapOpen         = 0x00949C30;  // 地図が開いている（bool）
             const u32   kCurrentRoom     = 0x0095133A;  // g_CurrentRoomId
+            const u32   kGardenSavePtr   = 0x00955F8C;  // Save_GetTownBase() は [ここ] + 0x80
             const u32   kOffX            = 0x14;
             const u32   kOffZ            = 0x1C;
             const u32   kOffState        = 0x1A9;
@@ -71,6 +74,25 @@ namespace CTRPluginFramework
             {
                 *index = OwnIndex();
                 return ((GetPlayerFn)kGetPlayer)(*index, 1);
+            }
+
+            void    TownSyncProbeExecute(int index)
+            {
+                (void)index;
+                const u8 room = *(const volatile u8 *)kCurrentRoom;
+                const u32 garden = *(const volatile u32 *)kGardenSavePtr;
+                const u8 playerIndex = OwnIndex();
+                const u32 player = playerIndex < 4 ? ((GetPlayerFn)kGetPlayer)(playerIndex, 1) : 0;
+                const u32 town = garden != 0 ? garden + 0x80 : 0;
+                const u32 xyz = player != 0 ? player + kOffX : 0;
+                char message[160];
+
+                std::snprintf(message, sizeof(message),
+                              "room=%u slot=%u\nGarden=%08lX\nTown=%08lX\nPlayer=%08lX\nXYZ=%08lX",
+                              (unsigned)room, (unsigned)playerIndex,
+                              (unsigned long)garden, (unsigned long)town,
+                              (unsigned long)player, (unsigned long)xyz);
+                GuiDialog::ShowMessage(kTownSyncProbe, message, false);
             }
 
             bool    Digging(u32 player)
@@ -308,6 +330,9 @@ namespace CTRPluginFramework
             ResetGrid();
             if (g_speedIndex >= 0)
                 GuiMenu::RegisterDisabled(g_speedIndex, SpeedDisabled);
+            const int probeIndex = GuiMenu::FindItem(kTownSyncProbe);
+            if (probeIndex >= 0)
+                GuiMenu::RegisterExecute(probeIndex, TownSyncProbeExecute);
         }
     }
 }

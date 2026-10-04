@@ -1,4 +1,12 @@
-# UnitCursor 屋外表示の実機確認（2026-09-18 開始・最新）
+# 2026-10-04 `work/coord-sync-probe` / gpt-6-sol
+
+- 目的: 利用者の下位 `0x0C` 範囲外コピーによる自己XYZ→相手XYZ同期チート。対象は本人所有/同意のある受信側。受信側の `[0x00955F8C]` は利用者回答「未測定」、屋内と別bootは未確定。
+- branchは実機確認済みmain `8ef65fe` から分岐。`PlayerMove.cpp` の実ゲーム関数/ポインタを使い、`root/テスト/村データを見る` で room/slot、Garden、Town、Player、XYZのアドレスを表示する読取り専用の診断を実装。送信/パッチは未実装。仕様 `gohan.md §18`。親側根拠 `work/evidence/network/coord_sync_oob_20261004.md`（`IDA-gpt-6-sol-F006`）。
+- 追加したラベルは内蔵UIフォントを照合し、初案の「転」「宛」は未収録なので使用しない。`verify_menu_port.py` はメニュー104項目/110 scene、4,517 scenarioコマンド＋fuzz6系列すべてPASS。`make -j4 DEVKITPRO=/c/devkitPro DEVKITARM=/c/devkitPro/devkitARM` PASS。gohan.elfの`TownSyncProbeExecute`は読取りとスタックへの整形・ダイアログ呼出しのみ、linked address/literal/分岐を逆アセンブル確認。`verify_shizue_hook_registers.py --artifact` PASS。3gx SHA-256 `1E8F5261BFFF6F076FC191DC1423C4DB1452B2118FB9DD426EA7077CE2F96E25`。`git -c core.whitespace=cr-at-eol diff --check` PASS。
+- `verify_plugin_port_v2.py` は既存フォントアトラス/CWDH/CMAP不一致など4件でNG（今回のコードの失敗ではない）。2回目ビルド時に生成depfileのWindowsドライブ記法がGNU makeの`multiple target patterns`を起こしたため、無追跡の生成`.d`のみ`/c/devkitPro`へ置換してビルド再実行PASS。実機への適用/送信/書込み/Resumeなし。
+- 次の1手: 差分とhashを再確認、作業ブランチをcommit/push。受信側が接続中に診断の値を測定してから、配送・完了分岐の実機影響を最小試験で確認。未測定の宛先オフセットを仮定して送らない。
+
+# UnitCursor 屋外表示の実機確認（2026-09-18 開始・以前の記録）
 利用者指示: 実機確認を行う。IDAで実機にアタッチ済み・Chokistream起動済み。3gxの方がやりやすければそちらでも可。**コードを設計・実装したら実機適用前に必ず逆アセンブルして検証する**。
 確認済みの現在状態（実機、読み取りのみ）: プロセスは停止中 state=-1 / PC=0x137064 / SP=0x946C70 / LR=0x137178 / BP 0件。
   実機ビルド＝artifacts/update/exefs/code.bin を 8 点（0x1B7090・0x1B71C4・0x317920・0x48D26C・0x4EB840・0x4EBC14・0x4F048C・0x569BA0、各32B）で照合し全一致。VA=offset+0x100000。
