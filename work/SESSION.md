@@ -1,4 +1,10 @@
-# UnitCursor 屋外表示の実機確認（2026-09-18 開始・最新）
+# 2026-10-04 端末2台の実測とマップエディター統合 / gpt-6-sol
+
+- 利用者報告: 端末1 NEW 3DS LL、端末2 OLD 3DSとも、屋外通信中 `room=0 slot=0 Garden=0x31F49A00 Town=0x31F49A80 Player=0x33099E3C XYZ=0x33099E50`。値は通信中に変化しない。計算は親プロジェクトのSESSION/`IDA-gpt-6-sol-F007`に記録する。別boot/相手個体への一般化はしない。
+- マップエディター欠落の原因は前回診断をmainから作ったこと。`work/map-editor`（257ea1b）から`work/coord-sync-map-editor`を分岐し、前回の読取り専用診断を移植。`root/テスト/村データを見る` にNet/M/F/T表示を追加し、`root/村/マップエディター`の既存登録を維持。診断はゲームメモリを読むだけ。送信機能は未追加。
+- 説明文の最終修正後も `make -j4 DEVKITPRO=/c/devkitPro DEVKITARM=/c/devkitPro/devkitARM` PASS。3gx SHA-256 `99A0D0A3BF5F81BA6915EAEAC819D891BF2C59C40ED692C33D541E49455E2A24`。`verify_map_editor.py` 0失敗、`verify_shizue_hook_registers.py --artifact` PASS、リンク済みで TownSyncProbeExecute と MapEditorTick を確認。`verify_menu_port.py` は基底 `work/map-editor` のラベル「薄」の検査用字形欠落で停止（今回の追加文字には「薄」なし）。実機確認・適用なし。次の1手: artifactのhashとソース照合、作業ブランチpush、両端末で Net/M/F/T の報告を得る。
+
+# UnitCursor 屋外表示の実機確認（2026-09-18 開始・以前の記録）
 利用者指示: 実機確認を行う。IDAで実機にアタッチ済み・Chokistream起動済み。3gxの方がやりやすければそちらでも可。**コードを設計・実装したら実機適用前に必ず逆アセンブルして検証する**。
 確認済みの現在状態（実機、読み取りのみ）: プロセスは停止中 state=-1 / PC=0x137064 / SP=0x946C70 / LR=0x137178 / BP 0件。
   実機ビルド＝artifacts/update/exefs/code.bin を 8 点（0x1B7090・0x1B71C4・0x317920・0x48D26C・0x4EB840・0x4EBC14・0x4F048C・0x569BA0、各32B）で照合し全一致。VA=offset+0x100000。

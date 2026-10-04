@@ -368,6 +368,8 @@ namespace CTRPluginFramework
                 SetFolder(i, modelFirst, modelCount);
                 i = AddItem(ITEM_FOLDER, u8"プレイヤー複製", u8"自分のプレイヤーの複製を出し、髪型と髪色だけを変える試験です。");
                 SetFolder(i, cloneFirst, cloneCount);
+                AddItem(ITEM_ACTION, kTownSyncProbe,
+                        u8"村データ・プレイヤーの位置と通信状態を表示します。");
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----

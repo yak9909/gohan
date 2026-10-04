@@ -50,6 +50,7 @@ namespace CTRPluginFramework
         static const char kShizueSkip[]     = u8"しずえスキップ";
         static const char kUnlockFps[]      = u8"フレームレート制限解除";
         // ---- root/テスト ----
+        static const char kTownSyncProbe[]   = u8"村データを見る";
         static const char kGridCursor[]      = u8"グリッドカーソル";
         static const char kGridCursorCols[]  = u8"横のマス数";
         static const char kGridCursorRows[]  = u8"縦のマス数";

@@ -10,7 +10,9 @@
 #include <CTRPluginFramework.hpp>
 
 #include "Cheats.hpp"
+#include "GuiDialog.hpp"
 #include "GuiMenu.hpp"
+#include <cstdio>
 
 namespace CTRPluginFramework
 {
@@ -24,6 +26,8 @@ namespace CTRPluginFramework
             const u32   kGetWorldCoords  = 0x005BFCE4;  // GetWorldCoords(&x, &y, pIndex, 1) -> bool
             const u32   kMapOpen         = 0x00949C30;  // 地図が開いている（bool）
             const u32   kCurrentRoom     = 0x0095133A;  // g_CurrentRoomId
+            const u32   kGardenSavePtr   = 0x00955F8C;  // Save_GetTownBase() は [ここ] + 0x80
+            const u32   kNetManagerPtr   = 0x0094D644;
             const u32   kOffX            = 0x14;
             const u32   kOffZ            = 0x1C;
             const u32   kOffState        = 0x1A9;
@@ -71,6 +75,32 @@ namespace CTRPluginFramework
             {
                 *index = OwnIndex();
                 return ((GetPlayerFn)kGetPlayer)(*index, 1);
+            }
+
+            void    TownSyncProbeExecute(int index)
+            {
+                (void)index;
+                const u8 room = *(const volatile u8 *)kCurrentRoom;
+                const u32 garden = *(const volatile u32 *)kGardenSavePtr;
+                const u8 playerIndex = OwnIndex();
+                const u32 player = playerIndex < 4 ? ((GetPlayerFn)kGetPlayer)(playerIndex, 1) : 0;
+                const u32 netManager = *(const volatile u32 *)kNetManagerPtr;
+                const u8 netSlot = netManager != 0 ? *(const volatile u8 *)(netManager + 78440) : 0xFF;
+                const u8 peerMask = netManager != 0 ? *(const volatile u8 *)(netManager + 78444) : 0;
+                const u8 flagA = netManager != 0 ? *(const volatile u8 *)(netManager + 78508) : 0;
+                const u8 flagB = netManager != 0 ? *(const volatile u8 *)(netManager + 78510) : 0;
+                const u8 gameType = netManager != 0 ? *(const volatile u8 *)(netManager + 78493) : 0xFF;
+                const u32 town = garden != 0 ? garden + 0x80 : 0;
+                const u32 xyz = player != 0 ? player + kOffX : 0;
+                char message[192];
+
+                std::snprintf(message, sizeof(message),
+                              "room=%u slot=%u\nNet=%u M=0x%02X F=%u%u T=%u\nGarden=0x%08lX\nTown=0x%08lX\nPlayer=0x%08lX\nXYZ=0x%08lX",
+                              (unsigned)room, (unsigned)playerIndex, (unsigned)netSlot,
+                              (unsigned)peerMask, (unsigned)(flagA != 0), (unsigned)(flagB != 0), (unsigned)gameType,
+                              (unsigned long)garden, (unsigned long)town,
+                              (unsigned long)player, (unsigned long)xyz);
+                GuiDialog::ShowMessage(kTownSyncProbe, message, false);
             }
 
             bool    Digging(u32 player)
@@ -308,6 +338,9 @@ namespace CTRPluginFramework
             ResetGrid();
             if (g_speedIndex >= 0)
                 GuiMenu::RegisterDisabled(g_speedIndex, SpeedDisabled);
+            const int probeIndex = GuiMenu::FindItem(kTownSyncProbe);
+            if (probeIndex >= 0)
+                GuiMenu::RegisterExecute(probeIndex, TownSyncProbeExecute);
         }
     }
 }
