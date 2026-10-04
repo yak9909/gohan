@@ -370,6 +370,8 @@ namespace CTRPluginFramework
                 SetFolder(i, cloneFirst, cloneCount);
                 AddItem(ITEM_ACTION, kTownSyncProbe,
                         u8"村データ・プレイヤーの位置と通信状態を表示します。");
+                AddItem(ITEM_ACTION, kTownSyncSend,
+                        u8"検証用。自分のXYZを通信相手1人へ1回送ります。");
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----

@@ -1,4 +1,9 @@
-# 現在地 — `work/coord-sync-map-editor`（2026-10-04、gpt-6-sol）
+# 現在地 — `work/coord-sync-send`（2026-10-04、gpt-6-sol）
+
+- マップエディター復旧とNet/M/F/T読取り診断は `work/coord-sync-map-editor` commit `a990946`、origin push済み。3gxは親 `artifacts/plugins/coord_sync_map_editor/`、SHA-256 `99A0D0A3BF5F81BA6915EAEAC819D891BF2C59C40ED692C33D541E49455E2A24`。この版は送信なし。
+- 現在の作業枝に検証用 `root/テスト/相手へ座標を1回送る` を追加。今回の2台のTown/XYZ、屋外・接続・相手1人・T=1を検査し、下位種別12の16B本文を汎用送信APIへ1回渡す。ビルド・マップエディター・しずえフック検査PASS、送信関数呼出しの9引数ABI・literal・branchを逆アセンブルで照合済み。3gx SHA-256 `E302E88B378B6B7871DCCC87214ACEF6AA858AD1C73F4DAD953F7DA3A7E59161`。実機にはまだ適用していない。受信完了副作用とメニュースレッドからのscratch競合は未検証。Net/M/F/Tの実測前に送信の動作を断定しない。次の1手: 作業枝push、両端末のNet/M/F/T取得。
+
+# 以前の現在地 — `work/coord-sync-map-editor`（2026-10-04、gpt-6-sol）
 
 - 利用者の2台（NEW 3DS LL/OLD 3DS）は屋外通信中に同じ `Garden=0x31F49A00 Town=0x31F49A80 Player=0x33099E3C XYZ=0x33099E50 room=0 slot=0` を実測。下位`0x0C`による自己XYZ→相手XYZ同期チートを継続検討する。
 - 前の`work/coord-sync-probe`はmain由来のためマップエディターが消えた。`work/map-editor`（257ea1b）から新ブランチを作成し、診断項目を移植。マップエディターのメニュー登録を保持し、3gxビルド・マップエディター検査・しずえフック検査PASS。診断にはNet/M/F/Tを追加。旧メニュー検査は基底の「薄」の欠字で停止し、本変更とは無関係。実機適用はまだない。送信機能も未追加。次の1手: 診断付き3gxを作業ブランチへpushし、両端末のNet/M/F/Tを測る。

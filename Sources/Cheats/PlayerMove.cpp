@@ -28,6 +28,8 @@ namespace CTRPluginFramework
             const u32   kCurrentRoom     = 0x0095133A;  // g_CurrentRoomId
             const u32   kGardenSavePtr   = 0x00955F8C;  // Save_GetTownBase() は [ここ] + 0x80
             const u32   kNetManagerPtr   = 0x0094D644;
+            const u32   kTownPrefixSize  = 0x0094D64C;
+            const u32   kSendSegments    = 0x00616E10;
             const u32   kOffX            = 0x14;
             const u32   kOffZ            = 0x1C;
             const u32   kOffState        = 0x1A9;
@@ -37,6 +39,10 @@ namespace CTRPluginFramework
             typedef u32  (*GetPlayerFn)(u32 index, u32 one);
             typedef u8   (*GetIndexFn)(void);
             typedef bool (*WorldCoordsFn)(u32 *x, u32 *y, u32 index, u32 one);
+            typedef int (*SendSegmentsFn)(u32 manager, u32 destination,
+                                          const void **segments, const u32 *lengths,
+                                          u32 count, u32 transferType, u32 arg7,
+                                          u32 enforcePeerMasks, u32 preserveSequence);
 
             enum MoveKey  { KEY_DPAD = 0, KEY_CIRCLE, KEY_CSTICK };
             enum MoveMode { MODE_FREE = 0, MODE_GRID };
@@ -101,6 +107,68 @@ namespace CTRPluginFramework
                               (unsigned long)garden, (unsigned long)town,
                               (unsigned long)player, (unsigned long)xyz);
                 GuiDialog::ShowMessage(kTownSyncProbe, message, false);
+            }
+
+            void    TownSyncSendExecute(int index)
+            {
+                (void)index;
+                const u32 manager = *(const volatile u32 *)kNetManagerPtr;
+                const u32 garden = *(const volatile u32 *)kGardenSavePtr;
+                const u8 room = *(const volatile u8 *)kCurrentRoom;
+                const u8 ownSlot = OwnIndex();
+                const u32 player = ownSlot < 4 ? ((GetPlayerFn)kGetPlayer)(ownSlot, 1) : 0;
+                const u32 town = garden != 0 ? garden + 0x80 : 0;
+                const u32 xyz = player != 0 ? player + kOffX : 0;
+
+                // IDA-gpt-6-sol-F007: この2台の実測で確認した番地だけを対象にする。
+                // 受信側のTown/XYZが異なる場合、この片は別のRAMを指す。
+                if (room != 0 || town != 0x31F49A80 || xyz != 0x33099E50 ||
+                    manager == 0 || *(const volatile u32 *)kTownPrefixSize != 0x10EA)
+                {
+                    GuiDialog::ShowMessage(kTownSyncSend, u8"部屋かアドレスが実測値と違います。送信しません。", false);
+                    return;
+                }
+
+                const u8 netSlot = *(const volatile u8 *)(manager + 78440);
+                const u8 peerMask = *(const volatile u8 *)(manager + 78444);
+                const u8 flagA = *(const volatile u8 *)(manager + 78508);
+                const u8 flagB = *(const volatile u8 *)(manager + 78510);
+                const u8 gameType = *(const volatile u8 *)(manager + 78493);
+                if (netSlot >= 4 || ownSlot != netSlot || flagA == 0 || flagB == 0 || gameType != 1)
+                {
+                    GuiDialog::ShowMessage(kTownSyncSend, u8"通信状態が送信条件に合いません。送信しません。", false);
+                    return;
+                }
+
+                // 汎用送信関数と同じマスクを読み、自分以外がちょうど1人のときだけ送る。
+                const u8 targets = (peerMask & 0x0Fu) & (u8)~(1u << netSlot);
+                if (targets == 0 || (targets & (targets - 1u)) != 0)
+                {
+                    GuiDialog::ShowMessage(kTownSyncSend, u8"相手が1人と確認できません。送信しません。", false);
+                    return;
+                }
+                u32 destination = 0;
+                while ((targets & (1u << destination)) == 0)
+                    ++destination;
+
+                // 本文 = 累積オフセット4B + XYZ 12B。通常の町サイズ制限を通さず、
+                // generic SendSegments の同期コピーで一片だけ構築する。受信側では完了分岐も走る。
+                u32 fragment[4];
+                fragment[0] = xyz - town + *(const volatile u32 *)kTownPrefixSize;
+                fragment[1] = *(const volatile u32 *)(xyz + 0);
+                fragment[2] = *(const volatile u32 *)(xyz + 4);
+                fragment[3] = *(const volatile u32 *)(xyz + 8);
+                const void *segments[1] = { fragment };
+                const u32 lengths[1] = { sizeof(fragment) };
+                const int accepted = ((SendSegmentsFn)kSendSegments)(manager, destination,
+                                                                      segments, lengths, 1,
+                                                                      12, 0, 1, 0);
+                char message[96];
+                std::snprintf(message, sizeof(message),
+                              accepted ? u8"送信関数は受理しました。相手側で確認してください。(Net=%lu)"
+                                       : u8"送信関数が拒否しました。(Net=%lu)",
+                              (unsigned long)destination);
+                GuiDialog::ShowMessage(kTownSyncSend, message, false);
             }
 
             bool    Digging(u32 player)
@@ -341,6 +409,9 @@ namespace CTRPluginFramework
             const int probeIndex = GuiMenu::FindItem(kTownSyncProbe);
             if (probeIndex >= 0)
                 GuiMenu::RegisterExecute(probeIndex, TownSyncProbeExecute);
+            const int sendIndex = GuiMenu::FindItem(kTownSyncSend);
+            if (sendIndex >= 0)
+                GuiMenu::RegisterExecute(sendIndex, TownSyncSendExecute);
         }
     }
 }
