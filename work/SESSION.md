@@ -1,3 +1,9 @@
+# 2026-10-04 実機報告と追加修正 / gpt-6-sol
+
+- 利用者実測: ホスト Net=0/M=0x03/F=11/T=1、ゲスト Net=1/M=0x03/F=11/T=1。座標同期は両方向で成功、マップエディターも動作。最初の「どちらかが歩行/アクション中」は訂正され、送信する自分が歩行/アクション中のときだけキャンセルされる（`Net=0`を含む拒否表示の例）。受信相手の状態には依存しない。欠字も報告。実機で使った3gxのSHAは未記録。親の解析記録で原因を静的に追い、gohanのフォント収録を現行メニューと合わせる。
+- IDA-gpt-6-sol-F008: `NetTransfer_CanQueueForPeer 0x61849C`の通常マスク条件を調査。新枝`work/coord-sync-action-font`では通常マスクが通らないときだけ、接続/転送枠の検査を維持したマスク省略経路を1回試す。`Gate=1`は通常、`Gate=0`は省略、`Busy`はpeer転送枠。どのゲートが送信者の動作で閉じるかは未測定で、この変更が解消するとは未確定。
+- `make_font_ui.py`で現行ソースの`u8`文言に合わせて美咲字形を656字に再生成（旧644字）。`check_ui_glyphs.py`は41ファイルで欠字0、`verify_plugin_port_v2.py`は異常0、`verify_menu_port.py`はPASS、`verify_map_editor.py`は0 failed、`verify_shizue_hook_registers.py --artifact`はPASS。3gxビルドPASS。最新ELFの`TownSyncSendExecute 0x0702D8C8`のLDR、2回のCanQueue呼出し、SendSegmentsの9引数、SP整列を確認し、親`work/logs/coord_sync_send_elf_20261004_f008.txt`に保存。新3gx SHA-256 `B68FFD48F25B8D0A74C0DDD05615FD88FD50794DD6EE8CAEDD71D9C4D57825B5`。新枝の実機試験は未実施。
+
 # 2026-10-04 座標送信の作業枝 / gpt-6-sol
 
 - `work/coord-sync-map-editor` の `a990946fb6859083f9d83f34b90f6d41d4df565c` はoriginへpush済み。マップエディターを含む読取り診断3gxは親 `artifacts/plugins/coord_sync_map_editor/`、SHA-256 `99A0D0A3BF5F81BA6915EAEAC819D891BF2C59C40ED692C33D541E49455E2A24`。実機未確認。

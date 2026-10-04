@@ -30,6 +30,7 @@ namespace CTRPluginFramework
             const u32   kNetManagerPtr   = 0x0094D644;
             const u32   kTownPrefixSize  = 0x0094D64C;
             const u32   kSendSegments    = 0x00616E10;
+            const u32   kCanQueuePeer    = 0x0061849C;
             const u32   kOffX            = 0x14;
             const u32   kOffZ            = 0x1C;
             const u32   kOffState        = 0x1A9;
@@ -43,6 +44,8 @@ namespace CTRPluginFramework
                                           const void **segments, const u32 *lengths,
                                           u32 count, u32 transferType, u32 arg7,
                                           u32 enforcePeerMasks, u32 preserveSequence);
+            typedef int (*CanQueuePeerFn)(u32 manager, u32 destination,
+                                          u32 hasPayload, u32 enforcePeerMasks);
 
             enum MoveKey  { KEY_DPAD = 0, KEY_CIRCLE, KEY_CSTICK };
             enum MoveMode { MODE_FREE = 0, MODE_GRID };
@@ -151,6 +154,24 @@ namespace CTRPluginFramework
                 while ((targets & (1u << destination)) == 0)
                     ++destination;
 
+                // F008: 通常の町送信は4種の相手マスクも検査する。
+                // 送信者の移動/アクション中にそこだけ閉じる場合は、ゲーム自身が制御片に使う
+                // enforcePeerMasks=0 を試す。接続とフレーム使用中の検査は残る。
+                const int normalReady = ((CanQueuePeerFn)kCanQueuePeer)(manager, destination, 1, 1);
+                const int baseReady = normalReady ? 1
+                    : ((CanQueuePeerFn)kCanQueuePeer)(manager, destination, 1, 0);
+                if (!baseReady)
+                {
+                    const u8 busy = *(const volatile u8 *)(manager + 156 + destination);
+                    char message[96];
+                    std::snprintf(message, sizeof(message),
+                                  u8"接続か転送枠が使用中です。\nNet=%lu Busy=%u",
+                                  (unsigned long)destination, (unsigned)busy);
+                    GuiDialog::ShowMessage(kTownSyncSend, message, false);
+                    return;
+                }
+                const u32 enforcePeerMasks = normalReady ? 1 : 0;
+
                 // 本文 = 累積オフセット4B + XYZ 12B。通常の町サイズ制限を通さず、
                 // generic SendSegments の同期コピーで一片だけ構築する。受信側では完了分岐も走る。
                 u32 fragment[4];
@@ -162,12 +183,12 @@ namespace CTRPluginFramework
                 const u32 lengths[1] = { sizeof(fragment) };
                 const int accepted = ((SendSegmentsFn)kSendSegments)(manager, destination,
                                                                       segments, lengths, 1,
-                                                                      12, 0, 1, 0);
+                                                                      12, 0, enforcePeerMasks, 0);
                 char message[96];
                 std::snprintf(message, sizeof(message),
-                              accepted ? u8"送信処理を試みました。相手側で確認してください。(Net=%lu)"
-                                       : u8"送信条件で拒否されました。(Net=%lu)",
-                              (unsigned long)destination);
+                              accepted ? u8"送信を試みました。相手側で確認してください。\nNet=%lu Gate=%lu"
+                                       : u8"送信APIが拒否しました。\nNet=%lu Gate=%lu",
+                              (unsigned long)destination, (unsigned long)enforcePeerMasks);
                 GuiDialog::ShowMessage(kTownSyncSend, message, false);
             }
 
