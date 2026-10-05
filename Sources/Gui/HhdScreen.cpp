@@ -1,5 +1,6 @@
 #include "HhdScreen.hpp"
 #include "HhdTables.h"
+#include "TouchScroll.hpp"
 #include "GridCursor.hpp"
 #include "GameList.hpp"
 #include "Cheats.hpp"
@@ -114,16 +115,13 @@ const u32 kActorModel = 436, kModelTan = 448;   // AcPlayer+436 = PlayerModel、
 const u32 kNetGameMgrPtr = 0x0094D648, kNetOnline = 0x1326F;
 // 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
 //   ページ 0〜1 = 男の子の髪 B00〜B15、ページ 2〜3 = 女の子の髪 G00〜G15。髪の番号 = ページ × 8 + 枠の中の番号（0〜31）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
-//   ページ送りは HHD の PageSlider と同じ規則（解析リポジトリ IDA-opus-5.5-HHD-F010。定数は HHD の逆アセンブルの即値）:
-//   位置 s_pos は [-幅 x (ページ数 - 1), 0]（ページ p で止まっているとき -p x 幅）。中央の枠 = 位置に最も近いページ、N_All の x = 位置 + 中央 x 幅。
+//   スクロールは自由（ページに吸着しない。利用者 2026-10-05）で、漢字変換の候補欄と同じ算法（TouchScroll.hpp = ChatIme.cpp の写し）。
+//   スクロール位置 = 0..幅 x (ページ数 - 1)（指を左へ動かすと増える）。中央の枠 = 位置に最も近いページ、N_All の x = 中央 x 幅 - 位置。
+//   L / R・左右の端のタップは隣のページの位置まで滑らせる。滑り方は HHD の PageSlider（IDA-opus-5.5-HHD-F010）を 30 fps として時間に直したもの。
 const s32 kHairPages = 4;
 const float kPageStep = 276.0f;             // HHD の PageSlider +124 = 枠 2 と枠 1 の x の差（fce_HairBase_00 の L_HairPage_01 / 02）
-const float kDragStart = 0.05f;             // DragArea +452: 正規化座標（x 画素 x 0.00625）の横移動の累計がこれ以上でドラッグ（= 8 画素）
-const float kNormX = 0.00625f;              // TouchInput_Update 0x37ED04: (x - 160) x 0.00625
-const float kTrackGain = 2.0f, kTrackKeep = 0.5f, kTrackMax = 120.0f;   // DragArea +432 / +436、DragTracker_Update の上限
-const float kSelectGain = 0.0f;             // 触れているがドラッグ前（DragArea_ShouldStartDrag が s0 = 0、s1 = 0.5 で記録を回す）
-const float kSpeedMax = 25.0f, kSpeedMin = 10.0f, kFlickMin = 8.0f, kFlickDiv = 0.05f, kStepSpeed = 25.0f;   // PageSlider +88 / +92 / +100 / 0.05 / +96
-const float kApproach = 0.2f, kMinStep = 0.5f;                          // PageSlider +76 / +84（Math_ApproachDamped の s1 / s3）
+const float kStepSpeed = 25.0f, kApproach = 0.2f, kMinStep = 0.5f;   // HHD の PageSlider +96 / +76 / +84（1 フレームあたり）
+const float kFps = 30.0f;                   // ACNL の 1 秒のフレーム数（F-356: 2 VBlank = 30 fps）。HHD のフレームレートは未確認
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
 const u32 kScreenLower = 1, kScreenUpper = 0;   // AddLayout の画面（上画面 = 0 / 下画面 = 1。LayoutMgr_AddLayout 0x56928C）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
@@ -191,17 +189,14 @@ const char *volatile s_error = "";
 u32 s_wait;
 volatile State s_state;                     // 欲しい状態
 volatile s8 s_pageReq;                      // メニューのスレッドからのページ送りの頼み（-1 / +1、0 = なし）
-// ページ送り（ゲームのスレッドだけが書く。HHD の PageSlider / DragArea / DragTracker の欄）
-enum class Pager : u8 { Wait, Drag, Slide };
-volatile Pager s_pager = Pager::Wait;       // メニューのスレッドは「待ち以外なら髪を選ばない」の判定にだけ読む
-volatile bool s_dragging;                   // ドラッグ中（メニューのスレッドは指の決定を取り消す）
-float s_pos, s_target, s_slideSpeed, s_move;    // 位置 +132 / 目標 / 滑る速さ +80 / ドラッグを始めてからの移動量 +128
-float s_trackSpeed, s_dirX, s_accum;        // DragTracker +108（速さ）/ +96 の x（向き）/ +24（正規化の横移動の累計）
-bool s_holding, s_pressPrev;                // ページの当たりの中で触れ始めて、まだ離していない / 前のフレームで触れていた
-s32 s_prevX, s_prevY;
-// メニューのスレッドが毎回書くタッチ（画素、左上原点）
-volatile bool s_tDown;
-volatile s16 s_tX, s_tY;
+// 髪のスクロール（メニューのスレッドだけが書く。ゲームのスレッドは s_scrollPub を読んで枠を置くだけ）
+TouchScroll s_scroller;
+volatile float s_scrollPub;                 // スクロール位置（画素）
+volatile bool s_scrollSync;                 // ゲームのスレッドが位置を決め直した（開いたとき）。メニューのスレッドは s_scrollPub から取り直す
+bool s_onPage;                              // ページの当たりの中で触れ始めた指が、まだ離れていない
+bool s_stepping;                            // L / R・端のタップで隣のページへ滑らせている
+float s_stepTarget;
+u64 s_stepTick;
 volatile u8 s_sexByte = 0xFF;               // 読んだプロフィールの性別のバイト（状態の通知用）
 volatile bool s_applyReq;                   // 「けってい」で閉じる: 閉じ始めに見た目をプレイヤーへ書く
 const char *volatile s_applyResult = "";    // 反映の結果（状態の通知用）
@@ -444,166 +439,17 @@ void Apply(void) {
     s_appliedValid = true;
 }
 
-// ---- 髪のページ送り（ゲームのスレッド）: HHD の PageSlider（IDA-opus-5.5-HHD-F010）----
-
-bool Inside(const HhdTables::Rect &r, s32 x, s32 y);   // 下の当たりの判定（HitTest と同じ）
-
-float MinPos(void) { return -kPageStep * (float)(kHairPages - 1); }
-
-// 位置から中央の枠のページと N_All の x を決める（中央のページが変われば Apply が 3 つの枠の絵を入れ替える）
+// ---- 髪のページ（ゲームのスレッド）: スクロール位置から中央の枠のページと N_All の x を決める ----
+//   中央のページが変われば Apply が 3 つの枠の絵を入れ替える
 void PlacePages(void) {
-    float c = -s_pos / kPageStep + 0.5f;
-    s32 page = (s32)c;
+    const float scroll = s_scrollPub;
+    s32 page = (s32)(scroll / kPageStep + 0.5f);
     if (page < 0)
         page = 0;
     if (page >= kHairPages)
         page = kHairPages - 1;
     s_state.page = (s8)page;
-    MovePaneX(s_p.hairAll, s_pos + kPageStep * (float)page);
-}
-
-// PageSlider_MoveByClamped 0x346460: 回り込みなし。全体の範囲に収め、実際に動いた分だけ今回の移動量に足す
-void MoveBy(float d) {
-    float next = s_pos + d;
-    if (next > 0.0f)
-        next = 0.0f;
-    if (next < MinPos())
-        next = MinPos();
-    s_move += next - s_pos;
-    s_pos = next;
-}
-
-// Math_ApproachDamped 0x455EF8（s1 = 0.2、s2 = 速さ、s3 = 0.5）
-void Approach(void) {
-    if (s_pos == s_target)
-        return;
-    float d = (s_target - s_pos) * kApproach;
-    if (d < kMinStep && d > -kMinStep) {
-        const float next = d > 0.0f ? s_pos + kMinStep : s_pos - kMinStep;
-        s_pos = (d > 0.0f ? next > s_target : next < s_target) ? s_target : next;
-        return;
-    }
-    if (d > s_slideSpeed)
-        d = s_slideSpeed;
-    if (d < -s_slideSpeed)
-        d = -s_slideSpeed;
-    s_pos += d;
-}
-
-void ResetPager(void) {
-    s_pager = Pager::Wait;
-    s_dragging = false;
-    s_holding = false;
-    s_pos = s_target = -kPageStep * (float)s_state.page;
-    s_move = 0.0f;
-    MovePaneX(s_p.hairAll, 0.0f);
-}
-
-// DragTracker_Update 0x33D2B8: 速さ = 前 x keep + gain x |動いた画素の長さ| を [0, 120]、向きは 1 画素より大きく動いたときだけ
-float Track(s32 x, s32 y, float gain, float keep) {
-    const float dx = (float)(x - s_prevX), dy = (float)(s_prevY - y);   // HHD の +4 は y 上向き
-    const float len = __builtin_sqrtf(dx * dx + dy * dy);
-    float v = s_trackSpeed * keep + gain * len;
-    if (v < 0.0f)
-        v = 0.0f;
-    if (v > kTrackMax)
-        v = kTrackMax;
-    s_trackSpeed = v;
-    s_accum += (dx < 0.0f ? -dx : dx) * kNormX;
-    if (len > 1.0f)
-        s_dirX = dx / len;
-    s_prevX = x;
-    s_prevY = y;
-    return dx;
-}
-
-// PageSlider_BeginSlideFromRelease 0x34699C
-void BeginSlideFromRelease(void) {
-    float v = s_trackSpeed;
-    if (v > kSpeedMax)
-        v = kSpeedMax;
-    const float flick = v >= kFlickMin ? v / kFlickDiv : 0.0f;
-    if (v < kSpeedMin)
-        v = kSpeedMin;
-    s_slideSpeed = v;
-    const float want = s_move + (s_dirX >= 0.0f ? flick : -flick);
-    float q = want / kPageStep;
-    q = q < 0.0f ? q - 0.5f : q + 0.5f;
-    s32 k = (s32)q;
-    if (k > 1)
-        k = 1;
-    if (k < -1)
-        k = -1;
-    float target = s_pos + (kPageStep * (float)k - s_move);
-    if (target > 0.0f)
-        target = 0.0f;
-    if (target < MinPos())
-        target = MinPos();
-    s_target = target;
-    s_pager = Pager::Slide;
-}
-
-void StepPager(void) {
-    if (s_applied.mode != 1) {
-        if (s_pager != Pager::Wait || s_pos != -kPageStep * (float)s_state.page)
-            ResetPager();
-        s_pageReq = 0;
-        s_pressPrev = false;
-        return;
-    }
-    const bool down = s_tDown;
-    const s32 x = s_tX, y = s_tY;
-    const bool pressed = down && !s_pressPrev;
-    s_pressPrev = down;
-    const s8 req = s_pageReq;
-    s_pageReq = 0;
-
-    // DragArea（Page_00）: ページの当たりの中で触れ始めたら記録を始める（DragArea_ResetTracker）。触れている間は速さを減らし、横の累計を数える
-    if (pressed && Inside(HhdTables::kPageArea, x, y)) {
-        s_holding = true;
-        s_prevX = x;
-        s_prevY = y;
-        s_trackSpeed = 0.0f;
-        s_accum = 0.0f;
-    }
-    if (!down)
-        s_holding = false;
-
-    switch (s_pager) {
-    case Pager::Wait:
-        if (s_holding) {
-            Track(x, y, kSelectGain, kTrackKeep);
-            if (s_accum >= kDragStart) {     // DragArea_ShouldStartDrag → PageSlider_StateWait_Calc が Drag へ
-                s_pager = Pager::Drag;
-                s_dragging = true;
-                s_move = 0.0f;               // PageSlider の Drag の入口 0x346F6C: +128 = 0
-            }
-        } else if (req != 0) {
-            // PageSlider_RequestPageStep 0x346228: 端のページでは何もしない。目標 = 1 ページ、速さ 25
-            const s32 next = (s32)s_state.page + req;
-            if (next >= 0 && next < kHairPages) {
-                s_move = 0.0f;
-                s_slideSpeed = kStepSpeed;
-                s_target = -kPageStep * (float)next;
-                s_pager = Pager::Slide;
-            }
-        }
-        break;
-    case Pager::Drag:
-        if (s_holding) {
-            MoveBy(Track(x, y, kTrackGain, kTrackKeep));   // ページは指の横移動と同じだけ動く
-        } else {
-            s_dragging = false;
-            BeginSlideFromRelease();
-        }
-        break;
-    case Pager::Slide:
-        Approach();
-        if (s_pos == s_target)
-            s_pager = Pager::Wait;           // PageSlider_StateSlide_Calc: 着いたら待ちへ
-        break;
-    }
-    PlacePages();
+    MovePaneX(s_p.hairAll, kPageStep * (float)page - scroll);
 }
 
 // ---- プレイヤーへの反映（ゲームのスレッド）----
@@ -839,7 +685,9 @@ void Build(void) {
     }
     s_state.page = (s8)(s_state.sex == 1 ? 2 : 0);    // 自分の性別の髪の最初のページから
     LoadCurrentLook();                                 // 今の見た目を選択として出す（髪があればそのページ）
-    ResetPager();
+    s_scrollPub = kPageStep * (float)s_state.page;
+    s_scrollSync = true;
+    PlacePages();
     s_appliedValid = false;
     s_heapFreeAfter = HeapFreeSize(heap);
     // 入場: 顔・目・上に in を結ぶ（HHD の CharaCreate と同じく in アニメで現れる）。
@@ -878,18 +726,50 @@ s32 HitTest(s32 x, s32 y, s8 mode) {
             if (Inside(HhdTables::kSkinColor[k].hit, x, y))
                 return 200 + (s32)k;
     } else {
-        if (Inside(HhdTables::kPageLeft, x, y))
-            return 800;
-        if (Inside(HhdTables::kPageRight, x, y))
-            return 801;
-        for (u32 k = 0; k < 8; ++k)
-            if (Inside(HhdTables::kHairCell[k].hit, x, y))
-                return 300 + (s32)k;
         for (u32 k = 0; k < 16; ++k)
             if (Inside(HhdTables::kHairColor[k].hit, x, y))
                 return 400 + (s32)k;
     }
     return -1;
+}
+
+// 髪のページの当たりの中: 800 / 801 左右の端、300 + 髪の番号（0..31）、-1 なし。髪のマスはスクロール位置だけずらして調べる
+s32 HitPage(s32 x, s32 y, float scroll) {
+    if (Inside(HhdTables::kPageLeft, x, y))
+        return 800;
+    if (Inside(HhdTables::kPageRight, x, y))
+        return 801;
+    const s32 center = (s32)(scroll / kPageStep + 0.5f);
+    for (s32 page = center - 1; page <= center + 1; ++page) {
+        if (page < 0 || page >= kHairPages)
+            continue;
+        const s32 shift = (s32)(kPageStep * (float)page - scroll + (kPageStep * (float)page - scroll < 0.0f ? -0.5f : 0.5f));
+        for (u32 k = 0; k < 8; ++k)
+            if (Inside(HhdTables::kHairCell[k].hit, x - shift, y))
+                return 300 + page * 8 + (s32)k;
+    }
+    return -1;
+}
+
+// L / R・端のタップ: 隣のページの位置まで HHD の PageSlider の滑り方（Math_ApproachDamped 0x455EF8）を時間に直して滑らせる
+void StepToward(float dt) {
+    const float frames = dt * kFps;
+    float &pos = s_scroller.scroll;
+    const float d = s_stepTarget - pos;
+    float step = d * (1.0f - powf(1.0f - kApproach, frames));
+    const float minStep = kMinStep * frames, maxStep = kStepSpeed * frames;
+    if (step < minStep && step > -minStep) {
+        const float next = d > 0.0f ? pos + minStep : pos - minStep;
+        pos = (d > 0.0f ? next >= s_stepTarget : next <= s_stepTarget) ? s_stepTarget : next;
+    } else {
+        if (step > maxStep)
+            step = maxStep;
+        if (step < -maxStep)
+            step = -maxStep;
+        pos += step;
+    }
+    if (pos == s_stepTarget)
+        s_stepping = false;
 }
 
 // 的を「決定」したとき（HHD と同じく、指を置いた的の上で離したら決定）
@@ -904,9 +784,7 @@ void Decide(s32 target) {
     } else if (target >= 400) {
         s_state.hairColor = (s8)(target - 400);
     } else if (target >= 300) {
-        if (s_pager != Pager::Wait)
-            return;                         // ドラッグ中・滑っている最中は選ばない（HHD の PageSlider が待ちのときだけ）
-        s_state.hair = (s8)(s_state.page * 8 + (target - 300));   // 中央の枠のページの中の番号
+        s_state.hair = (s8)(target - 300);  // 髪の番号（HitPage がスクロール位置込みで決めた）
     } else if (target >= 200) {
         s_state.skin = (s8)(target - 200);
     } else if (target >= 100) {
@@ -969,6 +847,7 @@ bool Show(void) {
     s_applyResult = "";
     s_touchPrev = false;
     s_touchStart = -1;
+    s_onPage = false;
     s_keysPrev = 0xFFFFFFFFu;               // 開いたときに押していたボタンは「押した」に数えない
     s_error = "";
     s_want = true;
@@ -1022,13 +901,15 @@ void Tick(bool menuVisible) {
     if (!s_want || s_stage != Stage::Draw || s_phase != Phase::Live) {
         s_touchPrev = false;
         s_touchStart = -1;
-        s_tDown = false;
+        s_onPage = false;
         return;                             // 組み立て待ち・出入りのアニメ中・片付け中は止めるだけ
     }
     if (menuVisible) {
         s_touchPrev = false;
         s_touchStart = -1;
-        s_tDown = false;
+        if (s_onPage)
+            s_scroller.Release(svcGetSystemTick());
+        s_onPage = false;
         return;
     }
     const u32 keys = Controller::GetKeysDown(true);
@@ -1040,17 +921,67 @@ void Tick(bool menuVisible) {
     }
     if (s_state.mode == 1 && (pressed & ((u32)Key::L | (u32)Key::R)))
         s_pageReq = (pressed & (u32)Key::L) ? -1 : 1;   // 髪のページ送り（HHD-F007: L / R）
-    // タッチ: 置いた的の上で離したら決定。途中で的から外れたら取り消し（HHD の TouchUnSelect）
     const bool down = Touch::IsDown();
     const s8 mode = s_state.mode;
-    if (down) {
-        const UIntVector pos = Touch::GetPosition();
-        s_tX = (s16)pos.x;
-        s_tY = (s16)pos.y;
+    const u64 now = svcGetSystemTick();
+    if (s_scrollSync) {
+        s_scrollSync = false;
+        s_scroller.scroll = s_scrollPub;
+        s_scroller.Stop();
+        s_stepping = false;
     }
-    s_tDown = down;                         // ゲームのスレッドのページ送りが毎フレーム読む
-    if (s_dragging)
-        s_touchStart = -1;                  // ページのドラッグになったら指の決定は取り消す（HHD: Page_00 が Drag に入る）
+    s_scroller.max = kPageStep * (float)(kHairPages - 1);
+    // 髪のページ: 当たりの中で触れ始めた指はスクロールとタップ（漢字変換の候補欄と同じ: 6 画素を越えたらスクロール、慣性中の触れ方は止めるだけ）
+    if (mode == 1 && down && !s_touchPrev && !s_onPage) {
+        const UIntVector pos = Touch::GetPosition();
+        if (Inside(HhdTables::kPageArea, (s32)pos.x, (s32)pos.y)) {
+            const bool wasMoving = s_scroller.Press((float)pos.x, now) || s_stepping;
+            s_stepping = false;
+            s_onPage = true;
+            s_touchStart = wasMoving ? -1 : HitPage((s32)pos.x, (s32)pos.y, s_scroller.scroll);
+        }
+    }
+    if (s_onPage) {
+        if (down) {
+            const UIntVector pos = Touch::GetPosition();
+            s_scroller.Hold((float)pos.x, now);
+            if (s_scroller.Scrolling() || HitPage((s32)pos.x, (s32)pos.y, s_scroller.scroll) != s_touchStart)
+                s_touchStart = -1;          // スクロールになった・的から外れた（HHD の TouchUnSelect）
+        } else {
+            s_scroller.Release(now);
+            if (s_touchStart >= 0)
+                Decide(s_touchStart);
+            s_touchStart = -1;
+            s_onPage = false;
+        }
+        s_touchPrev = down;
+        s_scrollPub = s_scroller.scroll;
+        return;
+    }
+    if (mode == 1) {
+        const s8 req = s_pageReq;
+        s_pageReq = 0;
+        if (req != 0) {
+            s32 next = (s32)(s_scroller.scroll / kPageStep + 0.5f) + req;
+            if (next < 0)
+                next = 0;
+            if (next >= kHairPages)
+                next = kHairPages - 1;
+            s_scroller.Stop();
+            s_stepTarget = kPageStep * (float)next;
+            s_stepping = s_stepTarget != s_scroller.scroll;
+            s_stepTick = now;
+        }
+        if (s_stepping) {
+            const float dt = (float)(now - s_stepTick) / (float)SYSCLOCK_ARM11;
+            s_stepTick = now;
+            StepToward(dt);
+        } else {
+            s_scroller.Idle(now);           // 慣性
+        }
+        s_scrollPub = s_scroller.scroll;
+    }
+    // タッチ（ページの当たりの外）: 置いた的の上で離したら決定。途中で的から外れたら取り消し（HHD の TouchUnSelect）
     if (down) {
         const UIntVector pos = Touch::GetPosition();
         const s32 hit = HitTest((s32)pos.x, (s32)pos.y, mode);
@@ -1121,7 +1052,7 @@ void FrameStep(void) {
         // 前のフレームで記録した長さ（このフレームの記録より前に読む）
         for (u32 i = 0; i < kLayouts; ++i)
             s_used[i] = RecordedBytes(s_lay[i].obj);
-        StepPager();
+        PlacePages();
         Apply();
         const u32 third = s_applied.mode == 0 ? kEye : kHair;
         const u32 order[3] = { kBg, kFace, third };
