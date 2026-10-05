@@ -237,8 +237,9 @@ enum Stage : u32 { kOff = 0, kCreating = 1, kLive = 2, kDestroying = 3, kFailed 
 
 // 複製の置き場は 2 つ。目の形を変えるときは、もう一方で新しい複製を裏で作り、できたら入れ替えて古いほうを片付ける
 // （利用者 2026-10-05: フェードせず即切り替え）。片付け・作成の関数は「今の複製」s_model を一時的に差し替えて使う（UseModel）
-u8 s_modelBuf[2][kModelBytes] __attribute__((aligned(8)));
-u8 *s_model = s_modelBuf[0];                // 今の複製（表示・更新・片付けの対象）
+// 2 つとも初めて Show するときにヒープから取り、以後は返さない（静的に置くと 3gx の実行部が 2 MiB を超えた。2026-10-06）
+u8 *s_modelBuf[2];
+u8 *s_model;                                // 今の複製（表示・更新・片付けの対象）。Show より前は nullptr
 bool s_constructed;
 u8 *s_profileCopies[2];                     // 置き場ごとのプロフィールの写し（記録は表示中も pm+452 と頭の枠から読まれる）
 // 裏で作っている新しい複製 / 入れ替えたあと片付けている古い複製
@@ -1296,6 +1297,16 @@ void FrameStep(void) {
 }
 
 bool Show(void) {
+    if (s_modelBuf[0] == nullptr || s_modelBuf[1] == nullptr) {
+        for (u32 k = 0; k < 2; ++k) {
+            if (s_modelBuf[k] == nullptr)
+                s_modelBuf[k] = static_cast<u8 *>(std::malloc(kModelBytes));
+            if (s_modelBuf[k] == nullptr || (reinterpret_cast<u32>(s_modelBuf[k]) & 7u) != 0)
+                return false;                       // 取れない／8 バイト境界でない（newlib の malloc は 8 境界）
+            std::memset(s_modelBuf[k], 0, kModelBytes);
+        }
+        s_model = s_modelBuf[0];
+    }
     if (!s_hooked) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep))
             return false;
