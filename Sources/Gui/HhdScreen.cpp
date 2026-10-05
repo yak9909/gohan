@@ -92,20 +92,21 @@ const s32 kHairPages = 4;
 const float kPageStep = 276.0f;
 const u32 kSlideFrames = 8;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
-const u32 kScreenLower = 1;                 // AddLayout の画面（下画面 = 1）
+const u32 kScreenLower = 1, kScreenUpper = 0;   // AddLayout の画面（上画面 = 0 / 下画面 = 1。LayoutMgr_AddLayout 0x56928C）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
 
 const char kArcPath[] = "/hhd_charcreate.arc";
 const u32 kMaxArcBytes = 0x80000;
 
 // 組むレイアウト（この順に足す = 後ろほど手前）。コマンド領域は実機の測定（F074: 地 784・顔 13,344・目 23,104 バイト）に余裕を足した値。
-enum { kBg, kFace, kEye, kHair, kLayouts };
+enum { kBg, kFace, kEye, kHair, kTop, kLayouts };
 struct Def { const char *name; u32 cmdBytes; };
 const Def kDefs[kLayouts] = {
     { "hhd_bg.bclyt",   0x2000  },
     { "hhd_face.bclyt", 0x10000 },
     { "hhd_eye.bclyt",  0x8000  },
     { "hhd_hair.bclyt", 0x10000 },
+    { "hhd_top.bclyt",  0x2000  },     // 上画面（HHD の fce_Top_00: 地・水玉・吹き出し・小さな丸・「まわす」。モデルは出さない）
 };
 
 enum class Stage : u8 { Idle, Copy, Draw, Teardown, Failed };
@@ -650,9 +651,10 @@ const char *StageName(void) {
 
 void Measure(char *out, u32 size) {
     // レイアウトごとに 記録した長さ/確保した大きさ（バイト。地・顔・目・髪）。ヒープは組む前と後の空き（KB）
-    std::snprintf(out, size, u8"性別 %u 命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 空き %luK→%luK", (unsigned)s_sexByte,
+    std::snprintf(out, size, u8"性別 %u 命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 上 %lu/%lu 空き %luK→%luK", (unsigned)s_sexByte,
                   (unsigned long)s_used[0], (unsigned long)s_size[0], (unsigned long)s_used[1], (unsigned long)s_size[1],
                   (unsigned long)s_used[2], (unsigned long)s_size[2], (unsigned long)s_used[3], (unsigned long)s_size[3],
+                  (unsigned long)s_used[4], (unsigned long)s_size[4],
                   (unsigned long)(s_heapFreeBefore / 1024u), (unsigned long)(s_heapFreeAfter / 1024u));
 }
 
@@ -732,6 +734,10 @@ void FrameStep(void) {
             if (mgr != nullptr)
                 AddLayout(mgr, s_lay[order[n]].obj, kScreenLower);
         }
+        // 上画面: 最前面（0xFF）なので、ゲームの 3D と上画面の UI（時計など）より手前に全面を覆う
+        LayoutCalc(s_lay[kTop].obj);
+        if (mgr != nullptr)
+            AddLayout(mgr, s_lay[kTop].obj, kScreenUpper);
         return;
     }
     case Stage::Teardown:
