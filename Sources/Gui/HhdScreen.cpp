@@ -85,9 +85,10 @@ const u32 kPaneX = 0x28;                    // ペインの平行移動 x（Game
 // 性別: プレイヤー [0xAA7994] の +428 = プレイヤー番号 → プロフィール（0x2FEB60）の +21946 の bit0（docs/topics/player_clone_preview.md）。
 //   0 = 男の子・1 = 女の子 と読む（公開情報の仮説。LOW。実機で利用者のキャラと照合する）
 const u32 kPlayerPtr = 0x00AA7994, kActorPlayerIndex = 428, kProfileSexByte = 21946;
-// 髪のページ: 性別ごとに 16 個 = 8 個 × 2 ページ（HHD-F005）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
+// 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
+//   ページ 0〜1 = 男の子の髪 B00〜B15、ページ 2〜3 = 女の子の髪 G00〜G15。髪の番号 = ページ × 8 + 枠の中の番号（0〜31）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
 //   送るときは N_All を 1 枠ぶん滑らせてから戻し、絵を入れ替える。滑る長さ kSlideFrames は HHD のコードからは未確認（仮の値）
-const s32 kHairPages = 2;
+const s32 kHairPages = 4;
 const float kPageStep = 276.0f;
 const u32 kSlideFrames = 8;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
@@ -117,7 +118,7 @@ struct Lay {
 // 画面の状態（メニューのスレッドが書き、ゲームのスレッドがペインへ写す）。-1 = 選んでいない
 struct State {
     s8 mode;                                // 0 = 顔（目）、1 = 髪
-    s8 eyeShape, eyeColor, skin, hair, hairColor;   // hair = 性別の中の番号 0..15
+    s8 eyeShape, eyeColor, skin, hair, hairColor;   // hair = 0..31（0〜15 男の子 B、16〜31 女の子 G）
     s8 sex, page;                           // sex: 0 男の子 / 1 女の子、page: 中央の枠のページ（ゲームのスレッドだけが書く）
 };
 
@@ -281,7 +282,7 @@ s32 FramePage(s32 page, u32 f) {
     return pg >= 0 && pg < kHairPages ? pg : -1;
 }
 
-void SetHairPages(s8 sex, s8 page) {
+void SetHairPages(s8 page) {
     char name[32];
     for (u32 f = 0; f < 3; ++f) {
         const s32 pg = FramePage(page, f);
@@ -289,7 +290,8 @@ void SetHairPages(s8 sex, s8 page) {
         if (pg < 0)
             continue;
         for (u32 k = 0; k < 8; ++k) {
-            std::snprintf(name, sizeof(name), "sh_fce_%cHair_%02ld.bclim", sex == 1 ? 'G' : 'B', (long)(pg * 8 + (s32)k));
+            const s32 hair = pg * 8 + (s32)k;
+            std::snprintf(name, sizeof(name), "sh_fce_%cHair_%02ld.bclim", hair < 16 ? 'B' : 'G', (long)(hair % 16));
             SetTexture(s_p.hairPic[f * 8 + k], name);
         }
     }
@@ -333,8 +335,8 @@ void Apply(void) {
         SetVisible(s_p.hairIconB, want.sex != 1);
         SetVisible(s_p.hairIconG, want.sex == 1);
     }
-    if (all || want.sex != was.sex || want.page != was.page)
-        SetHairPages(want.sex, want.page);
+    if (all || want.page != was.page)
+        SetHairPages(want.page);
     if (all || want.mode != was.mode) {
         SetVisible(s_p.eyeColorGroup, want.mode == 0);
         SetVisible(s_p.hairSkinGroup, want.mode == 1);
@@ -497,6 +499,7 @@ void Build(void) {
             s_state.sex = (s8)(s_sexByte & 1u);
         }
     }
+    s_state.page = (s8)(s_state.sex == 1 ? 2 : 0);    // 自分の性別の髪の最初のページから
     s_slideDir = 0;
     MovePaneX(s_p.hairAll, 0.0f);
     s_appliedValid = false;
