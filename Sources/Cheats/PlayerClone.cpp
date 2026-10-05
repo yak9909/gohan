@@ -228,8 +228,17 @@ const u32 kTableEntries = 12;
 
 enum Stage : u32 { kOff = 0, kCreating = 1, kLive = 2, kDestroying = 3, kFailed = 4 };
 
-u8 s_model[kModelBytes] __attribute__((aligned(8)));
+// 複製の置き場は 2 つ。目の形を変えるときは、もう一方で新しい複製を裏で作り、できたら入れ替えて古いほうを片付ける
+// （利用者 2026-10-05: フェードせず即切り替え）。片付け・作成の関数は「今の複製」s_model を一時的に差し替えて使う（UseModel）
+u8 s_modelBuf[2][kModelBytes] __attribute__((aligned(8)));
+u8 *s_model = s_modelBuf[0];                // 今の複製（表示・更新・片付けの対象）
 bool s_constructed;
+u8 *s_profileCopies[2];                     // 置き場ごとのプロフィールの写し（記録は表示中も pm+452 と頭の枠から読まれる）
+// 裏で作っている新しい複製 / 入れ替えたあと片付けている古い複製
+bool s_nextOn, s_oldOn;
+u8 *s_next, *s_old;
+u32 s_nextFrames, s_oldFrames;
+s32 s_nextFace;
 u32 s_mgr;                                  // 作ったときの BsPlayerMgr
 u32 s_player;                               // 作ったときの AcPlayer
 u8 s_room;                                  // 作ったときの部屋
@@ -252,7 +261,7 @@ const u32 kProfileBytes = 42112, kLookFaceOffset = 4 + 2, kProfileSexByte = 2194
 volatile s32 s_eyeColor = -1;               // 0..5（-1 = 本物のまま）
 volatile s32 s_face = -1;                   // 0..11（-1 = 本物のまま）
 s32 s_builtFace = -1;                       // 今の複製を作ったときの目の形
-u8 *s_profileCopy;                          // 初めて作るときにヒープから取る（静的に置くと 3gx の実行部が 2 MiB を超える）。以後は返さない                 // 複製の不透明度（画面に固定のとき。255 = ふつうに描く、0 = 描かない）
+u8 *s_profileCopy;                          // 今の複製の写し（s_profileCopies のどちらか）。初めて作るときにヒープから取る（静的に置くと 3gx の実行部が 2 MiB を超える）。以後は返さない                 // 複製の不透明度（画面に固定のとき。255 = ふつうに描く、0 = 描かない）
 bool s_hooked;
 
 // 画面に固定
@@ -289,6 +298,15 @@ u16 R16(u32 a) { return *reinterpret_cast<const volatile u16 *>(a); }
 u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
 bool IsHeap(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
 u32 Model(void) { return reinterpret_cast<u32>(s_model); }
+
+u32 BufIndex(const u8 *m) { return m == s_modelBuf[1] ? 1u : 0u; }
+
+// 片付け・作成の関数（Model() / s_model を読む）を別の置き場に対して使う間だけ差し替える
+struct UseModel {
+    u8 *saved;
+    explicit UseModel(u8 *m) : saved(s_model) { s_model = m; }
+    ~UseModel() { s_model = saved; }
+};
 
 bool BanksHaveRoom(u32 mgr) {
     for (const BankNeed &b : kBanks) {
@@ -342,7 +360,7 @@ bool ReleaseStep(void) {
 void StepDestroy(void);
 
 void Abandon(u32 reason) {
-    std::memset(s_model, 0, sizeof(s_model));
+    std::memset(s_model, 0, kModelBytes);
     s_constructed = false;
     s_fail = reason;
     s_stage = kFailed;
@@ -432,13 +450,15 @@ void StepCreate(void) {
             Abandon(5);
             return;
         }
-        if (s_profileCopy == nullptr)
-            s_profileCopy = static_cast<u8 *>(std::malloc(kProfileBytes));
-        if (s_profileCopy == nullptr) {
+        u8 *&copySlot = s_profileCopies[BufIndex(s_model)];
+        if (copySlot == nullptr)
+            copySlot = static_cast<u8 *>(std::malloc(kProfileBytes));
+        if (copySlot == nullptr) {
             Abandon(2);                             // 写しの置き場が取れない（作る前なので片付けは要らない）
             return;
         }
-        std::memset(s_model, 0, sizeof(s_model));
+        s_profileCopy = copySlot;
+        std::memset(s_model, 0, kModelBytes);
         PlayerModelCtor(s_model);
         s_constructed = true;
         s_mgr = manager;
@@ -483,6 +503,70 @@ void StepCreate(void) {
     }
 }
 
+// 目の形が変わった: もう一方の置き場で、写し（目の形を替えたもの）から新しい複製を作り始める。枠が足りなければ false
+bool StartNext(void) {
+    if (!BanksHaveRoom(s_mgr + kBankMgrOffset))
+        return false;
+    const u32 profile = PlayerProfile(R8(s_player + kActorPlayerIndex));
+    if (profile == 0u)
+        return false;
+    u8 *next = s_model == s_modelBuf[0] ? s_modelBuf[1] : s_modelBuf[0];
+    u8 *&copySlot = s_profileCopies[BufIndex(next)];
+    if (copySlot == nullptr)
+        copySlot = static_cast<u8 *>(std::malloc(kProfileBytes));
+    if (copySlot == nullptr)
+        return false;
+    std::memcpy(copySlot, reinterpret_cast<const void *>(profile), kProfileBytes);
+    const s32 face = s_face;
+    if (face >= 0 && face < 12)
+        copySlot[kLookFaceOffset] = (u8)face;
+    std::memset(next, 0, kModelBytes);
+    PlayerModelCtor(next);
+    s_next = next;
+    s_nextFace = face;
+    s_nextFrames = 0;
+    s_nextOn = true;
+    return true;
+}
+
+// 裏の作成を 1 フレーム進め、できたら入れ替える。古いほうは積むのをやめてから kQuietFrames 待って枠を返す
+void StepSwap(void) {
+    if (s_oldOn) {
+        UseModel use(s_old);
+        if (++s_oldFrames > kQuietFrames && ReleaseStep()) {
+            PlayerModelDtor(s_old);
+            std::memset(s_old, 0, kModelBytes);
+            s_oldOn = false;
+        }
+    }
+    if (!s_nextOn)
+        return;
+    const u32 profile = PlayerProfile(R8(s_player + kActorPlayerIndex));
+    const u32 maskBit = profile != 0u ? (R8(profile + kProfileMaskByte) >> 6) & 1u : 0u;
+    const u32 copy = reinterpret_cast<u32>(s_profileCopies[BufIndex(s_next)]);
+    const u32 isBoy = (R8(copy + kProfileSexByte) & 1u) == 0u ? 1u : 0u;
+    u32 done;
+    {
+        UseModel use(s_next);
+        done = CreateStep(s_next, copy + 4, isBoy, 0, maskBit, 0, kDollToolParam);
+    }
+    if (done != 0u) {
+        // 入れ替え: このフレームから新しい複製を更新・積む・描く。古いほうは積まれなくなる
+        s_old = s_model;
+        s_oldFrames = 0;
+        s_oldOn = true;
+        s_model = s_next;
+        s_profileCopy = s_profileCopies[BufIndex(s_next)];
+        s_builtFace = s_nextFace;
+        s_nextOn = false;
+    } else if (++s_nextFrames >= kCreateLimit) {
+        s_old = s_next;                             // 作り終わらない: 作りかけを片付ける（枠は返す）
+        s_oldFrames = 0;
+        s_oldOn = true;
+        s_nextOn = false;
+    }
+}
+
 void StepLive(void) {
     if (SceneChanged()) {
         s_lateReady = false;
@@ -492,8 +576,9 @@ void StepLive(void) {
         StepDestroy();
         return;
     }
-    if (s_face != s_builtFace) {
-        // 目の形が変わった: 片付けて（枠を返して）から写しで作り直す（FrameStep が kOff から作成へ戻す）
+    StepSwap();
+    if (s_face != s_builtFace && !s_nextOn && !s_oldOn && !StartNext()) {
+        // 枠に空きが無い（オンラインで人が多いなど）: 片付けて（枠を返して）から写しで作り直す（FrameStep が kOff から作成へ戻す）
         s_lateReady = false;
         s_stage = kDestroying;
         s_frames = 0;
@@ -545,10 +630,32 @@ void StepDestroy(void) {
     s_lateReady = false;
     if (++s_frames <= kQuietFrames)
         return;
-    if (!ReleaseStep())
+    // 入れ替えの途中で片付けになった: 古い複製と作りかけの複製の枠も返す（1 枠でも残すと無限ロード。F030）
+    bool others = true;
+    if (s_oldOn) {
+        UseModel use(s_old);
+        if (ReleaseStep()) {
+            PlayerModelDtor(s_old);
+            std::memset(s_old, 0, kModelBytes);
+            s_oldOn = false;
+        } else {
+            others = false;
+        }
+    }
+    if (s_nextOn) {
+        UseModel use(s_next);
+        if (ReleaseStep()) {
+            PlayerModelDtor(s_next);
+            std::memset(s_next, 0, kModelBytes);
+            s_nextOn = false;
+        } else {
+            others = false;
+        }
+    }
+    if (!ReleaseStep() || !others)
         return;
     PlayerModelDtor(s_model);
-    std::memset(s_model, 0, sizeof(s_model));
+    std::memset(s_model, 0, kModelBytes);
     s_constructed = false;
     s_stage = s_fail != 0u ? kFailed : kOff;
     s_frames = 0;

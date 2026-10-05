@@ -528,11 +528,12 @@ void StepMenuScene(void) {
         LeaveMenuScene();
         s_menuScene = false;
     } else if (PlayerClone::Read().stage != 2) {
-        s_cloneFade = 0;                    // 作り直し中（目の形を変えた）: 透明にして、表示に戻ったらフェードインし直す
-        PlayerClone::SetAlpha(0);
+        PlayerClone::SetAlpha(0);           // 作り直し中（枠が足りないときだけ。ふつうは裏で作って即入れ替え）
     } else if (s_cloneFade < kCloneFadeFrames) {
-        ++s_cloneFade;
+        ++s_cloneFade;                      // フェードインは開いたときの 1 回だけ（利用者: 目の形の切り替えはフェードせず即）
         PlayerClone::SetAlpha(255u * s_cloneFade / kCloneFadeFrames);
+    } else {
+        PlayerClone::SetAlpha(255);
     }
 }
 
@@ -1252,7 +1253,7 @@ void Tick(bool menuVisible) {
         const s32 hair = s_state.hair;
         PlayerClone::SetHair(hair >= 0 && hair < 32 ? AcnlHairFromHhd(hair) : -1, s_state.hairColor);
         PlayerClone::SetLook(s_state.skin, s_hideHead);
-        PlayerClone::SetEyes(s_state.eyeShape, s_state.eyeColor);   // 目の形を変えると複製は作り直される（その間は透明 → フェードインし直す）
+        PlayerClone::SetEyes(s_state.eyeShape, s_state.eyeColor);   // 目の形を変えると複製は裏で作り直され、できた瞬間に入れ替わる
     }
     const bool down = Touch::IsDown();
     const s8 mode = s_state.mode;

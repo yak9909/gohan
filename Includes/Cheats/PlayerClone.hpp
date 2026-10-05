@@ -25,7 +25,7 @@ namespace PlayerClone
     void            SetLook(s32 tan, bool hideHead);
     // 画面に固定のときの不透明度（0..255。255 = ふつう、0 = 描かない）。フェードに使う（IDA-opus-5.5-F084）
     void            SetAlpha(u32 alpha);
-    // 目の形（0..11）と目の色（0..5）。-1 = 本物のまま。目の形を変えると複製を作り直す（数フレーム消える。IDA-opus-5.5-F085）
+    // 目の形（0..11）と目の色（0..5）。-1 = 本物のまま。目の形を変えると、もう一方の置き場で裏で作り、できたら入れ替える（消えない。枠が足りなければ片付けてから作り直す。IDA-opus-5.5-F085）
     void            SetEyes(s32 face, s32 eyeColor);
     // 画面に固定の専用カメラが使う世界のカメラの投影を一度取れたか（メニューの 3D = Scene 1 で描く前に必要）
     bool            ProjectionReady(void);
