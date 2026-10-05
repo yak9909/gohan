@@ -225,6 +225,8 @@ namespace CTRPluginFramework
                     return;
                 if (BuildingEditorTick(index, held))
                     return;
+                if (HhdScreenTick(index, held))
+                    return;
                 if (ChatIme::Tick(index, held))
                     return;
                 GridCursorTick(index, held);
@@ -235,6 +237,8 @@ namespace CTRPluginFramework
                 if (PlayerMoveDisable(index))
                     return;
                 if (BuildingEditorDisable(index))
+                    return;
+                if (HhdScreenDisable(index))
                     return;
                 if (ChatIme::Disable(index))
                     return;

@@ -1,4 +1,5 @@
 #include "HhdScreen.hpp"
+#include "HhdTables.h"
 #include "GridCursor.hpp"
 #include "Cheats.hpp"
 #include "GuiMenu.hpp"
@@ -16,8 +17,13 @@
 //     写したら sub_12D294(先頭, 大きさ)。holder+0x15C の読み込み係は使わない（ArcResAccReader_Dtor はそれを返そうとしない）→ 器はこちらで返す。
 //   書体: BsMenuCatalog_Init 0x21C76C と同じく種類 0 を holder+12 のアクセサへ登録（名前 = Garden_msg_size16.bcfnt。HHD のレイアウトもこれを参照）。
 //   描く順: LayoutMgr_AddLayout 0x56928C は Layout+0x0C のバイトの昇順に並べ、同じ値なら後に足したものが後ろ（= 手前）。0xFF で必ず最前面（F-253）。
+//     顔の画面がこの順で予想どおり出ることを実機で確認（IDA-opus-5.5-F074）。
 //   コマンドの使用量: Layout+0x100 = リスト番号、+0x118 = 確保した大きさ。管理 = dword_AD98C0[(番号 & 0x1F) + 7] から +0x40 で辿り +0 が番号のもの、
 //     +0x0C = 記録した長さ（GpuCmd_SelectList 0x1216BC が切り替えのたびに保存）。
+//   ペインの書き換え（GameLabel.cpp と同じ欄）: 見える旗 = ペイン+0xB7 bit0、絵の材質 = +0x13C、材質の色 0 / 1 = +0x10 / +0x14（RGB）、
+//     材質を GPU へ送り直させる = 材質+0x4D bit2 を落とす。ウィンドウの枠の材質 = [ウィンドウ+0x160]+4（nwlyt_Window_DrawSelf 0x73BCBC の 1 枠の分岐）。
+//     文字 = nwlyt_TextBox_SetString 0x4BACBC (箱, 文字列, 0, 長さ)。ペインを名前で引く = 0x567BAC (layout, 名前)。
+//   選択・色の値と当たり矩形は自動生成の HhdTables.h（tools/hhd/export_gohan_tables.py）。
 
 namespace HhdScreen {
 
@@ -37,6 +43,8 @@ typedef void (*HeapFreeFn)(void *heap, void *p);
 typedef u32 (*HeapFreeSizeFn)(void *heap);
 typedef void *(*FontSlotFn)(void *fontMgr, u32 kind);
 typedef void (*RegisterFontFn)(void *accessor, const char *name, void *font);
+typedef void *(*FindFn)(void *layout, const char *name);
+typedef int (*SetStringFn)(void *textBox, const u16 *str, u32 dst, u32 len);
 
 const CtorFn         ArcCtor        = reinterpret_cast<CtorFn>(0x00120D54);
 const CtorFn         ArcDtor        = reinterpret_cast<CtorFn>(0x00567310);
@@ -53,6 +61,8 @@ const HeapFreeSizeFn HeapFreeSize   = reinterpret_cast<HeapFreeSizeFn>(0x0074D74
 const FontSlotFn     FontName       = reinterpret_cast<FontSlotFn>(0x00747528);
 const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8);
 const RegisterFontFn RegisterFont   = reinterpret_cast<RegisterFontFn>(0x004B3FD4);
+const FindFn         FindPane       = reinterpret_cast<FindFn>(0x00567BAC);
+const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);
 
 const u32 kLayoutMgrPtr = 0x0096FC38;
 const u32 kFontMgrPtr = 0x0094C9C8;
@@ -62,6 +72,8 @@ const u32 kHeapAllocSlot = 24 / 4, kHeapFreeSlot = 28 / 4;
 const u32 kHolderArc = 8, kHolderAccessor = 0xC, kHolderArcLoaded = 0x158;
 const u32 kLayoutPriority = 12, kLayoutHolder = 236, kLayoutListId = 0x100, kLayoutListSize = 0x118;
 const u32 kCmdListBuckets = 0x00AD98C0, kCmdMgrNext = 0x40, kCmdMgrUsed = 0x0C;
+const u32 kPaneFlags = 0xB7, kPicMaterial = 0x13C, kWindowFrames = 0x160, kFrameMaterial = 4;
+const u32 kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
 const u32 kScreenLower = 1;                 // AddLayout の画面（下画面 = 1）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
@@ -69,16 +81,15 @@ const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くの�
 const char kArcPath[] = "/hhd_charcreate.arc";
 const u32 kMaxArcBytes = 0x80000;
 
-// 組むレイアウト。描くのは draw が真のものを、この順（後ろほど手前）に。
-// コマンド領域はカタログ（0x2000〜0xB000）を目安に多めに取り、実際の使用量を Measure で測る。
-struct Def { const char *name; u32 cmdBytes; bool draw; };
-const Def kDefs[] = {
-    { "hhd_bg.bclyt",   0x2000,  true  },
-    { "hhd_face.bclyt", 0x10000, true  },
-    { "hhd_eye.bclyt",  0x8000,  true  },
-    { "hhd_hair.bclyt", 0x10000, false },   // 髪のモード（まだ切り替えない）
+// 組むレイアウト（この順に足す = 後ろほど手前）。コマンド領域は実機の測定（F074: 地 784・顔 13,344・目 23,104 バイト）に余裕を足した値。
+enum { kBg, kFace, kEye, kHair, kLayouts };
+struct Def { const char *name; u32 cmdBytes; };
+const Def kDefs[kLayouts] = {
+    { "hhd_bg.bclyt",   0x2000  },
+    { "hhd_face.bclyt", 0x10000 },
+    { "hhd_eye.bclyt",  0x8000  },
+    { "hhd_hair.bclyt", 0x10000 },
 };
-const u32 kLayouts = sizeof(kDefs) / sizeof(kDefs[0]);
 
 enum class Stage : u8 { Idle, Copy, Draw, Teardown, Failed };
 
@@ -87,8 +98,23 @@ struct Lay {
     bool made, built;
 };
 
+// 画面の状態（メニューのスレッドが書き、ゲームのスレッドがペインへ写す）。-1 = 選んでいない
+struct State {
+    s8 mode;                                // 0 = 顔（目）、1 = 髪
+    s8 eyeShape, eyeColor, skin, hair, hairColor;
+};
+
+// 引いておくペイン
+struct Panes {
+    void *eyeFrame[12], *iris[12], *eyeBase[12];
+    void *hairFrame[8], *hairPic[24], *hairSkin[24];
+    void *ecFrame[6], *scFrame[8], *hcFrame[16];
+    void *eyeColorGroup, *hairSkinGroup, *leftText;
+};
+
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
 Lay s_lay[kLayouts];
+Panes s_p;
 u8 *s_file;                                 // SD から読んだ arc（プラグインのメモリ。メニューのスレッドが作る）
 u32 s_fileSize;
 void *s_heap, *s_arc;                       // ゲームのヒープに写した arc
@@ -97,10 +123,18 @@ volatile bool s_want;
 volatile Stage s_stage = Stage::Idle;
 const char *volatile s_error = "";
 u32 s_wait;
+volatile State s_state;                     // 欲しい状態
+State s_applied;                            // ペインへ写した状態（ゲームのスレッドだけ）
+bool s_appliedValid;
 // 測った値（ゲームのスレッドが書き、Measure が読む）
 volatile u32 s_heapFreeBefore, s_heapFreeAfter, s_used[kLayouts], s_size[kLayouts];
+// 入力（メニューのスレッドだけ）
+bool s_touchPrev;
+s32 s_touchStart = -1;                      // 指を置いたときの的（-1 = なし）
+u32 s_keysPrev;
 
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(reinterpret_cast<u8 *>(p) + off); }
+inline u8 &B(void *p, u32 off) { return *(reinterpret_cast<u8 *>(p) + off); }
 
 bool IsHeapPointer(const void *p) {
     const u32 v = reinterpret_cast<u32>(p);
@@ -110,6 +144,135 @@ bool IsHeapPointer(const void *p) {
 void Fail(const char *why) {
     s_error = why;
     s_stage = Stage::Failed;
+}
+
+// ---- ペインの書き換え（ゲームのスレッド）----
+
+void SetVisible(void *pane, bool on) {
+    if (pane == nullptr)
+        return;
+    B(pane, kPaneFlags) = (u8)((B(pane, kPaneFlags) & ~1u) | (on ? 1u : 0u));
+}
+
+void Paint(void *mat, const HhdTables::ColorPair &c) {
+    if (!IsHeapPointer(mat))
+        return;
+    for (u32 k = 0; k < 3; ++k) {
+        B(mat, kMatColor0 + k) = c.c0[k];
+        B(mat, kMatColor1 + k) = c.c1[k];
+    }
+    B(mat, kMatFlags) &= ~4u;               // GPU へ送り直させる
+}
+
+void *PicMaterial(void *pic) {
+    return pic != nullptr ? reinterpret_cast<void *>(W(pic, kPicMaterial)) : nullptr;
+}
+
+void *WindowMaterial(void *win) {
+    if (win == nullptr)
+        return nullptr;
+    const u32 frames = W(win, kWindowFrames);
+    return IsHeapPointer(reinterpret_cast<void *>(frames)) ? reinterpret_cast<void *>(W(reinterpret_cast<void *>(frames), kFrameMaterial)) : nullptr;
+}
+
+void *Find(u32 lay, const char *fmt, u32 a, u32 b = 0) {
+    char name[24];
+    std::snprintf(name, sizeof(name), fmt, (unsigned)a, (unsigned)b);
+    return FindPane(s_lay[lay].obj, name);
+}
+
+bool FindAll(void) {
+    for (u32 k = 0; k < 12; ++k) {
+        s_p.eyeFrame[k] = Find(kEye, "e%02u_W_Frame", k);
+        s_p.iris[k] = Find(kEye, "e%02u_P_Iris", k);
+        s_p.eyeBase[k] = Find(kEye, "e%02u_P_Base", k);
+        if (s_p.eyeFrame[k] == nullptr || s_p.iris[k] == nullptr || s_p.eyeBase[k] == nullptr)
+            return false;
+    }
+    for (u32 pg = 0; pg < 3; ++pg)
+        for (u32 k = 0; k < 8; ++k) {
+            s_p.hairPic[pg * 8 + k] = Find(kHair, "h%u%u_P_Hair", pg, k);
+            s_p.hairSkin[pg * 8 + k] = Find(kHair, "h%u%u_P_Skin", pg, k);
+            if (s_p.hairPic[pg * 8 + k] == nullptr || s_p.hairSkin[pg * 8 + k] == nullptr)
+                return false;
+        }
+    for (u32 k = 0; k < 8; ++k)
+        if ((s_p.hairFrame[k] = Find(kHair, "h1%u_W_Frame", k)) == nullptr)
+            return false;
+    for (u32 k = 0; k < 6; ++k)
+        if ((s_p.ecFrame[k] = Find(kFace, "ec%02u_P_Frame", k)) == nullptr)
+            return false;
+    for (u32 k = 0; k < 8; ++k)
+        if ((s_p.scFrame[k] = Find(kFace, "sc%02u_P_Frame", k)) == nullptr)
+            return false;
+    for (u32 k = 0; k < 16; ++k)
+        if ((s_p.hcFrame[k] = Find(kFace, "hc%02u_P_Frame", k)) == nullptr)
+            return false;
+    s_p.eyeColorGroup = FindPane(s_lay[kFace].obj, "N_EyeColor_00");
+    s_p.hairSkinGroup = FindPane(s_lay[kFace].obj, "N_HairSkinCol");
+    s_p.leftText = FindPane(s_lay[kFace].obj, "b0_T_Btn");
+    return s_p.eyeColorGroup != nullptr && s_p.hairSkinGroup != nullptr && s_p.leftText != nullptr;
+}
+
+const u16 kTextHair[] = { 0x304B, 0x307F, 0x304C, 0x305F };    // かみがた
+const u16 kTextFace[] = { 0x304B, 0x304A };                    // かお
+
+// 欲しい状態と写した状態の差だけペインへ書く
+void Apply(void) {
+    State want;
+    want.mode = s_state.mode;
+    want.eyeShape = s_state.eyeShape;
+    want.eyeColor = s_state.eyeColor;
+    want.skin = s_state.skin;
+    want.hair = s_state.hair;
+    want.hairColor = s_state.hairColor;
+    const bool all = !s_appliedValid;
+    State &was = s_applied;
+    if (all || want.mode != was.mode) {
+        SetVisible(s_p.eyeColorGroup, want.mode == 0);
+        SetVisible(s_p.hairSkinGroup, want.mode == 1);
+        if (want.mode == 0)
+            SetString(s_p.leftText, kTextHair, 0, 4);
+        else
+            SetString(s_p.leftText, kTextFace, 0, 2);
+    }
+    if (all || want.eyeShape != was.eyeShape)
+        for (u32 k = 0; k < 12; ++k)
+            Paint(WindowMaterial(s_p.eyeFrame[k]), (s32)k == want.eyeShape ? HhdTables::kEyeShape[k].b : HhdTables::kEyeShape[k].a);
+    if (all || want.hair != was.hair)
+        for (u32 k = 0; k < 8; ++k)
+            Paint(WindowMaterial(s_p.hairFrame[k]), (s32)k == want.hair ? HhdTables::kHairCell[k].b : HhdTables::kHairCell[k].a);
+    if (all || want.eyeColor != was.eyeColor) {
+        for (u32 k = 0; k < 6; ++k)
+            SetVisible(s_p.ecFrame[k], (s32)k == want.eyeColor);
+        if (want.eyeColor >= 0) {
+            Paint(PicMaterial(s_p.ecFrame[want.eyeColor]), HhdTables::kSwatchSelect);
+            for (u32 k = 0; k < 12; ++k)
+                Paint(PicMaterial(s_p.iris[k]), HhdTables::kEyeColor[want.eyeColor].a);
+        }
+    }
+    if (all || want.skin != was.skin) {
+        for (u32 k = 0; k < 8; ++k)
+            SetVisible(s_p.scFrame[k], (s32)k == want.skin);
+        if (want.skin >= 0) {
+            Paint(PicMaterial(s_p.scFrame[want.skin]), HhdTables::kSwatchSelect);
+            for (u32 k = 0; k < 12; ++k)
+                Paint(PicMaterial(s_p.eyeBase[k]), HhdTables::kSkinColor[want.skin].a);
+            for (u32 k = 0; k < 24; ++k)
+                Paint(PicMaterial(s_p.hairSkin[k]), HhdTables::kSkinColor[want.skin].b);
+        }
+    }
+    if (all || want.hairColor != was.hairColor) {
+        for (u32 k = 0; k < 16; ++k)
+            SetVisible(s_p.hcFrame[k], (s32)k == want.hairColor);
+        if (want.hairColor >= 0) {
+            Paint(PicMaterial(s_p.hcFrame[want.hairColor]), HhdTables::kSwatchSelect);
+            for (u32 k = 0; k < 24; ++k)
+                Paint(PicMaterial(s_p.hairPic[k]), HhdTables::kHairColor[want.hairColor].a);
+        }
+    }
+    s_applied = want;
+    s_appliedValid = true;
 }
 
 // レイアウトのコマンドリストの記録した長さ（見つからなければ 0xFFFFFFFF）
@@ -136,6 +299,8 @@ void Release(void) {
         }
         l.made = l.built = false;
     }
+    std::memset(&s_p, 0, sizeof(s_p));
+    s_appliedValid = false;
     if (s_holderMade)
         ArcDtor(s_holder);
     s_holderMade = false;
@@ -189,8 +354,63 @@ void Build(void) {
         s_size[i] = W(l.obj, kLayoutListSize);
         s_used[i] = 0xFFFFFFFFu;
     }
+    if (!FindAll())
+        return Fail("ペインが見つからない");
+    s_appliedValid = false;
     s_heapFreeAfter = HeapFreeSize(heap);
     s_stage = Stage::Draw;
+}
+
+// ---- 入力（メニューのスレッド）----
+
+bool Inside(const HhdTables::Rect &r, s32 x, s32 y) {
+    return x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1;
+}
+
+// 的の番号: 0..11 目の形 / 100+ 目の色 / 200+ 肌 / 300+ 髪 / 400+ 髪の色 / 900 左ボタン / 901 右ボタン / -1 なし
+s32 HitTest(s32 x, s32 y, s8 mode) {
+    if (Inside(HhdTables::kButtonLeft, x, y))
+        return 900;
+    if (Inside(HhdTables::kButtonRight, x, y))
+        return 901;
+    if (mode == 0) {
+        for (u32 k = 0; k < 12; ++k)
+            if (Inside(HhdTables::kEyeShape[k].hit, x, y))
+                return (s32)k;
+        for (u32 k = 0; k < 6; ++k)
+            if (Inside(HhdTables::kEyeColor[k].hit, x, y))
+                return 100 + (s32)k;
+        for (u32 k = 0; k < 8; ++k)
+            if (Inside(HhdTables::kSkinColor[k].hit, x, y))
+                return 200 + (s32)k;
+    } else {
+        for (u32 k = 0; k < 8; ++k)
+            if (Inside(HhdTables::kHairCell[k].hit, x, y))
+                return 300 + (s32)k;
+        for (u32 k = 0; k < 16; ++k)
+            if (Inside(HhdTables::kHairColor[k].hit, x, y))
+                return 400 + (s32)k;
+    }
+    return -1;
+}
+
+// 的を「決定」したとき（HHD と同じく、指を置いた的の上で離したら決定）
+void Decide(s32 target) {
+    if (target == 900) {
+        s_state.mode = s_state.mode == 0 ? 1 : 0;
+    } else if (target == 901) {
+        s_want = false;                     // けってい: いまは閉じるだけ（プレイヤーへの反映は段階 3）
+    } else if (target >= 400) {
+        s_state.hairColor = (s8)(target - 400);
+    } else if (target >= 300) {
+        s_state.hair = (s8)(target - 300);
+    } else if (target >= 200) {
+        s_state.skin = (s8)(target - 200);
+    } else if (target >= 100) {
+        s_state.eyeColor = (s8)(target - 100);
+    } else if (target >= 0) {
+        s_state.eyeShape = (s8)target;
+    }
 }
 
 }  // namespace
@@ -232,6 +452,11 @@ bool Show(void) {
         }
         s_hookReady = true;
     }
+    s_state.mode = 0;
+    s_state.eyeShape = s_state.eyeColor = s_state.skin = s_state.hair = s_state.hairColor = -1;
+    s_touchPrev = false;
+    s_touchStart = -1;
+    s_keysPrev = 0xFFFFFFFFu;               // 開いたときに押していたボタンは「押した」に数えない
     s_error = "";
     s_want = true;
     s_stage = Stage::Copy;
@@ -262,11 +487,45 @@ const char *StageName(void) {
 }
 
 void Measure(char *out, u32 size) {
-    // レイアウトごとに 記録した長さ/確保した大きさ（バイト）。ヒープは組む前と後の空き（KB）
-    std::snprintf(out, size, u8"命令 %lu/%lu %lu/%lu %lu/%lu 空き %luK→%luK",
+    // レイアウトごとに 記録した長さ/確保した大きさ（バイト。地・顔・目・髪）。ヒープは組む前と後の空き（KB）
+    std::snprintf(out, size, u8"命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 空き %luK→%luK",
                   (unsigned long)s_used[0], (unsigned long)s_size[0], (unsigned long)s_used[1], (unsigned long)s_size[1],
-                  (unsigned long)s_used[2], (unsigned long)s_size[2],
+                  (unsigned long)s_used[2], (unsigned long)s_size[2], (unsigned long)s_used[3], (unsigned long)s_size[3],
                   (unsigned long)(s_heapFreeBefore / 1024u), (unsigned long)(s_heapFreeAfter / 1024u));
+}
+
+void Tick(bool menuVisible) {
+    if (!s_want || s_stage != Stage::Draw)
+        return;
+    GuiMenu::BlockGameAll();                // 開いている間はゲームへの入力を全部止める（建物エディターと同じ）
+    if (menuVisible) {
+        s_touchPrev = false;
+        s_touchStart = -1;
+        return;
+    }
+    const u32 keys = Controller::GetKeysDown(true);
+    const u32 pressed = keys & ~s_keysPrev;
+    s_keysPrev = keys;
+    if (pressed & (u32)Key::B) {
+        s_want = false;                     // B: 閉じる
+        return;
+    }
+    // タッチ: 置いた的の上で離したら決定。途中で的から外れたら取り消し（HHD の TouchUnSelect）
+    const bool down = Touch::IsDown();
+    const s8 mode = s_state.mode;
+    if (down) {
+        const UIntVector pos = Touch::GetPosition();
+        const s32 hit = HitTest((s32)pos.x, (s32)pos.y, mode);
+        if (!s_touchPrev)
+            s_touchStart = hit;
+        else if (hit != s_touchStart)
+            s_touchStart = -1;
+    } else if (s_touchPrev) {
+        if (s_touchStart >= 0)
+            Decide(s_touchStart);
+        s_touchStart = -1;
+    }
+    s_touchPrev = down;
 }
 
 void FrameStep(void) {
@@ -290,15 +549,15 @@ void FrameStep(void) {
         }
         // 前のフレームで記録した長さ（このフレームの記録より前に読む）
         for (u32 i = 0; i < kLayouts; ++i)
-            if (kDefs[i].draw)
-                s_used[i] = RecordedBytes(s_lay[i].obj);
+            s_used[i] = RecordedBytes(s_lay[i].obj);
+        Apply();
+        const u32 third = s_applied.mode == 0 ? kEye : kHair;
+        const u32 order[3] = { kBg, kFace, third };
         void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
-        for (u32 i = 0; i < kLayouts; ++i) {
-            if (!kDefs[i].draw)
-                continue;
-            LayoutCalc(s_lay[i].obj);
+        for (u32 n = 0; n < 3; ++n) {
+            LayoutCalc(s_lay[order[n]].obj);
             if (mgr != nullptr)
-                AddLayout(mgr, s_lay[i].obj, kScreenLower);
+                AddLayout(mgr, s_lay[order[n]].obj, kScreenLower);
         }
         return;
     }
@@ -330,6 +589,8 @@ namespace CTRPluginFramework
     {
         namespace
         {
+            int     g_hhdIndex = -1;
+
             bool    HhdIsActive(int index)
             {
                 (void)index;
@@ -365,9 +626,27 @@ namespace CTRPluginFramework
             }
         }
 
+        bool    HhdScreenTick(int index, u16 held)
+        {
+            (void)held;
+            if (g_hhdIndex < 0 || index != g_hhdIndex)
+                return false;
+            HhdScreen::Tick(GuiMenu::IsVisible());
+            return true;
+        }
+
+        bool    HhdScreenDisable(int index)
+        {
+            if (g_hhdIndex < 0 || index != g_hhdIndex)
+                return false;
+            HhdScreen::Hide();
+            return true;
+        }
+
         void    WireHhdScreen(void)
         {
             const int show = GuiMenu::FindItem(kHhdShow);
+            g_hhdIndex = show;
             const int stat = GuiMenu::FindItem(kHhdStat);
             if (show >= 0)
                 GuiMenu::RegisterToggleEffect(show, &kHhdFuncs);

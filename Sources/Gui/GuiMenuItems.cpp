@@ -347,7 +347,7 @@ namespace CTRPluginFramework
                 // ---- root/テスト/HHD キャラクリ（試験）----
                 const int hhdFirst = g_itemCount;
                 AddItem(ITEM_CHECKBOX, kHhdShow,
-                        u8"SD の /hhd_charcreate.arc を読み、HHD のキャラクリ画面（顔のモード）を下画面のいちばん手前に出します。まだ操作はできません。");
+                        u8"SD の /hhd_charcreate.arc を読み、HHD のキャラクリ画面を下画面のいちばん手前に出します。タッチで選び、左のボタンで顔と髪を切り替え、右のボタンか B で閉じます。");
                 AddItem(ITEM_ACTION, kHhdStat,
                         u8"HHD 画面がいまどこまで進んだか、失敗ならその理由を通知で出します。");
                 const int hhdCount = g_itemCount - hhdFirst;
