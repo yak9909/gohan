@@ -81,5 +81,6 @@ const Rect kPageLeft = { -1, -1, 22, 153 };
 const Rect kPageRight = { 298, -1, 321, 153 };
 // 出入りのアニメ（anim/<layout>_in / _out.bclan）を結ぶグループ。並びは HhdScreen.cpp の kDefs（地・顔・目・髪・上）
 const char *const kAnimGroup[5] = { "G_InOut", "G_InOut", "G_In", "G_In", "G_InOut" };
+const bool kHasLoop[5] = { true, false, false, false, true };   // 地・顔・目・髪・上。結ぶグループは "G_Loop"
 const u32 kBgFadeFrames = 5;   // hhd_bg_out.bclan の frameSize
 }  // namespace HhdTables

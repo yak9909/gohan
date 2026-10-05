@@ -144,7 +144,9 @@ struct Lay {
     alignas(8) u8 out[40];
     void *group;                            // アニメを結ぶグループ（HhdTables::kAnimGroup）
     void *bound;                            // いま結んでいるアニメ（in / out / nullptr）
-    bool made, built, anims;
+    alignas(8) u8 loop[40];                 // 繰り返しのアニメ（HHD は G_Loop と loop があれば常に再生: LayoutObj_StartLoopAnim、HHD-F009）
+    void *loopGroup;
+    bool made, built, anims, hasLoop;
 };
 
 // 画面の段（ゲームのスレッドが進める）: 入場アニメ → 操作できる → 退場アニメ（終われば片付け）
@@ -570,6 +572,8 @@ void Release(void) {
     for (u32 i = 0; i < kLayouts; ++i) {
         Lay &l = s_lay[i];
         if (l.made) {
+            if (l.built && l.loopGroup != nullptr)
+                GroupUnbind(l.obj, l.loop, l.loopGroup, 0);   // 繰り返しのアニメは結んだままなので、壊す前に外す（出入りのアニメは終わった時点で外れている）
             if (l.built)
                 LayoutFinalize(l.obj);
             LayoutDtor(l.obj);
@@ -578,8 +582,10 @@ void Release(void) {
             AnimDtor(l.in);
             AnimDtor(l.out);
         }
-        l.made = l.built = l.anims = false;
-        l.group = l.bound = nullptr;
+        if (l.hasLoop)
+            AnimDtor(l.loop);
+        l.made = l.built = l.anims = l.hasLoop = false;
+        l.group = l.bound = l.loopGroup = nullptr;
     }
     std::memset(&s_p, 0, sizeof(s_p));
     s_appliedValid = false;
@@ -651,6 +657,19 @@ void Build(void) {
         if (l.group == nullptr)
             return Fail("アニメのグループが無い");
         l.bound = nullptr;
+        if (HhdTables::kHasLoop[i]) {
+            AnimCtor(l.loop);
+            l.hasLoop = true;
+            std::snprintf(an, sizeof(an), "%.*s_loop.bclan", (int)stem, kDefs[i].name);
+            if (AnimLoad(l.loop, an, s_holder) == 0)
+                return Fail("繰り返しのアニメを読めない");
+            l.loopGroup = FindGroup(l.obj, "G_Loop", 1);
+            if (l.loopGroup == nullptr)
+                return Fail("G_Loop が無い");
+            // 結んだまま毎フレーム進める（UiAnim_Step 0x568964 は繰り返しのアニメを終わりで先頭へ戻す）
+            GroupBind(l.obj, l.loop, l.loopGroup, 0);
+            AnimSetFrame(l.loop, 0.0f);
+        }
     }
     if (!FindAll())
         return Fail("ペインが見つからない");
@@ -917,6 +936,9 @@ void FrameStep(void) {
         bool moving = false;
         for (u32 n = 0; n < 4; ++n)
             moving = StepAnim(s_lay[drawn[n]]) || moving;
+        for (u32 i = 0; i < kLayouts; ++i)
+            if (s_lay[i].hasLoop)
+                AnimStep(s_lay[i].loop);
         if (s_phase == Phase::Entering && s_fadeFrame < HhdTables::kBgFadeFrames) {
             ++s_fadeFrame;
             const u8 a = (u8)(255u * s_fadeFrame / HhdTables::kBgFadeFrames);
