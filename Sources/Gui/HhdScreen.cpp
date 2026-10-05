@@ -96,6 +96,7 @@ const u32 kLayoutPriority = 12, kLayoutHolder = 236, kLayoutListId = 0x100, kLay
 const u32 kCmdListBuckets = 0x00AD98C0, kCmdMgrNext = 0x40, kCmdMgrUsed = 0x0C;
 const u32 kPaneFlags = 0xB7, kPicMaterial = 0x13C, kWindowFrames = 0x160, kFrameMaterial = 4;
 const u32 kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D, kMatTexMaps = 52;
+const u32 kPaneAlpha = 180;                 // ペインの不透明度（nwlyt_Pane_SetColorElement 0x4B65E4: CLVC の対象 16 がここ。毎フレームの Calc で子へ掛かる）
 const u32 kPaneX = 0x28;                    // ペインの平行移動 x（GameLabel と同じ。書いたら +0xB7 の bit4-5 を落として行列を作り直させる）
 // 性別: プレイヤー [0xAA7994] の +428 = プレイヤー番号 → プロフィール（0x2FEB60）の +21946 の bit0（docs/topics/player_clone_preview.md）。
 //   0 = 男の子・1 = 女の子 と読む（公開情報の仮説。LOW。実機で利用者のキャラと照合する）
@@ -153,6 +154,7 @@ struct Panes {
     void *ecFrame[6], *scFrame[8], *hcFrame[16];
     void *eyeColorGroup, *hairSkinGroup, *leftText, *hairIconB, *hairIconG;
     void *hairPage[3], *hairAll;
+    void *bgAll, *topAll;                   // 入場の背景のフェードで不透明度を動かすペイン（地・上画面の N_All。どちらも子に不透明度を伝える）
 };
 
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
@@ -165,6 +167,7 @@ bool s_holderMade, s_hookReady;
 volatile bool s_want;
 volatile Stage s_stage = Stage::Idle;
 volatile Phase s_phase = Phase::Entering;
+u32 s_fadeFrame;                            // 入場の背景のフェードの経過フレーム（ゲームのスレッドだけ）
 const char *volatile s_error = "";
 u32 s_wait;
 volatile State s_state;                     // 欲しい状態
@@ -255,6 +258,10 @@ bool FindAll(void) {
         if ((s_p.hairPage[pg] = Find(kHair, "pg%u", pg)) == nullptr)
             return false;
     s_p.hairAll = FindPane(s_lay[kHair].obj, "N_All");
+    s_p.bgAll = FindPane(s_lay[kBg].obj, "N_All");
+    s_p.topAll = FindPane(s_lay[kTop].obj, "N_All");
+    if (s_p.bgAll == nullptr || s_p.topAll == nullptr)
+        return false;
     s_p.hairIconB = FindPane(s_lay[kFace].obj, "P_HairIconB_00");
     s_p.hairIconG = FindPane(s_lay[kFace].obj, "P_HairIconG_00");
     for (u32 k = 0; k < 6; ++k)
@@ -580,11 +587,15 @@ void Build(void) {
     MovePaneX(s_p.hairAll, 0.0f);
     s_appliedValid = false;
     s_heapFreeAfter = HeapFreeSize(heap);
-    // 入場: 描く 4 枚（地・顔・目・上）に in を結ぶ（HHD の CharaCreate と同じく in アニメで現れる）
-    BindAnim(s_lay[kBg], s_lay[kBg].in);
+    // 入場: 顔・目・上に in を結ぶ（HHD の CharaCreate と同じく in アニメで現れる）。
+    //   地の in（HHD: 1 フレームで不透明度 0→255）は結ばず、地と上画面の N_All をコードで HhdTables::kBgFadeFrames かけて 0→255 にする
+    //   （= 地の out の逆。利用者 2026-10-05: 背景がフェードで現れない）
     BindAnim(s_lay[kFace], s_lay[kFace].in);
     BindAnim(s_lay[kEye], s_lay[kEye].in);
     BindAnim(s_lay[kTop], s_lay[kTop].in);
+    s_fadeFrame = 0;
+    B(s_p.bgAll, kPaneAlpha) = 0;
+    B(s_p.topAll, kPaneAlpha) = 0;
     s_phase = Phase::Entering;
     s_stage = Stage::Draw;
 }
@@ -811,6 +822,13 @@ void FrameStep(void) {
         bool moving = false;
         for (u32 n = 0; n < 4; ++n)
             moving = StepAnim(s_lay[drawn[n]]) || moving;
+        if (s_phase == Phase::Entering && s_fadeFrame < HhdTables::kBgFadeFrames) {
+            ++s_fadeFrame;
+            const u8 a = (u8)(255u * s_fadeFrame / HhdTables::kBgFadeFrames);
+            B(s_p.bgAll, kPaneAlpha) = a;
+            B(s_p.topAll, kPaneAlpha) = a;
+            moving = true;
+        }
         if (!moving) {
             if (s_phase == Phase::Entering)
                 s_phase = Phase::Live;
