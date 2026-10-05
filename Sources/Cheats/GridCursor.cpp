@@ -1,5 +1,6 @@
 #include "GridCursor.hpp"
 #include "FrameTrace.hpp"
+#include "InstancedDraw.hpp"
 
 #include "BuildingHighlight.hpp"
 #include "PublicWorks.hpp"
@@ -36,9 +37,48 @@ using namespace Game;
 static u8 s_resourceHolder[kResourceHolderBytes] GC_ALIGNED;
 static u8 s_resourceAllocator[16] GC_ALIGNED;
 static u8 s_instanceAllocator[16] GC_ALIGNED;
-static u8 s_holders[kMaxCursors][kNodeHolderBytes] GC_ALIGNED;
-static u8 s_anims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
-static u8 s_rotAnims[kMaxCursors][kMaterialAnimBytes] GC_ALIGNED;
+// ★体は 1 つだけ（IDA-opus-5.5-F059）。カーソルは全部同じアニメ・同じ向きで、違うのは位置だけなので、
+//   描画ノード（InstancedDraw）が行列を変えて何か所にも描く。以前は 1 マスに 1 体（6 KB）で、ヒープが数に比例して
+//   上限に当たり、組み直しの失敗でカーソルが消えた（2026-09-28 実機）。
+static u8 s_holder[kNodeHolderBytes] GC_ALIGNED;
+static u8 s_anim[kMaterialAnimBytes] GC_ALIGNED;
+static u8 s_rotAnim[kMaterialAnimBytes] GC_ALIGNED;
+static float s_matrices[kMaxCursors][12] GC_ALIGNED;    // 置き場ごとの行列（描画スレッドが Pose で書き、描画で読む）
+static InstancedDraw::Drawer s_drawer;
+static InstancedDraw::Batch s_batch;
+// ★薄いカーソル（IDA-opus-5.5-F068。利用者指示 2026-09-28: マイデザインの上と、マップエディターの実行範囲の真ん中以外）。
+//   UnitCursor.bcres の TEV は段 0・1 だけを使い段 2〜5 は素通し（ファイル 0xCD0）。色付けが段 5 と Constant5 を使うので、
+//   段 4 を「アルファ = 前段 × Constant4 のアルファ、色 = 前段」にする（資源の TEV は全インスタンスで共有）。
+//   Constant4 は体ごと（bufferOption 0x834）なので、普通の体は 0xFF、薄い体は種類ごとの s_dimAlpha。アニメ（0x1148 / 0x161C）が書くのは
+//   Constant0・Constant1・TexCoord1 だけで、Constant4 / 5 は書かない（CANM の DICT 0x1170 / 0x1380 / 0x1644）。
+static u8 s_dimHolder[kDimKinds][kNodeHolderBytes] GC_ALIGNED;
+static u8 s_dimAnim[kDimKinds][kMaterialAnimBytes] GC_ALIGNED;
+static u8 s_dimRotAnim[kDimKinds][kMaterialAnimBytes] GC_ALIGNED;
+static bool s_dimBuilt[kDimKinds], s_dimAnimBuilt[kDimKinds], s_dimRotBuilt[kDimKinds], s_dimShares[kDimKinds];
+static bool s_dimStageOk;
+static float s_drawMatrices[kMaxCursors][12] GC_ALIGNED;    // 描く順に詰めた行列（普通 → 薄い）
+static InstancedDraw::Batch s_batches[1 + kDimKinds];
+static u8 s_tileDim[kMaxCursors];
+// 種類ごとの濃さ（利用者の決定 2026-09-29: 0 = 実行範囲の真ん中以外 90、1 = マイデザインの上 50）
+static volatile u8 s_dimAlpha[kDimKinds] = { 90, 50 };
+// マスの色（EnableMarks / SetMarks）
+static u8 s_markHolder[kMarkKinds][kNodeHolderBytes] GC_ALIGNED;
+static float s_markMatrices[kMaxMarks][12] GC_ALIGNED;  // 種類の順に詰める（白 → 赤 → 黄）
+static u8 s_markTev[kMarkKinds][244] __attribute__((aligned(4)));   // 体ごとの TEV の写し（活性化が CPU で読んでコマンドへ写す）
+static InstancedDraw::Drawer s_markDrawer;
+static InstancedDraw::Batch s_markBatches[kMarkKinds];
+static volatile bool s_marksWanted;
+static bool s_marksBuilt;
+static u32 s_markHolders;                // 作った体の数（壊すときに使う）
+static volatile u32 s_markFail;
+static u32 s_markConst5[kMarkKinds];     // 体ごとの Constant5 の番地
+static u8 s_markPendX[kMaxMarks], s_markPendY[kMaxMarks], s_markPendKind[kMaxMarks];
+static volatile u32 s_markPendCount, s_markPendSeq;
+static u32 s_markTakenSeq = 0xFFFFFFFFu;
+static u32 s_markCount[kMarkKinds];
+static volatile u8 s_markAlpha = 50;       // 利用者の決定（2026-09-28）
+// 色（0x00BBGGRR）: 白・青（利用者指示: 5x5 の輪郭と真ん中 = 白、ほか = 青）
+static const u32 kMarkColour[kMarkKinds] = { 0x00FFFFFFu };
 
 static const char kHeapNameText[] = "GridCursor";
 static const char kResourcePath[] = "Ftr/Chip/UnitCursor.bcres";
@@ -54,28 +94,21 @@ static const u32 kCanmOffset = 0x1148;
 static const float kCanmFrames = 150.0f;
 
 // Heap sizes. The game gives its own UnitCursor resource a 20,480 byte heap for a 16,256
-// byte file; 32 KiB is the same shape with room to spare. Instances measured 5,090 bytes
-// each including their animation (IDA-opus-5-F023), so 64 KiB covers all sixteen.
+// byte file; 32 KiB is the same shape with room to spare.
 static const u32 kResourceHeapBytes = 0x8000;
-// instance ヒープは体数から決める。1 体 5,090 B の実測（IDA-opus-5-F023）に 25% ほど足した。
-// ★以前の固定 0x10000 は 12 体分しかなく、「16 体入る」と書いてあったのは誤り。
 // 向きを決める 4 キーのアニメ。frame 0 = 45度 / 1 = 135 / 2 = 225 / 3 = 315
 // （`UnitCursor.bcres` 0x161C、メンバは Materials["m_UnitCursor"].TextureCoordinators[1].Rotate の 1 つだけ）。
 static const u32 kRotateCanmOffset = 0x161C;
 static const float kRotateFrame45 = 0.0f;
-// 1 体あたりの予約量。実測 5,090 B（IDA-opus-5-F023）に、向きアニメをもう一つ
-// 組む分と余裕を乗せてある。★足りないまま建てるとゲーム側が落ちる（F034）ので多めに取る。
-// ★親ヒープ（*0x94CC48）の空きは実機で 484 KB しかなく（2026-09-24）、設置プレビューと並ぶと足りなかった。
-//   実測 5,090 B（F023）＋向きアニメの分として 6 KB。1 体ごとに建てる前に残りを見る（kHeapExhausted）ので、
-//   足りなければ建てずに止まる。最後の 1 体は kInstanceHeapSlack が受ける。
+// instance ヒープ = 体 1 つ（実測 5,090 B（F023）＋向きアニメ → 6 KB）＋ 描画ノード ＋ 余裕。カーソルの数に依らない。
+// ★足りないまま建てるとゲーム側が落ちる（F034）ので、建てる前に残りを見る（kHeapExhausted）。
 static const u32 kInstanceBytesPerCursor = 6144;
-// ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
-// ★128 KB では、UnitCursor 40 体と交番のプレビューが並ばず「足りない」になった（2026-09-24 実機、空き 208 KB）。
-static const u32 kParentReserve = 0xC000;
 static const u32 kInstanceHeapSlack = 0x4000;
-// 1 フレームに作る上限。これはゲームの描画パスの中なので、
-// 64 体を一気に作るとそのフレームだけ長く止まる。
-static const u32 kBuildPerFrame = 8;
+// ★マスの色の体 kMarkKinds（= 1）つぶんと、その描画ノード 1 つも足す（2026-09-28。マップエディター以外は作らないが、ヒープは固定の大きさ）
+// ★薄いカーソルの体 kDimKinds つも（アニメ込み。IDA-opus-5.5-F068）
+static const u32 kInstanceHeapBytes = kInstanceBytesPerCursor * (1 + kDimKinds + kMarkKinds) + InstancedDraw::kCreateBytes * 2 + kInstanceHeapSlack;
+// ゲーム自身が使う分として、親ヒープにこれだけは必ず残す（足りなければ作らない）。
+static const u32 kParentReserve = 0xC000;
 static const u32 kLoadAttempts = 120;   // the load lands in one or two frames in practice
 
 // 間隔と拡大率は**別々に持つ**。以前は scale = spacing / 12 と連動させていたので、
@@ -98,9 +131,10 @@ static void* s_sceneOwner;
 static void* s_sceneResource;
 static void* s_resource;
 static void* s_model;
-static void* s_nodes[kMaxCursors];
-static u32 s_cursorCount;
-static bool s_rotBuilt[kMaxCursors];   // 向きアニメを組んだ体だけ解放する
+static void* s_node;
+static u32 s_cursorCount;   // 建っている体（0 か 1）
+static u32 s_placeCount;    // 描く置き場の数
+static bool s_rotBuilt;     // 向きアニメを組んだときだけ解放する
 static u32 s_loadAttempts;
 static u32 s_frames;
 static u32 s_submits;
@@ -116,7 +150,6 @@ static float s_playerZ;
 static float s_originX;   // 実際に使う基点。出したときに 1 度だけ決める
 static float s_originZ;
 static bool s_haveOrigin; // 一度掴んだら大きさを変えても掴み直さない
-static u32 s_heapCursors; // instance ヒープを何体ぶんで作ったか
 static bool s_rebuild;    // 解放のあと自動でもう一度組み立てる
 
 // ★マス指定の形（建物エディター）。プレイヤーの足元ではなく、村のマス (x, y) の並びへ 1 体ずつ置く。
@@ -128,6 +161,7 @@ static u8 s_tileY[kMaxCursors];
 static u32 s_tileCount;
 static u8 s_pendX[kMaxCursors];
 static u8 s_pendY[kMaxCursors];
+static u8 s_pendDim[kMaxCursors];
 static volatile u32 s_pendCount;
 static volatile u32 s_pendSeq;
 static u32 s_takenSeq;
@@ -171,10 +205,7 @@ static inline bool IsHeapPointer(const void* p) {
     return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u;
 }
 
-// 大きさや見た目を変える要求。**必ず解放を挾む**。
-// instance ヒープは体数ぴったりで作っているので、数が変われば作り直す以外にない。
-// ★以前は Ready のときだけ見ていたので、**組み立て中に数を変えると**新しい数で
-// 古いヒープへ建て続けて落ちていた（IDA-opus-5-F034）。
+// 見た目（向きのアニメ）を変える要求。**必ず解放を挾む**。数や大きさは置き場の行列だけなので組み直さない。
 static void RequestRebuild() {
     // 止めると言われたあとに勝手に出し直さないための関門。
     if (!s_wantShown || s_stage == Stage::Off || s_stage == Stage::Failed)
@@ -201,6 +232,8 @@ static bool RoomIsCurved() {
 // ---------------------------------------------------------------------------------------
 
 static void PoseCursor(u32 index, float x, float y, float z) {
+    if (index >= kMaxCursors)
+        return;
     float matrix[12];
     float in[3] = {x, y, z};
     float out[3] = {x, y, z};
@@ -219,10 +252,9 @@ static void PoseCursor(u32 index, float x, float y, float z) {
     if (angle != 0)
         AppendRotationX16(matrix, angle);
 
-    SetMatrix3x4(s_holders[index], matrix);
-    // Not optional: this is what fills the skeleton's per-bone arrays, and without it the
-    // instance is submitted every frame and never drawn (IDA-opus-5-F020).
-    UpdateWorldAndSkeleton(s_holders[index]);
+    // 体へ書くのは描画ノードのコールバック（InstancedDraw）。そこで SetMatrix3x4 と UpdateWorldAndSkeleton を呼ぶ
+    //（後者は骨の配列を埋める。無いと描かれない。IDA-opus-5-F020）。
+    std::memcpy(s_matrices[index], matrix, sizeof(matrix));
 }
 
 // 画面と world の対応。**実機で観測した向き**（IDA-opus-5-F032）:
@@ -257,11 +289,13 @@ static void PoseTiles() {
     for (u32 i = 0; i < count; ++i) {
         s_tileX[i] = s_pendX[i];
         s_tileY[i] = s_pendY[i];
+        s_tileDim[i] = s_pendDim[i];
     }
     s_tileCount = count;
     s_takenSeq = seq;                    // 写している間に書き換わっていれば次のフレームでもう一度
     const float shared = heightId >= 0 ? PublicWorks::CursorHeight((u16)heightId, anchorX, anchorY) : 0.0f;
-    for (u32 i = 0; i < s_cursorCount && i < s_tileCount; ++i) {
+    s_placeCount = s_tileCount;
+    for (u32 i = 0; i < s_tileCount; ++i) {
         float pos[3] = { (float)(32 * s_tileX[i] + 16), 0.0f, (float)(32 * s_tileY[i] + 16) };
         pos[1] = heightId >= 0 ? shared : GroundHeight(pos, 0);
         PoseCursor(i, pos[0], pos[1], pos[2]);
@@ -276,13 +310,12 @@ static void PoseAll() {
     const float ox = s_originX;
     const float oz = s_originZ;
     u32 index = 0;
+    s_placeCount = (u32)s_footprintW * (u32)s_footprintH;
     // ★実機で見ると 2 つの枚数が逆だった（利用者報告、2026-09-22）。
     //   軸の写像自体は移動で合っているので、**どちらの数がどちらの辺か**だけを入れ替える。
     //   位置のずれ（s_row / s_col）はそれぞれの軸に残してあるので、十字キーは変わらない。
     for (u32 j = 0; j < s_footprintH; ++j) {          // 縦の枚数 = -Z 方向
         for (u32 i = 0; i < s_footprintW; ++i) {      // 横の枚数 = +X 方向
-            if (index >= s_cursorCount)
-                return;
             const float x = ox + (float)(s_row + (s16)i) * s_spacing;
             const float z = oz - (float)(s_col + (s16)j) * s_spacing;
             PoseCursor(index, x, s_playerY, z);
@@ -295,16 +328,246 @@ static void PoseAll() {
 // Build and teardown, both on the game's draw thread.
 // ---------------------------------------------------------------------------------------
 
-static bool BuildOneCursor(u32 index) {
+// ---------------------------------------------------------------------------------------
+// マスの色（マップエディター）。UnitCursor と同じ資源から 3 体を作り、それぞれの材質を
+//   TEV = 段 0 で Constant5 の色とアルファをそのまま（REPLACE）、段 1〜5 は前段のまま
+//   ブレンド = SRC_A / 1 − SRC_A（色）、ONE / 1 − SRC_A（アルファ）、深度は書かない
+// にする。材質は bufferOption 0x834 で体ごとの写し（IDA-opus-5-F022/F023: 資源を潰しても CPU は落ちない）。
+// TEV だけは資源と共有のことがあるので、BuildingHighlight::ApplyMaterial（F011〜F013、実機で使用）と同じく
+// gohan の配列へ写し、体の色の部分の未使用 +648 から相対で指し、材質 +72 を色の部分へ向ける。
+// ---------------------------------------------------------------------------------------
+
+static const u32 kMarkModelMaterials = 0x164;   // nw::gfx::Model: Material* の配列（BuildingHighlight と同じ）
+static const u32 kMarkMatColour = 48, kMarkMatTev = 72, kMarkMatFrag = 80;
+static const u32 kMarkTevRel = 648, kMarkTevKey = 712, kMarkConst5 = 36 + 4 * 54;
+static const u32 kMarkTevBytes = 244, kMarkTevStage0 = 44, kMarkTevStageBytes = 28, kMarkTevLutRel = 40;
+static const u32 kMarkFragOpFlags = 280, kMarkFragFbRead = 300, kMarkFragCheckA = 320, kMarkFragCheckB = 324;
+static const u32 kMarkFragBlend = 328, kMarkFragKey = 720;
+// PICA 0x101: 色の式 0（加算）、アルファの式 0、色 src 6（SRC_A）dst 7（1 − SRC_A）、アルファ src 1（ONE）dst 7
+static const u32 kMarkBlend = (6u << 16) | (7u << 20) | (1u << 24) | (7u << 28);
+
+static inline u32 MarkRd(u32 a) { return *reinterpret_cast<volatile u32*>(a); }
+static inline void MarkWr(u32 a, u32 v) { *reinterpret_cast<volatile u32*>(a) = v; }
+
+// 材質 1 つを単色にする。戻り値 0 = 済み、ほかは失敗の番号（100 番台）
+static u32 MarkMaterial(u32 m, u32 kind) {
+    const u32 colour = MarkRd(m + kMarkMatColour);
+    const u32 tevres = MarkRd(m + kMarkMatTev);
+    const u32 frag = MarkRd(m + kMarkMatFrag);
+    if (!BuildingHighlight::SafeReadable(colour, kMarkTevKey + 4) || !BuildingHighlight::SafeReadable(tevres, kMarkTevKey + 4))
+        return 101;
+    // フラグメントの設定が体のもの（色の部分と同じ物で、0x100 / 0x101 の既定の形）でなければ、ブレンドは変えられない
+    if (frag != colour || MarkRd(frag + kMarkFragCheckA) != 0x00E40100u || MarkRd(frag + kMarkFragCheckB) != 0x803F0100u)
+        return 102;
+    const u32 rel = MarkRd(tevres + kMarkTevRel);
+    if (rel == 0u)
+        return 103;
+    const u32 tev = tevres + kMarkTevRel + rel;
+    if (!BuildingHighlight::SafeReadable(tev, kMarkTevBytes))
+        return 104;
+    u8* work = s_markTev[kind];
+    std::memcpy(work, reinterpret_cast<const void*>(tev), kMarkTevBytes);
+    for (u32 i = 0; i < 6; ++i) {
+        u32* s = reinterpret_cast<u32*>(work + kMarkTevStage0 + kMarkTevStageBytes * i);
+        // [0] 定数の選択 [1] 入力 rgb | a<<16（4bit×3、E = 定数、F = 前段）[3] オペランド [4] 合成（0 = REPLACE）[6] 倍率
+        s[0] = 5;
+        s[1] = i == 0 ? 0x000E000Eu : 0x000F000Fu;
+        s[3] = 0;
+        s[4] = 0;
+        s[6] = 0;
+    }
+    if (colour != tevres) {
+        if (MarkRd(colour + kMarkTevRel) != 0u)
+            return 105;
+        const u32 dst = reinterpret_cast<u32>(work);
+        const u32 lut = *reinterpret_cast<u32*>(work + kMarkTevLutRel);
+        if (lut != 0u)
+            *reinterpret_cast<u32*>(work + kMarkTevLutRel) = tev + kMarkTevLutRel + lut - (dst + kMarkTevLutRel);
+        MarkWr(colour + kMarkTevRel, dst - (colour + kMarkTevRel));
+        MarkWr(m + kMarkMatTev, colour);
+    } else {
+        std::memcpy(reinterpret_cast<void*>(tev), work, kMarkTevBytes);
+    }
+    MarkWr(colour + kMarkTevKey, 0u);
+    MarkWr(frag + kMarkFragFbRead, 0u);
+    MarkWr(frag + kMarkFragBlend, kMarkBlend);
+    MarkWr(frag + kMarkFragOpFlags, MarkRd(frag + kMarkFragOpFlags) & ~2u);     // 深度を書かない（F061）
+    MarkWr(frag + kMarkFragKey, 0u);
+    s_markConst5[kind] = colour + kMarkConst5;
+    return 0;
+}
+
+static void DestroyMarks() {
+    InstancedDraw::Destroy(s_markDrawer);
+    for (u32 k = 0; k < s_markHolders; ++k)
+        if (*Word(s_markHolder[k], 4) != 0u)
+            ModelInstanceDestroy(s_markHolder[k]);
+    s_markHolders = 0;
+    s_marksBuilt = false;
+}
+
+static bool BuildMarks() {
+    void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
+    for (u32 k = 0; k < kMarkKinds; ++k) {
+        if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor) {
+            s_markFail = Fail::kHeapExhausted;
+            return false;
+        }
+        void* holder = s_markHolder[k];
+        NodeHolderCtor(holder);
+        const int created = ModelInstanceCreate(holder, s_model, s_instanceAllocator, s_instanceAllocator, 0x834u, 1u, 3u);
+        void* node = *reinterpret_cast<void**>(Word(holder, 4));
+        if (created != 1 || !IsHeapPointer(node)) {
+            s_markFail = Fail::kCreateFailed;
+            return false;
+        }
+        s_markHolders = k + 1;
+        if (*Word(node, kNodeVtable) != kSkeletalModelVtable) {
+            s_markFail = Fail::kNodeWrongVtable;
+            return false;
+        }
+        if (!IsHeapPointer(*reinterpret_cast<void**>(Word(node, kNodeMaterialActivator)))) {
+            s_markFail = Fail::kActivatorNull;
+            return false;
+        }
+        if (*Word(node, kNodeMeshArrayBegin) == *Word(node, kNodeMeshArrayEnd)) {
+            s_markFail = Fail::kSharedMeshArray;
+            return false;
+        }
+        const u32 arr = *Word(node, kMarkModelMaterials);
+        if (!BuildingHighlight::SafeReadable(arr, 8) || !BuildingHighlight::LooksLikeMaterial(MarkRd(arr))
+            || BuildingHighlight::LooksLikeMaterial(MarkRd(arr + 4))) {
+            s_markFail = 106;                   // UnitCursor の材質は 1 つ（m_UnitCursor）のはず
+            return false;
+        }
+        const u32 why = MarkMaterial(MarkRd(arr), k);
+        if (why != 0u) {
+            s_markFail = why;
+            return false;
+        }
+    }
+    // 自前の描画ノード（段 2 のとき）。生成関数は確保の失敗を確かめないので残りを見てから
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_markDrawer, s_instanceAllocator)) {
+        s_markFail = Fail::kHeapExhausted;
+        return false;
+    }
+    s_markDrawer.underFirst = true;         // カーソルより先に描く（カーソルがマスの色の上）
+    s_markDrawer.groundFirst = true;        // マイデザインより上（マップエディターだけが作る）
+    s_marksBuilt = true;
+    s_markTakenSeq = 0xFFFFFFFFu;
+    return true;
+}
+
+// 村のマス (x, y) の中心・地面の高さに 1 マス（UnitCursor の板 32x32、倍率 1）
+static void PoseMark(u32 index, u32 tx, u32 ty) {
+    float pos[3] = { (float)(32 * tx + 16), 0.0f, (float)(32 * ty + 16) };
+    pos[1] = GroundHeight(pos, 0);
+    float out[3] = { pos[0], pos[1], pos[2] };
+    u16 angle = 0;
+    if (RoomIsCurved())
+        angle = FieldPositionToRenderSpace(out, pos);
+    float* m = s_markMatrices[index];
+    for (u32 i = 0; i < 12; ++i)
+        m[i] = 0.0f;
+    m[0] = m[5] = m[10] = 1.0f;
+    m[3] = out[0];
+    m[7] = out[1];
+    m[11] = out[2];
+    if (angle != 0)
+        AppendRotationX16(m, angle);
+}
+
+static void PoseMarks() {
+    const u32 seq = s_markPendSeq;
+    u32 count = s_markPendCount;
+    if (count > kMaxMarks)
+        count = kMaxMarks;
+    u32 at = 0;
+    for (u32 k = 0; k < kMarkKinds; ++k) {
+        s_markCount[k] = 0;
+        s_markBatches[k].holder = s_markHolder[k];
+        s_markBatches[k].matrices = &s_markMatrices[at];
+        for (u32 i = 0; i < count; ++i) {
+            if (s_markPendKind[i] != k)
+                continue;
+            PoseMark(at++, s_markPendX[i], s_markPendY[i]);
+            ++s_markCount[k];
+        }
+        s_markBatches[k].count = s_markCount[k];
+    }
+    s_markTakenSeq = seq;
+}
+
+static void DrawMarks() {
+    if (!s_marksBuilt || !s_marksWanted)
+        return;
+    if (s_markTakenSeq != s_markPendSeq)
+        PoseMarks();
+    const u32 a = s_markAlpha;
+    for (u32 k = 0; k < kMarkKinds; ++k)          // Constant5 = 0xAABBGGRR（毎フレーム。活性化が毎回読む。GridCursor::ApplyTint と同じ）
+        MarkWr(s_markConst5[k], (a << 24) | (kMarkColour[k] & 0x00FFFFFFu));
+    // 村の物体の下（InstancedDraw::SubmitUnder: 地面 → マイデザイン → ここ → 残りの村の物体。IDA-opus-5.5-F066）。
+    //   利用者の実機確認 2026-09-28: 層 0 の後・層 1 の前（マイデザインより前）では下、自前の描画ノード（後）では上だった。
+    //   村の物体の描画ノードが無い場面だけ自前の描画ノード
+    if (!InstancedDraw::SubmitUnder(s_markDrawer, s_markBatches, kMarkKinds))
+        InstancedDraw::Submit(s_markDrawer, s_markBatches, kMarkKinds);
+}
+
+// 薄い体（マス指定の形だけ）。作れなくてもカーソルは止めない（全部を普通の体で描く）
+static void DestroyDimCursor() {
+    for (u32 d = 0; d < kDimKinds; ++d) {
+        if (*Word(s_dimHolder[d], 4) != 0u)
+            ModelInstanceDestroy(s_dimHolder[d]);   // 普通の体と同じ手順（DestroyCursors）
+        if (s_dimAnimBuilt[d])
+            MaterialAnimReleaseBuilt(s_dimAnim[d]);
+        if (s_dimRotBuilt[d])
+            MaterialAnimReleaseBuilt(s_dimRotAnim[d]);
+        std::memset(s_dimHolder[d], 0, sizeof(s_dimHolder[d]));
+        s_dimAnimBuilt[d] = s_dimRotBuilt[d] = s_dimBuilt[d] = s_dimShares[d] = false;
+    }
+    s_dimStageOk = false;
+}
+
+static void BuildDimCursor(u32 d) {
+    s_dimBuilt[d] = false;
+    void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor)
+        return;
+    void* holder = s_dimHolder[d];
+    NodeHolderCtor(holder);
+    const int created = ModelInstanceCreate(holder, s_model, s_instanceAllocator, s_instanceAllocator, 0x834u, 1u, 3u);
+    void* node = *reinterpret_cast<void**>(Word(holder, 4));
+    // 確かめ方は普通の体（BuildCursor）と同じ。だめなら使わない（片付けは DestroyCursors → DestroyDimCursor）
+    if (created != 1 || !IsHeapPointer(node) || *Word(node, kNodeVtable) != kSkeletalModelVtable
+        || !IsHeapPointer(*reinterpret_cast<void**>(Word(node, kNodeMaterialActivator)))
+        || *Word(node, kNodeMeshArrayBegin) == *Word(node, kNodeMeshArrayEnd))
+        return;
+    // アニメは普通の体と同じ（slot 0 = 常に回るアニメ、slot 2 = 向き 45 度）
+    MaterialAnimCtor(s_dimAnim[d]);
+    if (MaterialAnimBuildFromRes(s_dimAnim[d], holder, reinterpret_cast<u8*>(s_resource) + kCanmOffset, s_instanceAllocator, 0) != 1)
+        return;
+    s_dimAnimBuilt[d] = true;
+    BindAnimSlot(holder, s_dimAnim[d], 0);
+    MaterialAnimCtor(s_dimRotAnim[d]);
+    if (MaterialAnimBuildFromRes(s_dimRotAnim[d], holder, reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset, s_instanceAllocator, 0) != 1)
+        return;
+    s_dimRotBuilt[d] = true;
+    BindAnimSlot(holder, s_dimRotAnim[d], 2);
+    AnimSetFrame(s_dimRotAnim[d], kRotateFrame45);
+    InstancedDraw::DisableDepthWrite(holder);
+    s_dimBuilt[d] = true;
+}
+
+static bool BuildCursor() {
     // ★これを戻り値で済ませてはいけない。instance ヒープが尽きると
     //   `nwgfx_SkeletalModel_Create 0x0049693C` は失敗した確保の null をそのまま辿り、
     //   `ldr r0,[r5]` で落ちる（IDA-opus-5-F034、クラッシュダンプ）。呼ぶ前に残りを見る。
     void* heap = *reinterpret_cast<void**>(Word(s_instanceAllocator, 4));
-    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor) {
+    if (!IsHeapPointer(heap) || HeapGetFreeSize(heap) < kInstanceBytesPerCursor + InstancedDraw::kCreateBytes) {
         Stop(Fail::kHeapExhausted);
         return false;
     }
-    void* holder = s_holders[index];
+    void* holder = s_holder;
     NodeHolderCtor(holder);
     // (bufferOption, isAnimationEnabled, maxAnimObjectsPerGroup). The last two matter: with
     // animation disabled the instance gets no binding at all, and the game gives its own
@@ -331,9 +594,10 @@ static bool BuildOneCursor(u32 index) {
         Stop(Fail::kSharedMeshArray);
         return false;
     }
-    s_nodes[index] = node;
+    s_node = node;
+    s_cursorCount = 1;
 
-    void* anim = s_anims[index];
+    void* anim = s_anim;
     MaterialAnimCtor(anim);
     void* canm = reinterpret_cast<u8*>(s_resource) + kCanmOffset;
     if (std::memcmp(canm, "CANM", 4) != 0) {
@@ -349,10 +613,10 @@ static bool BuildOneCursor(u32 index) {
 
     // 向きのアニメ。ゲーム自身と同じ slot 2（IDA-opus-5-F029）。
     // slot 0 の 150 フレームは Translate と MaterialColor しか書かないので、Rotate は衝突しない。
-    s_rotBuilt[index] = false;
+    s_rotBuilt = false;
     // マス指定の形（公共事業エディター）は常に斜め。メニューの設定は変えない（変えると通知が出る。利用者報告）
     if (s_diagonal || s_tileMode) {
-        void* rot = s_rotAnims[index];
+        void* rot = s_rotAnim;
         void* rotCanm = reinterpret_cast<u8*>(s_resource) + kRotateCanmOffset;
         if (std::memcmp(rotCanm, "CANM", 4) != 0) {
             Stop(Fail::kAnimBuildFailed);
@@ -363,27 +627,40 @@ static bool BuildOneCursor(u32 index) {
             Stop(Fail::kAnimBuildFailed);
             return false;
         }
-        s_rotBuilt[index] = true;
+        s_rotBuilt = true;
         BindAnimSlot(holder, rot, 2);
         // 1 フレームで止める。キーは 4 つで 45/135/225/315 度。
         AnimSetFrame(rot, kRotateFrame45);
+    }
+    // 深度を書かない（村の物体の下に描くので、あとから描く物体が必ず上になる。F061。資源は自前で読んだ物）
+    InstancedDraw::DisableDepthWrite(holder);
+    // 薄い体（マス指定の形だけ。IDA-opus-5.5-F068）。マスの色の体より先に作る（ヒープはその分も取ってある）
+    if (s_tileMode)
+        for (u32 d = 0; d < kDimKinds; ++d)
+            BuildDimCursor(d);
+    // 描画ノード（340 B + 付属）。生成関数は確保の失敗を確かめないので残りを見てから
+    if (HeapGetFreeSize(heap) < InstancedDraw::kCreateBytes || !InstancedDraw::Create(s_drawer, s_instanceAllocator)) {
+        Stop(Fail::kHeapExhausted);
+        return false;
     }
     return true;
 }
 
 static void DestroyCursors() {
-    for (u32 i = 0; i < kMaxCursors; ++i) {
-        if (*Word(s_holders[i], 4) != 0u) {
-            ModelInstanceDestroy(s_holders[i]);
-            // vtable slot 5, not the destructor: the destructor would leave the animation
-            // object and its child heap allocated (IDA-opus-5-F023).
-            MaterialAnimReleaseBuilt(s_anims[i]);
-            if (s_rotBuilt[i])
-                MaterialAnimReleaseBuilt(s_rotAnims[i]);
-        }
-        s_rotBuilt[i] = false;
-        s_nodes[i] = nullptr;
+    DestroyMarks();
+    // 描画ノードが先（コールバックが体を読むので）。どちらもこのスレッドで、描画リストへ出すのをやめて数フレーム後
+    InstancedDraw::Destroy(s_drawer);
+    DestroyDimCursor();
+    if (*Word(s_holder, 4) != 0u) {
+        ModelInstanceDestroy(s_holder);
+        // vtable slot 5, not the destructor: the destructor would leave the animation
+        // object and its child heap allocated (IDA-opus-5-F023).
+        MaterialAnimReleaseBuilt(s_anim);
+        if (s_rotBuilt)
+            MaterialAnimReleaseBuilt(s_rotAnim);
     }
+    s_rotBuilt = false;
+    s_node = nullptr;
     s_cursorCount = 0;
 }
 
@@ -429,13 +706,16 @@ static void StepBuild() {
             Stop(Fail::kNoParentHeap);
             return;
         }
-        {
-            const u32 want = kResourceHeapBytes + (u32)s_footprintW * (u32)s_footprintH * kInstanceBytesPerCursor +
-                             kInstanceHeapSlack + kParentReserve;
-            if (HeapGetFreeSize(parent) < want) {
+        // ★ヒープはカーソルの数に依らず固定（F059）。足りなければ、マス指定の形（公共事業・建物・マップエディター）は
+        //   止めずに次のフレームで見直す（以前は Failed で止まったまま二度と組み直さず、カーソルが消えたままになった）。
+        //   足元の形（メニューの ON/OFF）は従来どおり止める。
+        if (HeapGetFreeSize(parent) < kResourceHeapBytes + kInstanceHeapBytes + kParentReserve) {
+            if (!s_tileMode) {
                 Stop(Fail::kInstanceHeap);
                 return;
             }
+            s_failReason = Fail::kInstanceHeap;     // 表示用。段は AllocHeaps のまま
+            return;
         }
         s_sceneOwner = owner;
         s_sceneResource = *reinterpret_cast<void**>(Word(owner, kSceneOwnerResourceOffset));
@@ -453,11 +733,8 @@ static void StepBuild() {
             Stop(Fail::kResourceHeap);
             return;
         }
-        // 体数ぶんだけ取る。大きさを増やして入り切らなくなったときは SetFootprint が
-        // 組み直しを頼むので、ここは「いま要る量」でよい。
-        s_heapCursors = (u32)s_footprintW * (u32)s_footprintH;
-        const u32 instanceBytes = s_heapCursors * kInstanceBytesPerCursor + kInstanceHeapSlack;
-        if (HeapCreateNamed(s_instanceAllocator, instanceBytes, parent, &s_heapName,
+        s_failReason = Fail::kNone;
+        if (HeapCreateNamed(s_instanceAllocator, kInstanceHeapBytes, parent, &s_heapName,
                             1, 0u) != 1 ||
             !IsHeapPointer(*reinterpret_cast<void**>(Word(s_instanceAllocator, 4)))) {
             Stop(Fail::kInstanceHeap);
@@ -522,19 +799,8 @@ static void StepBuild() {
             ComputeOrigin();
         }
 
-        // ★生の footprint ではなく、**ヒープを作ったときの体数**で建てる。
-        //   途中で数を変えられてもここが増えないので、ヒープを超えようがない。
-        //   数の変更は SetFootprint が組み直しを頼む形で反映される。
-        const u32 want = s_heapCursors;
-        u32 made = 0;
-        while (s_cursorCount < want && made < kBuildPerFrame) {
-            if (!BuildOneCursor(s_cursorCount))
-                return;
-            ++s_cursorCount;
-            ++made;
-        }
-        if (s_cursorCount < want)
-            return;                    // この段に居たまま次のフレームへ
+        if (s_cursorCount == 0u && !BuildCursor())
+            return;
         PoseAll();
         s_animFrame = 0.0f;
         s_stage = Stage::Ready;
@@ -555,6 +821,8 @@ static const u32 kMatTev = 72;
 static const u32 kResTevRel = 648;
 static const u32 kResTevKey = 712;
 static const u32 kResConst5 = 36 + 4 * 54;
+static const u32 kResConst4 = 36 + 4 * 53;
+static const u32 kTevStage0Off = 44, kTevStageStride = 28;
 static const u32 kTevBytes = 244;
 static const u32 kMaxTintMaterials = 8;
 
@@ -566,7 +834,7 @@ static void PrepareTint() {
     s_tintPremultiplied = false;
     if (s_cursorCount == 0)
         return;
-    const u32 node = *Word(s_holders[0], 4);
+    const u32 node = *Word(s_holder, 4);
     const u32 arr = BuildingHighlight::SafeReadable(node + kModelMaterials, 4) ? Rd32(node + kModelMaterials) : 0;
     if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
         return;
@@ -589,31 +857,55 @@ static void PrepareTint() {
         const int plan = BuildingHighlight::PlanTev(work, colour);
         if (plan == 0)
             continue;
+        // 段 4 が素通し（入力 0x0E1F0E1F・オペランド 0・合成 0）なら「アルファ = 前段 × Constant4.a、色 = 前段」に（F068）
+        u32* s4 = reinterpret_cast<u32*>(work + kTevStage0Off + kTevStageStride * 4);
+        if (plan != 3 && s4[1] == 0x0E1F0E1Fu && s4[3] == 0u && s4[4] == 0u) {
+            s4[0] = 4;                          // Constant4
+            s4[1] = 0x00EF000Fu;                // 色の入力 (F)、アルファの入力 (F, E)
+            s4[3] = 0u;
+            s4[4] = 0x00010000u;                // 色 REPLACE、アルファ MODULATE
+            s4[6] = 0u;
+            s_dimStageOk = true;
+        }
         std::memcpy(reinterpret_cast<void*>(tev), work, kTevBytes);
+        // 薄い体も同じ資源の TEV を指していること（体ごとの TEV なら段 4 も色付けも届かない）
+        for (u32 d = 0; d < kDimKinds; ++d) {
+            const u32 dnode = s_dimBuilt[d] ? *Word(s_dimHolder[d], 4) : 0u;
+            const u32 darr = dnode != 0u && BuildingHighlight::SafeReadable(dnode + kModelMaterials, 4) ? Rd32(dnode + kModelMaterials) : 0u;
+            const u32 dm = darr != 0u && BuildingHighlight::SafeReadable(darr + 4 * k, 4) ? Rd32(darr + 4 * k) : 0u;
+            s_dimShares[d] = BuildingHighlight::LooksLikeMaterial(dm) && Rd32(dm + kMatTev) == tevres;
+        }
         *reinterpret_cast<volatile u32*>(tevres + kResTevKey) = 0;     // 毎回書き出させる
         if (plan == 3)
             s_tintPremultiplied = true;
     }
 }
 
-static void ApplyTint() {
-    const u32 value = BuildingHighlight::TintConstant(s_tintColor, s_tintStrength, s_tintPremultiplied);
-    for (u32 i = 0; i < s_cursorCount; ++i) {
-        const u32 node = *Word(s_holders[i], 4);
-        if (node == 0u || !BuildingHighlight::SafeReadable(node + kModelMaterials, 4))
-            continue;
-        const u32 arr = Rd32(node + kModelMaterials);
-        if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
-            continue;
-        for (u32 k = 0; k < kMaxTintMaterials; ++k) {
-            const u32 m = Rd32(arr + 4 * k);
-            if (!BuildingHighlight::LooksLikeMaterial(m))
-                break;
-            const u32 colour = Rd32(m + kMatColour);
-            if (BuildingHighlight::SafeReadable(colour + kResConst5, 4))
-                *reinterpret_cast<volatile u32*>(colour + kResConst5) = value;
+static void ApplyTintTo(void* holder, u32 value, u32 const4) {
+    const u32 node = *Word(holder, 4);
+    if (node == 0u || !BuildingHighlight::SafeReadable(node + kModelMaterials, 4))
+        return;
+    const u32 arr = Rd32(node + kModelMaterials);
+    if (!BuildingHighlight::SafeReadable(arr, 4 * kMaxTintMaterials))
+        return;
+    for (u32 k = 0; k < kMaxTintMaterials; ++k) {
+        const u32 m = Rd32(arr + 4 * k);
+        if (!BuildingHighlight::LooksLikeMaterial(m))
+            break;
+        const u32 colour = Rd32(m + kMatColour);
+        if (BuildingHighlight::SafeReadable(colour + kResConst5, 4)) {
+            *reinterpret_cast<volatile u32*>(colour + kResConst5) = value;
+            *reinterpret_cast<volatile u32*>(colour + kResConst4) = const4;     // 段 4 のアルファの倍率（F068）
         }
     }
+}
+
+static void ApplyTint() {
+    const u32 value = BuildingHighlight::TintConstant(s_tintColor, s_tintStrength, s_tintPremultiplied);
+    ApplyTintTo(s_holder, value, 0xFF000000u);
+    for (u32 d = 0; d < kDimKinds; ++d)
+        if (s_dimBuilt[d])
+            ApplyTintTo(s_dimHolder[d], value, (u32)s_dimAlpha[d] << 24);
 }
 
 // Grow or shrink to the requested footprint without rebuilding what is already there.
@@ -716,21 +1008,62 @@ extern "C" void FrameCallback(void) {
         ApplyTint();
     }
 
-    for (u32 i = 0; i < s_cursorCount; ++i) {
-        if (s_tileMode && i >= s_tileCount)
-            continue;                     // マス指定の形で使っていない体は出さない
-        void* holder = s_holders[i];
-        if (*Word(holder, 4) == 0u)
-            continue;
+    // 体は 1 つ。アニメを 1 回進め、置き場の並びを描画ノードに渡す（描くのはシーンの描画のとき。InstancedDraw）
+    if (*Word(s_holder, 4) != 0u) {
         // Drive the loop ourselves. The resource says 150 frames and loop, and the game's
         // own wrap folds anything we pass into that range.
-        AnimSetFrame(s_anims[i], s_animFrame);
+        AnimSetFrame(s_anim, s_animFrame);
         // The game's own call: every animation object gets its vtable[5], then both
         // evaluate-and-apply phases (IDA-opus-5-F029).
-        EvaluateAndApplyAnims(holder);
-        Submit(holder, 0);
-        ++s_submits;
+        EvaluateAndApplyAnims(s_holder);
+        s_batch.holder = s_holder;
+        s_batch.matrices = s_matrices;
+        s_batch.count = s_placeCount < kMaxCursors ? s_placeCount : kMaxCursors;
+        u32 batchCount = 1;
+        const InstancedDraw::Batch* batches = &s_batch;
+        // ★薄いカーソル（マス指定の形。F068）: 呼ぶ側の印（1〜kDimKinds）で体を選ぶ。使えない体の印は普通の体で描く。
+        //   普通 → 薄い種類の順に詰めて束に
+        if (s_tileMode && s_dimStageOk) {
+            bool usable[1 + kDimKinds] = { true };
+            for (u32 d = 0; d < kDimKinds; ++d) {
+                usable[1 + d] = s_dimBuilt[d] && s_dimShares[d] && *Word(s_dimHolder[d], 4) != 0u;
+                if (usable[1 + d]) {
+                    AnimSetFrame(s_dimAnim[d], s_animFrame);
+                    EvaluateAndApplyAnims(s_dimHolder[d]);
+                }
+            }
+            const u32 count = s_batch.count < s_tileCount ? s_batch.count : s_tileCount;
+            u32 start = 0;
+            for (u32 pass = 0; pass <= kDimKinds; ++pass) {
+                u32 n = 0;
+                for (u32 i = 0; i < count; ++i) {
+                    u32 kind = s_tileDim[i] <= kDimKinds ? s_tileDim[i] : 0u;
+                    if (!usable[kind])
+                        kind = 0;
+                    if (kind != pass)
+                        continue;
+                    std::memcpy(s_drawMatrices[start + n], s_matrices[i], sizeof(s_matrices[i]));
+                    ++n;
+                }
+                s_batches[pass].holder = pass == 0 ? static_cast<void*>(s_holder) : static_cast<void*>(s_dimHolder[pass - 1]);
+                s_batches[pass].matrices = s_drawMatrices + start;
+                s_batches[pass].count = usable[pass] ? n : 0u;
+                start += n;
+            }
+            batches = s_batches;
+            batchCount = 1 + kDimKinds;
+        }
+        // ★村の物体の下に描く（地面の後・物体の前。利用者指示 2026-09-28、F061）。村の物体の描画ノードが無ければ自前のノード。
+        //   エディター（マス指定の形）のときだけマイデザインより上（F066。利用者指示 2026-09-29: 描画順の変更はエディターの間だけ）
+        s_drawer.groundFirst = s_tileMode;
+        if (!InstancedDraw::SubmitUnder(s_drawer, batches, batchCount))
+            InstancedDraw::Submit(s_drawer, batches, batchCount);
+        s_submits += s_batch.count;
     }
+    // マスの色（マップエディター）。失敗しても UnitCursor は止めない
+    if (s_tileMode && s_marksWanted && !s_marksBuilt && s_markFail == Fail::kNone && !BuildMarks())
+        DestroyMarks();
+    DrawMarks();
     s_animFrame += 1.0f;
     if (s_animFrame >= kCanmFrames)
         s_animFrame -= kCanmFrames;
@@ -813,13 +1146,10 @@ bool ShowTiles(void) {
     if (!s_tileMode && s_wantShown)
         return false;                     // 足元の形で出ている。混ぜない
     s_tileMode = true;
-    // 最初から 8x3 = 24 体で組む（公共事業の大半が入る）。大きい形のときだけ増やす。
-    if ((u32)s_footprintW * (u32)s_footprintH < 24)
-        SetFootprint(kMaxSide, 3);
     return Show();
 }
 
-void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY) {
+void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY, const u8* dims) {
     if (count > kMaxCursors)
         count = kMaxCursors;
     s_pendHeightId = heightId;
@@ -828,21 +1158,38 @@ void SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u
     for (u32 i = 0; i < count; ++i) {
         s_pendX[i] = xs[i];
         s_pendY[i] = ys[i];
+        s_pendDim[i] = dims != nullptr ? dims[i] : 0u;
     }
     s_pendCount = count;
-    ++s_pendSeq;
-    // 組んである体数で足りなければ 8 の倍数で組み直す（ヒープは体数ぴったりで取るので）
-    // 体数は形に合わせて増やし、小さい形に戻ったら減らす（親ヒープを空けて設置プレビューに回す）。
-    // 行 = 8 体。24 体より下には減らさず、2 行以上余ったときだけ減らす（切り替えのたびに組み直さないため）。
-    if (s_tileMode || !s_wantShown) {
-        const u32 have = (u32)s_footprintH;
-        u32 rows = (count + kMaxSide - 1) / kMaxSide;
-        if (rows < 3)
-            rows = 3;
-        if (rows > have || rows + 2 <= have)
-            SetFootprint(kMaxSide, rows);
-    }
+    ++s_pendSeq;                        // 数が変わっても組み直さない（置き場の行列だけ。描画スレッドが写す）
 }
+
+void EnableMarks(bool on) {
+    s_marksWanted = on;
+    if (on)
+        s_markFail = Fail::kNone;           // 次に組むときにもう一度試す
+}
+
+void SetMarks(const u8* xs, const u8* ys, const u8* kinds, u32 count) {
+    if (count > kMaxMarks)
+        count = kMaxMarks;
+    for (u32 i = 0; i < count; ++i) {
+        s_markPendX[i] = xs[i];
+        s_markPendY[i] = ys[i];
+        s_markPendKind[i] = kinds[i] < kMarkKinds ? kinds[i] : 0;
+    }
+    s_markPendCount = count;
+    ++s_markPendSeq;
+}
+
+void SetMarkAlpha(u8 alpha) { s_markAlpha = alpha; }
+void SetDimAlpha(u32 kind, u8 alpha) {
+    if (kind < kDimKinds)
+        s_dimAlpha[kind] = alpha;
+}
+u8 DimAlpha(u32 kind) { return kind < kDimKinds ? s_dimAlpha[kind] : 0u; }
+u8 MarkAlpha(void) { return s_markAlpha; }
+u32 MarkFailReason(void) { return s_markFail; }
 
 void SetTint(u32 color, u8 strength) {
     s_tintColor = color;
@@ -930,7 +1277,8 @@ void SetFootprint(u32 width, u32 height) {
         return;
     s_footprintW = (u8)width;
     s_footprintH = (u8)height;
-    RequestRebuild();
+    if (s_stage == Stage::Ready)        // 置き場の数が変わるだけ。体は作り直さない（F059）
+        s_request = Request::Reposition;
 }
 
 void SetSpacing(s32 worldUnits) {
@@ -983,7 +1331,7 @@ Status Read(void) {
     out.failReason = s_failReason;
     out.frames = s_frames;
     out.submits = s_submits;
-    out.cursors = s_cursorCount;
+    out.cursors = s_placeCount;
     out.footprintW = s_footprintW;
     out.footprintH = s_footprintH;
     out.col = s_col;

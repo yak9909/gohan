@@ -17,6 +17,7 @@
 #include "GuiKeyboard.hpp"
 #include "GuiDialog.hpp"
 #include "ChatIme.hpp"
+#include "MapEditor.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -363,6 +364,32 @@ namespace CTRPluginFramework
                     GuiRenderer::DrawText(TOP, x + 5, y + 2, label, kColWhite);
                     GuiRenderer::FillRect(TOP, x + 5, y + 10, w - 10, 2, kColHoldTrack);
                     GuiRenderer::FillRect(TOP, x + 5, y + 10, Round((float)(w - 10) * progress), 2, col);
+                }
+
+                // マップエディターのスポイト（長押し）の進捗バー。触れた場所のすぐ下（利用者指示 2026-09-27）。
+                //   色はメニューの長押しと同じ: 2/5 未満は灰色、以降は黄色
+                void    DrawPickProgress(void)
+                {
+                    float   progress;
+                    int     px, py;
+
+                    if (!MapEditor::PickProgress(progress, px, py))
+                        return;
+                    const int   w = 44, h = 8;
+                    int         x = px - w / 2;
+                    int         y = py + 12;
+
+                    if (y + h > 240)
+                        y = py - 12 - h;            // 画面の下端なら上に出す
+                    if (x < 0)
+                        x = 0;
+                    if (x + w > 320)
+                        x = 320 - w;
+                    const u32   col = progress < 0.4f ? kColHoldMuted : kColDirty;
+
+                    Frame1px(BOT, x, y, w, h, col, kColHoldBg);
+                    GuiRenderer::FillRect(BOT, x + 3, y + 3, w - 6, 2, kColHoldTrack);
+                    GuiRenderer::FillRect(BOT, x + 3, y + 3, Round((float)(w - 6) * progress), 2, col);
                 }
 
                 void    DrawInlineList(int menuX, float start, u32 now)
@@ -809,6 +836,7 @@ namespace CTRPluginFramework
                     GuiKeyboard::Draw(now);
                 else
                     ChatIme::DrawBar();         // 漢字変換の候補欄（下画面にほかの UI が無いときだけ。Simulator と同じ）
+                DrawPickProgress();
             }
         }
     }

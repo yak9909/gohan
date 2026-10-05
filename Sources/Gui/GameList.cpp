@@ -239,6 +239,7 @@ s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わ
 volatile u32 s_itemsSeq;                    // SetItems のたびに増える
 u32 s_builtSeq;
 volatile bool s_want;
+volatile bool s_holdField;                  // ほかの部品（マップエディター）が下画面を使う: リストは出さず元の UI だけ退場させておく
 volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
 u32 s_selectDone;
@@ -268,9 +269,20 @@ s32 s_dpadPagesDone;
 Dir s_frameDir = Dir::None;
 Dir s_listDir = Dir::None;
 bool s_hookReady;
-volatile bool s_holdField;                  // ほかの部品（HHD 画面）が元の下画面 UI を隠しておくよう頼んでいる（HoldField）
 u32 s_waitFrames;
 s32 s_lastSelected = -1;
+volatile bool s_fieldHiddenNow;             // 直近の FrameStep で元の UI が隠れきっていた
+
+// 元の下画面 UI の段の移り変わりの記録（IDA-opus-5.5-F067。FrameTrace の輪は FrameMark で 30 秒ほどで流れるので別に持つ）。
+//   読み方: 停止中のデバッガで g_fieldLog / g_fieldLogNext（nm で番地を引く）を読み、g_fieldLogNext の 1 つ手前が最新。
+//   why: 0 = 命令を出した / 1 = ゲームの動きを見届けた / 2 = ゲームが自分で下画面を戻していた / 3 = 場面が変わった
+}  // namespace
+struct FieldLog { u32 tick; u8 from, to, why, hide; u16 shown, moving; u32 tabCalc, map, flags; };
+extern "C" {
+FieldLog g_fieldLog[16];
+volatile u32 g_fieldLogNext;
+}
+namespace {
 
 inline u8 *P(void *p, u32 off) { return reinterpret_cast<u8 *>(p) + off; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
@@ -652,15 +664,38 @@ void FinishMenuClose(u32 mgr, u32 tab) {
     ChangeTabState(tab, kTabIdleCalc);      // タブ選択へ（出ているタブは続く全タブ退場で引っ込める）
 }
 
+// 段を移して記録する
+void SetField(Field to, u8 why, bool hide) {
+    const u32 mgr = R32(kMenuMgrPtr);
+    const u32 tab = mgr != 0 ? R32(mgr + kMgrTab) : 0;
+    FieldLog &e = g_fieldLog[g_fieldLogNext % 16];
+    e.tick = (u32)svcGetSystemTick();
+    e.from = (u8)s_field;
+    e.to = (u8)to;
+    e.why = why;
+    e.hide = hide ? 1 : 0;
+    e.shown = tab != 0 ? *reinterpret_cast<const volatile u16 *>(tab + kTabShown) : 0;
+    e.moving = tab != 0 ? *reinterpret_cast<const volatile u16 *>(tab + kTabMoving) : 0;
+    e.tabCalc = tab != 0 ? R32(tab + kTabCalc) : 0;
+    e.map = mgr != 0 ? R32(mgr + kMgrMap) : 0;
+    e.flags = R32(kMenuFlags);
+    g_fieldLogNext = g_fieldLogNext + 1;
+    s_field = to;
+    s_fieldFrames = 0;
+}
+
+// 元の UI（タブか地図）が画面に出ている。★ゲームは自分の都合（メッセージのイベントなど）で下画面を戻すことがある
+bool FieldOnScreen(u32 mgr, u32 tab) {
+    return (tab != 0 && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) != 0) || (mgr != 0 && R32(mgr + kMgrMap) != 0);
+}
+
 // 元の下画面 UI を hide に合わせて動かす。戻り値: 隠れきっている
 bool StepField(bool hide) {
     const u32 mgr = R32(kMenuMgrPtr);
     const u32 tab = mgr != 0 ? R32(mgr + kMgrTab) : 0;
     ++s_fieldFrames;
-    if (s_field != Field::Shown && RoomId() != s_fieldRoom) {
-        s_field = Field::Shown;             // 場面が変わった: 下画面はゲームが作り直す。命令は出さない
-        s_fieldFrames = 0;
-    }
+    if (s_field != Field::Shown && RoomId() != s_fieldRoom)
+        SetField(Field::Shown, 3, hide);    // 場面が変わった: 下画面はゲームが作り直す。命令は出さない
     switch (s_field) {
     case Field::Shown:
         // ★開いていた下画面メニュー（持ち物など）を、地図とタブを出し直さずに閉じさせる（利用者指示 2026-09-25:
@@ -690,35 +725,37 @@ bool StepField(bool hide) {
                 W8(kOtherCommand, 0);
             W8(kTabCommand, kCmdAllTabsOut);
             FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdAllTabsOut);
-            s_field = Field::Exiting;
-            s_fieldFrames = 0;
+            SetField(Field::Exiting, 0, hide);
         }
         return false;
     case Field::Exiting:
         // 全タブが引っ込み、地図の画面が無くなった（命令は消費済み）
         if (s_fieldFrames > 1 && FieldIdle() && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) == 0
-            && R32(mgr + kMgrMap) == 0) {
-            s_field = Field::Hidden;
-            s_fieldFrames = 0;
-        }
+            && R32(mgr + kMgrMap) == 0)
+            SetField(Field::Hidden, 1, hide);
         return false;
     case Field::Hidden:
+        // ★隠したあとも実物を見る（IDA-opus-5.5-F067、2026-09-28 実機）: メッセージのイベントなどでゲームが自分でタブ・地図を戻すことがある。
+        //   覚えている段のまま命令 2 を出すと、地図が既にあるので状態 18「地図同期タブ入場」の MENU_FLAGS & 1 が来ず止まり
+        //   （BsMenuMgr_ProcessMapCommand 0x6D1428 は地図があると何もしない）、出入り中 +6580 も残る。
+        //   → 出ていたら「出ている」に戻す。まだ隠したいなら Shown の段がゲームの落ち着くのを待ってもう一度隠す
+        if (FieldOnScreen(mgr, tab)) {
+            SetField(Field::Shown, 2, hide);
+            return false;
+        }
         // ★地図を戻す（ゲームが map_village.arc の 596 KB の塊を取り直す）のは、リストを片付け、箱の arc も返してから
         if (!hide && FieldIdle() && s_stage == Stage::Off && !GameLabel::Present()) {
             W8(kTabCommand, kCmdRestoreField);
             FrameTrace::Mark(FrameTrace::ListFieldCmd, kCmdRestoreField);
-            s_field = Field::Restoring;
-            s_fieldFrames = 0;
+            SetField(Field::Restoring, 0, hide);
             return false;
         }
         return true;
     case Field::Restoring:
         // 状態 18 → 7 → タブ選択。地図が作り直され、タブが出そろった
         if (s_fieldFrames > 1 && FieldIdle() && (R32(kMenuFlags) & 0x02u) != 0
-            && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) != 0) {
-            s_field = Field::Shown;
-            s_fieldFrames = 0;
-        }
+            && *reinterpret_cast<const volatile u16 *>(tab + kTabShown) != 0)
+            SetField(Field::Shown, 1, hide);
         return false;
     }
     return false;
@@ -1026,6 +1063,28 @@ void SetItemMessages(const char *label, const s16 *indices, u32 count) {
     s_itemsSeq = s_itemsSeq + 1;
 }
 
+bool EnsureHook(void) {
+    if (!s_hookReady) {
+        if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep))
+            return false;
+        s_hookReady = true;
+    }
+    return true;
+}
+
+bool HoldField(bool on) {
+    if (on && !EnsureHook()) {
+        s_error = "フレームフックを入れられない";
+        return false;
+    }
+    s_holdField = on;
+    return true;
+}
+
+bool FieldHidden(void) {
+    return s_fieldHiddenNow && s_stage == Stage::Off;
+}
+
 void Show(s32 selected) {
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {
@@ -1052,18 +1111,8 @@ bool Present(void) {
     return s_stage != Stage::Off || s_field != Field::Shown;
 }
 
-bool HoldField(bool hold) {
-    if (hold && !s_hookReady) {
-        if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep))
-            return false;
-        s_hookReady = true;
-    }
-    s_holdField = hold;
-    return true;
-}
-
-bool FieldHidden(void) {
-    return s_field == Field::Hidden && !s_menuCloseSent;
+bool FieldShown(void) {
+    return s_field == Field::Shown && !s_menuCloseSent;
 }
 
 bool FieldTransition(void) {
@@ -1102,7 +1151,8 @@ void FrameStep(void) {
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
     //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
     const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
-    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || s_holdField);
+    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || (s_holdField && !s_shutdown));
+    s_fieldHiddenNow = fieldHidden;
 
     switch (s_stage) {
     case Stage::Off:

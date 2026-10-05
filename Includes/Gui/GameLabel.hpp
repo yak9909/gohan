@@ -18,6 +18,9 @@ namespace GameLabel
     void        SetRow(u32 slot, u32 row);              // 段（0 = いちばん上）。同じ段は左から横に並ぶ
     void        SetBottom(u32 slot, bool bottom);       // 真: 左下の段に置く（row は下から数える）
     void        SetAlert(u32 slot, bool alert);         // 真: 箱と文字を赤くする（上限に届いた・足りない）
+    // 真: 下画面（320x240）の左上に置く（マップエディター。2026-09-28）。出す前に決める（出ている間は変えない）
+    void        SetLower(u32 slot, bool lower);
+    void        SetLeftAlign(u32 slot, bool left);      // 真: 箱の中の文字を左揃え（既定は中央）
     // ゲームの時計（BsTimeBelWindow の N_time。上画面左下）を隠す。偽で元の見える旗へ戻す
     void        HideGameClock(bool hide);
     void        Show(u32 slot);

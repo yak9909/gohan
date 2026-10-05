@@ -2,6 +2,8 @@
 #include "FrameTrace.hpp"
 
 #include "BuildingEditor.hpp"
+#include "FieldCamera.hpp"
+#include "MapEditor.hpp"
 #include "BuildingPreview.hpp"
 #include "BuildingHighlight.hpp"
 
@@ -851,6 +853,8 @@ void FrameStep(void) {
     }
     BuildingHighlight::FrameStep();
     BuildingEditor::FrameStep();
+    MapEditor::FrameStep();
+    FieldCamera::FrameStep();
     BuildingPreview::FrameStep();
 }
 

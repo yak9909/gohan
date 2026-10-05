@@ -3,12 +3,15 @@
 #include "BuildingHighlight.hpp"
 #include "BuildingPreview.hpp"
 #include "Cheats.hpp"
+#include "CursorRepeat.hpp"
+#include "FieldCamera.hpp"
 #include "GameLabel.hpp"
 #include "GameList.hpp"
 #include "GuiDialog.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
+#include "MapEditor.hpp"
 #include "PublicWorks.hpp"
 #include "RomfsIndex.hpp"
 
@@ -24,14 +27,7 @@ namespace BuildingEditor {
 namespace {
 
 // ---- ゲーム側 ---------------------------------------------------------------------------------
-const u32 kCameraGame = 0x0094A880;         // u32: CameraGame*（dtor 0x1A7C1C が 0 を書く）
-const u32 kCameraBase = 4;                  // float x, y, z: 基準位置（注視点 = 基準 + +16..）
-const u32 kCameraPatch = 0x001A5128;        // sub_1A5124 の 2 語目
-const u32 kCameraPatchOrig = 0xE2805C01;    // ADD R5,R0,#0x100
-const u32 kCameraPatchPop = 0xE8BD81F0;     // POP {R4-R8,PC}（先頭の PUSH と同じ組。戻り値は呼び元が使わない）
-const u32 kRoomIdByte = 0x0095133A;         // u8: 0 = 村の屋外
-const u32 kPlayerPtr = 0x00AA7994;          // Player*
-const u32 kPlayerPosition = 0x14;
+// カメラは FieldCamera（公共事業エディターとマップエディターで共用。中身はここにあったもの）
 typedef float (*GroundHeightFn)(const float *pos, u32 zero);    // 0x006C69C0（S0 で返る）
 const GroundHeightFn GroundHeight = reinterpret_cast<GroundHeightFn>(0x006C69C0);
 
@@ -45,8 +41,6 @@ const s32 kFootprintSide = 16;
 const s32 kFootprintOrigin = 7;
 const u32 kMaxCells = 64;
 
-const float kCameraFollow = 0.35f;          // 1 フレームで目標へ寄る割合
-
 // ---- 足元データの取り寄せ（名前の無い建物 = 住民・プレイヤーの家）----------------------------------
 // 家は名前表に名前が無く、足元のファイル名（hobj_npchouse_%02d 等）は住民ごとの型で決まる。村にある建物の足元は
 // ゲームが読み込み済みなので、描画スレッドで Building_GetFootprint 0x1B1720(x, y, id) を呼んで写す（IDA-opus-5.5-F021）。
@@ -59,21 +53,11 @@ volatile bool s_fetchOk;
 u8 s_fetchBuf[2560];
 
 // ---- メニュー ↔ 描画スレッド -------------------------------------------------------------------
-volatile bool s_want;           // メニュー: エディターを動かしたい
-volatile bool s_patched;        // 描画: カメラを止めている
-volatile bool s_lost;           // 描画: 場面が変わった／カメラが取れない
 volatile s32 s_cx, s_cy;        // カーソルのマス
-volatile u32 s_lostReason;
-volatile bool s_snapCamera;     // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
 // 橋を出しているとき: カメラの高さもカーソルと同じ橋の高さにする（0 = カーソルのマスの地面）。
 // 1 語に 有効 0x10000 | x | y<<8 で詰めて、スレッド間で 1 回で読み書きする。
 volatile u32 s_bridgeAnchor;
 u32 PackAnchor(u32 x, u32 y) { return 0x10000u | x | (y << 8); }
-
-// ---- 描画スレッドだけ ---------------------------------------------------------------------------
-u32 s_camera;
-float s_offset[3];
-float s_current[3];
 
 // ---- メニュースレッドだけ ------------------------------------------------------------------------
 bool s_running;
@@ -84,31 +68,13 @@ u32 s_kindCount;
 u32 s_kind;
 s32 s_selected = -1;
 u32 s_prevKeys;
-u32 s_hold[4];                  // スライドパッド 上下左右の押し続けティック
+CursorRepeat s_repeat;          // スライドパッドの押し続け（CursorRepeat.hpp。マップエディターと共用）
 
 u8 s_footprint[kFootprintBytes];   // 足元データを読む置き場
-
-u32 R32(u32 a) { return *reinterpret_cast<volatile u32 *>(a); }
-bool IsHeap(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
 
 // ---------------------------------------------------------------------------------------------
 // 描画スレッド
 // ---------------------------------------------------------------------------------------------
-
-bool InVillage(void) {
-    return *reinterpret_cast<volatile u8 *>(kRoomIdByte) == 0;
-}
-
-void WriteCode(u32 addr, u32 value) {
-    *reinterpret_cast<volatile u32 *>(addr) = value;
-    GuiMenu::FlushMemory(addr, 4);
-}
-
-void Unpatch(void) {
-    if (R32(kCameraPatch) == kCameraPatchPop)
-        WriteCode(kCameraPatch, kCameraPatchOrig);
-    s_patched = false;
-}
 
 float CameraHeight(float *at) {
     const u32 anchor = s_bridgeAnchor;
@@ -117,10 +83,12 @@ float CameraHeight(float *at) {
     return PublicWorks::BridgeHeight(anchor & 0xFFu, (anchor >> 8) & 0xFFu);
 }
 
-void Lose(u32 reason) {
-    Unpatch();
-    s_lostReason = reason;
-    s_lost = true;
+// カメラの目標 = カーソルのマスの中央（FieldCamera が毎フレーム呼ぶ）
+void CameraTarget(float out[3]) {
+    out[0] = (float)(32 * s_cx + 16);
+    out[1] = 0.0f;
+    out[2] = (float)(32 * s_cy + 16);
+    out[1] = CameraHeight(out);
 }
 
 }  // namespace
@@ -132,60 +100,6 @@ void FrameStep(void) {
         if (s_fetchOk)
             std::memcpy(s_fetchBuf, fp, sizeof(s_fetchBuf));
         s_fetchDone = s_fetchSeq;
-    }
-    if (!s_patched) {
-        if (!s_want || s_lost)
-            return;
-        if (!InVillage()) {
-            Lose(1);
-            return;
-        }
-        const u32 camera = R32(kCameraGame);
-        const u32 player = R32(kPlayerPtr);
-        if (!IsHeap(camera) || !IsHeap(player)) {
-            Lose(2);
-            return;
-        }
-        if (R32(kCameraPatch) != kCameraPatchOrig) {  // ほかの改造が当たっている。触らない
-            Lose(3);
-            return;
-        }
-        // 基準位置とプレイヤーのずれを控えて、カーソルへ同じずれで付ける。
-        // ★横（x）と奥行き（z）のずれは使わない。歩いた直後のカメラはプレイヤーから遅れていて、そのずれまで引き継ぐと
-        //   カーソルが画面の中央から偏った（利用者報告: カメラがプレイヤーより右にあるとカーソルが左に偏る）。
-        //   落ち着いたカメラと同じく、カーソルを基準位置（注視点側）に置く。高さのずれだけ残す。
-        const float *base = reinterpret_cast<const float *>(camera + kCameraBase);
-        const float *pos = reinterpret_cast<const float *>(player + kPlayerPosition);
-        for (u32 i = 0; i < 3; ++i) {
-            s_offset[i] = i == 1 ? base[i] - pos[i] : 0.0f;
-            s_current[i] = base[i];
-        }
-        if (s_snapCamera) {
-            float at[3] = { (float)(32 * s_cx + 16), 0.0f, (float)(32 * s_cy + 16) };
-            at[1] = CameraHeight(at);
-            for (u32 i = 0; i < 3; ++i)
-                s_current[i] = at[i] + s_offset[i];
-            s_snapCamera = false;
-        }
-        s_camera = camera;
-        WriteCode(kCameraPatch, kCameraPatchPop);
-        s_patched = true;
-        return;
-    }
-    if (!s_want) {
-        Unpatch();
-        return;
-    }
-    if (!InVillage() || R32(kCameraGame) != s_camera) {
-        Lose(1);
-        return;
-    }
-    float target[3] = { (float)(32 * s_cx + 16), 0.0f, (float)(32 * s_cy + 16) };
-    target[1] = CameraHeight(target);
-    float *base = reinterpret_cast<float *>(s_camera + kCameraBase);
-    for (u32 i = 0; i < 3; ++i) {
-        s_current[i] += (target[i] + s_offset[i] - s_current[i]) * kCameraFollow;
-        base[i] = s_current[i];
     }
 }
 
@@ -467,6 +381,10 @@ void UpdateCapacityLabels(bool force) {
         std::snprintf(line3, sizeof(line3), u8"-");
     // 利用者 2026-09-25（2 回目）: 左下ではなく、設置上限・新しい種類と同じ上の段の右へ。時計とは重ならないので隠さない
     GameLabel::SetText(2, line3);
+    for (u32 i = 0; i < 3; ++i) {           // 上画面・中央揃え（マップエディターが箱 0 を下画面・左揃えで使うので毎回決める）
+        GameLabel::SetLower(i, false);
+        GameLabel::SetLeftAlign(i, false);
+    }
     GameLabel::SetRow(2, 0);
     GameLabel::SetBottom(2, false);
     GameLabel::HideGameClock(false);
@@ -496,7 +414,7 @@ void Report(PublicWorks::Result result) {
 // 村の屋外で、プレイヤーとカメラが取れるか（画面遷移のあとで再開してよいか）
 bool ReadyToStart(void) {
     u32 x = 0, y = 0;
-    return InVillage() && IsHeap(R32(kCameraGame)) && IsHeap(R32(kPlayerPtr)) && PublicWorks::PlayerTile(x, y);
+    return FieldCamera::Available() && PublicWorks::PlayerTile(x, y);
 }
 
 // 下画面にゲームのリスト UI で配置の一覧を出す（GameList、IDA-opus-5.5-F036）。一覧は最初の 1 回だけ渡す。
@@ -569,6 +487,11 @@ void TakeListChoice(void) {
 
 // quiet: 再開のときは失敗を通知しない
 bool Start(bool quiet) {
+    if (MapEditor::Running()) {                     // カメラと下画面を取り合うので同時には動かさない
+        GuiDialog::ShowMessage(Cheats::kBeOn, u8"マップエディターを先に止めてください");
+        s_failed = true;
+        return false;
+    }
     if (!PublicWorks::StartFrameHook()) {
         GuiDialog::ShowMessage(Cheats::kBeOn, u8"フックが入れられません");
         s_failed = true;
@@ -598,10 +521,10 @@ bool Start(bool quiet) {
         s_cy = (s32)y;
         s_mode = Mode::Place;
     }
-    s_snapCamera = quiet;
+    const bool snapCamera = quiet;          // 再開: カメラをプレイヤーから滑らせず、最初からカーソルへ置く
     s_selected = -1;
     s_prevKeys = 0xFFFFFFFFu;                       // 押しっぱなしのボタンを最初の押下にしない
-    std::memset(s_hold, 0, sizeof(s_hold));
+    s_repeat.Reset();
     PublicWorks::Unhighlight();
     UpdateTiles();
     if (!GridCursor::ShowTiles()) {
@@ -609,35 +532,13 @@ bool Start(bool quiet) {
         s_failed = true;
         return false;
     }
-    s_lost = false;
-    s_want = true;
+    FieldCamera::Want(CameraTarget, snapCamera);
     s_running = true;
     ShowKindList();
     return true;
 }
 
-// 押した瞬間と、押し続けたとき（約 200ms 後から約 64ms ごと）に真
-bool Repeat(u32 &counter, bool held) {
-    if (!held) {
-        counter = 0;
-        return false;
-    }
-    ++counter;
-    return counter == 1 || (counter > 12 && ((counter - 12) % 4) == 0);
-}
-
-// スライドパッド: どれかの向きが連続移動に入っている間（離して kPadGrace ティック以内も含む）に
-// 別の向きを入れたら、その向きは待たずに連続移動にする（押した瞬間に 1 マス、以後 4 ティックごと。利用者指示）。
-const u32 kPadGrace = 3;
-u32 s_padRepeatingAgo = 0xFFFFu;
-
-bool PadRepeat(u32 &counter, bool held, bool fast) {
-    if (held && counter == 0 && fast) {
-        counter = 12;
-        return true;
-    }
-    return Repeat(counter, held);
-}
+// 押し続けの規則は CursorRepeat.hpp（マップエディターと共用）
 
 void MoveCursor(s32 dx, s32 dy) {
     s32 x = s_cx + dx;
@@ -791,6 +692,16 @@ void Watch(void) {
 
 bool Running(void) { return s_running; }
 
+u32 CollisionCells(u16 id, s8 *dx, s8 *dy, u32 max) {
+    const Shape &s = ShapeOf(id);
+    u32 n = 0;
+    for (u32 i = 0; i < s.count && n < max; ++i, ++n) {
+        dx[n] = s.dx[i];
+        dy[n] = s.dy[i];
+    }
+    return n;
+}
+
 void Reset(void) {
     s_failed = false;
     s_restart = false;
@@ -800,9 +711,9 @@ void Stop(void) {
     if (!s_running)
         return;
     s_running = false;
-    s_want = false;
+    FieldCamera::Release();
     // カメラの書き換えは描画スレッドが戻す。0.3 秒まで待つ（30fps で 9 フレーム）。
-    for (u32 i = 0; i < 18 && s_patched; ++i)
+    for (u32 i = 0; i < 18 && FieldCamera::Patched(); ++i)
         svcSleepThread(16666667LL);
     GridCursor::Hide();
     BuildingPreview::Hide();
@@ -830,15 +741,16 @@ void Tick(u32 keys) {
             s_restart = false;
         return;
     }
-    if (s_lost) {
+    u32 lostReason = 0;
+    if (FieldCamera::Lost(lostReason)) {
         Stop();
-        if (s_lostReason == 1) {                    // 村の屋外を離れた: 戻ったら再開する
+        if (lostReason == 1) {                      // 村の屋外を離れた: 戻ったら再開する
             s_restart = true;
             s_restartTicks = 0;
         } else {
             static const char *const kWhy[] = { "", "", u8"カメラが取れません",
                                                 u8"カメラの関数がほかの改造で書き換わっています" };
-            GuiDialog::ShowMessage(Cheats::kBeOn, kWhy[s_lostReason < 4 ? s_lostReason : 0]);
+            GuiDialog::ShowMessage(Cheats::kBeOn, kWhy[lostReason < 4 ? lostReason : 0]);
             s_failed = true;
         }
         return;
@@ -851,18 +763,16 @@ void Tick(u32 keys) {
     s_prevKeys = keys;
 
     // スライドパッド（画面の上 = マスの -y）
-    bool repeating = false;
-    for (u32 i = 0; i < 4; ++i)
-        repeating = repeating || s_hold[i] > 12;
-    if (repeating)
-        s_padRepeatingAgo = 0;
-    else if (s_padRepeatingAgo < 0xFFFFu)
-        ++s_padRepeatingAgo;
-    const bool fast = s_padRepeatingAgo <= kPadGrace;
-    if (PadRepeat(s_hold[0], (keys & (u32)Key::CPadUp) != 0, fast)) MoveCursor(0, -1);
-    if (PadRepeat(s_hold[1], (keys & (u32)Key::CPadDown) != 0, fast)) MoveCursor(0, +1);
-    if (PadRepeat(s_hold[2], (keys & (u32)Key::CPadLeft) != 0, fast)) MoveCursor(-1, 0);
-    if (PadRepeat(s_hold[3], (keys & (u32)Key::CPadRight) != 0, fast)) MoveCursor(+1, 0);
+    u32 pad = 0;
+    if (keys & (u32)Key::CPadUp) pad |= CursorRepeat::kUp;
+    if (keys & (u32)Key::CPadDown) pad |= CursorRepeat::kDown;
+    if (keys & (u32)Key::CPadLeft) pad |= CursorRepeat::kLeft;
+    if (keys & (u32)Key::CPadRight) pad |= CursorRepeat::kRight;
+    const u32 fire = s_repeat.Step(pad);
+    if (fire & CursorRepeat::kUp) MoveCursor(0, -1);
+    if (fire & CursorRepeat::kDown) MoveCursor(0, +1);
+    if (fire & CursorRepeat::kLeft) MoveCursor(-1, 0);
+    if (fire & CursorRepeat::kRight) MoveCursor(+1, 0);
 
     if (pressed & ((u32)Key::L | (u32)Key::R)) {
         const u32 count = (u32)Mode::Count;

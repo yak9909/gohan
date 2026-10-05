@@ -211,6 +211,22 @@ namespace CTRPluginFramework
                         u8"好きな場所に建造物を建てましょう。カメラだけを動かして置く・動かす・消すができ、プレイヤーは動けません。"
                         u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、X でカーソルの建物をコピー、"
                         u8"A で実行、移動の選択は B で解除。");
+                // Issue #16（段階 1: 表示・カメラ・名前）。MapEditor.hpp
+                AddItem(ITEM_CHECKBOX, kMeOn,
+                        u8"模様替えの画面で村のアイテムを見渡します。十字キーかスライドパッドで範囲を動かし、アイテムをタッチすると名前を出します。"
+                        u8"プレイヤーは動けません。");
+                // 連動型（エディターの値。スポイトでも変わる）。FFFF = 未設定
+                i = AddItem(ITEM_LINKED_VALUE, kMePlaceItem,
+                            u8"マップエディターの配置モードで置くアイテムの ID です。アイテムを押し続けるスポイトでも変わります。"
+                            u8"FFFF は未設定です。");
+                SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
+                // 連動型（GridCursor の薄い体の Constant4 のアルファ。利用者の決定 2026-09-29: 実行範囲 90、マイデザインの上 50）
+                i = AddItem(ITEM_LINKED_VALUE, kMeDimRange,
+                            u8"マップエディターの実行範囲のうち、真ん中以外に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
+                SetValue(i, FMT_DEC, 90, 0, 255, 1);
+                i = AddItem(ITEM_LINKED_VALUE, kMeDimDesign,
+                            u8"マップエディターでマイデザインの上に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
+                SetValue(i, FMT_DEC, 50, 0, 255, 1);
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 

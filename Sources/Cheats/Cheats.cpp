@@ -12,6 +12,7 @@
 #include "Cheats.hpp"
 #include "FieldHookCaves.h"
 #include "BuildingEditor.hpp"
+#include "MapEditor.hpp"
 #include "GridCursor.hpp"
 #include "ModelViewer.hpp"
 #include "PlayerClone.hpp"
@@ -225,6 +226,8 @@ namespace CTRPluginFramework
                     return;
                 if (BuildingEditorTick(index, held))
                     return;
+                if (MapEditorTick(index, held))
+                    return;
                 if (ChatIme::Tick(index, held))
                     return;
                 GridCursorTick(index, held);
@@ -235,6 +238,8 @@ namespace CTRPluginFramework
                 if (PlayerMoveDisable(index))
                     return;
                 if (BuildingEditorDisable(index))
+                    return;
+                if (MapEditorDisable(index))
                     return;
                 if (ChatIme::Disable(index))
                     return;
@@ -271,6 +276,7 @@ namespace CTRPluginFramework
             WireHhdScreen();
             WirePublicWorks();
             WireBuildingEditor();
+            WireMapEditor();
             WirePocketItem();
             ChatIme::Wire();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。

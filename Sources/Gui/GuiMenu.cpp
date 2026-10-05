@@ -24,6 +24,7 @@
 #include "GuiKeyboard.hpp"
 #include "ChatKanji.hpp"
 #include "ChatIme.hpp"
+#include "MapEditor.hpp"
 #include "csvc.h"   // svcInvalidateEntireInstructionCache
 
 namespace CTRPluginFramework
@@ -91,6 +92,7 @@ namespace CTRPluginFramework
             bool    g_dpadBlockReq = false;     // このフレームだけゲームの十字キーを遮断（BlockGameDpad）
             bool    g_touchBlockReq = false;    // このフレームだけゲームのタッチを遮断（BlockGameTouch）
             bool    g_barDrawn = false;         // 漢字変換の候補欄を前のフレームで描いた（消すために 1 回描き直す）
+            bool    g_pickDrawn = false;        // マップエディターのスポイトの進捗バーを前のフレームで描いた
             bool    g_allBlockReq = false;      // このフレームだけスライドパッドも含めて全部遮断（BlockGameAll）
 
             // ★入力遮断は毎フレーム条件から決める（F-350）。描画の有無に縛らない。
@@ -182,13 +184,18 @@ namespace CTRPluginFramework
                         SyncInputLock(in);
 
                         const bool  bar = ChatIme::BarVisible();
+                        float       pickProgress;
+                        int         pickX, pickY;
+                        const bool  pick = MapEditor::PickProgress(pickProgress, pickX, pickY);
 
-                        if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal || bar || g_barDrawn)
+                        if (g_visible || g_openTarget != 0.0f || Animating(now) || g_needFinal || bar || g_barDrawn
+                            || pick || g_pickDrawn)
                         {
                             Draw(now);
                             g_needFinal = false;
                         }
                         g_barDrawn = bar;
+                        g_pickDrawn = pick;
                     }
                     svcSleepThread(16000000LL);     // 約 16ms
                 }
