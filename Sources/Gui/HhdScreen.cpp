@@ -1,6 +1,7 @@
 #include "HhdScreen.hpp"
 #include "HhdTables.h"
 #include "GridCursor.hpp"
+#include "GameList.hpp"
 #include "Cheats.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
@@ -109,7 +110,7 @@ struct Panes {
     void *eyeFrame[12], *iris[12], *eyeBase[12];
     void *hairFrame[8], *hairPic[24], *hairSkin[24];
     void *ecFrame[6], *scFrame[8], *hcFrame[16];
-    void *eyeColorGroup, *hairSkinGroup, *leftText;
+    void *eyeColorGroup, *hairSkinGroup, *leftText, *hairRightPage;
 };
 
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
@@ -211,7 +212,8 @@ bool FindAll(void) {
     s_p.eyeColorGroup = FindPane(s_lay[kFace].obj, "N_EyeColor_00");
     s_p.hairSkinGroup = FindPane(s_lay[kFace].obj, "N_HairSkinCol");
     s_p.leftText = FindPane(s_lay[kFace].obj, "b0_T_Btn");
-    return s_p.eyeColorGroup != nullptr && s_p.hairSkinGroup != nullptr && s_p.leftText != nullptr;
+    s_p.hairRightPage = FindPane(s_lay[kHair].obj, "pg2");
+    return s_p.eyeColorGroup != nullptr && s_p.hairSkinGroup != nullptr && s_p.leftText != nullptr && s_p.hairRightPage != nullptr;
 }
 
 const u16 kTextHair[] = { 0x304B, 0x307F, 0x304C, 0x305F };    // かみがた
@@ -228,6 +230,11 @@ void Apply(void) {
     want.hairColor = s_state.hairColor;
     const bool all = !s_appliedValid;
     State &was = s_applied;
+    if (all) {
+        // 髪のページ: 男の子の髪は 16 個 = 2 ページ（HHD-F005: 32 個を性別で 16 個に絞る）。中央の枠 pg1 が最後のページ（髪 8〜15）なので、
+        // 右の枠 pg2（次のページ = 女の子の髪 0〜7 の絵）は HHD では出ない。ページ送りを作るまでは隠す（利用者 2026-10-05 の指摘）
+        SetVisible(s_p.hairRightPage, false);
+    }
     if (all || want.mode != was.mode) {
         SetVisible(s_p.eyeColorGroup, want.mode == 0);
         SetVisible(s_p.hairSkinGroup, want.mode == 1);
@@ -452,6 +459,12 @@ bool Show(void) {
         }
         s_hookReady = true;
     }
+    // 元の下画面 UI（地図・タブ）をゲーム自身の命令で退場させておく（建物エディターと同じ GameList の手順）。
+    //   隠れきってから組む（地図の arc が返ってから、こちらの arc を同じヒープに取る）
+    if (!GameList::HoldField(true)) {
+        s_error = "フレームフックを入れられない";
+        return false;
+    }
     s_state.mode = 0;
     s_state.eyeShape = s_state.eyeColor = s_state.skin = s_state.hair = s_state.hairColor = -1;
     s_touchPrev = false;
@@ -478,7 +491,7 @@ const char *LastError(void) {
 const char *StageName(void) {
     switch (s_stage) {
     case Stage::Idle: return u8"止まっている";
-    case Stage::Copy: return u8"組み立て待ち";
+    case Stage::Copy: return u8"下画面の片付け待ち";
     case Stage::Draw: return u8"下画面に出している";
     case Stage::Teardown: return u8"片付け中";
     case Stage::Failed: return u8"失敗";
@@ -495,12 +508,14 @@ void Measure(char *out, u32 size) {
 }
 
 void Tick(bool menuVisible) {
-    if (!s_want || s_stage != Stage::Draw)
+    if (!s_want && s_stage == Stage::Idle)
         return;
     // 開いている間はゲームへの入力を全部止める。BlockGameAll はボタンとスライドパッドだけで、タッチは BlockGameTouch が別に止める
     //   （GuiMenu.cpp SyncInputLock。2026-10-05 実機: BlockGameAll だけでは下の地図・タブが反応した）
     GuiMenu::BlockGameAll();
     GuiMenu::BlockGameTouch();
+    if (!s_want || s_stage != Stage::Draw)
+        return;                             // 組み立て待ち・片付け中は止めるだけ
     if (menuVisible) {
         s_touchPrev = false;
         s_touchStart = -1;
@@ -537,9 +552,12 @@ void FrameStep(void) {
         return;
     case Stage::Copy:
         if (!s_want) {
+            GameList::HoldField(false);
             s_stage = Stage::Idle;
             return;
         }
+        if (!GameList::FieldHidden())
+            return;                         // 元の下画面 UI が退場し終わるのを待つ
         Build();
         if (s_stage != Stage::Draw)
             return;
@@ -569,11 +587,13 @@ void FrameStep(void) {
         if (++s_wait < kTeardownWaitFrames)
             return;
         Release();
+        GameList::HoldField(false);         // 全部返してから元の下画面 UI を戻させる
         s_stage = Stage::Idle;
         return;
     case Stage::Failed:
         // 途中まで作ったものを返す。描いていないので待たなくてよい
         Release();
+        GameList::HoldField(false);
         s_want = false;
         s_stage = Stage::Idle;
         return;

@@ -268,6 +268,7 @@ s32 s_dpadPagesDone;
 Dir s_frameDir = Dir::None;
 Dir s_listDir = Dir::None;
 bool s_hookReady;
+volatile bool s_holdField;                  // ほかの部品（HHD 画面）が元の下画面 UI を隠しておくよう頼んでいる（HoldField）
 u32 s_waitFrames;
 s32 s_lastSelected = -1;
 
@@ -1051,6 +1052,20 @@ bool Present(void) {
     return s_stage != Stage::Off || s_field != Field::Shown;
 }
 
+bool HoldField(bool hold) {
+    if (hold && !s_hookReady) {
+        if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep))
+            return false;
+        s_hookReady = true;
+    }
+    s_holdField = hold;
+    return true;
+}
+
+bool FieldHidden(void) {
+    return s_field == Field::Hidden && !s_menuCloseSent;
+}
+
 bool FieldTransition(void) {
     return s_field == Field::Exiting || s_field == Field::Restoring || s_menuCloseSent;
 }
@@ -1087,7 +1102,7 @@ void FrameStep(void) {
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
     //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
     const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
-    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live);
+    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || s_holdField);
 
     switch (s_stage) {
     case Stage::Off:
