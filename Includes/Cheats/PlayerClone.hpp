@@ -31,6 +31,8 @@ namespace PlayerClone
     // 古い枠を返す（ゲーム自身の頭の二重読み込みを使う。IDA-opus-5.5-F086）。フレームフックが回っている間に数フレームで終わる
     void            ReloadRealFace(void);
     bool            RealFaceBusy(void);
+    // 状態の通知用の 1 行（ASCII）: 段階・結果・フレーム数・印を立てた回数など
+    void            RealFaceInfo(char *out, u32 size);
     // 画面に固定の専用カメラが使う世界のカメラの投影を一度取れたか（メニューの 3D = Scene 1 で描く前に必要）
     bool            ProjectionReady(void);
     // 画面に固定（late pass で専用カメラ）。yaw / pitch は度、x/y は上画面のピクセル（カメラの中心）、zoom は百分率

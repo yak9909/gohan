@@ -576,11 +576,11 @@ struct PressSlot {
     const HhdTables::PressAnim *anim = nullptr;   // [0] touch / [1] touch_ok
     u32 lay = 0;
     char prefix[8] = {};
-    Posed posed[12];
+    Posed posed[4];                         // 1 つの的の touch / touch_ok のペインと要素の組（export_gohan_tables.py が突き合わせる）
     u32 count = 0;
     const HhdTables::BakedColor *color = nullptr;  // select / select_ok を整数フレームで焼いた表（無ければ nullptr）
     u32 colorCount = 0;
-    ColorPosed cposed[40];
+    ColorPosed cposed[37];
     u32 ccount = 0;
     bool ok = false;                        // touch_ok を流している
     float frame = 0.0f;
@@ -650,7 +650,7 @@ void WriteColor(void *obj, u8 kind, u8 index, u8 value) {
 
 void *ColorObject(const HhdTables::BakedColor &tr) {
     char name[24];
-    std::snprintf(name, sizeof(name), "%s_%s", s_press.prefix, tr.pane);
+    std::snprintf(name, sizeof(name), "%s_%s", s_press.prefix, HhdTables::kSelectPanes[tr.pane]);
     void *pane = FindPane(s_lay[s_press.lay].obj, name);
     if (pane == nullptr || tr.kind == 0)
         return pane;
@@ -1259,6 +1259,11 @@ void Measure(char *out, u32 size) {
                   (unsigned long)s_used[2], (unsigned long)s_size[2], (unsigned long)s_used[3], (unsigned long)s_size[3],
                   (unsigned long)s_used[4], (unsigned long)s_size[4],
                   (unsigned long)(s_heapFreeBefore / 1024u), (unsigned long)(s_heapFreeAfter / 1024u));
+    const u32 n = (u32)std::strlen(out);
+    if (n + 1 < size) {
+        out[n] = ' ';
+        PlayerClone::RealFaceInfo(out + n + 1, size - n - 1);   // けってい の後の本人の目の形の差し替え（F086）
+    }
 }
 
 void Tick(bool menuVisible) {
@@ -1557,7 +1562,10 @@ namespace CTRPluginFramework
                 if (err[0] != 0)
                     std::snprintf(message, sizeof(message), u8"%s: %s", HhdScreen::StageName(), err);
                 else if (HhdScreen::ApplyResult()[0] != 0)
-                    std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), HhdScreen::ApplyResult());
+                {
+                    PlayerClone::RealFaceInfo(measure, sizeof(measure));   // けってい の後は本人の目の形の差し替えだけ出す（F086）
+                    std::snprintf(message, sizeof(message), u8"%s %s %s", HhdScreen::StageName(), HhdScreen::ApplyResult(), measure);
+                }
                 else
                     std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), measure);
                 GuiNotification::Notify(kHhdStat, message);
