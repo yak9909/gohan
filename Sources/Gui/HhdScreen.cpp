@@ -497,7 +497,10 @@ void Measure(char *out, u32 size) {
 void Tick(bool menuVisible) {
     if (!s_want || s_stage != Stage::Draw)
         return;
-    GuiMenu::BlockGameAll();                // 開いている間はゲームへの入力を全部止める（建物エディターと同じ）
+    // 開いている間はゲームへの入力を全部止める。BlockGameAll はボタンとスライドパッドだけで、タッチは BlockGameTouch が別に止める
+    //   （GuiMenu.cpp SyncInputLock。2026-10-05 実機: BlockGameAll だけでは下の地図・タブが反応した）
+    GuiMenu::BlockGameAll();
+    GuiMenu::BlockGameTouch();
     if (menuVisible) {
         s_touchPrev = false;
         s_touchStart = -1;
