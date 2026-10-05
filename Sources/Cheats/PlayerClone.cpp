@@ -281,7 +281,7 @@ volatile s32 s_pixelY = 150;
 volatile s32 s_zoom = 60;                   // 百分率
 u8 s_camera[kCameraBytes] __attribute__((aligned(8)));
 u32 s_parts[kMaxParts];                     // このフレームに部品の表から抜き取った holder（+4 がノード）
-float s_savedModelView[1 + kMaxParts][12];  // late pass で置き換えたノード +444 の元の値
+float (*s_savedModelView)[12];              // late pass で置き換えたノード +444 の元の値（1 + kMaxParts 個）。初めて Show するときにヒープから取る（2 MiB。2026-10-06）
 u32 s_savedModelViewNode[1 + kMaxParts];
 volatile u32 s_partCount;
 volatile bool s_lateReady;                  // s_parts が今の複製のもの
@@ -1305,6 +1305,11 @@ void FrameStep(void) {
 }
 
 bool Show(void) {
+    if (s_savedModelView == nullptr) {
+        s_savedModelView = static_cast<float (*)[12]>(std::malloc(sizeof(float[12]) * (1 + kMaxParts)));
+        if (s_savedModelView == nullptr)
+            return false;
+    }
     if (s_modelBuf[0] == nullptr || s_modelBuf[1] == nullptr) {
         for (u32 k = 0; k < 2; ++k) {
             if (s_modelBuf[k] == nullptr)

@@ -850,7 +850,9 @@ u8 *LookRecord(u32 &playerOut) {
     if (!IsHeapPointer(reinterpret_cast<void *>(playerOut)))
         return nullptr;
     const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(playerOut + kActorPlayerIndex));
-    if (profile < 0x08000000u || profile >= 0x40000000u)
+    // ★プロフィールは住人なら村データ（ヒープ）、訪問者（オンラインのゲスト自身）なら固定領域 0xA7E790 + 42,112×k（vc_PLAYER_1_PPOFFSET 0x2FB920）。
+    //   ヒープの範囲だけを許すとゲストで弾いていた（hhd_t020b 実機。F092）
+    if (profile < 0x00100000u || profile >= 0x40000000u)
         return nullptr;
     return reinterpret_cast<u8 *>(profile + kProfileLook);
 }
@@ -1200,7 +1202,7 @@ void Build(void) {
     const u32 player = LocalPlayerActor();
     if (IsHeapPointer(reinterpret_cast<void *>(player))) {
         const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex));
-        if (profile >= 0x08000000u && profile < 0x40000000u) {
+        if (profile >= 0x00100000u && profile < 0x40000000u) {   // 訪問者の枠は固定領域（F092）
             s_sexByte = *reinterpret_cast<const volatile u8 *>(profile + kProfileSexByte);
             s_state.sex = (s8)(s_sexByte & 1u);
         }
@@ -1400,6 +1402,18 @@ bool Shown(void) {
 
 const char *LastError(void) {
     return s_error;
+}
+
+// 診断: 通信番号 0〜3 のプロフィール（自分は本物、相手は写し）の目の形を 16 進 1 字ずつ（無ければ -）。種別 11 が届いたかを相手側で見る（T020）
+void PeerFaces(char *out, u32 size) {
+    if (size < 5)
+        return;
+    for (u32 i = 0; i < 4; ++i) {
+        const u32 profile = PlayerProfile(i);
+        const u32 face = profile >= 0x00100000u && profile < 0x40000000u ? *reinterpret_cast<const volatile u8 *>(profile + kProfileLook + kLookFace) : 0xFFu;
+        out[i] = face < 16u ? "0123456789abcdef"[face] : '-';
+    }
+    out[4] = 0;
 }
 
 u32 ProfileSyncResult(void) {
@@ -1729,6 +1743,8 @@ namespace CTRPluginFramework
                 (void)index;
                 static char message[192];
                 static char measure[128];
+                char faces[8];
+                HhdScreen::PeerFaces(faces, sizeof(faces));   // 診断は先頭に（長いと末尾が画面に入らない。hhd_t020b 実機で pf が見えなかった）
                 const char *err = HhdScreen::LastError();
                 HhdScreen::Measure(measure, sizeof(measure));
                 if (err[0] != 0)
@@ -1736,11 +1752,11 @@ namespace CTRPluginFramework
                 else if (HhdScreen::ApplyResult()[0] != 0)
                 {
                     PlayerClone::RealFaceInfo(measure, sizeof(measure));   // けってい の後は本人の目の形の差し替えと、目の形の送信（pf）だけ出す
-                    std::snprintf(message, sizeof(message), u8"%s %s %s pf %lu", HhdScreen::StageName(), HhdScreen::ApplyResult(), measure,
-                                  (unsigned long)HhdScreen::ProfileSyncResult());
+                    std::snprintf(message, sizeof(message), u8"pf%lu e%s %s %s", (unsigned long)HhdScreen::ProfileSyncResult(), faces, measure,
+                                  HhdScreen::ApplyResult());
                 }
                 else
-                    std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), measure);
+                    std::snprintf(message, sizeof(message), u8"e%s %s %s", faces, HhdScreen::StageName(), measure);
                 GuiNotification::Notify(kHhdStat, message);
             }
         }
