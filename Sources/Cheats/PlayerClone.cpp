@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 namespace PlayerClone {
 
@@ -19,6 +20,7 @@ namespace {
 // ---- ゲームの関数（IDA-opus-5.5-F028 / F029）------------------------------------------------------
 typedef void (*CtorFn)(void *pm);
 typedef u32 (*CreateFromProfileFn)(void *pm, u32 profile, u32 a3, u32 maskBit, u32 a5, u32 a6);
+typedef u32 (*CreateStepFn)(void *pm, u32 record, u32 isBoy, u32 a4, u32 maskBit, u32 a6, u32 a7);
 typedef void (*DtorFn)(void *pm);
 typedef void (*SetMatrixFn)(void *pm, const float *m);
 typedef void (*ModelStepFn)(void *pm);
@@ -32,6 +34,8 @@ typedef void (*EntryFn)(u32 entry);
 
 const CtorFn PlayerModelCtor = reinterpret_cast<CtorFn>(0x001D3854);
 const CreateFromProfileFn CreateFromProfile = reinterpret_cast<CreateFromProfileFn>(0x001CF090);
+// CreateFromProfile の中身 = CreateStep(pm, profile + 4, !(profile+21946 & 1), a3, maskBit, a5, a6)（IDA-opus-5.5-F028）
+const CreateStepFn CreateStep = reinterpret_cast<CreateStepFn>(0x001CF0D8);
 const DtorFn PlayerModelDtor = reinterpret_cast<DtorFn>(0x001D3980);
 const SetMatrixFn SetMatrix = reinterpret_cast<SetMatrixFn>(0x001CEC10);        // vtbl[9]
 const ModelStepFn StepFaceTool = reinterpret_cast<ModelStepFn>(0x001D2BE8);     // vtbl[2]
@@ -171,6 +175,7 @@ const u32 kModelBody = 120;                 // TransformNodeHolder（+4 がノ�
 const u32 kHolderNode = 4;
 const u32 kNodeMatrix = 0x4C;
 const u32 kModelHair = 548;                 // u8
+const u32 kModelEyeColor = 556;             // u32。頭の読み込みキー（PlayerHeadKey_Build 0x329994 が pm+548 の [4..11] = 髪色・目の色を入れる）→ 変えれば頭が読み直される（IDA-opus-5.5-F085）
 const u32 kModelTan = 448;                  // 日焼けの段階 0..7（PlayerModel_UpdateParts / sub_1D05B0 が毎フレーム肌の色にする。IDA-opus-5.5-F083）
 const u32 kModelOutfit = 512;               // 服の欄（Item 4 B ずつ）。0 = 帽子、1 = アクセサリー（sub_719AF0 / sub_719B24(pm+512)。F083）
 const u32 kEmptyItem = 0x00955FF4;
@@ -239,7 +244,15 @@ volatile s32 s_hairStyle = -1;
 volatile s32 s_hairColor = -1;
 volatile s32 s_tan = -1;                    // 日焼けの段階 0..7（-1 = 本物のまま）
 volatile bool s_hideHead;                   // 帽子・アクセサリーを外して見せる（複製だけ）
-volatile u32 s_alpha = 255;                 // 複製の不透明度（画面に固定のとき。255 = ふつうに描く、0 = 描かない）
+volatile u32 s_alpha = 255;
+// 目の形（顔のテクスチャ）は作るときにしか読まない（顔の枠は PlayerModel_Setup の PlayerHeadBank_SetSources で頭に結ばれ、二重化されていない）。
+// 目の形を変えるときは、プロフィールの写し（プレイヤー 1 人分 = 42,112 B。vc_PLAYER_1_PPOFFSET 0x2FB920 の刻み）の見た目の記録 +2 を書き換え、
+// それで作り直す（本物のプロフィールには書かない。IDA-opus-5.5-F085）
+const u32 kProfileBytes = 42112, kLookFaceOffset = 4 + 2, kProfileSexByte = 21946;
+volatile s32 s_eyeColor = -1;               // 0..5（-1 = 本物のまま）
+volatile s32 s_face = -1;                   // 0..11（-1 = 本物のまま）
+s32 s_builtFace = -1;                       // 今の複製を作ったときの目の形
+u8 *s_profileCopy;                          // 初めて作るときにヒープから取る（静的に置くと 3gx の実行部が 2 MiB を超える）。以後は返さない                 // 複製の不透明度（画面に固定のとき。255 = ふつうに描く、0 = 描かない）
 bool s_hooked;
 
 // 画面に固定
@@ -345,6 +358,10 @@ void ApplyHair(void) {
         *reinterpret_cast<volatile u8 *>(Model() + kModelHair) = (u8)style;
     if (color >= 0 && color < 0x10 && R32(Model() + kModelHairColor) != (u32)color)
         *reinterpret_cast<volatile u32 *>(Model() + kModelHairColor) = (u32)color;
+    // 目の色: 頭のキーに入るので、変えれば頭が読み直される（F085）
+    const s32 eye = s_eyeColor >= 0 ? s_eyeColor : (s32)R32(real + kModelEyeColor);
+    if (eye >= 0 && eye < 6 && R32(Model() + kModelEyeColor) != (u32)eye)
+        *reinterpret_cast<volatile u32 *>(Model() + kModelEyeColor) = (u32)eye;
     // 肌: 部品の更新が毎フレーム pm+448 から色を作る（F083）
     const s32 tan = s_tan >= 0 ? s_tan : (s32)R32(real + kModelTan);
     if (tan >= 0 && tan < 8 && R32(Model() + kModelTan) != (u32)tan)
@@ -415,6 +432,12 @@ void StepCreate(void) {
             Abandon(5);
             return;
         }
+        if (s_profileCopy == nullptr)
+            s_profileCopy = static_cast<u8 *>(std::malloc(kProfileBytes));
+        if (s_profileCopy == nullptr) {
+            Abandon(2);                             // 写しの置き場が取れない（作る前なので片付けは要らない）
+            return;
+        }
         std::memset(s_model, 0, sizeof(s_model));
         PlayerModelCtor(s_model);
         s_constructed = true;
@@ -438,7 +461,17 @@ void StepCreate(void) {
         return;
     }
     const u32 maskBit = (R8(profile + kProfileMaskByte) >> 6) & 1u;
-    if (CreateFromProfile(s_model, profile, 0, maskBit, 0, kDollToolParam) != 0u) {
+    if (s_frames == 0u) {
+        // 作り始め: プロフィールを写し、目の形だけ指定に替える（作っている間と表示中はこの写しを読ませ続ける）
+        std::memcpy(s_profileCopy, reinterpret_cast<const void *>(profile), kProfileBytes);
+        const s32 face = s_face;
+        if (face >= 0 && face < 12)
+            s_profileCopy[kLookFaceOffset] = (u8)face;
+        s_builtFace = face;
+    }
+    const u32 copy = reinterpret_cast<u32>(s_profileCopy);
+    const u32 isBoy = (R8(copy + kProfileSexByte) & 1u) == 0u ? 1u : 0u;
+    if (CreateStep(s_model, copy + 4, isBoy, 0, maskBit, 0, kDollToolParam) != 0u) {
         s_stage = kLive;
         s_frames = 0;
         return;
@@ -457,6 +490,13 @@ void StepLive(void) {
         s_stage = kDestroying;                      // 取った枠を返す（手放すと無限ロード）
         s_frames = 0;
         StepDestroy();
+        return;
+    }
+    if (s_face != s_builtFace) {
+        // 目の形が変わった: 片付けて（枠を返して）から写しで作り直す（FrameStep が kOff から作成へ戻す）
+        s_lateReady = false;
+        s_stage = kDestroying;
+        s_frames = 0;
         return;
     }
     ApplyHair();
@@ -987,6 +1027,11 @@ void Shutdown(void) {
 void SetHair(s32 style, s32 color) {
     s_hairStyle = style;
     s_hairColor = color;
+}
+
+void SetEyes(s32 face, s32 eyeColor) {
+    s_face = face;
+    s_eyeColor = eyeColor;
 }
 
 void SetAlpha(u32 alpha) {

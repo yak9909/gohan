@@ -315,6 +315,12 @@ namespace CTRPluginFramework
             return true;
         }
 
+        void    SetEffectQuiet(int index, bool quiet)
+        {
+            if (SlotOk(index))
+                g_behavior[index].quiet = quiet;
+        }
+
         void    UnregisterToggleEffect(int index)
         {
             if (!SlotOk(index))

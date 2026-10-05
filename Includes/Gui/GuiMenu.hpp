@@ -57,6 +57,7 @@ namespace CTRPluginFramework
         };
         bool    RegisterToggleEffect(int index, const ToggleEffectFuncs *funcs);
         void    UnregisterToggleEffect(int index);
+        void    SetEffectQuiet(int index, bool quiet);  // 効果の ON/OFF の通知（〈名前〉を有効／無効にしました）を出さない
         bool    ToggleEffectActive(int index);       // 未登録は false
 
         // (b) 連動型（数値／リスト）。メニューを開いた瞬間に Read を 1 回呼ぶ。

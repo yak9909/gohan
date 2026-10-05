@@ -270,6 +270,7 @@ namespace CTRPluginFramework
                 void    (*Execute)(int index);
                 void    (*Apply)(int index, s32 value);
                 bool    (*IsDisabled)(int index);   // 登録した項目だけ毎フレーム disabled を決める
+                bool    quiet;                      // 効果の ON/OFF の通知を出さない（SetEffectQuiet）
             };
 
             // 1 フレームぶんの入力（水準）。GuiMenu.cpp が CTRPF から読んで渡す。

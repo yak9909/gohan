@@ -147,11 +147,9 @@ const u32 kSndToFace = 0x01000412;          // SE_SYS_BOOK_TAB_CHANGE（「か�
 const u32 kSndDecide = 0x0100038E;          // SE_SYS_DECIDE（けってい）
 const u32 kSndCancel = 0x01000392;          // SE_SYS_CANCEL（B で閉じる）
 const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
-const u32 kSndGoodsOff = 0x010006B6, kSndGoodsOn = 0x010006B7;  // SE_ACT_BARBER_GOODS_OFF / ON（美容室で頭の小物を外す / 付ける。Player_SetHeadGoodsWithSound 0x68B238、F083）
-//   この 2 つは GROUP_SHOP の音で、美容室の外では読み込まれていない（利用者の実機 2026-10-05: 屋内・屋外で鳴らず美容室では鳴る）。
-//   美容室（部屋 0x48 = g_RoomInternalNames 0x9515F0 の "BeautySalon"。IDA-opus-5.5-F084）以外では常駐の着替えの音で代わりに鳴らす
-const u32 kSndGoodsElsewhere = 0x01000530;  // SE_ACT_CLOTHES_CMN_CHANGE（GROUP_STATIC）
-const u32 kRoomIdByte = 0x0095133A, kRoomBeautySalon = 0x48;   // g_CurrentRoomId（Room_GetCurrentId 0x2F75CC）
+// Y（頭の小物）: 軽いポップ音（利用者 2026-10-05: 着替えの音は大げさ。美容室でも同じ）。美容室の SE_ACT_BARBER_GOODS_OFF / ON は
+//   GROUP_SHOP で美容室の外では鳴らないので使わない（F083 / F084）
+const u32 kSndHeadOff = 0x010003DF, kSndHeadOn = 0x010003DE;   // SE_SYS_SWK_TOGGLE_OFF / ON（GROUP_STATIC）
 // 複製のフェードイン: 吹き出しの登場アニメが終わってから（利用者: 早すぎる。吹き出しの登場後にフェードイン）
 const u32 kCloneFadeFrames = 10;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
@@ -529,6 +527,9 @@ void StepMenuScene(void) {
     } else if (!s_want || s_phase == Phase::Leaving) {
         LeaveMenuScene();
         s_menuScene = false;
+    } else if (PlayerClone::Read().stage != 2) {
+        s_cloneFade = 0;                    // 作り直し中（目の形を変えた）: 透明にして、表示に戻ったらフェードインし直す
+        PlayerClone::SetAlpha(0);
     } else if (s_cloneFade < kCloneFadeFrames) {
         ++s_cloneFade;
         PlayerClone::SetAlpha(255u * s_cloneFade / kCloneFadeFrames);
@@ -1225,10 +1226,7 @@ void Tick(bool menuVisible) {
     if (pressed & (u32)Key::Y) {
         // Y: 頭の小物（帽子・アクセサリー）を外して見せる / 付ける（複製だけ。音は美容室の付け外しの音）
         s_hideHead = !s_hideHead;
-        if (*reinterpret_cast<const volatile u8 *>(kRoomIdByte) == kRoomBeautySalon)
-            QueueSound(s_hideHead ? kSndGoodsOff : kSndGoodsOn);
-        else
-            QueueSound(kSndGoodsElsewhere);
+        QueueSound(s_hideHead ? kSndHeadOff : kSndHeadOn);
     }
     {
         // スライドパッドで複製を回す（T019: 上限なし、倒した量に比例した速さ）
@@ -1254,6 +1252,7 @@ void Tick(bool menuVisible) {
         const s32 hair = s_state.hair;
         PlayerClone::SetHair(hair >= 0 && hair < 32 ? AcnlHairFromHhd(hair) : -1, s_state.hairColor);
         PlayerClone::SetLook(s_state.skin, s_hideHead);
+        PlayerClone::SetEyes(s_state.eyeShape, s_state.eyeColor);   // 目の形を変えると複製は作り直される（その間は透明 → フェードインし直す）
     }
     const bool down = Touch::IsDown();
     const s8 mode = s_state.mode;
@@ -1389,6 +1388,7 @@ void FrameStep(void) {
             else if (s_phase == Phase::Leaving) {
                 PlayerClone::SetHair(-1, -1);   // 普段の複製（チートの項目）に戻すとき本物のままになるように
                 PlayerClone::SetLook(-1, false);
+                PlayerClone::SetEyes(-1, -1);
                 PlayerClone::SetAlpha(255);
                 // 退場し終えた: このフレームから描かない。壊すのは数フレーム後
                 s_stage = Stage::Teardown;
@@ -1513,8 +1513,10 @@ namespace CTRPluginFramework
             const int show = GuiMenu::FindItem(kHhdShow);
             g_hhdIndex = show;
             const int stat = GuiMenu::FindItem(kHhdStat);
-            if (show >= 0)
+            if (show >= 0) {
                 GuiMenu::RegisterToggleEffect(show, &kHhdFuncs);
+                GuiMenu::SetEffectQuiet(show, true);    // ON/OFF の通知を出さない（利用者 2026-10-05）
+            }
             if (stat >= 0)
                 GuiMenu::RegisterExecute(stat, HhdStatus);
         }

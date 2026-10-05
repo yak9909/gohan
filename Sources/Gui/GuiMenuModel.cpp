@@ -2051,6 +2051,8 @@ namespace CTRPluginFramework
                         if (active == g_effectSeen[idx])
                             return;
                         g_effectSeen[idx] = active;
+                        if (g_behavior[idx].quiet)
+                            return;                 // 通知しない項目（SetEffectQuiet）
                         // 題 = チート名、本文 = 〈チート名〉を有効／無効にしました（無効は赤）
                         std::snprintf(g_msg, sizeof(g_msg), active ? u8"%sを有効にしました" : u8"%sを無効にしました",
                                       it.label);
