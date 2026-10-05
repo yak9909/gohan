@@ -27,6 +27,10 @@ namespace PlayerClone
     void            SetAlpha(u32 alpha);
     // 目の形（0..11）と目の色（0..5）。-1 = 本物のまま。目の形を変えると、もう一方の置き場で裏で作り、できたら入れ替える（消えない。枠が足りなければ片付けてから作り直す。IDA-opus-5.5-F085）
     void            SetEyes(s32 face, s32 eyeColor);
+    // プレイヤー本人の顔（目の形）を見た目の記録から読み直す（記録を書いた後に呼ぶ）。新しい顔の枠に読み、頭に読み直させて入れ替え、
+    // 古い枠を返す（ゲーム自身の頭の二重読み込みを使う。IDA-opus-5.5-F086）。フレームフックが回っている間に数フレームで終わる
+    void            ReloadRealFace(void);
+    bool            RealFaceBusy(void);
     // 画面に固定の専用カメラが使う世界のカメラの投影を一度取れたか（メニューの 3D = Scene 1 で描く前に必要）
     bool            ProjectionReady(void);
     // 画面に固定（late pass で専用カメラ）。yaw / pitch は度、x/y は上画面のピクセル（カメラの中心）、zoom は百分率

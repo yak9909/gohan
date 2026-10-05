@@ -48,7 +48,12 @@ const SubmitFn Submit = reinterpret_cast<SubmitFn>(0x004ED630);                 
 //   使用中ビットと使用数だけを消すと部品が読み込まれたまま残り、管理役の片付け（sub_2A0E74 はテクスチャアニメを先に消す）が
 //   あとで頭を下ろすときにアロケータ 0 で落ちた（実機 SIGSEGV 0x569B48）。
 const ReleaseFn BankRelease = reinterpret_cast<ReleaseFn>(0x002138FC);
-const EntryFn FaceCancel = reinterpret_cast<EntryFn>(0x002711A4);              // PlayerModel_DestroyStep が顔の枠に先に呼ぶ
+const EntryFn FaceCancel = reinterpret_cast<EntryFn>(0x002711A4);              // PlayerModel_DestroyStep が顔の枠に先に呼ぶ（PlayerFaceSlot_Unload）
+// プレイヤー本人の目の形を差し替える（IDA-opus-5.5-F086）
+typedef void (*AcquireFn)(u32 table, u32 *pair);
+typedef u32 (*FaceLoadFn)(u32 slot, u32 record, u32 isBoy, u32 variant);
+const AcquireFn  BankAcquire  = reinterpret_cast<AcquireFn>(0x002137CC);         // BankTable_Acquire(表, {表, 番号} の組)
+const FaceLoadFn FaceLoad     = reinterpret_cast<FaceLoadFn>(0x002711AC);        // PlayerFaceSlot_RequestLoad(枠, 記録, 男の子か, a/b)。読めたら 1
 const ModelStepFn DestroyBody = reinterpret_cast<ModelStepFn>(0x001AC1E8);      // 体のインスタンスを消す（DestroyStep が体の枠の前に呼ぶ）
 
 // ---- 画面に固定（late pass。IDA-opus-5.5-F031）-------------------------------------------------------
@@ -500,6 +505,144 @@ void StepCreate(void) {
         s_fail = 3;
         s_stage = kDestroying;
         s_frames = 0;
+    }
+}
+
+// ---- プレイヤー本人の目の形の差し替え（IDA-opus-5.5-F086）--------------------------------------------------
+// 顔のテクスチャは頭を読み込むとき（sub_2718FC）に頭の枠の「顔の枠」の欄（+668 = a / +672 = b）から結ばれる。頭は 2 つの読み込み先を
+// 交互に使う（sub_7C847C: 今の番号 +36、読み込み済みのキー +64 + 20 x 番号、違えばもう一方へ読んで入れ替える）。そこで:
+//   1. 顔の倉庫（管理役 +156）に新しい枠を取り、見た目の記録（プロフィール +4。ApplyToPlayer が目の形を書いた後）から読む
+//   2. 頭の枠の顔の欄を新しい枠へ向け、今の読み込み先のキーを壊す → ゲーム自身の毎フレームの部品更新が頭を読み直して入れ替える
+//   3. 入れ替わったら本人の pm の組を新しい枠にし、古い顔の枠を返す
+// 使用中のもの（表示中の頭と古い顔）は入れ替わるまで触らないので、世界を描いたままでよい。
+const u32 kRealFaceTable = 156, kRealHeadTable = 4148, kHeadEntryBytes = 1304;
+const u32 kHeadFaceA = 668, kHeadFaceB = 672, kHeadBufIndex = 36, kHeadLoading = 60, kHeadLoadedKeys = 64, kHeadKeyBytes = 20;
+const u32 kRealFacePair[2] = { 332, 340 };   // pm の組（a / b。PlayerModel_CreateStep の 0 / 1）
+enum RealFaceStage : u32 { kRfIdle, kRfLoad, kRfHead, kRfRelease, kRfAbort };
+volatile bool s_rfWant;
+u32 s_rfStage = kRfIdle;
+u32 s_rfMgr, s_rfPm, s_rfPlayer, s_rfRecord, s_rfIsBoy, s_rfHead, s_rfHeadIndex, s_rfFrames;
+bool s_rfHas[2];
+u32 s_rfNew[2][2], s_rfOld[2][2];
+volatile u32 s_rfDone;                          // 差し替え終えた回数（状態の通知用）
+
+u32 FaceSlotData(u32 table, u32 index) { return table + kTableEntries + kFaceEntryBytes * index; }
+
+bool ReleasePair(u32 table, u32 *pair) {
+    if (pair[0] != table || pair[1] >= R32(table + kBankCount))
+        return true;
+    FaceCancel(FaceSlotData(table, pair[1]));
+    return BankRelease(table, pair) != 0u;
+}
+
+void StepRealFace(void) {
+    const u32 table = s_rfMgr + kBankMgrOffset + kRealFaceTable;
+    switch (s_rfStage) {
+    case kRfIdle: {
+        if (!s_rfWant)
+            return;
+        s_rfWant = false;
+        const u32 player = R32(kPlayerPtr), mgr = R32(kPlayerMgrPtr);
+        if (!IsHeap(player) || !IsHeap(mgr))
+            return;
+        const u32 profile = PlayerProfile(R8(player + kActorPlayerIndex));
+        if (profile == 0u)
+            return;
+        const u32 pm = player + kActorModel;
+        const u32 faces = mgr + kBankMgrOffset + kRealFaceTable;
+        const u32 heads = mgr + kBankMgrOffset + kRealHeadTable;
+        if (R32(pm + 348) != heads || R32(pm + 352) >= R32(heads + kBankCount))
+            return;                                 // 頭の枠が無い（Mii マスクなど）
+        u32 need = 0;
+        for (u32 k = 0; k < 2; ++k) {
+            s_rfHas[k] = R32(pm + kRealFacePair[k]) == faces && R32(pm + kRealFacePair[k] + 4) < R32(faces + kBankCount);
+            need += s_rfHas[k] ? 1u : 0u;
+        }
+        if (need == 0u || (u32)R16(faces + kBankUsed) + need > R32(faces + kBankCount))
+            return;                                 // 空きが無い: 次に建物を出入りしたときに変わる（記録は書いてある）
+        s_rfMgr = mgr;
+        s_rfPm = pm;
+        s_rfPlayer = player;
+        s_rfRecord = profile + 4;
+        s_rfIsBoy = (R8(profile + kProfileSexByte) & 1u) == 0u ? 1u : 0u;
+        s_rfHead = heads + kTableEntries + kHeadEntryBytes * R32(pm + 352);
+        for (u32 k = 0; k < 2; ++k) {
+            s_rfOld[k][0] = R32(pm + kRealFacePair[k]);
+            s_rfOld[k][1] = R32(pm + kRealFacePair[k] + 4);
+            s_rfNew[k][0] = 0;
+            s_rfNew[k][1] = 0xFFFFFFFFu;
+            if (s_rfHas[k])
+                BankAcquire(faces, s_rfNew[k]);
+        }
+        s_rfFrames = 0;
+        s_rfStage = kRfLoad;
+        return;
+    }
+    case kRfLoad: {
+        if (R32(kPlayerMgrPtr) != s_rfMgr || R32(kPlayerPtr) != s_rfPlayer) {
+            s_rfStage = kRfAbort;                   // 場面が変わった: 取った枠を返す（残すと無限ロード。F030）
+            return;
+        }
+        u32 done = 1;
+        for (u32 k = 0; k < 2; ++k)
+            if (s_rfHas[k])
+                done &= FaceLoad(FaceSlotData(table, s_rfNew[k][1]), s_rfRecord, s_rfIsBoy, k);
+        if (done == 0u)
+            return;
+        // 頭の顔の欄を新しい枠へ。今の読み込み先のキーを壊して、毎フレームの部品更新に読み直させる
+        if (s_rfHas[0])
+            *reinterpret_cast<volatile u32 *>(s_rfHead + kHeadFaceA) = FaceSlotData(table, s_rfNew[0][1]);
+        if (s_rfHas[1])
+            *reinterpret_cast<volatile u32 *>(s_rfHead + kHeadFaceB) = FaceSlotData(table, s_rfNew[1][1]);
+        s_rfHeadIndex = R8(s_rfHead + kHeadBufIndex);
+        *reinterpret_cast<volatile u8 *>(s_rfHead + kHeadLoadedKeys + kHeadKeyBytes * (s_rfHeadIndex & 1u)) = 0xFE;
+        s_rfFrames = 0;
+        s_rfStage = kRfHead;
+        return;
+    }
+    case kRfHead:
+        if (R32(kPlayerMgrPtr) != s_rfMgr || R32(kPlayerPtr) != s_rfPlayer) {
+            s_rfStage = kRfAbort;
+            return;
+        }
+        if (R8(s_rfHead + kHeadBufIndex) == s_rfHeadIndex || R8(s_rfHead + kHeadLoading) != 0u)
+            return;                                 // まだ入れ替わっていない
+        // 入れ替わった: 本人の組を新しい枠にする（以後の片付けは新しい枠を返す）。古い枠は少し待ってから返す
+        for (u32 k = 0; k < 2; ++k)
+            if (s_rfHas[k]) {
+                *reinterpret_cast<volatile u32 *>(s_rfPm + kRealFacePair[k]) = s_rfNew[k][0];
+                *reinterpret_cast<volatile u32 *>(s_rfPm + kRealFacePair[k] + 4) = s_rfNew[k][1];
+            }
+        s_rfFrames = 0;
+        s_rfStage = kRfRelease;
+        return;
+    case kRfRelease: {
+        if (++s_rfFrames <= kQuietFrames)
+            return;
+        bool done = true;
+        for (u32 k = 0; k < 2; ++k)
+            if (s_rfHas[k])
+                done = ReleasePair(table, s_rfOld[k]) && done;
+        if (done) {
+            ++s_rfDone;
+            s_rfStage = kRfIdle;
+        }
+        return;
+    }
+    case kRfAbort: {
+        // 場面が変わった。管理役が消えていれば枠も一緒に消えている（触らない）。同じ管理役が残っていれば取った新しい枠を返す
+        if (R32(kPlayerMgrPtr) != s_rfMgr) {
+            s_rfStage = kRfIdle;
+            return;
+        }
+        bool done = true;
+        for (u32 k = 0; k < 2; ++k)
+            if (s_rfHas[k])
+                done = ReleasePair(table, s_rfNew[k]) && done;
+        if (done)
+            s_rfStage = kRfIdle;
+        return;
+    }
     }
 }
 
@@ -1044,6 +1187,7 @@ bool InstallLateHook(void) {
 }  // namespace
 
 void FrameStep(void) {
+    StepRealFace();
     const u32 stage = s_stage;
     if (!s_want) {
         if (stage == kCreating || stage == kLive) {
@@ -1134,6 +1278,14 @@ void Shutdown(void) {
 void SetHair(s32 style, s32 color) {
     s_hairStyle = style;
     s_hairColor = color;
+}
+
+void ReloadRealFace(void) {
+    s_rfWant = true;
+}
+
+bool RealFaceBusy(void) {
+    return s_rfWant || s_rfStage != kRfIdle;
 }
 
 void SetEyes(s32 face, s32 eyeColor) {

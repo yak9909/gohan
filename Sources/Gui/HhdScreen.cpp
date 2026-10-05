@@ -140,12 +140,13 @@ typedef void (*PlaySoundFn)(u32 id);
 const PlaySoundFn PlaySound = reinterpret_cast<PlaySoundFn>(0x0058C7D4);
 const u32 kSndOpen = 0x010003C2;            // SE_SYS_WIN_SELECT_OPEN
 const u32 kSndTouch = 0x01000398;           // SE_SYS_BTN_ACTIVE（触れた）
-const u32 kSndPick = 0x01000390;            // SE_SYS_DECIDE_S（目の形・髪型を決めた）
+const u32 kSndPick = 0x01000413;            // SE_SYS_BOOK_ICON_SELECTED（目の形・髪型を決めた。利用者指定 2026-10-06）
 const u32 kSndColor = 0x01000449;           // SE_SYS_EDIT_COLOR_SELECTED（色を決めた。マイデザインの色選び）
 const u32 kSndToHair = 0x01000417;          // SE_SYS_PRF_TAB_CHANGE（「かみがた」へ。利用者: かみがた・かおで違う音に 2026-10-05）
 const u32 kSndToFace = 0x01000412;          // SE_SYS_BOOK_TAB_CHANGE（「かお」へ）
-const u32 kSndDecide = 0x0100038E;          // SE_SYS_DECIDE（けってい）
-const u32 kSndCancel = 0x01000392;          // SE_SYS_CANCEL（B で閉じる）
+const u32 kSndModeExtra = 0x010004E1;       // SE_SYS_AMIIBO_CAMERA_LIGHT_BLUE（かみがた・かお の両方で重ねる。利用者指定 2026-10-06）
+const u32 kSndDecide = 0x0100038F;          // SE_SYS_DECIDE_L（けってい。利用者指定 2026-10-06）
+const u32 kSndCancel = 0x01000391;          // SE_SYS_DECIDE_QUIT（B で閉じる。利用者指定 2026-10-06）
 const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
 // Y（頭の小物）: 軽いポップ音（利用者 2026-10-05: 着替えの音は大げさ。美容室でも同じ）。美容室の SE_ACT_BARBER_GOODS_OFF / ON は
 //   GROUP_SHOP で美容室の外では鳴らないので使わない（F083 / F084）
@@ -167,7 +168,8 @@ const Def kDefs[kLayouts] = {
     { "hhd_face.bclyt", 0x10000 },
     { "hhd_eye.bclyt",  0x10000 },   // 縞の枠で材質が 4 倍・TEV の段（2026-10-05。前は 0x8000 で実測 23,104 B）
     { "hhd_hair.bclyt", 0x20000 },   // 同上（窓 24 個。前は 0x10000、実測なし）
-    { "hhd_top.bclyt",  0x2000  },     // 上画面（HHD の fce_Top_00: 地・水玉・吹き出し・小さな丸・「まわす」。モデルは出さない）
+    { "hhd_top.bclyt",  0x4000  },     // 上画面（HHD の fce_Top_00: 地・水玉・吹き出し・小さな丸・「まわす」。モデルは出さない）。実測 3,088 B（文字 4 字）。
+                                       //   2026-10-06 に文字の欄を 2 つ（17 字）足したので倍にする（1 字の費用は未実測。状態の通知の top で確かめる）
 };
 
 enum class Stage : u8 { Idle, Copy, Draw, Teardown, Failed };
@@ -567,6 +569,8 @@ volatile u32 s_okSerial;                    // 決定のたびに 1 増える
 
 const u32 kPaneY = 0x2C, kPaneRotZ = 0x3C, kPaneScaleX = 0x40, kPaneScaleY = 0x44;   // nw::lyt::Pane（translate +0x28 / rotate +0x34 / scale +0x40）
 struct Posed { void *pane; u8 target; float base; };
+// 押している間の色（「かみがた／かお」「けってい」だけ。HHD の select / select_ok）。obj = ペイン（kind 0）か材質（kind 1）
+struct ColorPosed { void *obj; u8 kind; u8 index; u8 base; };
 struct PressSlot {
     s32 target = -1;
     const HhdTables::PressAnim *anim = nullptr;   // [0] touch / [1] touch_ok
@@ -574,6 +578,10 @@ struct PressSlot {
     char prefix[8] = {};
     Posed posed[12];
     u32 count = 0;
+    const HhdTables::BakedColor *color = nullptr;  // select / select_ok を整数フレームで焼いた表（無ければ nullptr）
+    u32 colorCount = 0;
+    ColorPosed cposed[40];
+    u32 ccount = 0;
     bool ok = false;                        // touch_ok を流している
     float frame = 0.0f;
 };
@@ -617,6 +625,37 @@ void WriteTarget(void *pane, u8 target, float v) {
     default: SetVisible(pane, v >= 0.5f); return;
     }
     B(pane, kPaneFlags) &= 0xCFu;           // 行列を作り直させる（MovePaneX と同じ）
+}
+
+// 色の 1 要素。ペインはゲームの仮想関数（+0x14 GetColorElement 0x73B508 / +0x18 nwlyt_Pane_SetColorElement 0x4B65E4: 16 = 不透明度、
+//   ほかは頂点色。Picture +0x140 / TextBox +0xD8）、材質は +0x10 + 番号（黒 0..3 / 白 4..7。sub_4BCC7C と同じ）
+typedef u8 (*GetColorFn)(void *pane, u32 index);
+typedef void (*SetColorFn)(void *pane, u32 index, u8 value);
+const u32 kVtGetColor = 0x14, kVtSetColor = 0x18;
+
+u8 ReadColor(void *obj, u8 kind, u8 index) {
+    if (kind != 0)
+        return B(obj, kMatColor0 + index);
+    return reinterpret_cast<GetColorFn>(W(reinterpret_cast<void *>(W(obj, 0)), kVtGetColor))(obj, index);
+}
+
+void WriteColor(void *obj, u8 kind, u8 index, u8 value) {
+    if (kind != 0) {
+        B(obj, kMatColor0 + index) = value;
+        B(obj, kMatFlags) &= ~4u;           // GPU へ送り直させる（Paint と同じ）
+        return;
+    }
+    reinterpret_cast<SetColorFn>(W(reinterpret_cast<void *>(W(obj, 0)), kVtSetColor))(obj, index, value);
+}
+
+void *ColorObject(const HhdTables::BakedColor &tr) {
+    char name[24];
+    std::snprintf(name, sizeof(name), "%s_%s", s_press.prefix, tr.pane);
+    void *pane = FindPane(s_lay[s_press.lay].obj, name);
+    if (pane == nullptr || tr.kind == 0)
+        return pane;
+    void *mat = PicMaterial(pane);
+    return IsHeapPointer(mat) ? mat : nullptr;
 }
 
 // 的の番号 → レイアウト・名前の頭・アニメ。今の画面に無い的は false
@@ -672,10 +711,33 @@ bool PressBegin(s32 t) {
             if (pane != nullptr)
                 PressAdd(pane, tr.target);
         }
+    if (t == 900 || t == 901) {
+        s_press.color = t == 900 ? HhdTables::kSelectBtn0 : HhdTables::kSelectBtn1;
+        s_press.colorCount = t == 900 ? HhdTables::kSelectBtn0Count : HhdTables::kSelectBtn1Count;
+        for (u32 i = 0; i < s_press.colorCount; ++i) {
+            const HhdTables::BakedColor &tr = s_press.color[i];   // 表は (ペイン, 種類, 番号) ごとに 1 行
+            void *obj = ColorObject(tr);
+            if (obj != nullptr && s_press.ccount < sizeof(s_press.cposed) / sizeof(s_press.cposed[0]))
+                s_press.cposed[s_press.ccount++] = { obj, tr.kind, tr.index, ReadColor(obj, tr.kind, tr.index) };
+        }
+    }
     return true;
 }
 
-void PressPose(const HhdTables::PressAnim &a, float f) {
+void PressPose(u32 which, float f) {
+    for (u32 i = 0; i < s_press.colorCount; ++i) {
+        const HhdTables::BakedColor &tr = s_press.color[i];
+        if (!(tr.has & (which == 0 ? 1u : 2u)))
+            continue;
+        void *obj = ColorObject(tr);
+        if (obj == nullptr)
+            continue;
+        u32 k = (u32)f;
+        if (k > 8)
+            k = 8;
+        WriteColor(obj, tr.kind, tr.index, which == 0 ? tr.sel : tr.ok[k]);
+    }
+    const HhdTables::PressAnim &a = s_press.anim[which];
     for (u32 i = 0; i < a.count; ++i) {
         const HhdTables::Track &tr = a.tracks[i];
         char name[24];
@@ -698,6 +760,11 @@ void PressEnd(bool decided) {
         }
         WriteTarget(q.pane, q.target, q.base);
     }
+    // 色: 離した（決定しなかった）ときは元へ。決定したときは select_ok の最後の色のまま（「かみがた／かお」は元の色に戻って終わり、
+    //   「けってい」は選んだ色のまま閉じる。HHD と同じ）
+    if (!decided)
+        for (u32 i = 0; i < s_press.ccount; ++i)
+            WriteColor(s_press.cposed[i].obj, s_press.cposed[i].kind, s_press.cposed[i].index, s_press.cposed[i].base);
     if (decided && vis)
         s_appliedValid = false;
     s_press = PressSlot();
@@ -719,7 +786,7 @@ void PressStep(void) {
         }
     }
     if (s_press.ok) {
-        PressPose(s_press.anim[1], s_press.frame);
+        PressPose(1, s_press.frame);
         s_press.frame += 1.0f;
         if (s_press.frame > s_press.anim[1].frames)
             PressEnd(true);
@@ -733,7 +800,7 @@ void PressStep(void) {
             PressBegin(want);
     }
     if (s_press.target >= 0)
-        PressPose(s_press.anim[0], s_press.anim[0].frames);   // 触れている間は沈んだ形のまま
+        PressPose(0, s_press.anim[0].frames);   // 触れている間は沈んだ形・選んだ色のまま
 }
 
 // ---- プレイヤーへの反映（ゲームのスレッド）----
@@ -803,7 +870,10 @@ void ApplyToPlayer(void) {
         *reinterpret_cast<volatile u32 *>(pm + kModelTan) = (u32)skin;
     }
     PlayerUpdate(player);
-    s_applyResult = (face >= 0 && (u8)face != oldFace) ? u8"反映しました（目の形は建物の出入りなどの後に変わります）" : u8"反映しました";
+    // 目の形は vc_UPDATE では読み直されない（顔の枠は作るときにしか読まない）。本人の顔の枠を新しく読み、頭に読み直させる（F086）
+    if (face >= 0 && (u8)face != oldFace)
+        PlayerClone::ReloadRealFace();
+    s_applyResult = u8"反映しました";
 }
 
 // ---- 出入りのアニメ（ゲームのスレッド）----
@@ -1064,6 +1134,8 @@ void Decide(s32 target) {
     s_okSerial = s_okSerial + 1;
     QueueSound(target == 900 ? (s_state.mode == 0 ? kSndToHair : kSndToFace) : target == 901 ? kSndDecide : target == 800 ? kSndPageDec : target == 801 ? kSndPageInc
                : target >= 400 ? kSndColor : target >= 300 ? kSndPick : target >= 100 ? kSndColor : kSndPick);
+    if (target == 900)
+        QueueSound(kSndModeExtra);
     if (target == 900) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
     } else if (target == 901) {
