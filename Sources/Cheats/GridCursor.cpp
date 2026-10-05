@@ -781,7 +781,7 @@ static void StepBuild() {
         return;
     }
     case Stage::BuildCursors: {
-        void* player = *kPlayer;
+        void* player = LocalPlayer();
         if (!IsHeapPointer(player)) {
             Stop(Fail::kNoPlayer);
             return;

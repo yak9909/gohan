@@ -14,7 +14,7 @@ const u32 kCameraPatch = 0x001A5128;        // sub_1A5124 の 2 語目
 const u32 kCameraPatchOrig = 0xE2805C01;    // ADD R5,R0,#0x100
 const u32 kCameraPatchPop = 0xE8BD81F0;     // POP {R4-R8,PC}（先頭の PUSH と同じ組。戻り値は呼び元が使わない）
 const u32 kRoomIdByte = 0x0095133A;         // u8: 0 = 村の屋外
-const u32 kPlayerPtr = 0x00AA7994;          // Player*
+const u32 kPlayerPtr = 0x00AA7994;          // 通信番号ごとの Player* の表（0 番目 = ホスト）。自分は LocalPlayer()（IDA-opus-5.5-F091）
 const u32 kPlayerPosition = 0x14;
 const float kCameraFollow = 0.35f;          // 1 フレームで目標へ寄る割合
 
@@ -32,6 +32,14 @@ float s_current[3];
 
 u32 R32(u32 a) { return *reinterpret_cast<volatile u32 *>(a); }
 bool IsHeap(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
+
+// 自分のプレイヤー = 表の [自分の通信番号]（vc_A_GETONLINEPLAYERINDEX 0x305F6C。オフラインでは 0）。
+//   0 番目を使うとオンラインのゲストでホストの高さを控え、カーソル・カメラの高さがずれた（利用者 2026-10-06）
+typedef u32 (*LocalIndexFn)(void);
+u32 LocalPlayer(void) {
+    const u32 index = reinterpret_cast<LocalIndexFn>(0x00305F6C)();
+    return index < 4 ? R32(kPlayerPtr + 4 * index) : 0u;
+}
 
 bool InVillage(void) {
     return *reinterpret_cast<volatile u8 *>(kRoomIdByte) == 0;
@@ -77,7 +85,7 @@ bool Lost(u32 &reason) {
 }
 
 bool Available(void) {
-    return InVillage() && IsHeap(R32(kCameraGame)) && IsHeap(R32(kPlayerPtr));
+    return InVillage() && IsHeap(R32(kCameraGame)) && IsHeap(LocalPlayer());
 }
 
 void FrameStep(void) {
@@ -90,7 +98,7 @@ void FrameStep(void) {
             return;
         }
         const u32 camera = R32(kCameraGame);
-        const u32 player = R32(kPlayerPtr);
+        const u32 player = LocalPlayer();
         if (!IsHeap(camera) || !IsHeap(player)) {
             Lose(2);
             return;

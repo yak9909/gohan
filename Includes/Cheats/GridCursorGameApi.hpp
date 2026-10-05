@@ -20,8 +20,15 @@ namespace Game {
 
 // The heap every child heap of ours comes out of.
 static void** const kParentHeap = reinterpret_cast<void**>(0x0094CC48);
-// The player object; its world position is three floats at +0x14.
-static void** const kPlayer = reinterpret_cast<void**>(0x00AA7994);
+// The per-online-index player table (vc_PLAYERINSTANCE 0x5C27D8 reads 0xA7E790 + 4*(index + 42113)).
+// Entry 0 is the HOST, not us: on an online guest it is the other console's player (IDA-opus-5.5-F091).
+// Our own player is entry [vc_A_GETONLINEPLAYERINDEX()] (0x305F6C, 0 offline). Its world position is three floats at +0x14.
+static void** const kPlayerTable = reinterpret_cast<void**>(0x00AA7994);
+typedef u32 (*LocalIndexFn)(void);
+static inline void* LocalPlayer() {
+    const u32 index = reinterpret_cast<LocalIndexFn>(0x00305F6C)();
+    return index < 4 ? kPlayerTable[index] : nullptr;
+}
 static const u32 kPlayerPositionOffset = 0x14;
 // Room id. 0 is the village outdoors.
 static u8* const kRoomId = reinterpret_cast<u8*>(0x0095133A);

@@ -129,7 +129,7 @@ static u32 ReadModelNames(void* resource, s32 wanted, char* nameOut, u32 cap) {
 // ---------------------------------------------------------------------------------------
 
 static void Pose() {
-    void* player = *kPlayer;
+    void* player = LocalPlayer();
     if (!IsHeapPointer(player))
         return;
     const float* p = reinterpret_cast<const float*>(
@@ -302,7 +302,7 @@ static void StepBuild() {
             return;
         }
         s_node = node;
-        if (!IsHeapPointer(*kPlayer)) {
+        if (!IsHeapPointer(LocalPlayer())) {
             Stop(Fail::kNoPlayer);
             return;
         }
