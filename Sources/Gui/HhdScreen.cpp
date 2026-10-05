@@ -109,6 +109,14 @@ const u32 kPaneX = 0x28;                    // ペインの平行移動 x（Game
 // 性別: プレイヤー [0xAA7994] の +428 = プレイヤー番号 → プロフィール（0x2FEB60）の +21946 の bit0（docs/topics/player_clone_preview.md）。
 //   0 = 男の子・1 = 女の子 と読む（公開情報の仮説。LOW。実機で利用者のキャラと照合する）
 const u32 kPlayerPtr = 0x00AA7994, kActorPlayerIndex = 428, kProfileSexByte = 21946;
+// ★0xAA7994 は「通信番号ごとのプレイヤー表」（0xA7E790 + 4×42113。vc_PLAYERINSTANCE 0x5C27D8 が引く）の 0 番目 = ホスト。自分はその
+//   [自分の通信番号]（vc_A_GETONLINEPLAYERINDEX 0x305F6C。オフラインでは 0）。hhd_t020a 実機: ゲストで 0 番目を使うとホストを変えていた（F091）
+typedef u32 (*LocalIndexFn)(void);
+const LocalIndexFn LocalPlayerIndex = reinterpret_cast<LocalIndexFn>(0x00305F6C);
+u32 LocalPlayerActor(void) {
+    const u32 index = LocalPlayerIndex();
+    return index < 4 ? *reinterpret_cast<const volatile u32 *>(kPlayerPtr + 4 * index) : 0u;
+}
 // 見た目の記録（profile+4）: +0 髪型 <34 / +1 髪色 <16 / +2 顔（目の形）<12 / +3 目の色 <6 / +4 日焼け 0..15（F080）
 const u32 kProfileLook = 4, kLookHair = 0, kLookHairColor = 1, kLookFace = 2, kLookEyeColor = 3, kLookTan = 4;
 const u32 kActorModel = 436, kModelTan = 448;   // AcPlayer+436 = PlayerModel、pm+448 = 日焼けの段階（PlayerModel_Setup 0x1CF4B4）
@@ -136,7 +144,6 @@ enum PeerReason : u32 { kPeerSent = 0, kPeerPlayer = 5, kPeerOffline = 6 };   //
 volatile bool s_peerWant;
 u32 s_peerPlayer, s_peerLastReason;
 u8 s_peerLook[3], s_peerHat[4], s_peerAccessory[4];
-char s_peerResult[96];
 // 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
 //   ページ 0〜1 = 男の子の髪 B00〜B15、ページ 2〜3 = 女の子の髪 G00〜G15。髪の番号 = ページ × 8 + 枠の中の番号（0〜31）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
 //   スクロールは自由（ページに吸着しない。利用者 2026-10-05）で、漢字変換の候補欄と同じ算法（TouchScroll.hpp = ChatIme.cpp の写し）。
@@ -839,7 +846,7 @@ s32 HhdHairFromAcnl(s32 h) {
 }
 
 u8 *LookRecord(u32 &playerOut) {
-    playerOut = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    playerOut = LocalPlayerActor();
     if (!IsHeapPointer(reinterpret_cast<void *>(playerOut)))
         return nullptr;
     const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(playerOut + kActorPlayerIndex));
@@ -912,7 +919,7 @@ bool NetOnline(void) {
 void StepPeerSync(void) {
     if (!s_peerWant)
         return;
-    const u32 player = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    const u32 player = LocalPlayerActor();
     u32 reason = kPeerSent;
     if (!NetOnline())
         reason = kPeerOffline;
@@ -926,17 +933,14 @@ void StepPeerSync(void) {
         return;
     }
     s_peerLastReason = reason;
-    {
-        s_peerWant = false;
-        std::snprintf(s_peerResult, sizeof(s_peerResult), u8"反映しました（通信相手へは送れませんでした %lu）", (unsigned long)reason);
-        s_applyResult = s_peerResult;
-    }
+    s_peerWant = false;
+    s_applyResult = reason == kPeerOffline ? u8"反映しました（通信相手へは送れませんでした 6）" : u8"反映しました（通信相手へは送れませんでした 5）";
 }
 
 // ---- 目の形を通信相手へ（T020、IDA-opus-5.5-F089）-----------------------------------------------------------------------------
 // 相手の写しの目の形（記録 +2）を書けるのはプロフィール丸ごとの転送だけ。参加時の手順 9（sub_61F3DC）と同じ下位種別 11 を自分で送る:
-//   片 = 自分のプロフィール（Save_GetCurrentPlayer、42,112 B）+ 通信管理 +78388 の 50 B。宛先 4 = 自分以外の全員（NetTransfer_SendSegments、引数は
-//   (管理, 宛先, 片, 大きさ, 片の数, 種別, 0, 1, 0) = 参加時と同じ）。送る前に sub_581FE0 で Mii の欄（+21656、状態 +168: 1 → 2）を送る形にし、
+//   片 = 自分のプロフィール（Save_GetCurrentPlayer、42,112 B）+ 通信管理 +78388 の 50 B。宛先は相手ごと（NetTransfer_SendSegments、引数は
+//   (管理, 相手, 片, 大きさ, 片の数, 種別, 0, 1, 0) = 参加時と同じ）。送る前に sub_581FE0 で Mii の欄（+21656、状態 +168: 1 → 2）を送る形にし、
 //   済んだら sub_6BC270 で戻す（ゲームは成功時だけ戻す。ここでは打ち切りでも必ず戻す）。
 // 受け手は写しを上書きし、送り手がホスト以外なら住人の選出をし直す（sub_51D7E4。利用者: どうせ乱数なので構わない 2026-10-06）。
 // 相手の画面で目が変わるのは、こちらのモデルを作り直したとき（相手が建物を出入りする。利用者了承）。★下位転送種別 0x0C は使わない。
@@ -948,11 +952,12 @@ const ProfileOpFn MiiToTransfer = reinterpret_cast<ProfileOpFn>(0x00581FE0);    
 const ProfileOpFn MiiFromTransfer = reinterpret_cast<ProfileOpFn>(0x006BC270);         // 手順 9 の後（→ sub_582154）
 const CurrentPlayerFn SaveCurrentPlayer = reinterpret_cast<CurrentPlayerFn>(0x002FB900);   // Save_GetCurrentPlayer
 const u32 kTransferMgrPtr = 0x0094D644;     // g_NetGameMgrPtr（転送の管理。kNetGameMgrPtr 0x94D648 とは別の欄）
-const u32 kTransferOwnBlock = 78388, kTransferOwnBlockBytes = 50, kTransferProfile = 11, kTransferAll = 4;
+const u32 kTransferOwnBlock = 78388, kTransferOwnBlockBytes = 50, kTransferProfile = 11;
+const u32 kTransferOwnIndex = 78440, kTransferPeerMask = 78444;   // 自分の番号 / 登録済みの相手のマスク（NetTransfer_SendSegments が宛先 4 で使う）
 const u32 kProfileBytes = 42112, kProfileSendFrames = 300;
 volatile bool s_profileWant;
 bool s_profileConverted;
-u32 s_profileFrames, s_profilePtr;
+u32 s_profileFrames, s_profilePtr, s_profilePending;   // 未送信の相手のビット
 volatile u32 s_profileResult;               // 0 未 / 1 送った / 2 送れなかった
 
 void ProfileSyncFinish(u32 result) {
@@ -973,9 +978,17 @@ void StepProfileSync(void) {
     s_profilePtr = profile;
     MiiToTransfer(profile);                 // 手順 9 と同じく送る前に毎回（済んでいれば何もしない）
     s_profileConverted = true;
+    if (s_profileFrames == 0u) {
+        // 宛先は相手ごと（手順 9 と、実機で送れた座標同期と同じ。宛先 4 の一斉送信はやめた: hhd_t020a で反映しなかった）
+        const u32 own = *reinterpret_cast<const volatile u8 *>(mgr + kTransferOwnIndex);
+        s_profilePending = (*reinterpret_cast<const volatile u8 *>(mgr + kTransferPeerMask) & 0x0Fu) & ~(own < 4 ? 1u << own : 0u);
+    }
     const void *ptrs[2] = { reinterpret_cast<const void *>(profile), reinterpret_cast<const void *>(mgr + kTransferOwnBlock) };
     const u32 sizes[2] = { kProfileBytes, kTransferOwnBlockBytes };
-    if (SendSegments(mgr, kTransferAll, ptrs, sizes, 2, kTransferProfile, 0, 1, 0) != 0u)
+    for (u32 peer = 0; peer < 4; ++peer)
+        if ((s_profilePending & (1u << peer)) != 0 && SendSegments(mgr, peer, ptrs, sizes, 2, kTransferProfile, 0, 1, 0) != 0u)
+            s_profilePending &= ~(1u << peer);
+    if (s_profilePending == 0u)
         return ProfileSyncFinish(1);
     if (++s_profileFrames > kProfileSendFrames)
         return ProfileSyncFinish(2);        // 送信が受け付けられない（未確認の送信が残っている等）: 打ち切る
@@ -1184,7 +1197,7 @@ void Build(void) {
     // 性別（プレイヤーのプロフィール。取れなければ男の子）
     s_state.sex = 0;
     s_sexByte = 0xFF;
-    const u32 player = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    const u32 player = LocalPlayerActor();
     if (IsHeapPointer(reinterpret_cast<void *>(player))) {
         const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex));
         if (profile >= 0x08000000u && profile < 0x40000000u) {

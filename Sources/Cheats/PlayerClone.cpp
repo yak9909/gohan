@@ -171,7 +171,7 @@ enum LightParam : u32 {
 };
 const s32 kLightDefaults[kLpCount] = { -30, -40, 100, 35, 15, 50, 15, 20 };
 
-const u32 kPlayerPtr = 0x00AA7994;          // AcPlayer*
+const u32 kPlayerPtr = 0x00AA7994;          // 通信番号ごとの AcPlayer* の表の先頭（0 番目 = ホスト。自分は LocalPlayer()。F091）
 const u32 kPlayerMgrPtr = 0x0094A374;       // BsPlayerMgr*（部品バンクの管理役 = +24）
 const u32 kRoomIdByte = 0x0095133A;         // 今の部屋（g_CurrentRoomId）
 const u32 kSceneOwnerPtr = 0x00948E70;      // 場面の持ち主（部屋の切り替えで 0 になり、別の番地で戻る。GridCursor と同じ検査）
@@ -305,6 +305,14 @@ u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 u16 R16(u32 a) { return *reinterpret_cast<const volatile u16 *>(a); }
 u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
 bool IsHeap(u32 p) { return p >= 0x08000000u && p < 0x40000000u && (p & 3u) == 0u; }
+
+// 自分のプレイヤー = 表の [自分の通信番号]（vc_A_GETONLINEPLAYERINDEX 0x305F6C。オフラインでは 0 = 今までどおり）
+typedef u32 (*LocalIndexFn)(void);
+const LocalIndexFn LocalPlayerIndex = reinterpret_cast<LocalIndexFn>(0x00305F6C);
+u32 LocalPlayer(void) {
+    const u32 index = LocalPlayerIndex();
+    return index < 4 ? R32(kPlayerPtr + 4 * index) : 0u;
+}
 u32 Model(void) { return reinterpret_cast<u32>(s_model); }
 
 u32 BufIndex(const u8 *m) { return m == s_modelBuf[1] ? 1u : 0u; }
@@ -328,7 +336,7 @@ bool BanksHaveRoom(u32 mgr) {
 // 場面が変わった（管理役かプレイヤーが作り直された）。バンクごと消えているのでゲームの関数は呼ばない。
 // 部屋の番号と場面の持ち主も見る（切り替えの途中は管理役の番地が同じまま片付けが進みうる）。
 bool SceneChanged(void) {
-    return R32(kPlayerMgrPtr) != s_mgr || R32(kPlayerPtr) != s_player || R8(kRoomIdByte) != s_room
+    return R32(kPlayerMgrPtr) != s_mgr || LocalPlayer() != s_player || R8(kRoomIdByte) != s_room
         || R32(kSceneOwnerPtr) != s_owner;
 }
 
@@ -442,7 +450,7 @@ void Pose(void) {
 }
 
 void StepCreate(void) {
-    const u32 player = R32(kPlayerPtr);
+    const u32 player = LocalPlayer();
     const u32 manager = R32(kPlayerMgrPtr);
     if (!s_constructed) {
         if (!IsHeap(player) || !IsHeap(manager) || !IsHeap(R32(kSceneOwnerPtr))) {
@@ -555,7 +563,7 @@ void RfFinish(u32 result) {
 
 // 本人の頭の枠と顔の組がまだ記録どおりか（違えば片付けが始まった・場面が変わった）
 bool RfOwnerAlive(void) {
-    if (R32(kPlayerMgrPtr) != s_rfMgr || R32(kPlayerPtr) != s_rfPlayer)
+    if (R32(kPlayerMgrPtr) != s_rfMgr || LocalPlayer() != s_rfPlayer)
         return false;
     const u32 heads = s_rfMgr + kBankMgrOffset + kRealHeadTable;
     if (R32(s_rfPm + 348) != heads)
@@ -574,7 +582,7 @@ void RfBeginAbort(u32 result) {
 }
 
 u32 RfAbortReason(void) {
-    return R32(kPlayerMgrPtr) != s_rfMgr || R32(kPlayerPtr) != s_rfPlayer ? kRfrScene : kRfrTeardown;
+    return R32(kPlayerMgrPtr) != s_rfMgr || LocalPlayer() != s_rfPlayer ? kRfrScene : kRfrTeardown;
 }
 
 void StepRealFace(void) {
@@ -587,7 +595,7 @@ void StepRealFace(void) {
         s_rfFrames = 0;
         s_rfKicks = 0;
         s_rfLastStage = kRfIdle;
-        const u32 player = R32(kPlayerPtr), mgr = R32(kPlayerMgrPtr);
+        const u32 player = LocalPlayer(), mgr = R32(kPlayerMgrPtr);
         if (!IsHeap(player) || !IsHeap(mgr))
             return RfFinish(kRfrNoPlayer);
         const u32 profile = PlayerProfile(R8(player + kActorPlayerIndex));
