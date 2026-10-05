@@ -15,6 +15,7 @@
 #include "GridCursor.hpp"
 #include "ModelViewer.hpp"
 #include "PlayerClone.hpp"
+#include "HhdScreen.hpp"
 #include "PublicWorks.hpp"
 #include "PocketItem.hpp"
 #include "ChatIme.hpp"
@@ -267,6 +268,7 @@ namespace CTRPluginFramework
             WireGridCursor();
             WireModelViewer();
             WirePlayerClone();
+            WireHhdScreen();
             WirePublicWorks();
             WireBuildingEditor();
             WirePocketItem();

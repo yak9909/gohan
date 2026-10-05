@@ -73,6 +73,10 @@ namespace CTRPluginFramework
         static const char kMvStat[]   = u8"モデルの状態";
 
         // ---- root/テスト／プレイヤー複製 ----
+        // ---- root/テスト／HHD キャラクリ（解析リポジトリ D005 / T012）----
+        static const char kHhdShow[] = u8"HHD の地を下画面に出す";
+        static const char kHhdStat[] = u8"HHD 画面の状態";
+
         static const char kPcShow[]  = u8"複製を出す";
         static const char kPcHair[]  = u8"複製の髪型";
         static const char kPcColor[] = u8"複製の髪色";

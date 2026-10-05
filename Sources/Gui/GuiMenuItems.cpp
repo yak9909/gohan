@@ -344,6 +344,14 @@ namespace CTRPluginFramework
                         u8"複製がいまどこで止まっているかを通知で出します。");
                 const int cloneCount = g_itemCount - cloneFirst;
 
+                // ---- root/テスト/HHD キャラクリ（試験）----
+                const int hhdFirst = g_itemCount;
+                AddItem(ITEM_CHECKBOX, kHhdShow,
+                        u8"SD の /hhd_bg_only.arc を読み、HHD のキャラクリ画面の地（背景）だけを下画面に出します。最小の試験です。");
+                AddItem(ITEM_ACTION, kHhdStat,
+                        u8"HHD 画面がいまどこまで進んだか、失敗ならその理由を通知で出します。");
+                const int hhdCount = g_itemCount - hhdFirst;
+
                 // ---- root/テスト（§18）----
                 const int testFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"UnitCursor", u8"ゲームの UnitCursor（模様替えのマス）を村の地面に出す試験です。");
@@ -352,6 +360,8 @@ namespace CTRPluginFramework
                 SetFolder(i, modelFirst, modelCount);
                 i = AddItem(ITEM_FOLDER, u8"プレイヤー複製", u8"自分のプレイヤーの複製を出し、髪型と髪色だけを変える試験です。");
                 SetFolder(i, cloneFirst, cloneCount);
+                i = AddItem(ITEM_FOLDER, u8"HHD キャラクリ", u8"ハッピーホームデザイナーのキャラクリ画面を下画面に作る試験です。");
+                SetFolder(i, hhdFirst, hhdCount);
                 const int testCount = g_itemCount - testFirst;
 
                 // ---- root（§2）----
