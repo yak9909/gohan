@@ -46,6 +46,9 @@ typedef void *(*FontSlotFn)(void *fontMgr, u32 kind);
 typedef void (*RegisterFontFn)(void *accessor, const char *name, void *font);
 typedef void *(*FindFn)(void *layout, const char *name);
 typedef int (*SetStringFn)(void *textBox, const u16 *str, u32 dst, u32 len);
+typedef void (*GetTextureFn)(u32 *out, void *accessor, const char *name);
+typedef void (*TexMapUpdateFn)(u32 *texMap);
+typedef u32 (*ProfileFn)(u32 playerIndex);
 
 const CtorFn         ArcCtor        = reinterpret_cast<CtorFn>(0x00120D54);
 const CtorFn         ArcDtor        = reinterpret_cast<CtorFn>(0x00567310);
@@ -64,6 +67,9 @@ const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8);
 const RegisterFontFn RegisterFont   = reinterpret_cast<RegisterFontFn>(0x004B3FD4);
 const FindFn         FindPane       = reinterpret_cast<FindFn>(0x00567BAC);
 const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);
+const GetTextureFn   GetTexture     = reinterpret_cast<GetTextureFn>(0x004B5844);     // nwlyt_ArcResourceAccessor_GetTexture
+const TexMapUpdateFn TexMapUpdate   = reinterpret_cast<TexMapUpdateFn>(0x004B9830);   // nwlyt_TexMap_UpdateGpuRegs
+const ProfileFn      PlayerProfile  = reinterpret_cast<ProfileFn>(0x002FEB60);        // PlayerClone.cpp と同じ（vc_PSOFFSET）
 
 const u32 kLayoutMgrPtr = 0x0096FC38;
 const u32 kFontMgrPtr = 0x0094C9C8;
@@ -74,7 +80,16 @@ const u32 kHolderArc = 8, kHolderAccessor = 0xC, kHolderArcLoaded = 0x158;
 const u32 kLayoutPriority = 12, kLayoutHolder = 236, kLayoutListId = 0x100, kLayoutListSize = 0x118;
 const u32 kCmdListBuckets = 0x00AD98C0, kCmdMgrNext = 0x40, kCmdMgrUsed = 0x0C;
 const u32 kPaneFlags = 0xB7, kPicMaterial = 0x13C, kWindowFrames = 0x160, kFrameMaterial = 4;
-const u32 kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D;
+const u32 kMatColor0 = 0x10, kMatColor1 = 0x14, kMatFlags = 0x4D, kMatTexMaps = 52;
+const u32 kPaneX = 0x28;                    // ペインの平行移動 x（GameLabel と同じ。書いたら +0xB7 の bit4-5 を落として行列を作り直させる）
+// 性別: プレイヤー [0xAA7994] の +428 = プレイヤー番号 → プロフィール（0x2FEB60）の +21946 の bit0（docs/topics/player_clone_preview.md）。
+//   0 = 男の子・1 = 女の子 と読む（公開情報の仮説。LOW。実機で利用者のキャラと照合する）
+const u32 kPlayerPtr = 0x00AA7994, kActorPlayerIndex = 428, kProfileSexByte = 21946;
+// 髪のページ: 性別ごとに 16 個 = 8 個 × 2 ページ（HHD-F005）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
+//   送るときは N_All を 1 枠ぶん滑らせてから戻し、絵を入れ替える。滑る長さ kSlideFrames は HHD のコードからは未確認（仮の値）
+const s32 kHairPages = 2;
+const float kPageStep = 276.0f;
+const u32 kSlideFrames = 8;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
 const u32 kScreenLower = 1;                 // AddLayout の画面（下画面 = 1）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
@@ -102,15 +117,18 @@ struct Lay {
 // 画面の状態（メニューのスレッドが書き、ゲームのスレッドがペインへ写す）。-1 = 選んでいない
 struct State {
     s8 mode;                                // 0 = 顔（目）、1 = 髪
-    s8 eyeShape, eyeColor, skin, hair, hairColor;
+    s8 eyeShape, eyeColor, skin, hair, hairColor;   // hair = 性別の中の番号 0..15
+    s8 sex, page;                           // sex: 0 男の子 / 1 女の子、page: 中央の枠のページ（ゲームのスレッドだけが書く）
 };
 
 // 引いておくペイン
 struct Panes {
     void *eyeFrame[12], *iris[12], *eyeBase[12];
-    void *hairFrame[8], *hairPic[24], *hairSkin[24];
+    void *eyePic[12];
+    void *hairFrame[24], *hairPic[24], *hairSkin[24];  // [枠 * 8 + 番号]（枠 0 左 / 1 中央 / 2 右）
     void *ecFrame[6], *scFrame[8], *hcFrame[16];
-    void *eyeColorGroup, *hairSkinGroup, *leftText, *hairRightPage;
+    void *eyeColorGroup, *hairSkinGroup, *leftText, *hairIconB, *hairIconG;
+    void *hairPage[3], *hairAll;
 };
 
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
@@ -125,6 +143,10 @@ volatile Stage s_stage = Stage::Idle;
 const char *volatile s_error = "";
 u32 s_wait;
 volatile State s_state;                     // 欲しい状態
+volatile s8 s_pageReq;                      // メニューのスレッドからのページ送りの頼み（-1 / +1、0 = なし）
+s8 s_slideDir;                              // 滑らせている向き（0 = 止まっている）。ゲームのスレッドだけ
+u32 s_slideFrame;
+volatile u8 s_sexByte = 0xFF;               // 読んだプロフィールの性別のバイト（状態の通知用）
 State s_applied;                            // ペインへ写した状態（ゲームのスレッドだけ）
 bool s_appliedValid;
 // 測った値（ゲームのスレッドが書き、Measure が読む）
@@ -197,9 +219,19 @@ bool FindAll(void) {
             if (s_p.hairPic[pg * 8 + k] == nullptr || s_p.hairSkin[pg * 8 + k] == nullptr)
                 return false;
         }
-    for (u32 k = 0; k < 8; ++k)
-        if ((s_p.hairFrame[k] = Find(kHair, "h1%u_W_Frame", k)) == nullptr)
+    for (u32 pg = 0; pg < 3; ++pg)
+        for (u32 k = 0; k < 8; ++k)
+            if ((s_p.hairFrame[pg * 8 + k] = Find(kHair, "h%u%u_W_Frame", pg, k)) == nullptr)
+                return false;
+    for (u32 k = 0; k < 12; ++k)
+        if ((s_p.eyePic[k] = Find(kEye, "e%02u_P_Eye", k)) == nullptr)
             return false;
+    for (u32 pg = 0; pg < 3; ++pg)
+        if ((s_p.hairPage[pg] = Find(kHair, "pg%u", pg)) == nullptr)
+            return false;
+    s_p.hairAll = FindPane(s_lay[kHair].obj, "N_All");
+    s_p.hairIconB = FindPane(s_lay[kFace].obj, "P_HairIconB_00");
+    s_p.hairIconG = FindPane(s_lay[kFace].obj, "P_HairIconG_00");
     for (u32 k = 0; k < 6; ++k)
         if ((s_p.ecFrame[k] = Find(kFace, "ec%02u_P_Frame", k)) == nullptr)
             return false;
@@ -212,8 +244,65 @@ bool FindAll(void) {
     s_p.eyeColorGroup = FindPane(s_lay[kFace].obj, "N_EyeColor_00");
     s_p.hairSkinGroup = FindPane(s_lay[kFace].obj, "N_HairSkinCol");
     s_p.leftText = FindPane(s_lay[kFace].obj, "b0_T_Btn");
-    s_p.hairRightPage = FindPane(s_lay[kHair].obj, "pg2");
-    return s_p.eyeColorGroup != nullptr && s_p.hairSkinGroup != nullptr && s_p.leftText != nullptr && s_p.hairRightPage != nullptr;
+    return s_p.eyeColorGroup != nullptr && s_p.hairSkinGroup != nullptr && s_p.leftText != nullptr && s_p.hairAll != nullptr
+        && s_p.hairIconB != nullptr && s_p.hairIconG != nullptr;
+}
+
+// 絵の差し替え（ゲームのアイコンの差し替え ItemIconWidget_SetItem 0x2B8EAC と同じ手順）:
+//   GetTexture(出力 20 B, アクセサ = holder+12, 名前) → 材質+52 の TexMap の [0..3] に写し [4] の書式ビット（0xF00）だけ入れ替え
+//   → nwlyt_TexMap_UpdateGpuRegs → 材質+0x4D bit2 を落とす。テクスチャは組んだときに全部登録済み（ArcResAccReader_RegisterTextures）
+bool SetTexture(void *pic, const char *name) {
+    void *mat = PicMaterial(pic);
+    if (!IsHeapPointer(mat))
+        return false;
+    u32 info[5] = { 0, 0, 0, 0, 0 };
+    GetTexture(info, s_holder + kHolderAccessor, name);
+    u32 *t = reinterpret_cast<u32 *>(W(mat, kMatTexMaps));
+    if (info[1] == 0 || !IsHeapPointer(t))
+        return false;
+    t[0] = info[0];
+    t[1] = info[1];
+    t[2] = info[2];
+    t[3] = info[3];
+    t[4] = ((info[4] & 0xFFu) << 8 & 0xF00u) | (t[4] & ~0xF00u);
+    TexMapUpdate(t);
+    B(mat, kMatFlags) &= ~4u;
+    return true;
+}
+
+void MovePaneX(void *pane, float x) {
+    *reinterpret_cast<float *>(reinterpret_cast<u8 *>(pane) + kPaneX) = x;
+    B(pane, kPaneFlags) &= 0xCFu;
+}
+
+// 枠 f（0 左 / 1 中央 / 2 右）に出すページ。無ければ -1
+s32 FramePage(s32 page, u32 f) {
+    const s32 pg = page + (s32)f - 1;
+    return pg >= 0 && pg < kHairPages ? pg : -1;
+}
+
+void SetHairPages(s8 sex, s8 page) {
+    char name[32];
+    for (u32 f = 0; f < 3; ++f) {
+        const s32 pg = FramePage(page, f);
+        SetVisible(s_p.hairPage[f], pg >= 0);
+        if (pg < 0)
+            continue;
+        for (u32 k = 0; k < 8; ++k) {
+            std::snprintf(name, sizeof(name), "sh_fce_%cHair_%02ld.bclim", sex == 1 ? 'G' : 'B', (long)(pg * 8 + (s32)k));
+            SetTexture(s_p.hairPic[f * 8 + k], name);
+        }
+    }
+}
+
+void PaintHairFrames(s8 page, s8 hair) {
+    for (u32 f = 0; f < 3; ++f) {
+        const s32 pg = FramePage(page, f);
+        for (u32 k = 0; k < 8; ++k) {
+            const bool sel = pg >= 0 && hair >= 0 && pg * 8 + (s32)k == hair;
+            Paint(WindowMaterial(s_p.hairFrame[f * 8 + k]), sel ? HhdTables::kHairCell[k].b : HhdTables::kHairCell[k].a);
+        }
+    }
 }
 
 const u16 kTextHair[] = { 0x304B, 0x307F, 0x304C, 0x305F };    // かみがた
@@ -228,13 +317,24 @@ void Apply(void) {
     want.skin = s_state.skin;
     want.hair = s_state.hair;
     want.hairColor = s_state.hairColor;
+    want.sex = s_state.sex;
+    want.page = s_state.page;
     const bool all = !s_appliedValid;
     State &was = s_applied;
-    if (all) {
-        // 髪のページ: 男の子の髪は 16 個 = 2 ページ（HHD-F005: 32 個を性別で 16 個に絞る）。中央の枠 pg1 が最後のページ（髪 8〜15）なので、
-        // 右の枠 pg2（次のページ = 女の子の髪 0〜7 の絵）は HHD では出ない。ページ送りを作るまでは隠す（利用者 2026-10-05 の指摘）
-        SetVisible(s_p.hairRightPage, false);
+    if (all || want.sex != was.sex) {
+        // 性別: 目の形・黒目の絵（HHD の CharaEyeBaseLayout_SetEyeIcons と同じく B / G の組）と、髪の色の行の左のアイコン
+        char name[32];
+        for (u32 k = 0; k < 12; ++k) {
+            std::snprintf(name, sizeof(name), "sh_fce_%cEye_%02lu.bclim", want.sex == 1 ? 'G' : 'B', (unsigned long)k);
+            SetTexture(s_p.eyePic[k], name);
+            std::snprintf(name, sizeof(name), "sh_fce_%cEyeB_%02lu.bclim", want.sex == 1 ? 'G' : 'B', (unsigned long)k);
+            SetTexture(s_p.iris[k], name);
+        }
+        SetVisible(s_p.hairIconB, want.sex != 1);
+        SetVisible(s_p.hairIconG, want.sex == 1);
     }
+    if (all || want.sex != was.sex || want.page != was.page)
+        SetHairPages(want.sex, want.page);
     if (all || want.mode != was.mode) {
         SetVisible(s_p.eyeColorGroup, want.mode == 0);
         SetVisible(s_p.hairSkinGroup, want.mode == 1);
@@ -246,9 +346,8 @@ void Apply(void) {
     if (all || want.eyeShape != was.eyeShape)
         for (u32 k = 0; k < 12; ++k)
             Paint(WindowMaterial(s_p.eyeFrame[k]), (s32)k == want.eyeShape ? HhdTables::kEyeShape[k].b : HhdTables::kEyeShape[k].a);
-    if (all || want.hair != was.hair)
-        for (u32 k = 0; k < 8; ++k)
-            Paint(WindowMaterial(s_p.hairFrame[k]), (s32)k == want.hair ? HhdTables::kHairCell[k].b : HhdTables::kHairCell[k].a);
+    if (all || want.hair != was.hair || want.page != was.page)
+        PaintHairFrames(want.page, want.hair);
     if (all || want.eyeColor != was.eyeColor) {
         for (u32 k = 0; k < 6; ++k)
             SetVisible(s_p.ecFrame[k], (s32)k == want.eyeColor);
@@ -280,6 +379,30 @@ void Apply(void) {
     }
     s_applied = want;
     s_appliedValid = true;
+}
+
+// 髪のページ送り（ゲームのスレッド）: 頼みがあれば N_All を 1 枠ぶん滑らせ、滑り終えたらページを進めて元の位置へ戻す
+//   （戻すと同時に Apply が 3 つの枠の絵を入れ替えるので、見た目は続いて見える）
+void StepSlide(void) {
+    if (s_slideDir == 0) {
+        const s8 req = s_pageReq;
+        s_pageReq = 0;
+        if (req == 0 || s_applied.mode != 1)
+            return;
+        const s32 next = (s32)s_state.page + req;
+        if (next < 0 || next >= kHairPages)
+            return;                         // 端より先は無い
+        s_slideDir = req;
+        s_slideFrame = 0;
+    }
+    ++s_slideFrame;
+    if (s_slideFrame >= kSlideFrames) {
+        s_state.page = (s8)(s_state.page + s_slideDir);
+        s_slideDir = 0;
+        MovePaneX(s_p.hairAll, 0.0f);
+        return;
+    }
+    MovePaneX(s_p.hairAll, -kPageStep * (float)s_slideDir * (float)s_slideFrame / (float)kSlideFrames);
 }
 
 // レイアウトのコマンドリストの記録した長さ（見つからなければ 0xFFFFFFFF）
@@ -363,6 +486,19 @@ void Build(void) {
     }
     if (!FindAll())
         return Fail("ペインが見つからない");
+    // 性別（プレイヤーのプロフィール。取れなければ男の子）
+    s_state.sex = 0;
+    s_sexByte = 0xFF;
+    const u32 player = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    if (IsHeapPointer(reinterpret_cast<void *>(player))) {
+        const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex));
+        if (profile >= 0x08000000u && profile < 0x40000000u) {
+            s_sexByte = *reinterpret_cast<const volatile u8 *>(profile + kProfileSexByte);
+            s_state.sex = (s8)(s_sexByte & 1u);
+        }
+    }
+    s_slideDir = 0;
+    MovePaneX(s_p.hairAll, 0.0f);
     s_appliedValid = false;
     s_heapFreeAfter = HeapFreeSize(heap);
     s_stage = Stage::Draw;
@@ -391,6 +527,10 @@ s32 HitTest(s32 x, s32 y, s8 mode) {
             if (Inside(HhdTables::kSkinColor[k].hit, x, y))
                 return 200 + (s32)k;
     } else {
+        if (Inside(HhdTables::kPageLeft, x, y))
+            return 800;
+        if (Inside(HhdTables::kPageRight, x, y))
+            return 801;
         for (u32 k = 0; k < 8; ++k)
             if (Inside(HhdTables::kHairCell[k].hit, x, y))
                 return 300 + (s32)k;
@@ -407,10 +547,14 @@ void Decide(s32 target) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
     } else if (target == 901) {
         s_want = false;                     // けってい: いまは閉じるだけ（プレイヤーへの反映は段階 3）
+    } else if (target == 800 || target == 801) {
+        s_pageReq = target == 800 ? -1 : 1;
     } else if (target >= 400) {
         s_state.hairColor = (s8)(target - 400);
     } else if (target >= 300) {
-        s_state.hair = (s8)(target - 300);
+        if (s_slideDir != 0)
+            return;                         // 滑っている最中は選ばない
+        s_state.hair = (s8)(s_state.page * 8 + (target - 300));   // 中央の枠のページの中の番号
     } else if (target >= 200) {
         s_state.skin = (s8)(target - 200);
     } else if (target >= 100) {
@@ -467,6 +611,8 @@ bool Show(void) {
     }
     s_state.mode = 0;
     s_state.eyeShape = s_state.eyeColor = s_state.skin = s_state.hair = s_state.hairColor = -1;
+    s_state.page = 0;
+    s_pageReq = 0;
     s_touchPrev = false;
     s_touchStart = -1;
     s_keysPrev = 0xFFFFFFFFu;               // 開いたときに押していたボタンは「押した」に数えない
@@ -501,7 +647,7 @@ const char *StageName(void) {
 
 void Measure(char *out, u32 size) {
     // レイアウトごとに 記録した長さ/確保した大きさ（バイト。地・顔・目・髪）。ヒープは組む前と後の空き（KB）
-    std::snprintf(out, size, u8"命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 空き %luK→%luK",
+    std::snprintf(out, size, u8"性別 %u 命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 空き %luK→%luK", (unsigned)s_sexByte,
                   (unsigned long)s_used[0], (unsigned long)s_size[0], (unsigned long)s_used[1], (unsigned long)s_size[1],
                   (unsigned long)s_used[2], (unsigned long)s_size[2], (unsigned long)s_used[3], (unsigned long)s_size[3],
                   (unsigned long)(s_heapFreeBefore / 1024u), (unsigned long)(s_heapFreeAfter / 1024u));
@@ -528,6 +674,8 @@ void Tick(bool menuVisible) {
         s_want = false;                     // B: 閉じる
         return;
     }
+    if (s_state.mode == 1 && (pressed & ((u32)Key::L | (u32)Key::R)))
+        s_pageReq = (pressed & (u32)Key::L) ? -1 : 1;   // 髪のページ送り（HHD-F007: L / R）
     // タッチ: 置いた的の上で離したら決定。途中で的から外れたら取り消し（HHD の TouchUnSelect）
     const bool down = Touch::IsDown();
     const s8 mode = s_state.mode;
@@ -571,6 +719,7 @@ void FrameStep(void) {
         // 前のフレームで記録した長さ（このフレームの記録より前に読む）
         for (u32 i = 0; i < kLayouts; ++i)
             s_used[i] = RecordedBytes(s_lay[i].obj);
+        StepSlide();
         Apply();
         const u32 third = s_applied.mode == 0 ? kEye : kHair;
         const u32 order[3] = { kBg, kFace, third };

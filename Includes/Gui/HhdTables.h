@@ -76,4 +76,7 @@ const ColorPair kSwatchSelect = { { 255, 60, 0, 0 }, { 255, 60, 0, 255 } };
 // 下のボタン: 左（かみがた / かお）・右（けってい）
 const Rect kButtonLeft = { 7, 209, 123, 237 };
 const Rect kButtonRight = { 197, 209, 313, 237 };
+// 髪のページ送りの左右の端（hhd_hair の B_L_00 / B_R_00。HHD-F007）
+const Rect kPageLeft = { -1, -1, 22, 153 };
+const Rect kPageRight = { 298, -1, 321, 153 };
 }  // namespace HhdTables
