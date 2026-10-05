@@ -116,11 +116,14 @@ const u32 kActorModel = 436, kModelTan = 448;   // AcPlayer+436 = PlayerModel、
 const u32 kNetGameMgrPtr = 0x0094D648, kNetOnline = 0x1326F;
 // ---- 通信相手への見た目の反映（T017、IDA-opus-5.5-F087）--------------------------------------------------------------
 // 相手の画面の見た目は「相手が持つ、こちらのプロフィールの写し」から作られ、写しの見た目を書くのは美容室の状態 0xB9 だけ。
-// 改造していない相手でも即時に変わるよう、状態パケット（0x33〜0x36、38 B）を 3 つ続けて送る（自分の状態は変えない）:
+// 改造していない相手でも即時に変わるよう、状態パケット（0x33〜0x36、38 B）を 4 つ続けて送る（自分の状態は変えない）:
 //   1. 0xB9（+14 髪型 / +15 髪色 / +16 目の色 / +17 帽子の Item）: 相手のアクターが 0xB9 に入る
-//   2. 状態 0: 相手側で 0xB9 を抜ける = PlayerState_AppearanceChangeSyncLocal 0x685738 が写しへ書く（★アクセサリーは無条件に空になる）
-//   3. 今の本当の状態（アクター +2236 のバッファそのもの）: 相手側で状態 0 を抜ける = PlayerState00_Exit 0x6533C4 が位置を戻し vc_UPDATE で写しから作り直す
-// アクターが無い相手（別の部屋）は記述子 +0x18（0xB9 = SyncRemote）で写しだけ書く。送り方はゲームと同じ（Player_SendStatePacketOnSetState 0x675F14:
+//   2. 0xBA（+14 帽子 / +18 アクセサリー。美容室の小物の付け外し）: 相手側で 0xB9 を抜ける = PlayerState_AppearanceChangeSyncLocal 0x685738 が
+//      写しへ髪型・色を書く（★ここでアクセサリーが無条件に空になる）
+//   3. 状態 0: 相手側で 0xBA を抜ける = PlayerState_HeadGoodsExit 0x68A6AC が写しの帽子・アクセサリーを書き戻す（利用者: アクセサリーは消さない。F088）
+//   4. 今の本当の状態（アクター +2236 のバッファそのもの）: 相手側で状態 0 を抜ける = PlayerState00_Exit 0x6533C4 が位置を戻し vc_UPDATE で写しから作り直す
+// アクターが無い相手（別の部屋）は記述子 +0x18（0xB9 = SyncRemote、0xBA = PlayerState_HeadGoodsSyncRemote 0x68C538）で写しだけ書く。
+// けってい の時点はキャラクリを閉じ始めたところで、今の状態がまだ同期しない状態のことがある（hhd_t017a 実機: 送れなかった）→ 送れる条件がそろうまで毎フレーム待つ。送り方はゲームと同じ（Player_SendStatePacketOnSetState 0x675F14:
 // 部屋の旗 0x10 が無く、自分のオンライン番号がアクター +428 と同じとき、通し番号 +8 を 1 増やして vc_SENDPACKETFUNC(番号, バッファ)）。
 // ★下位転送種別 0x0C（村データ転送）は使わない（利用者 2026-10-06）
 typedef void (*SendStatePacketFn)(u32 playerIndex, const void *packet);
@@ -135,8 +138,15 @@ typedef u32 (*StateAttrFn)(u32 state);
 const StateAttrFn StateAttributes = reinterpret_cast<StateAttrFn>(0x0064E960);                // 状態の属性（+7 bit3 = 状態パケットを送る状態）
 const u32 kActorStatePacket = 2236, kStatePacketBytes = 38, kPacketState = 1, kPacketCounter = 8, kPacketArgs = 14;
 const u32 kActorBusyFlags = 2245;           // bit 0x20 の間はゲーム自身も美容室を始めない（sub_5C4698 / sub_5C5990 / sub_5C68F4）
-const u32 kStateAppearance = 0xB9, kStateInitial = 0;
-const u32 kProfileHat = 10;                 // プロフィール +10 = 帽子の Item（4 B。F-67）
+const u32 kStateAppearance = 0xB9, kStateHeadGoods = 0xBA, kStateInitial = 0;
+const u32 kProfileHat = 10, kProfileAccessory = 14;   // プロフィール +10 = 帽子 / +14 = アクセサリーの Item（4 B。F-67）
+const u32 kPeerWaitFrames = 300;            // 30 fps で 10 秒
+// 送れなかった理由（通知に出す）
+enum PeerReason : u32 { kPeerSent = 0, kPeerRoom = 1, kPeerIndex = 2, kPeerBusy = 3, kPeerState = 4, kPeerPlayer = 5, kPeerOffline = 6 };
+volatile bool s_peerWant;
+u32 s_peerFrames, s_peerPlayer, s_peerLastReason;
+u8 s_peerLook[3], s_peerHat[4], s_peerAccessory[4];
+char s_peerResult[96];
 // 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
 //   ページ 0〜1 = 男の子の髪 B00〜B15、ページ 2〜3 = 女の子の髪 G00〜G15。髪の番号 = ページ × 8 + 枠の中の番号（0〜31）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
 //   スクロールは自由（ページに吸着しない。利用者 2026-10-05）で、漢字変換の候補欄と同じ算法（TouchScroll.hpp = ChatIme.cpp の写し）。
@@ -872,28 +882,39 @@ void SendOnePacket(u32 player, u32 index, u8 *packet) {
     SendStatePacket(index, packet);
 }
 
-// 通信相手へ髪型・髪色・目の色を送る（上の 3 つ）。送れなければ false
-bool SendLookToPeers(u32 player, const u8 *rec, u32 profile) {
+// 今送れるか（ゲームの送信と同じ条件。Player_SendStatePacketOnSetState 0x675F14 と sub_5C4698 の +2245 の検査）。送れれば kPeerSent
+u32 PeerCheck(u32 player) {
     if (RoomHasFlags(0x10, RoomCurrentId()) != 0)
-        return false;
-    const u32 index = *reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex);
-    if (OnlineIndex(0) != index)
-        return false;
+        return kPeerRoom;
+    if (OnlineIndex(0) != *reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex))
+        return kPeerIndex;
     if ((*reinterpret_cast<const volatile u8 *>(player + kActorBusyFlags) & 0x20u) != 0)
-        return false;
-    u8 *current = reinterpret_cast<u8 *>(player + kActorStatePacket);
-    // 3 つ目に送る今の状態が、ゲーム自身も送る状態であること（送らない状態を相手に入らせない）
-    const u32 attr = StateAttributes(current[kPacketState]);
+        return kPeerBusy;
+    // 4 つ目に送る今の状態が、ゲーム自身も送る状態であること（送らない状態を相手に入らせない）
+    const u32 attr = StateAttributes(*reinterpret_cast<const volatile u8 *>(player + kActorStatePacket + kPacketState));
     if (attr == 0u || (*reinterpret_cast<const volatile u8 *>(attr + 7) & 0x08u) == 0)
-        return false;
+        return kPeerState;
+    return kPeerSent;
+}
+
+// 上の 4 つを送る（PeerCheck が通ってから）
+void SendLookToPeers(u32 player) {
+    const u32 index = *reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex);
+    u8 *current = reinterpret_cast<u8 *>(player + kActorStatePacket);
     u8 packet[kStatePacketBytes];
     std::memcpy(packet, current, kStatePacketBytes);
     packet[kPacketState] = (u8)kStateAppearance;
     std::memset(packet + kPacketArgs, 0, kStatePacketBytes - kPacketArgs);
-    packet[kPacketArgs + 0] = rec[kLookHair];
-    packet[kPacketArgs + 1] = rec[kLookHairColor];
-    packet[kPacketArgs + 2] = rec[kLookEyeColor];
-    std::memcpy(packet + kPacketArgs + 3, reinterpret_cast<const void *>(profile + kProfileHat), 4);   // 帽子はそのまま（空にしない）
+    packet[kPacketArgs + 0] = s_peerLook[0];
+    packet[kPacketArgs + 1] = s_peerLook[1];
+    packet[kPacketArgs + 2] = s_peerLook[2];
+    std::memcpy(packet + kPacketArgs + 3, s_peerHat, 4);     // 帽子はそのまま（空にしない）
+    SendOnePacket(player, index, packet);
+    std::memcpy(packet, current, kStatePacketBytes);
+    packet[kPacketState] = (u8)kStateHeadGoods;
+    std::memset(packet + kPacketArgs, 0, kStatePacketBytes - kPacketArgs);
+    std::memcpy(packet + kPacketArgs, s_peerHat, 4);
+    std::memcpy(packet + kPacketArgs + 4, s_peerAccessory, 4);
     SendOnePacket(player, index, packet);
     std::memcpy(packet, current, kStatePacketBytes);
     packet[kPacketState] = (u8)kStateInitial;
@@ -902,7 +923,38 @@ bool SendLookToPeers(u32 player, const u8 *rec, u32 profile) {
     u8 &counter = current[kPacketCounter];
     counter = (u8)(counter + 1);
     SendStatePacket(index, current);
-    return true;
+}
+
+bool NetOnline(void) {
+    const u32 mgr = *reinterpret_cast<const volatile u32 *>(kNetGameMgrPtr);
+    return IsHeapPointer(reinterpret_cast<void *>(mgr)) && *reinterpret_cast<const volatile u8 *>(mgr + kNetOnline) != 0;
+}
+
+// けってい の後、送れる条件がそろうまで毎フレーム待って送る（FrameStep の先頭。画面を閉じた後も回る）
+void StepPeerSync(void) {
+    if (!s_peerWant)
+        return;
+    const u32 player = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    u32 reason = kPeerSent;
+    if (!NetOnline())
+        reason = kPeerOffline;
+    else if (player != s_peerPlayer || !IsHeapPointer(reinterpret_cast<void *>(player)))
+        reason = kPeerPlayer;
+    else
+        reason = PeerCheck(player);
+    if (reason == kPeerSent) {
+        SendLookToPeers(player);
+        s_peerWant = false;
+        s_peerLastReason = kPeerSent;
+        s_applyResult = u8"反映しました（通信相手へも送りました）";
+        return;
+    }
+    s_peerLastReason = reason;
+    if (reason == kPeerOffline || reason == kPeerPlayer || ++s_peerFrames > kPeerWaitFrames) {
+        s_peerWant = false;
+        std::snprintf(s_peerResult, sizeof(s_peerResult), u8"反映しました（通信相手へは送れませんでした %lu）", (unsigned long)reason);
+        s_applyResult = s_peerResult;
+    }
 }
 
 // 「けってい」: 選んだものだけ記録へ書き、vc_UPDATE で読み直させる。通信中は相手へも状態パケットで送る（T017。目の形・肌は相手へは送れない）
@@ -931,13 +983,22 @@ void ApplyToPlayer(void) {
         *reinterpret_cast<volatile u32 *>(pm + kModelTan) = (u32)skin;
     }
     PlayerUpdate(player);
-    bool sent = false;
-    if (online)
-        sent = SendLookToPeers(player, rec, reinterpret_cast<u32>(rec) - kProfileLook);
+    if (online) {
+        // 送るのは記録に書いた後の値（選ばなかった欄は今の値）と、今の帽子・アクセサリー（相手側で消さない）
+        const u32 profile = reinterpret_cast<u32>(rec) - kProfileLook;
+        s_peerLook[0] = rec[kLookHair];
+        s_peerLook[1] = rec[kLookHairColor];
+        s_peerLook[2] = rec[kLookEyeColor];
+        std::memcpy(s_peerHat, reinterpret_cast<const void *>(profile + kProfileHat), 4);
+        std::memcpy(s_peerAccessory, reinterpret_cast<const void *>(profile + kProfileAccessory), 4);
+        s_peerPlayer = player;
+        s_peerFrames = 0;
+        s_peerWant = true;
+    }
     // 目の形は vc_UPDATE では読み直されない（顔の枠は作るときにしか読まない）。本人の顔の枠を新しく読み、頭に読み直させる（F086）
     if (face >= 0 && (u8)face != oldFace)
         PlayerClone::ReloadRealFace();
-    s_applyResult = !online ? u8"反映しました" : sent ? u8"反映しました（通信相手へも送りました）" : u8"反映しました（通信相手へは送れませんでした）";
+    s_applyResult = !online ? u8"反映しました" : u8"反映しました（通信相手へ送ります）";
 }
 
 // ---- 出入りのアニメ（ゲームのスレッド）----
@@ -1480,6 +1541,7 @@ void Tick(bool menuVisible) {
 }
 
 void FrameStep(void) {
+    StepPeerSync();
     switch (s_stage) {
     case Stage::Idle:
         return;
