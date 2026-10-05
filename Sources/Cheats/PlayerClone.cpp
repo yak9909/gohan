@@ -171,6 +171,9 @@ const u32 kModelBody = 120;                 // TransformNodeHolder（+4 がノ�
 const u32 kHolderNode = 4;
 const u32 kNodeMatrix = 0x4C;
 const u32 kModelHair = 548;                 // u8
+const u32 kModelTan = 448;                  // 日焼けの段階 0..7（PlayerModel_UpdateParts / sub_1D05B0 が毎フレーム肌の色にする。IDA-opus-5.5-F083）
+const u32 kModelOutfit = 512;               // 服の欄（Item 4 B ずつ）。0 = 帽子、1 = アクセサリー（sub_719AF0 / sub_719B24(pm+512)。F083）
+const u32 kEmptyItem = 0x00955FF4;          // ItemToPlace（美容室が帽子・アクセサリーを外すときに写す空の品物。PlayerState_AppearanceChangeUpdate 0x6832E8）
 const u32 kModelHairColor = 552;            // u32
 const u32 kModelBytes = 624;                // AcNpcDemoDollPlayer: +2852 から次の欄 +3476 まで
 const u32 kProfileMaskByte = 22286;         // bit6 = Mii マスク（人形 0x2ECB30 と同じ）
@@ -217,6 +220,8 @@ volatile u32 s_frames;
 volatile u32 s_submits;
 volatile s32 s_hairStyle = -1;
 volatile s32 s_hairColor = -1;
+volatile s32 s_tan = -1;                    // 日焼けの段階 0..7（-1 = 本物のまま）
+volatile bool s_hideHead;                   // 帽子・アクセサリーを外して見せる（複製だけ）
 bool s_hooked;
 
 // 画面に固定
@@ -322,6 +327,16 @@ void ApplyHair(void) {
         *reinterpret_cast<volatile u8 *>(Model() + kModelHair) = (u8)style;
     if (color >= 0 && color < 0x10 && R32(Model() + kModelHairColor) != (u32)color)
         *reinterpret_cast<volatile u32 *>(Model() + kModelHairColor) = (u32)color;
+    // 肌: 部品の更新が毎フレーム pm+448 から色を作る（F083）
+    const s32 tan = s_tan >= 0 ? s_tan : (s32)R32(real + kModelTan);
+    if (tan >= 0 && tan < 8 && R32(Model() + kModelTan) != (u32)tan)
+        *reinterpret_cast<volatile u32 *>(Model() + kModelTan) = (u32)tan;
+    // 頭の小物: 外すときは美容室と同じ空の品物、戻すときは本物の服の欄から（部品の更新が読み直す）
+    for (u32 k = 0; k < 2; ++k) {
+        const u32 want = s_hideHead ? R32(kEmptyItem) : R32(real + kModelOutfit + 4 * k);
+        if (R32(Model() + kModelOutfit + 4 * k) != want)
+            *reinterpret_cast<volatile u32 *>(Model() + kModelOutfit + 4 * k) = want;
+    }
 }
 
 // 画面に固定のとき: (0, kHideDepth, 0) に置き、RotX(傾き) * RotY(向き)。傾きが正だと頭が専用カメラ（+Z）のほうへ倒れる
@@ -444,6 +459,14 @@ void StepLive(void) {
         StepParts(s_model);
         ReadParts(before);
         Submit(reinterpret_cast<void *>(Model() + kModelBody), 0);
+        if (R8(kSceneMode) == 1u) {
+            // メニューの 3D（Scene 1。上画面の 2D の後に描かれる）のときは Scene 0 が更新されないので、体と部品を Scene 1 にも積む。
+            //   骨格・スキニング・ノード +444 は Scene 1 の更新が計算する（Render_DrawSceneIndexed 0x4EEDD8 → sub_4E9EDC。IDA-opus-5.5-F083）
+            Submit(reinterpret_cast<void *>(Model() + kModelBody), 1);
+            for (u32 i = 0; i < s_partCount && i < kMaxParts; ++i)
+                if (IsHeap(s_parts[i]))
+                    Submit(reinterpret_cast<void *>(s_parts[i]), 1);
+        }
         s_lateReady = true;
     } else {
         s_lateReady = false;
@@ -527,13 +550,26 @@ void DrawNodeLayer(u32 node, u32 layer, u32 drawContext) {
 
 // ゲームのカメラの projection から倍率と z の行を取り、画面の位置・大きさ・深度の寄せを掛けた専用カメラを作る。
 // LCD は 90 度回っているので、画面 x = 200 * (1 - clip.y / w)、画面 y = 120 * (1 - clip.x / w)（IDA-gpt-6-astra-F003）。
-bool BuildCamera(u32 gameCamera) {
+// 世界のカメラ（Scene 0）の投影の倍率と z の行を覚える。メニューの 3D（Scene 1）のカメラは場面によって設定されていないので、
+// Scene 1 で描くときはこの値を使う（大きさ・深度の寄せが Scene 0 のときと同じになる）
+float s_proj[4];
+bool s_projValid;
+
+bool BuildCamera(u32 gameCamera, bool scene1) {
     const float *g = reinterpret_cast<const float *>(gameCamera + kCameraProjection);
-    const float sy = g[1];                      // 行 0 = [0, sy, *, *]（画面の縦）
-    const float sx = -g[4];                     // 行 1 = [-sx, 0, *, *]（画面の横）
-    const float zz = g[10], zw = g[11];         // 行 2 = [0, 0, zz, zw]
-    if (!(sy > 0.1f && sx > 0.1f && zw > 0.0f))
-        return false;
+    float sy = g[1];                            // 行 0 = [0, sy, *, *]（画面の縦）
+    float sx = -g[4];                           // 行 1 = [-sx, 0, *, *]（画面の横）
+    float zz = g[10], zw = g[11];               // 行 2 = [0, 0, zz, zw]
+    if (scene1) {
+        if (!s_projValid)
+            return false;
+        sy = s_proj[0], sx = s_proj[1], zz = s_proj[2], zw = s_proj[3];
+    } else {
+        if (!(sy > 0.1f && sx > 0.1f && zw > 0.0f))
+            return false;
+        s_proj[0] = sy, s_proj[1] = sx, s_proj[2] = zz, s_proj[3] = zw;
+        s_projValid = true;
+    }
     const float zoom = (float)s_zoom / 100.0f;
     const float ox = 1.0f - (float)s_pixelY / 120.0f;
     const float oy = 1.0f - (float)s_pixelX / 200.0f;
@@ -721,7 +757,10 @@ void RestoreModelViews(u32 slots) {
 extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     if (s_stage != kLive || !s_screen || !s_lateReady)
         return;
-    if (sceneContext != R32(kSceneContexts) || R8(kSceneMode) != 0u)
+    // 世界（Scene 0、モード 0）か、メニューの 3D（Scene 1、モード 1。上画面の 2D より手前に出る）
+    const u8 mode = R8(kSceneMode);
+    const bool scene1 = mode == 1u && sceneContext == R32(kSceneContexts + 4);
+    if (!scene1 && (sceneContext != R32(kSceneContexts) || mode != 0u))
         return;
     const u32 drawContext = R32(kDrawContext);
     if (!IsHeap(drawContext))
@@ -732,7 +771,7 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
     const u32 camera = R32(context + kContextCamera);
     if (!IsHeap(camera) || camera != R32(kCurrentCamera))
         return;
-    if (!BuildCamera(camera))
+    if (!BuildCamera(camera, scene1))
         return;
     const u32 body = R32(Model() + kModelBody + kHolderNode);
     const u32 count = s_partCount;
@@ -892,6 +931,15 @@ void Shutdown(void) {
 void SetHair(s32 style, s32 color) {
     s_hairStyle = style;
     s_hairColor = color;
+}
+
+void SetLook(s32 tan, bool hideHead) {
+    s_tan = tan;
+    s_hideHead = hideHead;
+}
+
+bool ProjectionReady(void) {
+    return s_projValid;
 }
 
 Status Read(void) {

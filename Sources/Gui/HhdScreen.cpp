@@ -6,6 +6,7 @@
 #include "Cheats.hpp"
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
+#include "Cheats/PlayerClone.hpp"
 
 #include <CTRPluginFramework.hpp>
 #include <cstdio>
@@ -122,6 +123,30 @@ const s32 kHairPages = 4;
 const float kPageStep = 276.0f;             // HHD の PageSlider +124 = 枠 2 と枠 1 の x の差（fce_HairBase_00 の L_HairPage_01 / 02）
 const float kStepSpeed = 25.0f, kApproach = 0.2f, kMinStep = 0.5f;   // HHD の PageSlider +96 / +76 / +84（1 フレームあたり）
 const float kFps = 30.0f;                   // ACNL の 1 秒のフレーム数（F-356: 2 VBlank = 30 fps）。HHD のフレームレートは未確認
+
+// ---- 上画面の吹き出しの複製（T018）----
+// 複製は gohan の PlayerClone（画面に固定・専用カメラ・専用ライト。IDA-opus-5.5-F031〜F033）。上画面の 2D より手前に出すため、
+// 開いている間はゲームを「メニューの 3D」（Scene 1。持ち物・カタログと同じ）にする: 描画順が 世界 → 上画面の 2D → Scene 1 になる（IDA-opus-5.5-F083）。
+// 吹き出し W_Balloon_00 の中心 = 上画面の画素 (200, 126)（hhd_top。大きさ 491 x 269）
+const s32 kCloneX = 200, kCloneY = 140, kClonePitch = 10, kCloneZoom = 110;   // 実機で合わせる前の値（向き 0 = 正面）
+const float kYawPerSecond = 240.0f;         // スライドパッドを倒し切ったときの回る速さ（度/秒。T019: 角度の上限なし）
+const s32 kPadDead = 16, kPadFull = 156;    // スライドパッドの遊びと倒し切り（CTRPF の GetCirclePadPosition の値）
+typedef void (*MenuSceneFn)(void);
+const MenuSceneFn EnterMenuScene = reinterpret_cast<MenuSceneFn>(0x004EF5DC);   // 持ち物 sub_1959D0 と同じ（byte_94CA2C = 1 ほか）
+const MenuSceneFn LeaveMenuScene = reinterpret_cast<MenuSceneFn>(0x004EF27C);   // 戻す（保存していた値へ）
+const u32 kSceneModeByte = 0x0094CA2C;
+// ---- 音（HHD の音は ACNL の音で代用。SOUND/index/sounds.csv の番号、Game_PlaySound 0x58C7D4）----
+typedef void (*PlaySoundFn)(u32 id);
+const PlaySoundFn PlaySound = reinterpret_cast<PlaySoundFn>(0x0058C7D4);
+const u32 kSndOpen = 0x010003C2;            // SE_SYS_WIN_SELECT_OPEN
+const u32 kSndTouch = 0x01000398;           // SE_SYS_BTN_ACTIVE（触れた）
+const u32 kSndPick = 0x01000390;            // SE_SYS_DECIDE_S（目の形・髪型を決めた）
+const u32 kSndColor = 0x01000449;           // SE_SYS_EDIT_COLOR_SELECTED（色を決めた。マイデザインの色選び）
+const u32 kSndMode = 0x01000412;            // SE_SYS_BOOK_TAB_CHANGE（かみがた ↔ かお）
+const u32 kSndDecide = 0x0100038E;          // SE_SYS_DECIDE（けってい）
+const u32 kSndCancel = 0x01000392;          // SE_SYS_CANCEL（B で閉じる）
+const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
+const u32 kSndGoodsOff = 0x010006B6, kSndGoodsOn = 0x010006B7;  // SE_ACT_BARBER_GOODS_OFF / ON（美容室で頭の小物を外す / 付ける。Player_SetHeadGoodsWithSound 0x68B238、F083）
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
 const u32 kScreenLower = 1, kScreenUpper = 0;   // AddLayout の画面（上画面 = 0 / 下画面 = 1。LayoutMgr_AddLayout 0x56928C）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
@@ -189,6 +214,14 @@ const char *volatile s_error = "";
 u32 s_wait;
 volatile State s_state;                     // 欲しい状態
 volatile s8 s_pageReq;                      // メニューのスレッドからのページ送りの頼み（-1 / +1、0 = なし）
+// 複製（メニューのスレッドが書く）と、Scene 1 にしたか（ゲームのスレッドだけ）
+float s_cloneYaw;
+volatile bool s_hideHead;
+u64 s_padTick;
+bool s_menuScene;
+// 音の頼み（メニューのスレッドが積み、ゲームのスレッドが鳴らす）
+volatile u32 s_soundQ[8];
+volatile u32 s_soundHead, s_soundTail;
 // 髪のスクロール（メニューのスレッドだけが書く。ゲームのスレッドは s_scrollPub を読んで枠を置くだけ）
 TouchScroll s_scroller;
 volatile float s_scrollPub;                 // スクロール位置（画素）
@@ -444,6 +477,47 @@ void Apply(void) {
     }
     s_applied = want;
     s_appliedValid = true;
+}
+
+// ---- 音 ----
+void QueueSound(u32 id) {
+    const u32 head = s_soundHead;
+    if (head - s_soundTail >= 8)
+        return;
+    s_soundQ[head & 7] = id;
+    s_soundHead = head + 1;
+}
+
+void FlushSounds(void) {
+    while (s_soundTail != s_soundHead) {
+        PlaySound(s_soundQ[s_soundTail & 7]);
+        s_soundTail = s_soundTail + 1;
+    }
+}
+
+// ---- 複製（ゲームのスレッド）: 複製ができてから Scene 1 にする。閉じ始めたら戻す ----
+void StepMenuScene(void) {
+    if (!s_menuScene) {
+        if (!s_want || s_phase == Phase::Leaving)
+            return;
+        const PlayerClone::Status st = PlayerClone::Read();
+        if (st.stage != 2 || !PlayerClone::ProjectionReady())
+            return;                         // 複製が表示中で、世界のカメラの投影を一度取れてから
+        if (*reinterpret_cast<const volatile u8 *>(kSceneModeByte) != 0)
+            return;                         // ほかのメニューが使っている
+        EnterMenuScene();
+        s_menuScene = true;
+    } else if (!s_want || s_phase == Phase::Leaving) {
+        LeaveMenuScene();
+        s_menuScene = false;
+    }
+}
+
+void LeaveMenuSceneNow(void) {
+    if (s_menuScene) {
+        LeaveMenuScene();
+        s_menuScene = false;
+    }
 }
 
 // ---- 髪のページ（ゲームのスレッド）: スクロール位置から中央の枠のページと N_All の x を決める ----
@@ -964,6 +1038,8 @@ void StepToward(float dt) {
 void Decide(s32 target) {
     s_okTarget = target;                    // 押したときのアニメの touch_ok（ゲームのスレッド）
     s_okSerial = s_okSerial + 1;
+    QueueSound(target == 900 ? kSndMode : target == 901 ? kSndDecide : target == 800 ? kSndPageDec : target == 801 ? kSndPageInc
+               : target >= 400 ? kSndColor : target >= 300 ? kSndPick : target >= 100 ? kSndColor : kSndPick);
     if (target == 900) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
     } else if (target == 901) {
@@ -1040,6 +1116,12 @@ bool Show(void) {
     s_onPage = false;
     s_keysPrev = 0xFFFFFFFFu;               // 開いたときに押していたボタンは「押した」に数えない
     s_error = "";
+    s_cloneYaw = 0.0f;
+    s_hideHead = false;
+    s_padTick = 0;
+    s_soundTail = s_soundHead;
+    PlayerClone::SetScreen(true, 0, kClonePitch, kCloneX, kCloneY, kCloneZoom);
+    PlayerClone::Show();                    // 吹き出しの複製（作れなければ出ないだけ）
     s_want = true;
     s_stage = Stage::Copy;
     return true;
@@ -1073,8 +1155,9 @@ const char *StageName(void) {
 }
 
 void Measure(char *out, u32 size) {
-    // レイアウトごとに 記録した長さ/確保した大きさ（バイト。地・顔・目・髪）。ヒープは組む前と後の空き（KB）
-    std::snprintf(out, size, u8"性別 %u 命令 %lu/%lu %lu/%lu %lu/%lu %lu/%lu 上 %lu/%lu 空き %luK→%luK", (unsigned)s_sexByte,
+    // レイアウトごとに 記録した長さ/確保した大きさ（バイト。地・顔・目・髪・上）。ヒープは組む前と後の空き（KB）
+    //   見出しは ASCII（通知はメニューの UI フォント = 美咲の一部 362 字で描くので、性・命令・空き・→ などが欠けた。利用者 2026-10-05）
+    std::snprintf(out, size, "sex %u cmd %lu/%lu %lu/%lu %lu/%lu %lu/%lu top %lu/%lu heap %luK>%luK", (unsigned)s_sexByte,
                   (unsigned long)s_used[0], (unsigned long)s_size[0], (unsigned long)s_used[1], (unsigned long)s_size[1],
                   (unsigned long)s_used[2], (unsigned long)s_size[2], (unsigned long)s_used[3], (unsigned long)s_size[3],
                   (unsigned long)s_used[4], (unsigned long)s_size[4],
@@ -1108,11 +1191,44 @@ void Tick(bool menuVisible) {
     const u32 pressed = keys & ~s_keysPrev;
     s_keysPrev = keys;
     if (pressed & (u32)Key::B) {
+        QueueSound(kSndCancel);
         s_want = false;                     // B: 閉じる
         return;
     }
-    if (s_state.mode == 1 && (pressed & ((u32)Key::L | (u32)Key::R)))
+    if (s_state.mode == 1 && (pressed & ((u32)Key::L | (u32)Key::R))) {
         s_pageReq = (pressed & (u32)Key::L) ? -1 : 1;   // 髪のページ送り（HHD-F007: L / R）
+        QueueSound((pressed & (u32)Key::L) ? kSndPageDec : kSndPageInc);
+    }
+    if (pressed & (u32)Key::Y) {
+        // Y: 頭の小物（帽子・アクセサリー）を外して見せる / 付ける（複製だけ。音は美容室の付け外しの音）
+        s_hideHead = !s_hideHead;
+        QueueSound(s_hideHead ? kSndGoodsOff : kSndGoodsOn);
+    }
+    {
+        // スライドパッドで複製を回す（T019: 上限なし、倒した量に比例した速さ）
+        const u64 t = svcGetSystemTick();
+        const float dt = s_padTick != 0 ? (float)(t - s_padTick) / (float)SYSCLOCK_ARM11 : 0.0f;
+        s_padTick = t;
+        const shortVector pad = Controller::GetCirclePadPosition();
+        s32 px = pad.x;
+        if (px > -kPadDead && px < kPadDead)
+            px = 0;
+        if (px > kPadFull)
+            px = kPadFull;
+        if (px < -kPadFull)
+            px = -kPadFull;
+        if (dt > 0.0f && dt < 0.5f && px != 0) {
+            s_cloneYaw += kYawPerSecond * dt * (float)px / (float)kPadFull;
+            while (s_cloneYaw >= 360.0f)
+                s_cloneYaw -= 360.0f;
+            while (s_cloneYaw < 0.0f)
+                s_cloneYaw += 360.0f;
+        }
+        PlayerClone::SetScreen(true, (s32)s_cloneYaw, kClonePitch, kCloneX, kCloneY, kCloneZoom);
+        const s32 hair = s_state.hair;
+        PlayerClone::SetHair(hair >= 0 && hair < 32 ? AcnlHairFromHhd(hair) : -1, s_state.hairColor);
+        PlayerClone::SetLook(s_state.skin, s_hideHead);
+    }
     const bool down = Touch::IsDown();
     const s8 mode = s_state.mode;
     const u64 now = svcGetSystemTick();
@@ -1131,6 +1247,8 @@ void Tick(bool menuVisible) {
             s_stepping = false;
             s_onPage = true;
             s_touchStart = wasMoving ? -1 : HitPage((s32)pos.x, (s32)pos.y, s_scroller.scroll);
+            if (s_touchStart >= 300 && s_touchStart < 400)
+                QueueSound(kSndTouch);      // 髪のマスに触れた（端は送ったときに鳴らす）
         }
     }
     if (s_onPage) {
@@ -1178,8 +1296,11 @@ void Tick(bool menuVisible) {
     if (down) {
         const UIntVector pos = Touch::GetPosition();
         const s32 hit = HitTest((s32)pos.x, (s32)pos.y, mode);
-        if (!s_touchPrev)
+        if (!s_touchPrev) {
             s_touchStart = hit;
+            if (hit >= 0)
+                QueueSound(kSndTouch);
+        }
         else if (hit != s_touchStart)
             s_touchStart = -1;
     } else if (s_touchPrev) {
@@ -1197,6 +1318,7 @@ void FrameStep(void) {
         return;
     case Stage::Copy:
         if (!s_want) {
+            PlayerClone::Hide();
             GameList::HoldField(false);
             s_stage = Stage::Idle;
             return;
@@ -1206,11 +1328,13 @@ void FrameStep(void) {
         Build();
         if (s_stage != Stage::Draw)
             return;
+        PlaySound(kSndOpen);
         // fallthrough: 組めたフレームから描く
     case Stage::Draw: {
         u32 drawn[4];
         DrawnLayouts(drawn);
         if (!s_want && s_phase != Phase::Leaving) {
+            PlayerClone::Hide();            // 閉じ始め: 複製を片付け、Scene 1 から戻す（StepMenuScene）
             if (s_applyReq) {
                 s_applyReq = false;
                 ApplyToPlayer();
@@ -1237,6 +1361,8 @@ void FrameStep(void) {
             if (s_phase == Phase::Entering)
                 s_phase = Phase::Live;
             else if (s_phase == Phase::Leaving) {
+                PlayerClone::SetHair(-1, -1);   // 普段の複製（チートの項目）に戻すとき本物のままになるように
+                PlayerClone::SetLook(-1, false);
                 // 退場し終えた: このフレームから描かない。壊すのは数フレーム後
                 s_stage = Stage::Teardown;
                 s_wait = 0;
@@ -1249,6 +1375,8 @@ void FrameStep(void) {
         PlacePages();
         Apply();
         PressStep();
+        StepMenuScene();
+        FlushSounds();
         const u32 third = s_applied.mode == 0 ? kEye : kHair;
         const u32 order[3] = { kBg, kFace, third };
         void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
@@ -1264,6 +1392,8 @@ void FrameStep(void) {
         return;
     }
     case Stage::Teardown:
+        LeaveMenuSceneNow();
+        FlushSounds();
         // 描くのをやめてから数フレーム待って壊す（GPU がまだ読んでいるかもしれない。GameLabel と同じ）
         if (++s_wait < kTeardownWaitFrames)
             return;
@@ -1273,6 +1403,8 @@ void FrameStep(void) {
         return;
     case Stage::Failed:
         // 途中まで作ったものを返す。描いていないので待たなくてよい
+        LeaveMenuSceneNow();
+        PlayerClone::Hide();
         Release();
         GameList::HoldField(false);
         s_want = false;
