@@ -452,6 +452,185 @@ void PlacePages(void) {
     MovePaneX(s_p.hairAll, kPageStep * (float)page - scroll);
 }
 
+// ---- 押したときのアニメ（ゲームのスレッド）----
+//   HHD の ButtonBaseActor は TouchSelect で touch、TouchDecide で touch_ok を流す（IDA-opus-5.5-HHD-F004）。
+//   どちらもペインの位置 Y・回転 Z・拡大率・表示だけなので、HhdTables の kPress*（HHD の BFLAN のキー）をエルミートで補間して書く。
+//   touch は 1 フレームの物で、触れている間は最後のフレーム（沈んだ形）のまま。touch_ok はフレーム 0 から最後まで 1 フレームずつ。
+volatile s32 s_pressTarget = -1;            // メニューのスレッド: 触れている的（-1 = なし）
+volatile s32 s_okTarget = -1;               // メニューのスレッド: 最後に決定した的
+volatile u32 s_okSerial;                    // 決定のたびに 1 増える
+
+const u32 kPaneY = 0x2C, kPaneRotZ = 0x3C, kPaneScaleX = 0x40, kPaneScaleY = 0x44;   // nw::lyt::Pane（translate +0x28 / rotate +0x34 / scale +0x40）
+struct Posed { void *pane; u8 target; float base; };
+struct PressSlot {
+    s32 target = -1;
+    const HhdTables::PressAnim *anim = nullptr;   // [0] touch / [1] touch_ok
+    u32 lay = 0;
+    char prefix[8] = {};
+    Posed posed[12];
+    u32 count = 0;
+    bool ok = false;                        // touch_ok を流している
+    float frame = 0.0f;
+};
+PressSlot s_press;
+u32 s_okSeen;
+
+float EvalKeys(const HhdTables::Key *k, u32 n, float f) {
+    if (f <= k[0].f)
+        return k[0].v;
+    u32 i = n - 1;
+    while (i > 0 && k[i].f > f)
+        --i;
+    if (i == n - 1)
+        return k[i].v;
+    const float d = k[i + 1].f - k[i].f;
+    if (d <= 0.0f)
+        return k[i + 1].v;
+    const float t = (f - k[i].f) / d, t2 = t * t, t3 = t2 * t;
+    return k[i].v * (2.0f * t3 - 3.0f * t2 + 1.0f) + k[i + 1].v * (-2.0f * t3 + 3.0f * t2)
+        + (k[i].s * (t3 - 2.0f * t2 + t) + k[i + 1].s * (t3 - t2)) * d;
+}
+
+float ReadTarget(void *pane, u8 target) {
+    u8 *b = reinterpret_cast<u8 *>(pane);
+    switch (target) {
+    case 1: return *reinterpret_cast<float *>(b + kPaneY);
+    case 5: return *reinterpret_cast<float *>(b + kPaneRotZ);
+    case 6: return *reinterpret_cast<float *>(b + kPaneScaleX);
+    case 7: return *reinterpret_cast<float *>(b + kPaneScaleY);
+    default: return (B(pane, kPaneFlags) & 1u) ? 1.0f : 0.0f;
+    }
+}
+
+void WriteTarget(void *pane, u8 target, float v) {
+    u8 *b = reinterpret_cast<u8 *>(pane);
+    switch (target) {
+    case 1: *reinterpret_cast<float *>(b + kPaneY) = v; break;
+    case 5: *reinterpret_cast<float *>(b + kPaneRotZ) = v; break;
+    case 6: *reinterpret_cast<float *>(b + kPaneScaleX) = v; break;
+    case 7: *reinterpret_cast<float *>(b + kPaneScaleY) = v; break;
+    default: SetVisible(pane, v >= 0.5f); return;
+    }
+    B(pane, kPaneFlags) &= 0xCFu;           // 行列を作り直させる（MovePaneX と同じ）
+}
+
+// 的の番号 → レイアウト・名前の頭・アニメ。今の画面に無い的は false
+bool ResolvePress(s32 t, u32 &lay, char (&prefix)[8], const HhdTables::PressAnim *&anim) {
+    const s8 mode = s_applied.mode;
+    if (t >= 0 && t < 12 && mode == 0) {
+        lay = kEye, anim = HhdTables::kPressEye;
+        std::snprintf(prefix, sizeof(prefix), "e%02ld", (long)t);
+    } else if (t >= 100 && t < 106 && mode == 0) {
+        lay = kFace, anim = HhdTables::kPressColor;
+        std::snprintf(prefix, sizeof(prefix), "ec%02ld", (long)(t - 100));
+    } else if (t >= 200 && t < 208 && mode == 0) {
+        lay = kFace, anim = HhdTables::kPressColor;
+        std::snprintf(prefix, sizeof(prefix), "sc%02ld", (long)(t - 200));
+    } else if (t >= 400 && t < 416 && mode == 1) {
+        lay = kFace, anim = HhdTables::kPressColor;
+        std::snprintf(prefix, sizeof(prefix), "hc%02ld", (long)(t - 400));
+    } else if (t >= 300 && t < 332 && mode == 1) {
+        const s32 hair = t - 300, f = hair / 8 - (s32)s_state.page + 1;
+        if (f < 0 || f > 2)
+            return false;
+        lay = kHair, anim = HhdTables::kPressHair;
+        std::snprintf(prefix, sizeof(prefix), "h%ld%ld", (long)f, (long)(hair % 8));
+    } else if (t == 900 || t == 901) {
+        lay = kFace, anim = t == 900 ? HhdTables::kPressBtn0 : HhdTables::kPressBtn1;
+        std::snprintf(prefix, sizeof(prefix), "b%ld", (long)(t - 900));
+    } else {
+        return false;
+    }
+    return true;
+}
+
+void PressAdd(void *pane, u8 target) {
+    for (u32 i = 0; i < s_press.count; ++i)
+        if (s_press.posed[i].pane == pane && s_press.posed[i].target == target)
+            return;
+    if (s_press.count < sizeof(s_press.posed) / sizeof(s_press.posed[0]))
+        s_press.posed[s_press.count++] = { pane, target, ReadTarget(pane, target) };
+}
+
+// 的 t の形を記録してから動かせるようにする（touch と touch_ok の全トラックのペインの元の値を取る）
+bool PressBegin(s32 t) {
+    s_press = PressSlot();
+    if (!ResolvePress(t, s_press.lay, s_press.prefix, s_press.anim))
+        return false;
+    s_press.target = t;
+    for (u32 a = 0; a < 2; ++a)
+        for (u32 i = 0; i < s_press.anim[a].count; ++i) {
+            const HhdTables::Track &tr = s_press.anim[a].tracks[i];
+            char name[24];
+            std::snprintf(name, sizeof(name), "%s_%s", s_press.prefix, tr.pane);
+            void *pane = FindPane(s_lay[s_press.lay].obj, name);
+            if (pane != nullptr)
+                PressAdd(pane, tr.target);
+        }
+    return true;
+}
+
+void PressPose(const HhdTables::PressAnim &a, float f) {
+    for (u32 i = 0; i < a.count; ++i) {
+        const HhdTables::Track &tr = a.tracks[i];
+        char name[24];
+        std::snprintf(name, sizeof(name), "%s_%s", s_press.prefix, tr.pane);
+        void *pane = FindPane(s_lay[s_press.lay].obj, name);
+        if (pane != nullptr)
+            WriteTarget(pane, tr.target, EvalKeys(tr.keys, tr.count, f));
+    }
+}
+
+// 元へ戻す。決定し終えたときの表示（色見本の枠）は Apply が選択に合わせて塗り直す
+void PressEnd(bool decided) {
+    bool vis = false;
+    for (u32 i = 0; i < s_press.count; ++i) {
+        const Posed &q = s_press.posed[i];
+        if (q.target == 16) {
+            vis = true;
+            if (decided)
+                continue;
+        }
+        WriteTarget(q.pane, q.target, q.base);
+    }
+    if (decided && vis)
+        s_appliedValid = false;
+    s_press = PressSlot();
+}
+
+void PressStep(void) {
+    const u32 serial = s_okSerial;
+    if (serial != s_okSeen) {
+        s_okSeen = serial;
+        const s32 t = s_okTarget;
+        if (s_press.target != t) {
+            if (s_press.target >= 0)
+                PressEnd(false);
+            PressBegin(t);
+        }
+        if (s_press.target == t && t >= 0) {
+            s_press.ok = true;
+            s_press.frame = 0.0f;
+        }
+    }
+    if (s_press.ok) {
+        PressPose(s_press.anim[1], s_press.frame);
+        s_press.frame += 1.0f;
+        if (s_press.frame > s_press.anim[1].frames)
+            PressEnd(true);
+        return;
+    }
+    const s32 want = s_pressTarget;
+    if (want != s_press.target) {
+        if (s_press.target >= 0)
+            PressEnd(false);
+        if (want >= 0)
+            PressBegin(want);
+    }
+    if (s_press.target >= 0)
+        PressPose(s_press.anim[0], s_press.anim[0].frames);   // 触れている間は沈んだ形のまま
+}
+
 // ---- プレイヤーへの反映（ゲームのスレッド）----
 
 // HHD の髪の番号 k（0..31: 0〜15 男の子、16〜31 女の子）↔ ACNL の髪型（0..33: 0〜15 男の子、17〜32 女の子、16 / 33 は寝癖）。HHD-F008
@@ -568,6 +747,8 @@ u32 RecordedBytes(void *layout) {
 }
 
 void Release(void) {
+    s_press = PressSlot();
+    s_pressTarget = -1;
     for (u32 i = 0; i < kLayouts; ++i) {
         Lay &l = s_lay[i];
         if (l.made) {
@@ -774,6 +955,8 @@ void StepToward(float dt) {
 
 // 的を「決定」したとき（HHD と同じく、指を置いた的の上で離したら決定）
 void Decide(s32 target) {
+    s_okTarget = target;                    // 押したときのアニメの touch_ok（ゲームのスレッド）
+    s_okSerial = s_okSerial + 1;
     if (target == 900) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
     } else if (target == 901) {
@@ -902,6 +1085,7 @@ void Tick(bool menuVisible) {
         s_touchPrev = false;
         s_touchStart = -1;
         s_onPage = false;
+        s_pressTarget = -1;
         return;                             // 組み立て待ち・出入りのアニメ中・片付け中は止めるだけ
     }
     if (menuVisible) {
@@ -910,6 +1094,7 @@ void Tick(bool menuVisible) {
         if (s_onPage)
             s_scroller.Release(svcGetSystemTick());
         s_onPage = false;
+        s_pressTarget = -1;
         return;
     }
     const u32 keys = Controller::GetKeysDown(true);
@@ -955,6 +1140,7 @@ void Tick(bool menuVisible) {
             s_onPage = false;
         }
         s_touchPrev = down;
+        s_pressTarget = down ? s_touchStart : -1;
         s_scrollPub = s_scroller.scroll;
         return;
     }
@@ -995,6 +1181,7 @@ void Tick(bool menuVisible) {
         s_touchStart = -1;
     }
     s_touchPrev = down;
+    s_pressTarget = down ? s_touchStart : -1;
 }
 
 void FrameStep(void) {
@@ -1054,6 +1241,7 @@ void FrameStep(void) {
             s_used[i] = RecordedBytes(s_lay[i].obj);
         PlacePages();
         Apply();
+        PressStep();
         const u32 third = s_applied.mode == 0 ? kEye : kHair;
         const u32 order[3] = { kBg, kFace, third };
         void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);

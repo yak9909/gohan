@@ -84,5 +84,54 @@ const Rect kPageRight = { 298, -1, 321, 153 };
 // 出入りのアニメ（anim/<layout>_in / _out.bclan）を結ぶグループ。並びは HhdScreen.cpp の kDefs（地・顔・目・髪・上）
 const char *const kAnimGroup[5] = { "G_InOut", "G_InOut", "G_In", "G_In", "G_InOut" };
 const bool kHasLoop[5] = { true, false, false, false, true };   // 地・顔・目・髪・上。結ぶグループは "G_Loop"
+// 押したときのアニメ（HHD の部品の touch = 触れている間の最後のフレーム / touch_ok = 決定）。target: 1 位置 Y / 5 回転 Z / 6 拡大 X / 7 拡大 Y / 16 表示
+struct Key { float f, v, s; };
+struct Track { const char *pane; u8 target; u8 count; const Key *keys; };
+struct PressAnim { float frames; u8 count; const Track *tracks; };
+const Key kKeyEye_touch_0[2] = { { 0.0, 0.0, -2.0 }, { 1.0, -2.0, -2.0 } };
+const Key kKeyEye_touch_1[1] = { { 0.0, 1.0, 0.0 } };
+const Track kTracksEye_touch[2] = { { "N_Btn", 1, 2, kKeyEye_touch_0 }, { "N_Btn", 7, 1, kKeyEye_touch_1 } };
+const Key kKeyEye_touch_ok_0[3] = { { 0.0, -2.0, 2.0 }, { 1.0, 0.0, 2.0 }, { 1.0, 0.0, 0.0 } };
+const Key kKeyEye_touch_ok_1[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 0.9200000166893005, 0.0 }, { 3.0, 1.0, 0.0 } };
+const Track kTracksEye_touch_ok[2] = { { "N_Btn", 1, 3, kKeyEye_touch_ok_0 }, { "N_Btn", 7, 3, kKeyEye_touch_ok_1 } };
+const PressAnim kPressEye[2] = { { 1.0, 2, kTracksEye_touch }, { 3.0, 2, kTracksEye_touch_ok } };   // fce_Eye_00_touch / _touch_ok
+const Key kKeyHair_touch_0[2] = { { 0.0, 0.0, -2.0 }, { 1.0, -2.0, -2.0 } };
+const Key kKeyHair_touch_1[1] = { { 0.0, 1.0, 0.0 } };
+const Track kTracksHair_touch[2] = { { "N_Btn", 1, 2, kKeyHair_touch_0 }, { "N_Btn", 7, 1, kKeyHair_touch_1 } };
+const Key kKeyHair_touch_ok_0[3] = { { 0.0, -2.0, 2.0 }, { 1.0, 0.0, 2.0 }, { 1.0, 0.0, 0.0 } };
+const Key kKeyHair_touch_ok_1[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 0.9200000166893005, 0.0 }, { 3.0, 1.0, 0.0 } };
+const Track kTracksHair_touch_ok[2] = { { "N_Btn", 1, 3, kKeyHair_touch_ok_0 }, { "N_Btn", 7, 3, kKeyHair_touch_ok_1 } };
+const PressAnim kPressHair[2] = { { 1.0, 2, kTracksHair_touch }, { 3.0, 2, kTracksHair_touch_ok } };   // fce_Hair_00_touch / _touch_ok
+const Key kKeyColor_touch_0[2] = { { 0.0, 0.0, -2.0 }, { 1.0, -2.0, -2.0 } };
+const Key kKeyColor_touch_1[2] = { { 0.0, 0.0, 0.0 }, { 1.0, 1.0, 0.0 } };
+const Track kTracksColor_touch[2] = { { "N_Color", 1, 2, kKeyColor_touch_0 }, { "P_Frame", 16, 2, kKeyColor_touch_1 } };
+const Key kKeyColor_touch_ok_0[3] = { { 0.0, -2.0, 2.0 }, { 1.0, 0.0, 2.0 }, { 1.0, 0.0, 0.0 } };
+const Key kKeyColor_touch_ok_1[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 3.0, 1.0, 0.0 } };
+const Key kKeyColor_touch_ok_2[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 3.0, 1.0, 0.0 } };
+const Key kKeyColor_touch_ok_3[1] = { { 0.0, 1.0, 0.0 } };
+const Track kTracksColor_touch_ok[4] = { { "N_Color", 1, 3, kKeyColor_touch_ok_0 }, { "N_Color", 6, 3, kKeyColor_touch_ok_1 }, { "N_Color", 7, 3, kKeyColor_touch_ok_2 }, { "P_Frame", 16, 1, kKeyColor_touch_ok_3 } };
+const PressAnim kPressColor[2] = { { 1.0, 2, kTracksColor_touch }, { 3.0, 4, kTracksColor_touch_ok } };   // fce_Color_00_touch / _touch_ok
+const Key kKeyBtn0_touch_0[1] = { { 0.0, 1.0, 0.0 } };
+const Key kKeyBtn0_touch_1[1] = { { 0.0, 1.0, 0.0 } };
+const Key kKeyBtn0_touch_2[2] = { { 0.0, 0.0, -2.0 }, { 1.0, -2.0, -2.0 } };
+const Key kKeyBtn0_touch_3[3] = { { 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0 }, { 1.0, 180.0, 0.0 } };
+const Track kTracksBtn0_touch[4] = { { "N_All", 6, 1, kKeyBtn0_touch_0 }, { "N_All", 7, 1, kKeyBtn0_touch_1 }, { "N_Btn", 1, 2, kKeyBtn0_touch_2 }, { "P_Btn", 5, 3, kKeyBtn0_touch_3 } };
+const Key kKeyBtn0_touch_ok_0[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 5.0, 1.0, 0.0 } };
+const Key kKeyBtn0_touch_ok_1[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 5.0, 1.0, 0.0 } };
+const Key kKeyBtn0_touch_ok_2[3] = { { 0.0, -2.0, 2.0 }, { 1.0, 0.0, 2.0 }, { 1.0, 0.0, 0.0 } };
+const Key kKeyBtn0_touch_ok_3[3] = { { 0.0, 180.0, 0.0 }, { 1.0, 180.0, 0.0 }, { 1.0, 0.0, 0.0 } };
+const Track kTracksBtn0_touch_ok[4] = { { "N_All", 6, 3, kKeyBtn0_touch_ok_0 }, { "N_All", 7, 3, kKeyBtn0_touch_ok_1 }, { "N_Btn", 1, 3, kKeyBtn0_touch_ok_2 }, { "P_Btn", 5, 3, kKeyBtn0_touch_ok_3 } };
+const PressAnim kPressBtn0[2] = { { 1.0, 4, kTracksBtn0_touch }, { 8.0, 4, kTracksBtn0_touch_ok } };   // fce_Btn_00_touch / _touch_ok
+const Key kKeyBtn1_touch_0[1] = { { 0.0, 1.0, 0.0 } };
+const Key kKeyBtn1_touch_1[1] = { { 0.0, 1.0, 0.0 } };
+const Key kKeyBtn1_touch_2[2] = { { 0.0, 0.0, -2.0 }, { 1.0, -2.0, -2.0 } };
+const Key kKeyBtn1_touch_3[3] = { { 0.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0 }, { 1.0, 180.0, 0.0 } };
+const Track kTracksBtn1_touch[4] = { { "N_All", 6, 1, kKeyBtn1_touch_0 }, { "N_All", 7, 1, kKeyBtn1_touch_1 }, { "N_Btn", 1, 2, kKeyBtn1_touch_2 }, { "P_Btn", 5, 3, kKeyBtn1_touch_3 } };
+const Key kKeyBtn1_touch_ok_0[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 5.0, 1.0, 0.0 } };
+const Key kKeyBtn1_touch_ok_1[3] = { { 0.0, 1.0, 0.0 }, { 2.0, 1.0399999618530273, 0.0 }, { 5.0, 1.0, 0.0 } };
+const Key kKeyBtn1_touch_ok_2[3] = { { 0.0, -2.0, 2.0 }, { 1.0, 0.0, 2.0 }, { 1.0, 0.0, 0.0 } };
+const Key kKeyBtn1_touch_ok_3[3] = { { 0.0, 180.0, 0.0 }, { 1.0, 180.0, 0.0 }, { 1.0, 0.0, 0.0 } };
+const Track kTracksBtn1_touch_ok[4] = { { "N_All", 6, 3, kKeyBtn1_touch_ok_0 }, { "N_All", 7, 3, kKeyBtn1_touch_ok_1 }, { "N_Btn", 1, 3, kKeyBtn1_touch_ok_2 }, { "P_Btn", 5, 3, kKeyBtn1_touch_ok_3 } };
+const PressAnim kPressBtn1[2] = { { 1.0, 4, kTracksBtn1_touch }, { 8.0, 4, kTracksBtn1_touch_ok } };   // cbn_Btn_00_touch / _touch_ok
 const u32 kBgFadeFrames = 5;   // hhd_bg_out.bclan の frameSize
 }  // namespace HhdTables
