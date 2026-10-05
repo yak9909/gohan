@@ -135,8 +135,8 @@ struct Def { const char *name; u32 cmdBytes; };
 const Def kDefs[kLayouts] = {
     { "hhd_bg.bclyt",   0x2000  },
     { "hhd_face.bclyt", 0x10000 },
-    { "hhd_eye.bclyt",  0x8000  },
-    { "hhd_hair.bclyt", 0x10000 },
+    { "hhd_eye.bclyt",  0x10000 },   // 縞の枠で材質が 4 倍・TEV の段（2026-10-05。前は 0x8000 で実測 23,104 B）
+    { "hhd_hair.bclyt", 0x20000 },   // 同上（窓 24 個。前は 0x10000、実測なし）
     { "hhd_top.bclyt",  0x2000  },     // 上画面（HHD の fce_Top_00: 地・水玉・吹き出し・小さな丸・「まわす」。モデルは出さない）
 };
 
@@ -244,11 +244,18 @@ void *PicMaterial(void *pic) {
     return pic != nullptr ? reinterpret_cast<void *>(W(pic, kPicMaterial)) : nullptr;
 }
 
-void *WindowMaterial(void *win) {
+// 窓の全部の枠の材質を塗る。縞の枠は 4 枚（make_acnl_layouts.py FRAME4）。枠の数 = win+0x168、枠の配列 = win+0x160（1 枚 8 B、+4 = 材質）
+//   （nwlyt_Window_DrawSelf 0x73BCBC。IDA-opus-5.5-F082）
+const u32 kWindowFrameCount = 0x168, kFrameStride = 8;
+void PaintWindow(void *win, const HhdTables::ColorPair &c) {
     if (win == nullptr)
-        return nullptr;
+        return;
     const u32 frames = W(win, kWindowFrames);
-    return IsHeapPointer(reinterpret_cast<void *>(frames)) ? reinterpret_cast<void *>(W(reinterpret_cast<void *>(frames), kFrameMaterial)) : nullptr;
+    if (!IsHeapPointer(reinterpret_cast<void *>(frames)))
+        return;
+    const u32 n = B(win, kWindowFrameCount);
+    for (u32 i = 0; i < n && i < 8; ++i)
+        Paint(reinterpret_cast<void *>(W(reinterpret_cast<void *>(frames + kFrameStride * i), kFrameMaterial)), c);
 }
 
 void *Find(u32 lay, const char *fmt, u32 a, u32 b = 0) {
@@ -358,7 +365,7 @@ void PaintHairFrames(s8 page, s8 hair) {
         const s32 pg = FramePage(page, f);
         for (u32 k = 0; k < 8; ++k) {
             const bool sel = pg >= 0 && hair >= 0 && pg * 8 + (s32)k == hair;
-            Paint(WindowMaterial(s_p.hairFrame[f * 8 + k]), sel ? HhdTables::kHairCell[k].b : HhdTables::kHairCell[k].a);
+            PaintWindow(s_p.hairFrame[f * 8 + k], sel ? HhdTables::kHairCell[k].b : HhdTables::kHairCell[k].a);
         }
     }
 }
@@ -403,7 +410,7 @@ void Apply(void) {
     }
     if (all || want.eyeShape != was.eyeShape)
         for (u32 k = 0; k < 12; ++k)
-            Paint(WindowMaterial(s_p.eyeFrame[k]), (s32)k == want.eyeShape ? HhdTables::kEyeShape[k].b : HhdTables::kEyeShape[k].a);
+            PaintWindow(s_p.eyeFrame[k], (s32)k == want.eyeShape ? HhdTables::kEyeShape[k].b : HhdTables::kEyeShape[k].a);
     if (all || want.hair != was.hair || want.page != was.page)
         PaintHairFrames(want.page, want.hair);
     if (all || want.eyeColor != was.eyeColor) {
