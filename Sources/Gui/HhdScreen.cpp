@@ -75,6 +75,12 @@ const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);
 const GetTextureFn   GetTexture     = reinterpret_cast<GetTextureFn>(0x004B5844);     // nwlyt_ArcResourceAccessor_GetTexture
 const TexMapUpdateFn TexMapUpdate   = reinterpret_cast<TexMapUpdateFn>(0x004B9830);   // nwlyt_TexMap_UpdateGpuRegs
 const ProfileFn      PlayerProfile  = reinterpret_cast<ProfileFn>(0x002FEB60);        // PlayerClone.cpp と同じ（vc_PSOFFSET）
+// プレイヤーへの反映（段階 3。解析リポジトリ IDA-opus-5.5-F080 / 旧 F-68）
+//   vc_UPDATE 0x689DDC(player): プロフィールの見た目の記録から髪型・髪色・目の色（とマスク）をアクターへ読み直して作り直しの印を立てる（旧 F-68 で実機確認）。
+//   顔（目の形、記録 +2）はモデルを作るとき（PlayerModel_CreateStep → sub_2711AC）にしか読まない → 次にモデルが作り直されたときに出る。
+//   日焼け（記録 +4、0..15）はモデルを作るときに >>1 して pm+448 に入り、毎フレームの部品更新が pm+448 から肌の色を作る → pm+448 も書く。
+typedef void (*PlayerUpdateFn)(u32 player);
+const PlayerUpdateFn PlayerUpdate   = reinterpret_cast<PlayerUpdateFn>(0x00689DDC);
 // 出入りのアニメ（GameLabel.cpp と同じ関数・同じ順。実機確認済みの経路）
 const CtorFn         AnimCtor       = reinterpret_cast<CtorFn>(0x001261EC);
 const CtorFn         AnimDtor       = reinterpret_cast<CtorFn>(0x00568CAC);
@@ -101,6 +107,11 @@ const u32 kPaneX = 0x28;                    // ペインの平行移動 x（Game
 // 性別: プレイヤー [0xAA7994] の +428 = プレイヤー番号 → プロフィール（0x2FEB60）の +21946 の bit0（docs/topics/player_clone_preview.md）。
 //   0 = 男の子・1 = 女の子 と読む（公開情報の仮説。LOW。実機で利用者のキャラと照合する）
 const u32 kPlayerPtr = 0x00AA7994, kActorPlayerIndex = 428, kProfileSexByte = 21946;
+// 見た目の記録（profile+4）: +0 髪型 <34 / +1 髪色 <16 / +2 顔（目の形）<12 / +3 目の色 <6 / +4 日焼け 0..15（F080）
+const u32 kProfileLook = 4, kLookHair = 0, kLookHairColor = 1, kLookFace = 2, kLookEyeColor = 3, kLookTan = 4;
+const u32 kActorModel = 436, kModelTan = 448;   // AcPlayer+436 = PlayerModel、pm+448 = 日焼けの段階（PlayerModel_Setup 0x1CF4B4）
+// 通信中の判定（旧 F-68 のケーブと同じ。[g_NetGameMgr]+0x1326F が 0 ならオフライン）
+const u32 kNetGameMgrPtr = 0x0094D648, kNetOnline = 0x1326F;
 // 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
 //   ページ 0〜1 = 男の子の髪 B00〜B15、ページ 2〜3 = 女の子の髪 G00〜G15。髪の番号 = ページ × 8 + 枠の中の番号（0〜31）。枠は左 pg0・中央 pg1・右 pg2 の 3 つ（位置 -276 / 0 / +276、fce_HairBase_00）。
 //   送るときは N_All を 1 枠ぶん滑らせてから戻し、絵を入れ替える。滑る長さ kSlideFrames は HHD のコードからは未確認（仮の値）
@@ -175,6 +186,8 @@ volatile s8 s_pageReq;                      // メニューのスレッドから
 s8 s_slideDir;                              // 滑らせている向き（0 = 止まっている）。ゲームのスレッドだけ
 u32 s_slideFrame;
 volatile u8 s_sexByte = 0xFF;               // 読んだプロフィールの性別のバイト（状態の通知用）
+volatile bool s_applyReq;                   // 「けってい」で閉じる: 閉じ始めに見た目をプレイヤーへ書く
+const char *volatile s_applyResult = "";    // 反映の結果（状態の通知用）
 State s_applied;                            // ペインへ写した状態（ゲームのスレッドだけ）
 bool s_appliedValid;
 // 測った値（ゲームのスレッドが書き、Measure が読む）
@@ -438,6 +451,76 @@ void StepSlide(void) {
     MovePaneX(s_p.hairAll, -kPageStep * (float)s_slideDir * (float)s_slideFrame / (float)kSlideFrames);
 }
 
+// ---- プレイヤーへの反映（ゲームのスレッド）----
+
+// HHD の髪の番号 k（0..31: 0〜15 男の子、16〜31 女の子）↔ ACNL の髪型（0..33: 0〜15 男の子、17〜32 女の子、16 / 33 は寝癖）。HHD-F008
+s32 AcnlHairFromHhd(s32 k) { return k < 16 ? k : 17 + (k - 16); }
+s32 HhdHairFromAcnl(s32 h) {
+    if (h >= 0 && h < 16)
+        return h;
+    if (h >= 17 && h < 33)
+        return 16 + (h - 17);
+    return -1;                              // 寝癖（16 / 33）: HHD には無い
+}
+
+u8 *LookRecord(u32 &playerOut) {
+    playerOut = *reinterpret_cast<const volatile u32 *>(kPlayerPtr);
+    if (!IsHeapPointer(reinterpret_cast<void *>(playerOut)))
+        return nullptr;
+    const u32 profile = PlayerProfile(*reinterpret_cast<const volatile u8 *>(playerOut + kActorPlayerIndex));
+    if (profile < 0x08000000u || profile >= 0x40000000u)
+        return nullptr;
+    return reinterpret_cast<u8 *>(profile + kProfileLook);
+}
+
+// 開いたとき: 今の見た目を選択として出す
+void LoadCurrentLook(void) {
+    u32 player;
+    const u8 *rec = LookRecord(player);
+    if (rec == nullptr)
+        return;
+    const s32 hair = HhdHairFromAcnl(rec[kLookHair]);
+    s_state.hair = (s8)hair;
+    s_state.hairColor = rec[kLookHairColor] < 16 ? (s8)rec[kLookHairColor] : -1;
+    s_state.eyeShape = rec[kLookFace] < 12 ? (s8)rec[kLookFace] : -1;
+    s_state.eyeColor = rec[kLookEyeColor] < 6 ? (s8)rec[kLookEyeColor] : -1;
+    s_state.skin = rec[kLookTan] < 16 ? (s8)(rec[kLookTan] >> 1) : -1;
+    if (hair >= 0)
+        s_state.page = (s8)(hair / 8);
+}
+
+// 「けってい」: 選んだものだけ記録へ書き、vc_UPDATE で読み直させる。通信中は書かない（まずオフラインだけ。利用者 2026-10-05）
+void ApplyToPlayer(void) {
+    const u32 mgr = *reinterpret_cast<const volatile u32 *>(kNetGameMgrPtr);
+    if (IsHeapPointer(reinterpret_cast<void *>(mgr)) && *reinterpret_cast<const volatile u8 *>(mgr + kNetOnline) != 0) {
+        s_applyResult = u8"通信中なので反映しませんでした";
+        return;
+    }
+    u32 player;
+    u8 *rec = LookRecord(player);
+    if (rec == nullptr) {
+        s_applyResult = u8"プレイヤーが見つからず反映できませんでした";
+        return;
+    }
+    const s32 hair = s_state.hair, hairColor = s_state.hairColor, face = s_state.eyeShape, eyeColor = s_state.eyeColor, skin = s_state.skin;
+    const u8 oldFace = rec[kLookFace];
+    if (hair >= 0 && hair < 32)
+        rec[kLookHair] = (u8)AcnlHairFromHhd(hair);
+    if (hairColor >= 0 && hairColor < 16)
+        rec[kLookHairColor] = (u8)hairColor;
+    if (face >= 0 && face < 12)
+        rec[kLookFace] = (u8)face;
+    if (eyeColor >= 0 && eyeColor < 6)
+        rec[kLookEyeColor] = (u8)eyeColor;
+    if (skin >= 0 && skin < 8) {
+        rec[kLookTan] = (u8)(skin * 2);
+        const u32 pm = player + kActorModel;
+        *reinterpret_cast<volatile u32 *>(pm + kModelTan) = (u32)skin;
+    }
+    PlayerUpdate(player);
+    s_applyResult = (face >= 0 && (u8)face != oldFace) ? u8"反映しました（目の形は建物の出入りなどの後に変わります）" : u8"反映しました";
+}
+
 // ---- 出入りのアニメ（ゲームのスレッド）----
 
 void BindAnim(Lay &l, void *anim) {
@@ -583,6 +666,7 @@ void Build(void) {
         }
     }
     s_state.page = (s8)(s_state.sex == 1 ? 2 : 0);    // 自分の性別の髪の最初のページから
+    LoadCurrentLook();                                 // 今の見た目を選択として出す（髪があればそのページ）
     s_slideDir = 0;
     MovePaneX(s_p.hairAll, 0.0f);
     s_appliedValid = false;
@@ -642,7 +726,8 @@ void Decide(s32 target) {
     if (target == 900) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
     } else if (target == 901) {
-        s_want = false;                     // けってい: いまは閉じるだけ（プレイヤーへの反映は段階 3）
+        s_applyReq = true;                  // けってい: 閉じ始めにプレイヤーへ反映（ゲームのスレッド）
+        s_want = false;
     } else if (target == 800 || target == 801) {
         s_pageReq = target == 800 ? -1 : 1;
     } else if (target >= 400) {
@@ -709,6 +794,8 @@ bool Show(void) {
     s_state.eyeShape = s_state.eyeColor = s_state.skin = s_state.hair = s_state.hairColor = -1;
     s_state.page = 0;
     s_pageReq = 0;
+    s_applyReq = false;
+    s_applyResult = "";
     s_touchPrev = false;
     s_touchStart = -1;
     s_keysPrev = 0xFFFFFFFFu;               // 開いたときに押していたボタンは「押した」に数えない
@@ -728,6 +815,10 @@ bool Shown(void) {
 
 const char *LastError(void) {
     return s_error;
+}
+
+const char *ApplyResult(void) {
+    return s_applyResult;
 }
 
 const char *StageName(void) {
@@ -814,6 +905,10 @@ void FrameStep(void) {
         u32 drawn[4];
         DrawnLayouts(drawn);
         if (!s_want && s_phase != Phase::Leaving) {
+            if (s_applyReq) {
+                s_applyReq = false;
+                ApplyToPlayer();
+            }
             // 退場: 描いている 4 枚に out を結ぶ（入場の途中でも out を頭から）
             for (u32 n = 0; n < 4; ++n)
                 BindAnim(s_lay[drawn[n]], s_lay[drawn[n]].out);
@@ -919,6 +1014,8 @@ namespace CTRPluginFramework
                 HhdScreen::Measure(measure, sizeof(measure));
                 if (err[0] != 0)
                     std::snprintf(message, sizeof(message), u8"%s: %s", HhdScreen::StageName(), err);
+                else if (HhdScreen::ApplyResult()[0] != 0)
+                    std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), HhdScreen::ApplyResult());
                 else
                     std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), measure);
                 GuiNotification::Notify(kHhdStat, message);

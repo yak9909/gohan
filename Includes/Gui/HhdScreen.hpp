@@ -14,6 +14,7 @@ namespace HhdScreen
     void        Hide(void);             // 描くのをやめ、数フレーム後に資源を返す
     bool        Shown(void);
     const char *LastError(void);
+    const char *ApplyResult(void);      // 「けってい」の反映の結果（空 = まだ）
     const char *StageName(void);        // いまの段（状態の通知用）
     void        Measure(char *out, u32 size);   // 測った値（コマンドの使用量 / 確保、ヒープの空き）
 
