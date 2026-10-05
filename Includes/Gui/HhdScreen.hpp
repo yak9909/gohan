@@ -15,6 +15,7 @@ namespace HhdScreen
     bool        Shown(void);
     const char *LastError(void);
     const char *ApplyResult(void);      // 「けってい」の反映の結果（空 = まだ）
+    u32         ProfileSyncResult(void); // 目の形を通信相手へ送った結果（0 未 / 1 送った / 2 送れなかった。T020）
     const char *StageName(void);        // いまの段（状態の通知用）
     void        Measure(char *out, u32 size);   // 測った値（コマンドの使用量 / 確保、ヒープの空き）
 

@@ -933,6 +933,54 @@ void StepPeerSync(void) {
     }
 }
 
+// ---- 目の形を通信相手へ（T020、IDA-opus-5.5-F089）-----------------------------------------------------------------------------
+// 相手の写しの目の形（記録 +2）を書けるのはプロフィール丸ごとの転送だけ。参加時の手順 9（sub_61F3DC）と同じ下位種別 11 を自分で送る:
+//   片 = 自分のプロフィール（Save_GetCurrentPlayer、42,112 B）+ 通信管理 +78388 の 50 B。宛先 4 = 自分以外の全員（NetTransfer_SendSegments、引数は
+//   (管理, 宛先, 片, 大きさ, 片の数, 種別, 0, 1, 0) = 参加時と同じ）。送る前に sub_581FE0 で Mii の欄（+21656、状態 +168: 1 → 2）を送る形にし、
+//   済んだら sub_6BC270 で戻す（ゲームは成功時だけ戻す。ここでは打ち切りでも必ず戻す）。
+// 受け手は写しを上書きし、送り手がホスト以外なら住人の選出をし直す（sub_51D7E4。利用者: どうせ乱数なので構わない 2026-10-06）。
+// 相手の画面で目が変わるのは、こちらのモデルを作り直したとき（相手が建物を出入りする。利用者了承）。★下位転送種別 0x0C は使わない。
+typedef u32 (*SendSegmentsFn)(u32 mgr, u32 dest, const void *const *ptrs, const u32 *sizes, u32 count, u32 type, u32 a7, u32 enforceMasks, u32 preserveSequence);
+typedef u32 (*ProfileOpFn)(u32 profile);
+typedef u32 (*CurrentPlayerFn)(void);
+const SendSegmentsFn SendSegments = reinterpret_cast<SendSegmentsFn>(0x00616E10);     // NetTransfer_SendSegments
+const ProfileOpFn MiiToTransfer = reinterpret_cast<ProfileOpFn>(0x00581FE0);           // 手順 9 の前（sub_6BBE30 の中身）
+const ProfileOpFn MiiFromTransfer = reinterpret_cast<ProfileOpFn>(0x006BC270);         // 手順 9 の後（→ sub_582154）
+const CurrentPlayerFn SaveCurrentPlayer = reinterpret_cast<CurrentPlayerFn>(0x002FB900);   // Save_GetCurrentPlayer
+const u32 kTransferMgrPtr = 0x0094D644;     // g_NetGameMgrPtr（転送の管理。kNetGameMgrPtr 0x94D648 とは別の欄）
+const u32 kTransferOwnBlock = 78388, kTransferOwnBlockBytes = 50, kTransferProfile = 11, kTransferAll = 4;
+const u32 kProfileBytes = 42112, kProfileSendFrames = 300;
+volatile bool s_profileWant;
+bool s_profileConverted;
+u32 s_profileFrames, s_profilePtr;
+volatile u32 s_profileResult;               // 0 未 / 1 送った / 2 送れなかった
+
+void ProfileSyncFinish(u32 result) {
+    if (s_profileConverted)
+        MiiFromTransfer(s_profilePtr);      // Mii の欄を元の形へ（状態 2 でなければ何もしない）
+    s_profileConverted = false;
+    s_profileWant = false;
+    s_profileResult = result;
+}
+
+void StepProfileSync(void) {
+    if (!s_profileWant)
+        return;
+    const u32 mgr = *reinterpret_cast<const volatile u32 *>(kTransferMgrPtr);
+    const u32 profile = SaveCurrentPlayer();
+    if (!NetOnline() || !IsHeapPointer(reinterpret_cast<void *>(mgr)) || profile == 0u || (s_profileConverted && profile != s_profilePtr))
+        return ProfileSyncFinish(2);
+    s_profilePtr = profile;
+    MiiToTransfer(profile);                 // 手順 9 と同じく送る前に毎回（済んでいれば何もしない）
+    s_profileConverted = true;
+    const void *ptrs[2] = { reinterpret_cast<const void *>(profile), reinterpret_cast<const void *>(mgr + kTransferOwnBlock) };
+    const u32 sizes[2] = { kProfileBytes, kTransferOwnBlockBytes };
+    if (SendSegments(mgr, kTransferAll, ptrs, sizes, 2, kTransferProfile, 0, 1, 0) != 0u)
+        return ProfileSyncFinish(1);
+    if (++s_profileFrames > kProfileSendFrames)
+        return ProfileSyncFinish(2);        // 送信が受け付けられない（未確認の送信が残っている等）: 打ち切る
+}
+
 // 「けってい」: 選んだものだけ記録へ書き、vc_UPDATE で読み直させる。通信中は相手へも状態パケットで送る（T017。目の形・肌は相手へは送れない）
 void ApplyToPlayer(void) {
     const u32 mgr = *reinterpret_cast<const volatile u32 *>(kNetGameMgrPtr);
@@ -973,6 +1021,11 @@ void ApplyToPlayer(void) {
     // 目の形は vc_UPDATE では読み直されない（顔の枠は作るときにしか読まない）。本人の顔の枠を新しく読み、頭に読み直させる（F086）
     if (face >= 0 && (u8)face != oldFace)
         PlayerClone::ReloadRealFace();
+    if (online && face >= 0 && (u8)face != oldFace) {
+        s_profileFrames = 0;
+        s_profileResult = 0;
+        s_profileWant = true;               // 目の形は丸ごと転送で（相手が建物を出入りすると変わる。T020）
+    }
     s_applyResult = !online ? u8"反映しました" : u8"反映しました（通信相手へ送ります）";
 }
 
@@ -1336,6 +1389,10 @@ const char *LastError(void) {
     return s_error;
 }
 
+u32 ProfileSyncResult(void) {
+    return s_profileResult;
+}
+
 const char *ApplyResult(void) {
     return s_applyResult;
 }
@@ -1517,6 +1574,7 @@ void Tick(bool menuVisible) {
 
 void FrameStep(void) {
     StepPeerSync();
+    StepProfileSync();
     switch (s_stage) {
     case Stage::Idle:
         return;
@@ -1664,8 +1722,9 @@ namespace CTRPluginFramework
                     std::snprintf(message, sizeof(message), u8"%s: %s", HhdScreen::StageName(), err);
                 else if (HhdScreen::ApplyResult()[0] != 0)
                 {
-                    PlayerClone::RealFaceInfo(measure, sizeof(measure));   // けってい の後は本人の目の形の差し替えだけ出す（F086）
-                    std::snprintf(message, sizeof(message), u8"%s %s %s", HhdScreen::StageName(), HhdScreen::ApplyResult(), measure);
+                    PlayerClone::RealFaceInfo(measure, sizeof(measure));   // けってい の後は本人の目の形の差し替えと、目の形の送信（pf）だけ出す
+                    std::snprintf(message, sizeof(message), u8"%s %s %s pf %lu", HhdScreen::StageName(), HhdScreen::ApplyResult(), measure,
+                                  (unsigned long)HhdScreen::ProfileSyncResult());
                 }
                 else
                     std::snprintf(message, sizeof(message), u8"%s %s", HhdScreen::StageName(), measure);
