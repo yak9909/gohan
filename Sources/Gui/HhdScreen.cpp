@@ -123,28 +123,18 @@ const u32 kNetGameMgrPtr = 0x0094D648, kNetOnline = 0x1326F;
 //   3. 状態 0: 相手側で 0xBA を抜ける = PlayerState_HeadGoodsExit 0x68A6AC が写しの帽子・アクセサリーを書き戻す（利用者: アクセサリーは消さない。F088）
 //   4. 今の本当の状態（アクター +2236 のバッファそのもの）: 相手側で状態 0 を抜ける = PlayerState00_Exit 0x6533C4 が位置を戻し vc_UPDATE で写しから作り直す
 // アクターが無い相手（別の部屋）は記述子 +0x18（0xB9 = SyncRemote、0xBA = PlayerState_HeadGoodsSyncRemote 0x68C538）で写しだけ書く。
-// けってい の時点はキャラクリを閉じ始めたところで、今の状態がまだ同期しない状態のことがある（hhd_t017a 実機: 送れなかった）→ 送れる条件がそろうまで毎フレーム待つ。送り方はゲームと同じ（Player_SendStatePacketOnSetState 0x675F14:
+// けってい の次のフレーム（FrameStep の先頭）で待たずに送る（hhd_t017b 実機: 条件がそろうのを待つと送れずに終わった）。送り方はゲームと同じ（Player_SendStatePacketOnSetState 0x675F14:
 // 部屋の旗 0x10 が無く、自分のオンライン番号がアクター +428 と同じとき、通し番号 +8 を 1 増やして vc_SENDPACKETFUNC(番号, バッファ)）。
 // ★下位転送種別 0x0C（村データ転送）は使わない（利用者 2026-10-06）
 typedef void (*SendStatePacketFn)(u32 playerIndex, const void *packet);
-typedef u32 (*RoomIdFn)(void);
-typedef u32 (*RoomHasFlagsFn)(u32 mask, u32 room);
-typedef u32 (*OnlineIndexFn)(u32 zero);
 const SendStatePacketFn SendStatePacket = reinterpret_cast<SendStatePacketFn>(0x005C25B4);   // vc_SENDPACKETFUNC
-const RoomIdFn RoomCurrentId = reinterpret_cast<RoomIdFn>(0x002F75CC);                       // Room_GetCurrentId
-const RoomHasFlagsFn RoomHasFlags = reinterpret_cast<RoomHasFlagsFn>(0x002F75E4);            // Room_HasFlags
-const OnlineIndexFn OnlineIndex = reinterpret_cast<OnlineIndexFn>(0x00305F6C);               // vc_A_GETONLINEPLAYERINDEX
-typedef u32 (*StateAttrFn)(u32 state);
-const StateAttrFn StateAttributes = reinterpret_cast<StateAttrFn>(0x0064E960);                // 状態の属性（+7 bit3 = 状態パケットを送る状態）
 const u32 kActorStatePacket = 2236, kStatePacketBytes = 38, kPacketState = 1, kPacketCounter = 8, kPacketArgs = 14;
-const u32 kActorBusyFlags = 2245;           // bit 0x20 の間はゲーム自身も美容室を始めない（sub_5C4698 / sub_5C5990 / sub_5C68F4）
 const u32 kStateAppearance = 0xB9, kStateHeadGoods = 0xBA, kStateInitial = 0;
 const u32 kProfileHat = 10, kProfileAccessory = 14;   // プロフィール +10 = 帽子 / +14 = アクセサリーの Item（4 B。F-67）
-const u32 kPeerWaitFrames = 300;            // 30 fps で 10 秒
 // 送れなかった理由（通知に出す）
-enum PeerReason : u32 { kPeerSent = 0, kPeerRoom = 1, kPeerIndex = 2, kPeerBusy = 3, kPeerState = 4, kPeerPlayer = 5, kPeerOffline = 6 };
+enum PeerReason : u32 { kPeerSent = 0, kPeerPlayer = 5, kPeerOffline = 6 };   // 5 プレイヤーが替わった / 6 通信が切れた
 volatile bool s_peerWant;
-u32 s_peerFrames, s_peerPlayer, s_peerLastReason;
+u32 s_peerPlayer, s_peerLastReason;
 u8 s_peerLook[3], s_peerHat[4], s_peerAccessory[4];
 char s_peerResult[96];
 // 髪のページ: 男女の区別なく 32 個 = 8 個 × 4 ページ（利用者指示 2026-10-05。HHD は性別で 16 個に絞る: HHD-F005）。
@@ -882,22 +872,10 @@ void SendOnePacket(u32 player, u32 index, u8 *packet) {
     SendStatePacket(index, packet);
 }
 
-// 今送れるか（ゲームの送信と同じ条件。Player_SendStatePacketOnSetState 0x675F14 と sub_5C4698 の +2245 の検査）。送れれば kPeerSent
-u32 PeerCheck(u32 player) {
-    if (RoomHasFlags(0x10, RoomCurrentId()) != 0)
-        return kPeerRoom;
-    if (OnlineIndex(0) != *reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex))
-        return kPeerIndex;
-    if ((*reinterpret_cast<const volatile u8 *>(player + kActorBusyFlags) & 0x20u) != 0)
-        return kPeerBusy;
-    // 4 つ目に送る今の状態が、ゲーム自身も送る状態であること（送らない状態を相手に入らせない）
-    const u32 attr = StateAttributes(*reinterpret_cast<const volatile u8 *>(player + kActorStatePacket + kPacketState));
-    if (attr == 0u || (*reinterpret_cast<const volatile u8 *>(attr + 7) & 0x08u) == 0)
-        return kPeerState;
-    return kPeerSent;
-}
-
-// 上の 4 つを送る（PeerCheck が通ってから）
+// 上の 4 つを送る。ゲームの送信の前提（部屋の旗 0x10・オンライン番号・+2245 の取り込み中・今の状態が同期する状態か）は検査しない:
+// 待つと送れないまま終わった（hhd_t017b 実機。立ち止まりの状態 6 はゲーム自身も送らない状態で、待ちが毎回 10 秒で打ち切られた）。
+// 利用者: 状態を待たずに強制的に送る（2026-10-06）。送信関数 vc_SENDPACKETFUNC は自分で「複数人か」（Net_IsMultiplayer）だけ見る。
+// 4 つ目はアクターの今のバッファ（ゲームが状態を変えるたびに必ず書く。同期しない状態でも中身は今の本当の状態）
 void SendLookToPeers(u32 player) {
     const u32 index = *reinterpret_cast<const volatile u8 *>(player + kActorPlayerIndex);
     u8 *current = reinterpret_cast<u8 *>(player + kActorStatePacket);
@@ -940,8 +918,6 @@ void StepPeerSync(void) {
         reason = kPeerOffline;
     else if (player != s_peerPlayer || !IsHeapPointer(reinterpret_cast<void *>(player)))
         reason = kPeerPlayer;
-    else
-        reason = PeerCheck(player);
     if (reason == kPeerSent) {
         SendLookToPeers(player);
         s_peerWant = false;
@@ -950,7 +926,7 @@ void StepPeerSync(void) {
         return;
     }
     s_peerLastReason = reason;
-    if (reason == kPeerOffline || reason == kPeerPlayer || ++s_peerFrames > kPeerWaitFrames) {
+    {
         s_peerWant = false;
         std::snprintf(s_peerResult, sizeof(s_peerResult), u8"反映しました（通信相手へは送れませんでした %lu）", (unsigned long)reason);
         s_applyResult = s_peerResult;
@@ -992,7 +968,6 @@ void ApplyToPlayer(void) {
         std::memcpy(s_peerHat, reinterpret_cast<const void *>(profile + kProfileHat), 4);
         std::memcpy(s_peerAccessory, reinterpret_cast<const void *>(profile + kProfileAccessory), 4);
         s_peerPlayer = player;
-        s_peerFrames = 0;
         s_peerWant = true;
     }
     // 目の形は vc_UPDATE では読み直されない（顔の枠は作るときにしか読まない）。本人の顔の枠を新しく読み、頭に読み直させる（F086）
