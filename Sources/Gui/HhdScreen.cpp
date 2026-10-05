@@ -49,6 +49,11 @@ typedef int (*SetStringFn)(void *textBox, const u16 *str, u32 dst, u32 len);
 typedef void (*GetTextureFn)(u32 *out, void *accessor, const char *name);
 typedef void (*TexMapUpdateFn)(u32 *texMap);
 typedef u32 (*ProfileFn)(u32 playerIndex);
+typedef void *(*FindGroupFn)(void *layout, const char *name, u32 recursive);
+typedef int (*AnimLoadFn)(void *anim, const char *name, void *holder);
+typedef void (*GroupAnimFn)(void *layout, void *anim, void *group, u32 zero);
+typedef void (*AnimSetFrameFn)(void *anim, float frame);
+typedef int (*AnimFinishedFn)(void *anim);
 
 const CtorFn         ArcCtor        = reinterpret_cast<CtorFn>(0x00120D54);
 const CtorFn         ArcDtor        = reinterpret_cast<CtorFn>(0x00567310);
@@ -70,6 +75,16 @@ const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);
 const GetTextureFn   GetTexture     = reinterpret_cast<GetTextureFn>(0x004B5844);     // nwlyt_ArcResourceAccessor_GetTexture
 const TexMapUpdateFn TexMapUpdate   = reinterpret_cast<TexMapUpdateFn>(0x004B9830);   // nwlyt_TexMap_UpdateGpuRegs
 const ProfileFn      PlayerProfile  = reinterpret_cast<ProfileFn>(0x002FEB60);        // PlayerClone.cpp と同じ（vc_PSOFFSET）
+// 出入りのアニメ（GameLabel.cpp と同じ関数・同じ順。実機確認済みの経路）
+const CtorFn         AnimCtor       = reinterpret_cast<CtorFn>(0x001261EC);
+const CtorFn         AnimDtor       = reinterpret_cast<CtorFn>(0x00568CAC);
+const AnimLoadFn     AnimLoad       = reinterpret_cast<AnimLoadFn>(0x00568A04);
+const FindGroupFn    FindGroup      = reinterpret_cast<FindGroupFn>(0x004B4328);
+const GroupAnimFn    GroupBind      = reinterpret_cast<GroupAnimFn>(0x00567A50);
+const GroupAnimFn    GroupUnbind    = reinterpret_cast<GroupAnimFn>(0x00567DA4);
+const AnimSetFrameFn AnimSetFrame   = reinterpret_cast<AnimSetFrameFn>(0x00568C00);
+const LayoutFn       AnimStep       = reinterpret_cast<LayoutFn>(0x00568964);
+const AnimFinishedFn AnimFinished   = reinterpret_cast<AnimFinishedFn>(0x0074F58C);
 
 const u32 kLayoutMgrPtr = 0x0096FC38;
 const u32 kFontMgrPtr = 0x0094C9C8;
@@ -113,8 +128,15 @@ enum class Stage : u8 { Idle, Copy, Draw, Teardown, Failed };
 
 struct Lay {
     alignas(8) u8 obj[332];
-    bool made, built;
+    alignas(8) u8 in[40];                   // 出入りのアニメ（HHD の <レイアウト>_in / _out。GameLabel と同じ 40 B）
+    alignas(8) u8 out[40];
+    void *group;                            // アニメを結ぶグループ（HhdTables::kAnimGroup）
+    void *bound;                            // いま結んでいるアニメ（in / out / nullptr）
+    bool made, built, anims;
 };
+
+// 画面の段（ゲームのスレッドが進める）: 入場アニメ → 操作できる → 退場アニメ（終われば片付け）
+enum class Phase : u8 { Entering, Live, Leaving };
 
 // 画面の状態（メニューのスレッドが書き、ゲームのスレッドがペインへ写す）。-1 = 選んでいない
 struct State {
@@ -142,6 +164,7 @@ void *s_heap, *s_arc;                       // ゲームのヒープに写した
 bool s_holderMade, s_hookReady;
 volatile bool s_want;
 volatile Stage s_stage = Stage::Idle;
+volatile Phase s_phase = Phase::Entering;
 const char *volatile s_error = "";
 u32 s_wait;
 volatile State s_state;                     // 欲しい状態
@@ -408,6 +431,37 @@ void StepSlide(void) {
     MovePaneX(s_p.hairAll, -kPageStep * (float)s_slideDir * (float)s_slideFrame / (float)kSlideFrames);
 }
 
+// ---- 出入りのアニメ（ゲームのスレッド）----
+
+void BindAnim(Lay &l, void *anim) {
+    if (l.bound != nullptr)
+        GroupUnbind(l.obj, l.bound, l.group, 0);
+    GroupBind(l.obj, anim, l.group, 0);
+    AnimSetFrame(anim, 0.0f);
+    l.bound = anim;
+}
+
+// 結んでいるアニメを 1 フレーム進める。終わっていれば外す（値は最後のフレームのまま残る。GameLabel と同じ）。戻り値: まだ動いている
+bool StepAnim(Lay &l) {
+    if (l.bound == nullptr)
+        return false;
+    if (AnimFinished(l.bound)) {
+        GroupUnbind(l.obj, l.bound, l.group, 0);
+        l.bound = nullptr;
+        return false;
+    }
+    AnimStep(l.bound);
+    return true;
+}
+
+// いま描いているレイアウト（地・顔・目か髪・上）
+void DrawnLayouts(u32 (&out)[4]) {
+    out[0] = kBg;
+    out[1] = kFace;
+    out[2] = s_applied.mode == 0 ? kEye : kHair;
+    out[3] = kTop;
+}
+
 // レイアウトのコマンドリストの記録した長さ（見つからなければ 0xFFFFFFFF）
 u32 RecordedBytes(void *layout) {
     const u32 id = W(layout, kLayoutListId);
@@ -430,7 +484,12 @@ void Release(void) {
                 LayoutFinalize(l.obj);
             LayoutDtor(l.obj);
         }
-        l.made = l.built = false;
+        if (l.anims) {
+            AnimDtor(l.in);
+            AnimDtor(l.out);
+        }
+        l.made = l.built = l.anims = false;
+        l.group = l.bound = nullptr;
     }
     std::memset(&s_p, 0, sizeof(s_p));
     s_appliedValid = false;
@@ -486,6 +545,22 @@ void Build(void) {
         l.obj[kLayoutPriority] = kPriority;
         s_size[i] = W(l.obj, kLayoutListSize);
         s_used[i] = 0xFFFFFFFFu;
+        // 出入りのアニメ: anim/<名前>_in / _out.bclan（tools/hhd/make_acnl_layouts.py の convert_anims）
+        char an[40];
+        AnimCtor(l.in);
+        AnimCtor(l.out);
+        l.anims = true;
+        const u32 stem = (u32)(std::strlen(kDefs[i].name) - std::strlen(".bclyt"));
+        std::snprintf(an, sizeof(an), "%.*s_in.bclan", (int)stem, kDefs[i].name);
+        if (AnimLoad(l.in, an, s_holder) == 0)
+            return Fail("出入りのアニメを読めない");
+        std::snprintf(an, sizeof(an), "%.*s_out.bclan", (int)stem, kDefs[i].name);
+        if (AnimLoad(l.out, an, s_holder) == 0)
+            return Fail("出入りのアニメを読めない");
+        l.group = FindGroup(l.obj, HhdTables::kAnimGroup[i], 1);
+        if (l.group == nullptr)
+            return Fail("アニメのグループが無い");
+        l.bound = nullptr;
     }
     if (!FindAll())
         return Fail("ペインが見つからない");
@@ -505,6 +580,12 @@ void Build(void) {
     MovePaneX(s_p.hairAll, 0.0f);
     s_appliedValid = false;
     s_heapFreeAfter = HeapFreeSize(heap);
+    // 入場: 描く 4 枚（地・顔・目・上）に in を結ぶ（HHD の CharaCreate と同じく in アニメで現れる）
+    BindAnim(s_lay[kBg], s_lay[kBg].in);
+    BindAnim(s_lay[kFace], s_lay[kFace].in);
+    BindAnim(s_lay[kEye], s_lay[kEye].in);
+    BindAnim(s_lay[kTop], s_lay[kTop].in);
+    s_phase = Phase::Entering;
     s_stage = Stage::Draw;
 }
 
@@ -665,8 +746,11 @@ void Tick(bool menuVisible) {
     //   （GuiMenu.cpp SyncInputLock。2026-10-05 実機: BlockGameAll だけでは下の地図・タブが反応した）
     GuiMenu::BlockGameAll();
     GuiMenu::BlockGameTouch();
-    if (!s_want || s_stage != Stage::Draw)
-        return;                             // 組み立て待ち・片付け中は止めるだけ
+    if (!s_want || s_stage != Stage::Draw || s_phase != Phase::Live) {
+        s_touchPrev = false;
+        s_touchStart = -1;
+        return;                             // 組み立て待ち・出入りのアニメ中・片付け中は止めるだけ
+    }
     if (menuVisible) {
         s_touchPrev = false;
         s_touchStart = -1;
@@ -716,10 +800,26 @@ void FrameStep(void) {
             return;
         // fallthrough: 組めたフレームから描く
     case Stage::Draw: {
-        if (!s_want) {
-            s_stage = Stage::Teardown;
-            s_wait = 0;
-            return;
+        u32 drawn[4];
+        DrawnLayouts(drawn);
+        if (!s_want && s_phase != Phase::Leaving) {
+            // 退場: 描いている 4 枚に out を結ぶ（入場の途中でも out を頭から）
+            for (u32 n = 0; n < 4; ++n)
+                BindAnim(s_lay[drawn[n]], s_lay[drawn[n]].out);
+            s_phase = Phase::Leaving;
+        }
+        bool moving = false;
+        for (u32 n = 0; n < 4; ++n)
+            moving = StepAnim(s_lay[drawn[n]]) || moving;
+        if (!moving) {
+            if (s_phase == Phase::Entering)
+                s_phase = Phase::Live;
+            else if (s_phase == Phase::Leaving) {
+                // 退場し終えた: このフレームから描かない。壊すのは数フレーム後
+                s_stage = Stage::Teardown;
+                s_wait = 0;
+                return;
+            }
         }
         // 前のフレームで記録した長さ（このフレームの記録より前に読む）
         for (u32 i = 0; i < kLayouts; ++i)

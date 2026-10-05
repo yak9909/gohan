@@ -79,4 +79,6 @@ const Rect kButtonRight = { 197, 209, 313, 237 };
 // 髪のページ送りの左右の端（hhd_hair の B_L_00 / B_R_00。HHD-F007）
 const Rect kPageLeft = { -1, -1, 22, 153 };
 const Rect kPageRight = { 298, -1, 321, 153 };
+// 出入りのアニメ（anim/<layout>_in / _out.bclan）を結ぶグループ。並びは HhdScreen.cpp の kDefs（地・顔・目・髪・上）
+const char *const kAnimGroup[5] = { "G_InOut", "G_InOut", "G_In", "G_In", "G_InOut" };
 }  // namespace HhdTables
