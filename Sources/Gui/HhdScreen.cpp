@@ -128,7 +128,7 @@ const float kFps = 30.0f;                   // ACNL の 1 秒のフレーム数�
 // 複製は gohan の PlayerClone（画面に固定・専用カメラ・専用ライト。IDA-opus-5.5-F031〜F033）。上画面の 2D より手前に出すため、
 // 開いている間はゲームを「メニューの 3D」（Scene 1。持ち物・カタログと同じ）にする: 描画順が 世界 → 上画面の 2D → Scene 1 になる（IDA-opus-5.5-F083）。
 // 吹き出し W_Balloon_00 の中心 = 上画面の画素 (200, 126)（hhd_top。大きさ 491 x 269）
-const s32 kCloneX = 200, kCloneY = 140, kClonePitch = 10, kCloneZoom = 110;   // 実機で合わせる前の値（向き 0 = 正面）
+const s32 kCloneX = 200, kCloneY = 170, kClonePitch = 10, kCloneZoom = 60;    // 利用者の実機での指定（2026-10-05: Y 170・大きさ 60）。向き 0 = 正面
 const float kYawPerSecond = 240.0f;         // スライドパッドを倒し切ったときの回る速さ（度/秒。T019: 角度の上限なし）
 const s32 kPadDead = 16, kPadFull = 156;    // スライドパッドの遊びと倒し切り（CTRPF の GetCirclePadPosition の値）
 typedef void (*MenuSceneFn)(void);
@@ -142,11 +142,18 @@ const u32 kSndOpen = 0x010003C2;            // SE_SYS_WIN_SELECT_OPEN
 const u32 kSndTouch = 0x01000398;           // SE_SYS_BTN_ACTIVE（触れた）
 const u32 kSndPick = 0x01000390;            // SE_SYS_DECIDE_S（目の形・髪型を決めた）
 const u32 kSndColor = 0x01000449;           // SE_SYS_EDIT_COLOR_SELECTED（色を決めた。マイデザインの色選び）
-const u32 kSndMode = 0x01000412;            // SE_SYS_BOOK_TAB_CHANGE（かみがた ↔ かお）
+const u32 kSndToHair = 0x01000417;          // SE_SYS_PRF_TAB_CHANGE（「かみがた」へ。利用者: かみがた・かおで違う音に 2026-10-05）
+const u32 kSndToFace = 0x01000412;          // SE_SYS_BOOK_TAB_CHANGE（「かお」へ）
 const u32 kSndDecide = 0x0100038E;          // SE_SYS_DECIDE（けってい）
 const u32 kSndCancel = 0x01000392;          // SE_SYS_CANCEL（B で閉じる）
 const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
 const u32 kSndGoodsOff = 0x010006B6, kSndGoodsOn = 0x010006B7;  // SE_ACT_BARBER_GOODS_OFF / ON（美容室で頭の小物を外す / 付ける。Player_SetHeadGoodsWithSound 0x68B238、F083）
+//   この 2 つは GROUP_SHOP の音で、美容室の外では読み込まれていない（利用者の実機 2026-10-05: 屋内・屋外で鳴らず美容室では鳴る）。
+//   美容室（部屋 0x48 = g_RoomInternalNames 0x9515F0 の "BeautySalon"。IDA-opus-5.5-F084）以外では常駐の着替えの音で代わりに鳴らす
+const u32 kSndGoodsElsewhere = 0x01000530;  // SE_ACT_CLOTHES_CMN_CHANGE（GROUP_STATIC）
+const u32 kRoomIdByte = 0x0095133A, kRoomBeautySalon = 0x48;   // g_CurrentRoomId（Room_GetCurrentId 0x2F75CC）
+// 複製のフェードイン: 吹き出しの登場アニメが終わってから（利用者: 早すぎる。吹き出しの登場後にフェードイン）
+const u32 kCloneFadeFrames = 10;
 const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面の UI より手前）
 const u32 kScreenLower = 1, kScreenUpper = 0;   // AddLayout の画面（上画面 = 0 / 下画面 = 1。LayoutMgr_AddLayout 0x56928C）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
@@ -219,6 +226,7 @@ float s_cloneYaw;
 volatile bool s_hideHead;
 u64 s_padTick;
 bool s_menuScene;
+u32 s_cloneFade;                            // Scene 1 にしてからのフレーム数（フェードイン）
 // 音の頼み（メニューのスレッドが積み、ゲームのスレッドが鳴らす）
 volatile u32 s_soundQ[8];
 volatile u32 s_soundHead, s_soundTail;
@@ -447,8 +455,11 @@ void Apply(void) {
     if (all || want.hair != was.hair || want.page != was.page)
         PaintHairFrames(want.page, want.hair);
     if (all || want.eyeColor != was.eyeColor) {
-        for (u32 k = 0; k < 6; ++k)
+        for (u32 k = 0; k < 6; ++k) {
             SetVisible(s_p.ecFrame[k], (s32)k == want.eyeColor);
+            if ((s32)k != want.eyeColor)
+                Paint(PicMaterial(s_p.ecFrame[k]), HhdTables::kSwatchNormal);   // 外れた枠は通常の色へ（戻さないと押したとき縞が出る）
+        }
         if (want.eyeColor >= 0) {
             Paint(PicMaterial(s_p.ecFrame[want.eyeColor]), HhdTables::kSwatchSelect);
             for (u32 k = 0; k < 12; ++k)
@@ -456,8 +467,11 @@ void Apply(void) {
         }
     }
     if (all || want.skin != was.skin) {
-        for (u32 k = 0; k < 8; ++k)
+        for (u32 k = 0; k < 8; ++k) {
             SetVisible(s_p.scFrame[k], (s32)k == want.skin);
+            if ((s32)k != want.skin)
+                Paint(PicMaterial(s_p.scFrame[k]), HhdTables::kSwatchNormal);   // 外れた枠は通常の色へ（戻さないと押したとき縞が出る）
+        }
         if (want.skin >= 0) {
             Paint(PicMaterial(s_p.scFrame[want.skin]), HhdTables::kSwatchSelect);
             for (u32 k = 0; k < 12; ++k)
@@ -467,8 +481,11 @@ void Apply(void) {
         }
     }
     if (all || want.hairColor != was.hairColor) {
-        for (u32 k = 0; k < 16; ++k)
+        for (u32 k = 0; k < 16; ++k) {
             SetVisible(s_p.hcFrame[k], (s32)k == want.hairColor);
+            if ((s32)k != want.hairColor)
+                Paint(PicMaterial(s_p.hcFrame[k]), HhdTables::kSwatchNormal);   // 外れた枠は通常の色へ（戻さないと押したとき縞が出る）
+        }
         if (want.hairColor >= 0) {
             Paint(PicMaterial(s_p.hcFrame[want.hairColor]), HhdTables::kSwatchSelect);
             for (u32 k = 0; k < 24; ++k)
@@ -498,8 +515,9 @@ void FlushSounds(void) {
 // ---- 複製（ゲームのスレッド）: 複製ができてから Scene 1 にする。閉じ始めたら戻す ----
 void StepMenuScene(void) {
     if (!s_menuScene) {
-        if (!s_want || s_phase == Phase::Leaving)
-            return;
+        PlayerClone::SetAlpha(0);           // 出す前は描かない
+        if (!s_want || s_phase != Phase::Live)
+            return;                         // 吹き出しの登場アニメが終わってから
         const PlayerClone::Status st = PlayerClone::Read();
         if (st.stage != 2 || !PlayerClone::ProjectionReady())
             return;                         // 複製が表示中で、世界のカメラの投影を一度取れてから
@@ -507,9 +525,13 @@ void StepMenuScene(void) {
             return;                         // ほかのメニューが使っている
         EnterMenuScene();
         s_menuScene = true;
+        s_cloneFade = 0;
     } else if (!s_want || s_phase == Phase::Leaving) {
         LeaveMenuScene();
         s_menuScene = false;
+    } else if (s_cloneFade < kCloneFadeFrames) {
+        ++s_cloneFade;
+        PlayerClone::SetAlpha(255u * s_cloneFade / kCloneFadeFrames);
     }
 }
 
@@ -1038,7 +1060,7 @@ void StepToward(float dt) {
 void Decide(s32 target) {
     s_okTarget = target;                    // 押したときのアニメの touch_ok（ゲームのスレッド）
     s_okSerial = s_okSerial + 1;
-    QueueSound(target == 900 ? kSndMode : target == 901 ? kSndDecide : target == 800 ? kSndPageDec : target == 801 ? kSndPageInc
+    QueueSound(target == 900 ? (s_state.mode == 0 ? kSndToHair : kSndToFace) : target == 901 ? kSndDecide : target == 800 ? kSndPageDec : target == 801 ? kSndPageInc
                : target >= 400 ? kSndColor : target >= 300 ? kSndPick : target >= 100 ? kSndColor : kSndPick);
     if (target == 900) {
         s_state.mode = s_state.mode == 0 ? 1 : 0;
@@ -1121,6 +1143,7 @@ bool Show(void) {
     s_padTick = 0;
     s_soundTail = s_soundHead;
     PlayerClone::SetScreen(true, 0, kClonePitch, kCloneX, kCloneY, kCloneZoom);
+    PlayerClone::SetAlpha(0);
     PlayerClone::Show();                    // 吹き出しの複製（作れなければ出ないだけ）
     s_want = true;
     s_stage = Stage::Copy;
@@ -1202,7 +1225,10 @@ void Tick(bool menuVisible) {
     if (pressed & (u32)Key::Y) {
         // Y: 頭の小物（帽子・アクセサリー）を外して見せる / 付ける（複製だけ。音は美容室の付け外しの音）
         s_hideHead = !s_hideHead;
-        QueueSound(s_hideHead ? kSndGoodsOff : kSndGoodsOn);
+        if (*reinterpret_cast<const volatile u8 *>(kRoomIdByte) == kRoomBeautySalon)
+            QueueSound(s_hideHead ? kSndGoodsOff : kSndGoodsOn);
+        else
+            QueueSound(kSndGoodsElsewhere);
     }
     {
         // スライドパッドで複製を回す（T019: 上限なし、倒した量に比例した速さ）
@@ -1363,6 +1389,7 @@ void FrameStep(void) {
             else if (s_phase == Phase::Leaving) {
                 PlayerClone::SetHair(-1, -1);   // 普段の複製（チートの項目）に戻すとき本物のままになるように
                 PlayerClone::SetLook(-1, false);
+                PlayerClone::SetAlpha(255);
                 // 退場し終えた: このフレームから描かない。壊すのは数フレーム後
                 s_stage = Stage::Teardown;
                 s_wait = 0;

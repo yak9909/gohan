@@ -173,7 +173,24 @@ const u32 kNodeMatrix = 0x4C;
 const u32 kModelHair = 548;                 // u8
 const u32 kModelTan = 448;                  // 日焼けの段階 0..7（PlayerModel_UpdateParts / sub_1D05B0 が毎フレーム肌の色にする。IDA-opus-5.5-F083）
 const u32 kModelOutfit = 512;               // 服の欄（Item 4 B ずつ）。0 = 帽子、1 = アクセサリー（sub_719AF0 / sub_719B24(pm+512)。F083）
-const u32 kEmptyItem = 0x00955FF4;          // ItemToPlace（美容室が帽子・アクセサリーを外すときに写す空の品物。PlayerState_AppearanceChangeUpdate 0x6832E8）
+const u32 kEmptyItem = 0x00955FF4;
+// ---- 半透明で描く（フェード。IDA-opus-5.5-F084）-------------------------------------------------------
+// gfx_DrawMesh 0x48D26C を写し、行列（sub_4957C4）と形（gfx_DrawShapePrimitives）の間に PICA の命令を積む:
+//   フレームバッファの読み書き（gfx_MaterialActivator_Activate 0x49C08C の末尾と同じ 40 B。0x111 フラッシュ・0x110 無効化・0x112..0x115、
+//   色の読み = 15、残り 3 つはエンジンの今の値 dword_96F088 / 96F08C / 96F090）と、合成（0x100..0x103 = COLOR_OPERATION 0xE40100・
+//   BLEND_FUNC 色 = 元 x 定数α + 先 x (1 - 定数α)・LOGIC_OP 3・BLEND_COLOR α<<24。IDA-gpt-6-astra-F002 の木の半透明と同じ値）。
+typedef void (*BindMaterialFn)(u32 context, u32 zero);
+typedef void (*MeshMatrixFn)(u32 context, u32 mesh);
+typedef void (*DrawShapeFn)(u32 drawContext, u32 node, u32 shape, u32 count);
+typedef void (*CopyBytesFn)(u32 dst, u32 src, u32 bytes);
+const BindMaterialFn BindMaterial = reinterpret_cast<BindMaterialFn>(0x00494B4C);   // gfx_RenderContext_BindMaterial
+const MeshMatrixFn   MeshMatrix   = reinterpret_cast<MeshMatrixFn>(0x004957C4);
+const DrawShapeFn    DrawShape    = reinterpret_cast<DrawShapeFn>(0x0048D51C);      // gfx_DrawShapePrimitives
+const CopyBytesFn    CopyBytes    = reinterpret_cast<CopyBytesFn>(0x0012EC54);      // Mem_CopyBytes
+const u32 kGpuCmdPtr = 0x0096EA94;          // g_GpuCmdPtr
+const u32 kFbColorWrite = 0x0096F088, kFbDepthRead = 0x0096F08C, kFbDepthWrite = 0x0096F090;
+const u32 kContextKeys = 256, kContextKeyCount = 11;   // 材質の部分ごとの前回の鍵（Activate の a2 +256..+296。0 にすると次で送り直す）
+const u32 kContextMaterial = 0x20;          // DrawMesh が材質を入れる欄（文脈 +32）          // ItemToPlace（美容室が帽子・アクセサリーを外すときに写す空の品物。PlayerState_AppearanceChangeUpdate 0x6832E8）
 const u32 kModelHairColor = 552;            // u32
 const u32 kModelBytes = 624;                // AcNpcDemoDollPlayer: +2852 から次の欄 +3476 まで
 const u32 kProfileMaskByte = 22286;         // bit6 = Mii マスク（人形 0x2ECB30 と同じ）
@@ -222,6 +239,7 @@ volatile s32 s_hairStyle = -1;
 volatile s32 s_hairColor = -1;
 volatile s32 s_tan = -1;                    // 日焼けの段階 0..7（-1 = 本物のまま）
 volatile bool s_hideHead;                   // 帽子・アクセサリーを外して見せる（複製だけ）
+volatile u32 s_alpha = 255;                 // 複製の不透明度（画面に固定のとき。255 = ふつうに描く、0 = 描かない）
 bool s_hooked;
 
 // 画面に固定
@@ -498,6 +516,34 @@ void StepDestroy(void) {
 
 // ---- late pass（描画スレッド。Render_DrawSceneIndexed の再生直後から）----------------------------------
 
+// gfx_DrawMesh 0x48D26C の写しに、半透明の命令を挟んだもの（alpha < 255 のときだけ使う）
+void DrawMeshAlpha(u32 drawContext, u32 mesh, u32 node, u32 alpha) {
+    const u32 res = R32(node + 8);
+    const u32 rel = R32(res + 0xC8);
+    const u32 table = rel ? res + 0xC8 + rel : 0u;
+    const u32 slot = table + 4u * R32(mesh + 0x18);
+    const u32 rel2 = R32(slot);
+    const u32 shape = rel2 ? slot + rel2 : 0u;
+    const u32 context = R32(drawContext + 8);
+    *reinterpret_cast<volatile u32 *>(context + kContextMaterial) = R32(R32(node + 0x164) + 4u * R32(mesh + 0x1C));
+    BindMaterial(context, 0);
+    MeshMatrix(context, mesh);
+    volatile u32 *cmd = reinterpret_cast<volatile u32 *>(R32(kGpuCmdPtr));
+    const u32 words[16] = {
+        1u, 0x000F0111u, 1u, 0x000F0110u,
+        15u, 0x803F0112u, R32(kFbColorWrite), R32(kFbDepthRead), R32(kFbDepthWrite), 0u,
+        0x00E40100u, 0x803F0100u, (12u << 16) | (13u << 20) | (1u << 24) | (13u << 28), 3u, alpha << 24, 0u,
+    };
+    for (u32 i = 0; i < 16; ++i)
+        cmd[i] = words[i];
+    *reinterpret_cast<volatile u32 *>(kGpuCmdPtr) = reinterpret_cast<u32>(cmd + 16);
+    DrawShape(drawContext, node, shape, R32(mesh + 0x28));
+    const u32 n = R32(mesh + 0x6C);
+    const u32 dst = R32(kGpuCmdPtr);
+    CopyBytes(dst, R32(mesh + 0x68), n);
+    *reinterpret_cast<volatile u32 *>(kGpuCmdPtr) = dst + (n & ~3u);
+}
+
 // Scene_DrawLayers 0x4EB840 と同じ判定で、node のうち層 layer のメッシュを描く
 void DrawNodeLayer(u32 node, u32 layer, u32 drawContext) {
     if (!IsHeap(node))
@@ -543,7 +589,11 @@ void DrawNodeLayer(u32 node, u32 layer, u32 drawContext) {
             continue;
         if ((R32(R32(material + kMatResource) + kResLayer) & 0xFFu) != layer)
             continue;
-        DrawMesh(drawContext, mesh, node);
+        const u32 alpha = s_alpha;
+        if (alpha >= 255u)
+            DrawMesh(drawContext, mesh, node);
+        else
+            DrawMeshAlpha(drawContext, mesh, node, alpha);
         ++s_lateDraws;
     }
 }
@@ -799,20 +849,26 @@ extern "C" void PlayerCloneLatePass(u32 sceneContext) {
             retargeted = 2 + i;
         }
     }
-    CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
-    *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
-    *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
-    for (u32 layer = 0; layer <= 3; ++layer) {
-        DrawNodeLayer(body, layer, drawContext);
-        for (u32 i = 0; i < count && i < kMaxParts; ++i) {
-            const u32 holder = s_parts[i];
-            if (IsHeap(holder))
-                DrawNodeLayer(R32(holder + kHolderNode), layer, drawContext);
+    if (s_alpha != 0u) {                            // 0 = 透明: 描かない（ライト・行列は戻す）
+        CameraBind(context, reinterpret_cast<u32>(s_camera), 1);
+        *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
+        *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
+        for (u32 layer = 0; layer <= 3; ++layer) {
+            DrawNodeLayer(body, layer, drawContext);
+            for (u32 i = 0; i < count && i < kMaxParts; ++i) {
+                const u32 holder = s_parts[i];
+                if (IsHeap(holder))
+                    DrawNodeLayer(R32(holder + kHolderNode), layer, drawContext);
+            }
         }
     }
     RestoreModelViews(retargeted);
     // 次の描画が +444 を送り直すように、文脈の「前回のノード」（+28）を消す
     *reinterpret_cast<volatile u32 *>(context + kContextCacheA) = 0;
+    // 次の材質が状態を全部送り直すように、前回の材質（+36）と部分ごとの鍵を消す（半透明の合成を次へ残さない）
+    *reinterpret_cast<volatile u32 *>(context + kContextCacheB) = 0;
+    for (u32 k = 0; k < kContextKeyCount; ++k)
+        *reinterpret_cast<volatile u32 *>(context + kContextKeys + 4 * k) = 0;
     if (lit) {
         *setsPtr = savedSets;
         ResetLights(context);
@@ -931,6 +987,10 @@ void Shutdown(void) {
 void SetHair(s32 style, s32 color) {
     s_hairStyle = style;
     s_hairColor = color;
+}
+
+void SetAlpha(u32 alpha) {
+    s_alpha = alpha > 255u ? 255u : alpha;
 }
 
 void SetLook(s32 tan, bool hideHead) {

@@ -23,6 +23,8 @@ namespace PlayerClone
     void            SetHair(s32 style, s32 color);
     // 日焼けの段階（0..7、-1 = 本物のまま）と、帽子・アクセサリーを外して見せるか（複製だけ。本物のプロフィールには書かない）
     void            SetLook(s32 tan, bool hideHead);
+    // 画面に固定のときの不透明度（0..255。255 = ふつう、0 = 描かない）。フェードに使う（IDA-opus-5.5-F084）
+    void            SetAlpha(u32 alpha);
     // 画面に固定の専用カメラが使う世界のカメラの投影を一度取れたか（メニューの 3D = Scene 1 で描く前に必要）
     bool            ProjectionReady(void);
     // 画面に固定（late pass で専用カメラ）。yaw / pitch は度、x/y は上画面のピクセル（カメラの中心）、zoom は百分率

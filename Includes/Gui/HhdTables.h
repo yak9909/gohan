@@ -73,6 +73,8 @@ const Cell kHairColor[16] = {
 };
 // 色見本の枠（ec/sc/hc の P_Frame）の選択の色（fce_Color_00_select フレーム 1）
 const ColorPair kSwatchSelect = { { 255, 120, 0, 0 }, { 255, 60, 0, 255 } };
+// 色見本の枠の通常の色（レイアウトの元の値。選択が外れた枠はこの色へ戻す。戻さないと押したときに選択の縞が出る: 利用者 2026-10-05）
+const ColorPair kSwatchNormal = { { 255, 255, 255, 0 }, { 255, 255, 255, 255 } };
 // 下のボタン: 左（かみがた / かお）・右（けってい）
 const Rect kButtonLeft = { 7, 209, 123, 237 };
 const Rect kButtonRight = { 197, 209, 313, 237 };
