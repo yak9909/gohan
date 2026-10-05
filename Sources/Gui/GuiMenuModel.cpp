@@ -46,6 +46,7 @@ namespace CTRPluginFramework
             const char *g_longOpts[kLongList];
             void      (*g_noticeHook)(const char *title, const char *msg) = nullptr;
             ToggleHandlers g_toggleHdl;
+            FrameTickFunc g_frameTick;      // SetFrameTick（ResetState では消さない。Wire で 1 回登録）
             bool        g_favorite[kMaxItems];
             u8          g_favList[kMaxItems];
             int         g_favCount = 0;
@@ -2096,6 +2097,8 @@ namespace CTRPluginFramework
                     if (on && h != nullptr && h->OnTick != nullptr)
                         h->OnTick(i, held);
                 }
+                if (g_frameTick != nullptr)
+                    g_frameTick(held);
             }
 
             static void PollChatKanji(u32 now)

@@ -93,7 +93,9 @@ namespace CTRPluginFramework
 
                 // ---- root/プレイヤー/スタイル（§5）----
                 const int styleFirst = g_itemCount;
-                AddItem(ITEM_ACTION, u8"スタイルを変更（未設計）", kUndecided);
+                AddItem(ITEM_ACTION, kHhdStyle,
+                        u8"ハッピーホームデザイナーのキャラクリ画面で髪型・髪の色・目の形・目の色・肌の色を変えます。もう一度選ぶと閉じます。"
+                        u8"タッチで選び、左のボタンで顔と髪を切り替え、けっていで反映、B で閉じます。SD に /hhd_charcreate.arc が必要です。");
                 AddItem(ITEM_CHECKBOX, kNoBedHead, u8"日にちを空けてログインしても寝癖が付かなくなります。");
                 const int styleCount = g_itemCount - styleFirst;
 
@@ -346,8 +348,6 @@ namespace CTRPluginFramework
 
                 // ---- root/テスト/HHD キャラクリ（試験）----
                 const int hhdFirst = g_itemCount;
-                AddItem(ITEM_CHECKBOX, kHhdShow,
-                        u8"SD の /hhd_charcreate.arc を読み、HHD のキャラクリ画面を下画面のいちばん手前に出します。タッチで選び、左のボタンで顔と髪を切り替え、右のボタンか B で閉じます。");
                 AddItem(ITEM_ACTION, kHhdStat,
                         u8"HHD 画面がいまどこまで進んだか、失敗ならその理由を通知で出します。");
                 const int hhdCount = g_itemCount - hhdFirst;

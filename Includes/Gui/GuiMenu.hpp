@@ -141,6 +141,11 @@ namespace CTRPluginFramework
             void (*OnDisable)(int index);
         };
         void    SetToggleHandlers(const ToggleHandlers *handlers);
+
+        // 項目に関係なく毎フレーム（メニュースレッド）呼ぶ関数を 1 つ。アクション項目から開く画面の入力処理用（HHD式スタイル変更）。
+        //   heldMask は ToggleHandlers の OnTick と同じ（メニュー・ダイアログ・オーバーレイの間は 0）。nullptr で外す
+        typedef void (*FrameTickFunc)(u16 heldMask);
+        void    SetFrameTick(FrameTickFunc tick);
     }
 }
 

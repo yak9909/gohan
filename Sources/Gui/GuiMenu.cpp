@@ -488,6 +488,11 @@ namespace CTRPluginFramework
                 g_toggleHdl = *handlers;
         }
 
+        void    SetFrameTick(FrameTickFunc tick)
+        {
+            g_frameTick = tick;
+        }
+
         int     ItemCount(void)                 { return g_itemCount; }
         const char *ItemLabel(int index)        { return ItemOk(index) ? g_items[index].label : ""; }
         int     ItemValue(int index)            { return ItemOk(index) ? (int)g_items[index].value : 0; }

@@ -29,7 +29,5 @@ namespace CTRPluginFramework
     namespace Cheats
     {
         void    WireHhdScreen(void);    // root/テスト/HHD キャラクリ
-        bool    HhdScreenTick(int index, u16 held);
-        bool    HhdScreenDisable(int index);
     }
 }

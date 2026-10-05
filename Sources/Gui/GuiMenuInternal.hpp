@@ -350,6 +350,7 @@ namespace CTRPluginFramework
             // 通知が積まれたときに呼ぶ（試験用の観測口。未設定なら呼ばない）
             extern void       (*g_noticeHook)(const char *title, const char *msg);
             extern ToggleHandlers g_toggleHdl;
+            extern FrameTickFunc g_frameTick;
 
             // ---- 小物 ----
             float   Clamp01(float v);

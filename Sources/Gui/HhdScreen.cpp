@@ -1716,27 +1716,26 @@ namespace CTRPluginFramework
     {
         namespace
         {
-            int     g_hhdIndex = -1;
-
-            bool    HhdIsActive(int index)
+            // HHD式スタイル変更（アクション）: 開いていれば閉じ、閉じていれば開く（利用者 2026-10-06）
+            void    HhdToggle(int index)
             {
                 (void)index;
-                return HhdScreen::Shown();
-            }
-
-            void    HhdSetActive(int index, bool active)
-            {
-                (void)index;
-                if (!active)
+                if (HhdScreen::Shown())
                 {
                     HhdScreen::Hide();
                     return;
                 }
                 if (!HhdScreen::Show())
-                    GuiNotification::NotifyRed(kHhdShow, HhdScreen::LastError());
+                    GuiNotification::NotifyRed(kHhdStyle, HhdScreen::LastError());
             }
 
-            const GuiMenu::ToggleEffectFuncs kHhdFuncs = { HhdIsActive, HhdSetActive };
+            // 入力と組み立ての進行（メニュースレッド）。アクション項目には OnTick が来ないので毎フレームの窓口から呼ぶ。
+            //   閉じていれば Tick の先頭で何もせず戻る
+            void    HhdFrameTick(u16 held)
+            {
+                (void)held;
+                HhdScreen::Tick(GuiMenu::IsVisible());
+            }
 
             void    HhdStatus(int index)
             {
@@ -1761,32 +1760,13 @@ namespace CTRPluginFramework
             }
         }
 
-        bool    HhdScreenTick(int index, u16 held)
-        {
-            (void)held;
-            if (g_hhdIndex < 0 || index != g_hhdIndex)
-                return false;
-            HhdScreen::Tick(GuiMenu::IsVisible());
-            return true;
-        }
-
-        bool    HhdScreenDisable(int index)
-        {
-            if (g_hhdIndex < 0 || index != g_hhdIndex)
-                return false;
-            HhdScreen::Hide();
-            return true;
-        }
-
         void    WireHhdScreen(void)
         {
-            const int show = GuiMenu::FindItem(kHhdShow);
-            g_hhdIndex = show;
+            const int style = GuiMenu::FindItem(kHhdStyle);
             const int stat = GuiMenu::FindItem(kHhdStat);
-            if (show >= 0) {
-                GuiMenu::RegisterToggleEffect(show, &kHhdFuncs);
-                GuiMenu::SetEffectQuiet(show, true);    // ON/OFF の通知を出さない（利用者 2026-10-05）
-            }
+            if (style >= 0)
+                GuiMenu::RegisterExecute(style, HhdToggle);
+            GuiMenu::SetFrameTick(HhdFrameTick);
             if (stat >= 0)
                 GuiMenu::RegisterExecute(stat, HhdStatus);
         }

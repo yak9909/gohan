@@ -74,7 +74,7 @@ namespace CTRPluginFramework
 
         // ---- root/テスト／プレイヤー複製 ----
         // ---- root/テスト／HHD キャラクリ（解析リポジトリ D005 / T012）----
-        static const char kHhdShow[] = u8"HHD の画面を下画面に出す";
+        static const char kHhdStyle[] = u8"HHD式スタイル変更";   // root/プレイヤー/スタイル（アクション: 開いていれば閉じる・閉じていれば開く）
         static const char kHhdStat[] = u8"HHD 画面の状態";
 
         static const char kPcShow[]  = u8"複製を出す";
