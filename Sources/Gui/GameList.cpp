@@ -239,7 +239,7 @@ s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わ
 volatile u32 s_itemsSeq;                    // SetItems のたびに増える
 u32 s_builtSeq;
 volatile bool s_want;
-volatile bool s_holdField;                  // ほかの部品（マップエディター）が下画面を使う: リストは出さず元の UI だけ退場させておく
+volatile u32 s_holdField;                   // ほかの部品が下画面を使う（持ち主のビット。HoldOwner）: リストは出さず元の UI だけ退場させておく
 volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
 u32 s_selectDone;
@@ -1072,12 +1072,16 @@ bool EnsureHook(void) {
     return true;
 }
 
-bool HoldField(bool on) {
+bool HoldField(bool on, u32 owner) {
     if (on && !EnsureHook()) {
         s_error = "フレームフックを入れられない";
         return false;
     }
-    s_holdField = on;
+    // 持ち主のビットだけを立てる／落とす（メニューのスレッドと描画スレッドの両方から呼ばれるので不可分に）
+    if (on)
+        __atomic_fetch_or(&s_holdField, owner, __ATOMIC_SEQ_CST);
+    else
+        __atomic_fetch_and(&s_holdField, ~owner, __ATOMIC_SEQ_CST);
     return true;
 }
 
@@ -1151,7 +1155,7 @@ void FrameStep(void) {
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
     //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
     const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
-    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || (s_holdField && !s_shutdown));
+    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || (s_holdField != 0u && !s_shutdown));
     s_fieldHiddenNow = fieldHidden;
 
     switch (s_stage) {

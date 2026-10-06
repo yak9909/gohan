@@ -1379,7 +1379,7 @@ bool Show(void) {
     }
     // 元の下画面 UI（地図・タブ）をゲーム自身の命令で退場させておく（建物エディターと同じ GameList の手順）。
     //   隠れきってから組む（地図の arc が返ってから、こちらの arc を同じヒープに取る）
-    if (!GameList::HoldField(true)) {
+    if (!GameList::HoldField(true, GameList::kHoldHhd)) {
         s_error = "フレームフックを入れられない";
         return false;
     }
@@ -1622,7 +1622,7 @@ void FrameStep(void) {
     case Stage::Copy:
         if (!s_want) {
             PlayerClone::Hide();
-            GameList::HoldField(false);
+            GameList::HoldField(false, GameList::kHoldHhd);
             s_stage = Stage::Idle;
             return;
         }
@@ -1703,7 +1703,7 @@ void FrameStep(void) {
         if (++s_wait < kTeardownWaitFrames)
             return;
         Release();
-        GameList::HoldField(false);         // 全部返してから元の下画面 UI を戻させる
+        GameList::HoldField(false, GameList::kHoldHhd);         // 全部返してから元の下画面 UI を戻させる
         s_stage = Stage::Idle;
         return;
     case Stage::Failed:
@@ -1711,7 +1711,7 @@ void FrameStep(void) {
         LeaveMenuSceneNow();
         PlayerClone::Hide();
         Release();
-        GameList::HoldField(false);
+        GameList::HoldField(false, GameList::kHoldHhd);
         s_want = false;
         s_stage = Stage::Idle;
         return;

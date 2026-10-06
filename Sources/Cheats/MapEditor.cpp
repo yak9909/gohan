@@ -327,10 +327,10 @@ volatile bool s_holdWanted;                 // 元の下画面 UI を隠す依�
 void ReleaseHoldIfUnwanted(void) {
     if (s_holdWanted)
         return;
-    GameList::HoldField(false);
+    GameList::HoldField(false, GameList::kHoldMapEditor);
     __sync_synchronize();
     if (s_holdWanted)
-        GameList::HoldField(true);
+        GameList::HoldField(true, GameList::kHoldMapEditor);
 }
 volatile s32 s_viewX, s_viewY;              // 盤面の左上のマス
 s32 s_marksViewX = -1, s_marksViewY = -1;   // 上画面のマスの色を最後に渡したときの盤面（メニュースレッド）
@@ -2374,7 +2374,7 @@ bool Start(void) {
     GridCursor::SetTiles(nullptr, nullptr, 0, -1, 0, 0);
     s_cursorShown = 0xFFFFFFFFu;
     s_holdWanted = true;                    // 描画スレッドが依頼を返さないように、先に立てる
-    if (!GameList::HoldField(true)) {
+    if (!GameList::HoldField(true, GameList::kHoldMapEditor)) {
         s_holdWanted = false;
         GuiDialog::ShowMessage(Cheats::kMeOn, u8"下画面を使えません");
         return false;
