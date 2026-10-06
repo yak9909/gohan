@@ -16,6 +16,8 @@ const u32 kIndoorChipOutCalc = 0x4304C, kIndoorChipOutCalcWord = 0xE92D4038;   /
 const u32 kIndoorStateChange = 0x2ED80, kIndoorStateChangeWord = 0xE92D47F0;   // ModuleIndoor StateObj_ChangeByCalc(obj, calc, 0)
 const u32 kIndoorEditorInCalc = 0x3D678, kIndoorEditorInCalcWord = 0xE92D4010;   // ModuleIndoor エディター In の calc（エディター +52）
 const u32 kIndoorEditorNeutralCalc = 0x3D1E4, kIndoorEditorNeutralCalcWord = 0xE92D4FF1;   // ModuleIndoor Editor_Neutral_Calc
+const u32 kIndoorEditorCmnBtnInCalc = 0x3DC48, kIndoorEditorCmnBtnInCalcWord = 0xE92D4070;   // ModuleIndoor エディター CommonButtonIn の calc（In の後に通る。decor_trash1 でここで一度消えた）
+const u32 kIndoorEditorCmnBtnOutCalc = 0x3DCA0, kIndoorEditorCmnBtnOutCalcWord = 0xE92D4070;   // ModuleIndoor エディター CommonButtonOut の calc（共通ボタンで閉じ始め）
 const u32 kIndoorEditorOutCalc = 0x3D708, kIndoorEditorOutCalcWord = 0xE92D4070;   // ModuleIndoor エディター Out の calc
 const u32 kIndoorSlotTarget = 0x052A4, kIndoorSlotTargetWord = 0xE2801A01;   // ModuleIndoor 本体の取り込み口 0x1504C8 が指す関数
 const u32 kFtrRecGet = 0x1D244, kFtrRecGetWord = 0xE1D000F0;   // ModuleFtr FtrRec_Get(&s16 番号) -> 記録（32 B）

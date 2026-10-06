@@ -81,7 +81,8 @@ const u32 kLoaderPtr = 0x0096FC40, kLoaderHeap = 4;
 const u32 kLoaderAlignPtr = 0x0096FC2C;
 const u32 kHeapAllocSlot = 24 / 4, kHeapFreeSlot = 28 / 4;
 const u32 kHolderArc = 8, kHolderAccessor = 0xC, kHolderArcLoaded = 0x158;
-const u32 kLayoutHolder = 236;
+const u32 kLayoutHolder = 236, kLayoutPriority = 12;
+const u8 kPriority = 6;
 const u32 kScreenLower = 1;
 const u32 kTeardownWaitFrames = 3;          // GameLabel / HhdScreen と同じ（描くのをやめてから壊すまで）
 const u32 kCmdBytes = 0x2000;               // ペイン 11・絵 5 枚。HhdScreen の地（784 B 実測）に余裕を足した値（未実測）
@@ -122,7 +123,7 @@ const u32 kSoundMgrPtr = 0x00947080, kSoundBlockNew = 3165;   // +3165 != 0 な�
 // ---- 状態 ----
 enum class Stage : u8 { Idle, Draw, Teardown, Failed };
 enum class Trash : u8 { Wait, OnTarget, OffTarget, Dropped };
-const u32 kMaxHeld = 16;
+const u32 kMaxHeld = 112;                  // チップの最大数（範囲選択でまとめて掴める上限）
 
 volatile bool s_enabled;
 bool s_hooked, s_toldFail;
@@ -192,6 +193,7 @@ Mods Modules(void) {
         { kIndoorChipOutCalc, kIndoorChipOutCalcWord }, { kIndoorStateChange, kIndoorStateChangeWord },
         { kIndoorEditorInCalc, kIndoorEditorInCalcWord }, { kIndoorEditorNeutralCalc, kIndoorEditorNeutralCalcWord },
         { kIndoorEditorOutCalc, kIndoorEditorOutCalcWord }, { kIndoorSlotTarget, kIndoorSlotTargetWord },
+        { kIndoorEditorCmnBtnInCalc, kIndoorEditorCmnBtnInCalcWord }, { kIndoorEditorCmnBtnOutCalc, kIndoorEditorCmnBtnOutCalcWord },
     };
     static const u32 ftrWords[][2] = {
         { kFtrRecGet, kFtrRecGetWord }, { kFtrRecIsAlive, kFtrRecIsAliveWord }, { kFtrSlotTarget, kFtrSlotTargetWord },
@@ -213,12 +215,14 @@ Mods Modules(void) {
     return m;
 }
 
-// 模様替えが開いていて、ゴミ箱を出してよい段（エディターの In / Neutral）
+// 模様替えが開いていて、ゴミ箱を出してよい段（エディターの In → CommonButtonIn → Neutral、閉じ始めの CommonButtonOut まで）。
+//   decor_trash1 は In / Neutral だけにしていて、間の CommonButtonIn で一度退場していた（利用者 2026-10-07「出るときに一度消える」）
 bool EditorLive(const Mods &m) {
     if (m.editor == 0)
         return false;
     const u32 calc = R32(m.editor + kEditorCalc);
-    return calc == m.indoor + kIndoorEditorInCalc || calc == m.indoor + kIndoorEditorNeutralCalc;
+    return calc == m.indoor + kIndoorEditorInCalc || calc == m.indoor + kIndoorEditorCmnBtnInCalc
+        || calc == m.indoor + kIndoorEditorNeutralCalc || calc == m.indoor + kIndoorEditorCmnBtnOutCalc;
 }
 
 u32 FindDragChip(const Mods &m) {
@@ -248,35 +252,89 @@ void Block(bool on) {
     }
 }
 
-// ---- 掴んでいる家具（チップ + 一緒に動くチップ）を控える ----
+// ---- 掴んでいる家具を控える ----
+// 掴んでいる記録 = ModuleFtr の管理（g_FtrMgr）の単体 +20 と、まとめて掴んだ一覧（+4246 個、+1996 から 20 B ずつ、+0 = 記録）、
+//   と掴んだチップ・一緒に動くチップ（+1036 / +1044）の記録（F105）。記録の番号 = (記録 − 記録の表の先頭) / 32（FtrRec_Get の逆）。
+//   decor_trash1 は掴んだチップと一緒に動くチップだけを見ていて、範囲選択でまとめて掴むと 1 つしか消えなかった（利用者 2026-10-07）
+const u32 kFtrMgrSingle = 20, kFtrMgrGroupCount = 4246, kFtrMgrGroup = 1996, kFtrMgrGroupStride = 20, kRecordSize = 32;
+
+bool AddRecord(s16 rec) {
+    if (rec < 0 || rec >= (s16)kChipCount)
+        return false;
+    for (u32 i = 0; i < s_heldCount; ++i)
+        if (s_heldRec[i] == rec)
+            return false;
+    if (s_heldCount >= kMaxHeld)
+        return false;
+    s_heldRec[s_heldCount] = rec;
+    s_heldChip[s_heldCount] = 0;
+    s_heldFtr[s_heldCount] = 0;
+    ++s_heldCount;
+    return true;
+}
+
+void AddChipRecords(u32 chip) {
+    if (!IsHeapPointer(reinterpret_cast<void *>(chip)))
+        return;
+    AddRecord(*reinterpret_cast<const volatile s16 *>(chip + kChipRecord));
+    const u32 follow = R32(chip + kChipFollowCount), array = R32(chip + kChipFollowArray);
+    if (IsHeapPointer(reinterpret_cast<void *>(array)))
+        for (u32 i = 0; i < follow && i < kMaxHeld; ++i) {
+            const u32 c = R32(array + 4 * i);
+            if (IsHeapPointer(reinterpret_cast<void *>(c)))
+                AddRecord(*reinterpret_cast<const volatile s16 *>(c + kChipRecord));
+        }
+}
+
 void Capture(const Mods &m, u32 chip) {
     const RecGetFn recGet = reinterpret_cast<RecGetFn>(m.ftr + kFtrRecGet);
     const RecAliveFn recAlive = reinterpret_cast<RecAliveFn>(m.ftr + kFtrRecIsAlive);
-    u32 chips[kMaxHeld];
-    u32 n = 0;
-    chips[n++] = chip;
-    const u32 follow = R32(chip + kChipFollowCount), array = R32(chip + kChipFollowArray);
-    if (IsHeapPointer(reinterpret_cast<void *>(array)))
-        for (u32 i = 0; i < follow && n < kMaxHeld; ++i)
-            chips[n++] = R32(array + 4 * i);
+    const s16 zero = 0;
+    const u32 table = reinterpret_cast<u32>(recGet(&zero));
     s_heldCount = 0;
-    for (u32 i = 0; i < n; ++i) {
-        const u32 c = chips[i];
-        if (!IsHeapPointer(reinterpret_cast<void *>(c)))
+    AddChipRecords(chip);
+    if (m.ftrMgr != 0) {
+        u32 recs[kMaxHeld + 1];
+        u32 n = 0;
+        recs[n++] = R32(m.ftrMgr + kFtrMgrSingle);
+        const u32 count = *reinterpret_cast<const volatile u8 *>(m.ftrMgr + kFtrMgrGroupCount);
+        for (u32 k = 0; k < count && n < kMaxHeld + 1; ++k)
+            recs[n++] = R32(m.ftrMgr + kFtrMgrGroup + kFtrMgrGroupStride * k);
+        for (u32 k = 0; k < n; ++k) {
+            const u32 r = recs[k];
+            if (r < table || (r - table) % kRecordSize != 0 || (r - table) / kRecordSize >= kChipCount)
+                continue;
+            AddRecord((s16)((r - table) / kRecordSize));
+        }
+    }
+    // 記録を持つチップ（と、そのチップと一緒に動くチップ）
+    for (u32 i = 0; i < kChipCount; ++i) {
+        const u32 c = m.editor + kEditorChips + kChipStride * i;
+        if (*reinterpret_cast<const volatile u8 *>(c + kChipInUse) == 0)
             continue;
         const s16 rec = *reinterpret_cast<const volatile s16 *>(c + kChipRecord);
-        if (rec < 0 || !recAlive(&rec))
+        for (u32 k = 0; k < s_heldCount; ++k)
+            if (s_heldRec[k] == rec && s_heldChip[k] == 0) {
+                s_heldChip[k] = c;
+                AddChipRecords(c);
+            }
+    }
+    // 家具のオブジェクト（記録 +4 の番号 → g_RoomFtrObjects）。無い物（記録 +8 の側）は消さない
+    u32 out = 0;
+    for (u32 k = 0; k < s_heldCount; ++k) {
+        const s16 rec = s_heldRec[k];
+        if (!recAlive(&rec))
             continue;
-        const u32 record = reinterpret_cast<u32>(recGet(&rec));
-        u32 index = R32(record + kRecordFtrIndex);
+        u32 index = R32(reinterpret_cast<u32>(recGet(&rec)) + kRecordFtrIndex);
         void *ftr = FtrFromIndex(&index);
         if (ftr == nullptr)
-            continue;                       // 家具のオブジェクトでない物（記録 +8 の側）は消さない
-        s_heldChip[s_heldCount] = c;
-        s_heldRec[s_heldCount] = rec;
-        s_heldFtr[s_heldCount] = reinterpret_cast<u32>(ftr);
-        ++s_heldCount;
+            continue;
+        s_heldRec[out] = rec;
+        s_heldChip[out] = s_heldChip[k];
+        s_heldFtr[out] = reinterpret_cast<u32>(ftr);
+        ++out;
     }
+    s_heldCount = out;
 }
 
 // 離したあと（ゲームが元の位置へ戻したあと）に消す
@@ -298,7 +356,7 @@ void RemoveHeld(const Mods &m) {
         else
             *reinterpret_cast<volatile u16 *>(reinterpret_cast<u32>(ftr) + kFtrLaterFlags) |= 0x800u;
         const u32 chip = s_heldChip[i];
-        if (*reinterpret_cast<const volatile u8 *>(chip + kChipInUse) != 0)
+        if (chip != 0 && *reinterpret_cast<const volatile u8 *>(chip + kChipInUse) != 0)
             change(reinterpret_cast<void *>(chip), m.indoor + kIndoorChipOutCalc, 0);
     }
     s_heldCount = 0;
@@ -313,17 +371,17 @@ void BindAnim(u32 which) {
     s_bound = s_anim[which];
 }
 
+// 結んでいるアニメを 1 フレーム進める。終わっても外さない（最後のコマのまま残す）。
+//   on / off / ok は絵の差し替え（CLTP）を含み、外すと材質の元の絵（閉じた缶）に戻る。decor_trash1 は終わったら外していたので、
+//   on の 1 コマ後に閉じ、off の最初のコマ（開いた缶）だけが見えていた（利用者 2026-10-07「判定が逆」）。HHD も状態のアニメを結んだまま次へ替える
 bool StepAnim(void) {
-    if (s_bound == nullptr)
+    if (s_bound == nullptr || AnimFinished(s_bound))
         return false;
-    if (AnimFinished(s_bound)) {
-        GroupUnbind(s_layout, s_bound, s_group, 0);
-        s_bound = nullptr;
-        return false;
-    }
     AnimStep(s_bound);
     return true;
 }
+
+bool AnimDone(void) { return s_bound == nullptr || AnimFinished(s_bound); }
 
 void Release(void) {
     if (s_layoutMade) {
@@ -383,7 +441,10 @@ bool Build(void) {
     W32(reinterpret_cast<u32>(s_layout) + kLayoutHolder, reinterpret_cast<u32>(s_holder));
     if (LayoutBuild(s_layout, kLayoutName, nullptr, kCmdBytes) == 0)
         return Fail();
-    s_built = true;                         // 優先度は既定（0x80。sub_12D2BC）のまま
+    s_built = true;
+    // 優先度（Layout +12。昇順に描き、同じ値なら後に足した方が手前）: 模様替えのチップは 6、掴んでいる間 7（sub_B2EBB0、F105）。
+    //   チップと同じ 6 にすると、背景・置いてあるチップより手前（あとに足す）、掴んでいるチップより奥になる。decor_trash1 は既定の 0x80 で掴んだチップより手前だった
+    s_layout[kLayoutPriority] = kPriority;
     for (u32 i = 0; i < kAnims; ++i)
         AnimCtor(s_anim[i]);
     s_animMade = true;
@@ -422,7 +483,7 @@ void TrashStep(const Mods &m) {
     switch (s_trash) {
     case Trash::Wait:
     case Trash::OffTarget: {
-        if (s_trash == Trash::OffTarget && s_bound == nullptr)
+        if (s_trash == Trash::OffTarget && AnimDone())
             s_trash = Trash::Wait;
         const u32 chip = FindDragChip(m);
         if (chip != 0 && touching && InRect(pos.x, pos.y)) {
@@ -467,7 +528,7 @@ void TrashStep(const Mods &m) {
         break;
     }
     case Trash::Dropped:
-        if (s_bound == nullptr)
+        if (AnimDone())
             s_trash = Trash::Wait;
         break;
     }
