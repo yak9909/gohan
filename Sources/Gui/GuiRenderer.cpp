@@ -252,9 +252,10 @@ namespace CTRPluginFramework
             //   ゲームの一覧と同じく、Layout ノード 1 つにシザーを 1 枚持たせて画素単位で切る。
             //   ssys_ma_lyt_Layout_ReplayRecordedList 0x5682DC: ノード+0x138 のバイトが 1 なら、
             //     再生の前に PICA のシザー（モード 3 = 内側）を +0x13C / +0x140 / +0x144 / +0x148 の float から出す。
-            //     下の 16 ビット = 画面の y 側（+0x140 から +0x140 + +0x148 - 1、+0x2C の高さで切る）、
-            //     上の 16 ビット = 320 - 画面の x 側（+0x13C から +0x13C + +0x144 - 1、+0x28 の幅で切る）。
-            //     下画面の画素の矩形 [x0, x1) x [y0, y1) なら +0x13C = 320 - x1 / +0x140 = y0 / +0x144 = x1 - x0 / +0x148 = y1 - y0。
+            //     下の 16 ビット = 画面の縦（+0x140 から +0x140 + +0x148 - 1、+0x2C の高さで切る）、
+            //     上の 16 ビット = 画面の横（+0x13C から +0x13C + +0x144 - 1、+0x28 の幅で切る）。どちらも画面バッファの向き（回転・反転）。
+            //     下画面の画素の矩形 [x0, x1) x [y0, y1) なら +0x13C = 320 - x1 / +0x140 = 240 - y1 / +0x144 = x1 - x0 / +0x148 = y1 - y0。
+            //     ★縦も反転する（2026-10-06 実機: +0x140 = y0 では欄の中身が全部切れ、240 - y1 で欄の縁で切れた。IDA-opus-5.5-F095）
             //     ★0 以外の値は毎回シザーのコマンドを出す（+0x108 = 記録の長さが 0 でも）。後ろのノードが自分のシザーで戻す。
             //   ノードは主ノード（OwnGui の A2 ケーブ）とは別に持つ。登録はゲームのスレッド（GridCursor の毎フレームの相乗り）で、
             //     A2 ケーブと同じ手順（コマンドリストの作成・二重登録の見送り・投影・AddLayout）。優先度は HhdScreen と同じ 0xFF。
@@ -1705,8 +1706,8 @@ namespace CTRPluginFramework
                             W32(node + 0xB0, mgr + kWorkObjOff);     // TextBox が要る DrawInfo+0x80（§3.1 / F-302）
                     }
                     // シザー（下画面の画素の矩形 [x, x + w) x [y, y + h)。0x5682DC の式の逆）
-                    WF(node + 0x13C, (float)(kGuiBotW - (g_clipX + g_clipW)));
-                    WF(node + 0x140, (float)g_clipY);
+                    WF(node + 0x13C, (float)((int)kGuiBotW - (g_clipX + g_clipW)));
+                    WF(node + 0x140, (float)((int)kGuiBotH - (g_clipY + g_clipH)));   // 縦は下端から（F095 の実機）
                     WF(node + 0x144, (float)g_clipW);
                     WF(node + 0x148, (float)g_clipH);
                     W8(node + 0x138, 1);
