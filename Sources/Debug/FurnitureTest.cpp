@@ -10,7 +10,10 @@
 //   消す（試験 3 は Item_PlaceItem 操作 6 で、その場で消えず読み直すとリンゴ 0x2001 になった）→ 試験 4:
 //     ゲームが部屋の家具を消すときの手順（sub_4E4FD0）をそのまま使う。
 //     マス → 家具のオブジェクト sub_4E8CF4(0x9C1AB4, x, z, 層) → vtable +144 が真なら sub_56FD10(家具, 6)。
-//     片付け AcFtr_DestroyBegin（状態 6/7）→ sub_575F30 → sub_4E6240 が大きさの全マスを部屋のマップから空にする（静的、未実機）。
+//     片付け AcFtr_DestroyBegin（状態 6/7）→ sub_575F30 → sub_4E6240 が大きさの全マスを部屋のマップから空にする。
+//   試験 4（利用者）: 即反映・8 フレームでマップ 7FFE。ただし上に載った物は浮いて残った
+//     （片付けは層 1 を消さない: AcFtr_DestroyBegin 0x570554 で R2=0）。
+//   試験 5（この版）: 土台のマスの層 1 にある家具のオブジェクトも先に状態 6 にする（各自の片付けが層 1 のデータを消す）。
 // どちらもゲームのスレッド（GridCursor の毎フレームの相乗り）で 1 回だけ実行し、結果を OSD に出す。
 
 #include <3ds.h>
@@ -66,6 +69,11 @@ void Say(const char *fmt, ...) {
     OSD::Notify(buf);
 }
 
+bool Ready(void *ftr) {
+    const FtrReadyFn ready = reinterpret_cast<FtrReadyFn>((*reinterpret_cast<u32 **>(ftr))[144 / 4]);
+    return ready(ftr) != 0;
+}
+
 bool PlayerCell(void *actor, int &x, int &z, int &rot) {
     const float *pos = reinterpret_cast<const float *>(reinterpret_cast<u8 *>(actor) + GridCursor::Game::kPlayerPositionOffset);
     PosToCell(&x, &z, pos);
@@ -96,16 +104,36 @@ void Remove(void *mgr, int px, int pz) {
     }
     const Item *it = ItemAt(mgr, bx, bz, 0);
     const Item before = it ? *it : Item{ 0, 0 };
-    const FtrReadyFn ready = reinterpret_cast<FtrReadyFn>((*reinterpret_cast<u32 **>(ftr))[144 / 4]);
-    if (!ready(ftr)) {
+    if (!Ready(ftr)) {
         Say("remove (%d,%d) item %04X: not ready (vtable+144 = 0)", bx, bz, before.id);
         return;
     }
+    // 上に載っている物（土台のマスの層 1）を先に消す
+    void *tops[16];
+    int ntop = 0, nfail = 0;
+    for (int z = 0; z < 16; ++z)
+        for (int x = 0; x < 16; ++x) {
+            if (FtrAt(kFtrGrid, x, z, 0) != ftr)
+                continue;
+            void *t = FtrAt(kFtrGrid, x, z, 1);
+            if (t == nullptr || t == ftr)
+                continue;
+            bool seen = false;
+            for (int i = 0; i < ntop; ++i)
+                seen = seen || tops[i] == t;
+            if (seen || ntop >= 16)
+                continue;
+            tops[ntop++] = t;
+        }
+    for (int i = 0; i < ntop; ++i)
+        if (!Ready(tops[i]) || !FtrSetState(tops[i], 6))
+            ++nfail;
     const int res = FtrSetState(ftr, 6);
     s_watchX = bx;
     s_watchZ = bz;
     s_wait = 0;
-    Say("remove (%d,%d) item %04X:%04X -> state 6 %d (player %d,%d)", bx, bz, before.id, before.flags, res, px, pz);
+    Say("remove (%d,%d) item %04X:%04X -> state 6 %d, on top %d (failed %d) (player %d,%d)", bx, bz, before.id,
+        before.flags, res, ntop, nfail, px, pz);
 }
 
 void Place(int px, int pz, int prot) {
@@ -133,11 +161,13 @@ void FrameStep(void) {
     if (s_watchX >= 0) {                                     // 消したマスが部屋のマップから空になるまで見る
         void *m = MapMgr();
         const Item *it = m ? ItemAt(m, s_watchX, s_watchZ, 0) : nullptr;
+        const Item *up = m ? ItemAt(m, s_watchX, s_watchZ, 1) : nullptr;
         const void *f = FtrAt(kFtrGrid, s_watchX, s_watchZ, 0);
+        const void *fu = FtrAt(kFtrGrid, s_watchX, s_watchZ, 1);
         ++s_wait;
-        if ((it != nullptr && it->id == kEmpty && f == nullptr) || s_wait > 180) {
-            Say("remove: (%d,%d) map %04X object %s after %d frames", s_watchX, s_watchZ, it ? it->id : 0,
-                f ? "still" : "gone", s_wait);
+        if ((it != nullptr && it->id == kEmpty && f == nullptr && fu == nullptr) || s_wait > 180) {
+            Say("remove: (%d,%d) map %04X / top %04X, object %s / top %s after %d frames", s_watchX, s_watchZ,
+                it ? it->id : 0, up ? up->id : 0, f ? "still" : "gone", fu ? "still" : "gone", s_wait);
             s_watchX = s_watchZ = -1;
         }
         return;
