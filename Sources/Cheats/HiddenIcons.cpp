@@ -6,7 +6,7 @@
 //   アクセサから取り、P_itemIcon の material の TexMap（material +52）へ書く。没アイテムは表に記録が無いので icn_000（IDA-opus-5.5-F049）。
 // 自前: その後（kind 0 のときだけ）、没アイテムで絵の指定があれば、同じ TexMap を自前の絵へ書き換える（ゲームと同じ書き方:
 //   TexMap +0 = 0 / +4 = PA / +8 = 大きさ / +12 = 2 の冪の大きさ / +16 の書式 = 11（ETC1A4）→ nwlyt_TexMap_UpdateGpuRegs、material +77 の bit2 を落とす）。
-// 絵は 32x32（利用者が見比べて決めた。2026-09-27）。sdmc:/gohan/common/hidden_item_icons.arc（DARC。timg/<番号>.bclim、各 1,064 B =
+// 絵は 32x32（利用者が見比べて決めた。2026-09-27）。sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc（DARC。timg/<番号>.bclim、各 1,064 B =
 //   ETC1A4 1,024 B + CLIM 見出し 0x28。ゲームの Layout/ItemWin/item_icon_tex.arc と同じ形。解析 repo tools/items/export_hidden_icons.py）を
 //   起動時にプラグインのヒープへ読む（LoadIcons）。プラグインのヒープは GPU から読めないので、
 //   借りたヒープの末尾のキャッシュ（GuiRenderer::GpuIconCache、1,024 B x 16 枠）へ写して使う。

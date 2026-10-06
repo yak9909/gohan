@@ -111,7 +111,14 @@ exit:
             u8"ON にしたあと Select で自前メニューを開閉、Select + 十字上 で従来の CTRPF メニューです。\n"
             u8"基準仕様 v2: 矩形は nw::lyt::Picture、文字は自前フォント資源 + 標準の文字経路。"
             u8"GPU コマンドを 1 語も自分で書かず、入れるフックは RenderTop / RenderBottom の 2 本だけ。"
-            u8"詳細は /gohan_owngui.txt と /gohan_gui.txt。"
+            u8"診断の記録は「自前 GUI の診断を書き出す」で書き出せます（ON にしただけではファイルを作りません）。"
+        );
+
+        menu += new MenuEntry(
+            u8"自前 GUI の診断を書き出す",
+            nullptr,
+            OwnGuiWriteDiagnostics,
+            u8"自前 GUI の組み込み・取り外しの記録を、gohan.3gx と同じフォルダの gohan_owngui.txt と gohan_gui.txt に書き出します。"
         );
 
         menu += new MenuEntry(

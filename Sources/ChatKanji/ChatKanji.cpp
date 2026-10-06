@@ -207,6 +207,7 @@ bool FontReady() {
     return fontReady && Word(kFontManager,manager) && manager==fontManager &&
            Read(manager+0x1A1,&phase,1) && phase==3 && Word(manager+0x188+4,resource) && resource==fontResource;
 }
+bool EnsureFont() {return FontReady() || PrepareFont();}
 uint32_t FontAddress() {return fontReady?reinterpret_cast<uintptr_t>(fontObject):0;}
 int Glyph(uint32_t cp) {return fontReady?fontView.Glyph(cp):-1;}
 int GlyphAdvance(int glyph) {return fontReady?fontView.Advance(glyph):0;}

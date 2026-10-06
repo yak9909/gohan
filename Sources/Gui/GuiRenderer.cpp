@@ -1788,15 +1788,17 @@ namespace CTRPluginFramework
             g_ready = false;
         }
 
-        void    DumpLog(void)
+        bool    DumpLog(void)
         {
             File    f;
 
-            if (File::Open(f, "/gohan_gui.txt",
+            // gohan.3gx と同じフォルダ（CTRPF の作業フォルダ。OwnGuiWriteDiagnostics から呼ぶだけ）
+            if (File::Open(f, "gohan_gui.txt",
                            File::RWC | File::TRUNCATE | File::SYNC) != File::SUCCESS)
-                return;
+                return false;
             f.Write(g_log.c_str(), g_log.size());
             f.Close();
+            return true;
         }
     }
 }

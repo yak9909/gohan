@@ -1826,14 +1826,24 @@ namespace CTRPluginFramework
 
             if (!BarVisible())
                 return;
+            // ゲームの書体はこれまで最初の変換の依頼（ChatKanji::Start）でしか準備しておらず、チャットを開いた最初は
+            //   自前キーの文字が出なかった（何か入力すると出た。利用者 2026-10-06）。描く前に準備する
+            const bool  font = ChatKanji::EnsureFont();
             // キーボードの背面（W_ktpShade）を上へ伸ばしてあれば、その上に載せる（地と縁はゲームの背面）。
             //   伸ばせなかったときだけ Simulator の drawCandidateBar / drawPreviewControls の地と縁を自前で塗る。
             const bool  own = !g_shadeOn;
 
             if (own)
                 GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
-            if (ChatKanji::FontReady())
+            if (font)
                 DrawCandidates(left, right, dy, buf, sizeof(buf), chars, cells);
+            // 候補欄からはみ出した字を隠す（切り抜きの代わり。描画器は登録した順に重ねる。利用者 2026-10-06: 範囲外の候補を消さずにはみ出した分だけ切る）。
+            //   左 = 欄の内側より左（画面の端まで）。右 = 全選択キー（x279..317）が覆う。キーの絵が無いときと、キーより右（x318..319）は塗る
+            GuiRenderer::FillRect(BOT, 0, kRowY + dy, (int)left, kRowH, kColBarPanel);
+            if (!m_texReady)
+                GuiRenderer::FillRect(BOT, kKeys[KEY_SELECT_ALL].x, kRowY + dy, kKeys[KEY_SELECT_ALL].w, kRowH, kColBarPanel);
+            GuiRenderer::FillRect(BOT, kKeys[KEY_SELECT_ALL].x + kKeys[KEY_SELECT_ALL].w, kRowY + dy,
+                                  320 - (kKeys[KEY_SELECT_ALL].x + kKeys[KEY_SELECT_ALL].w), kRowH, kColBarPanel);
             if (own)
             {
                 GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, 1, kColRowEdge);
@@ -1861,7 +1871,7 @@ namespace CTRPluginFramework
                     RoundCorner(x1, y0, -1, 1, r.rightTop);
                     RoundCorner(x1, y1, -1, -1, r.rightBottom);
                 }
-                if (ChatKanji::FontReady())
+                if (font)
                 {
                     // 中央: 字幅は GPU の送り、文字セルの高さ = FINF の高さ x 倍率。押下は右下へ 1px（T_key_Spc の CLPA）
                     const float tw = GuiRenderer::MeasureTextNative(label, k.scale);
@@ -1891,7 +1901,7 @@ namespace CTRPluginFramework
 
                 if (x + m_cellW[i] < (float)kBarX || x > (float)(kBarX + kBarW))
                     continue;
-                // 切り抜きが無いので、選択の塗りは内側へ詰め、文字は丸ごと入る候補だけ描く（Simulator は切り抜く）
+                // 選択の塗りは内側へ詰める。文字は欄に一部でも掛かれば描き、はみ出した分は DrawBar が上から塗って隠す（Simulator の切り抜きと同じ見た目）
                 if (i == m_sel || (m_dragging && !m_scrolling && i == m_tapCandidate))
                 {
                     float   x0 = x < left ? left : x;
@@ -1903,7 +1913,7 @@ namespace CTRPluginFramework
                 }
                 const float tx = x + (float)kBarPad;
 
-                if (tx < left || tx + m_textW[i] > right || cells >= kBarMaxCells)
+                if (tx + m_textW[i] <= left || tx >= right || cells >= kBarMaxCells)
                     continue;
                 if (!CandidateUtf8(i, buf, cap))
                     continue;

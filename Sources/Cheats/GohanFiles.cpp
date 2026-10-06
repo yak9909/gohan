@@ -13,12 +13,12 @@ using CTRPluginFramework::File;
 
 bool TitlePath(char *out, u32 size, const char *name) {
     const unsigned long long tid = CTRPluginFramework::Process::GetTitleID();
-    const int n = std::snprintf(out, size, "/gohan/%016llX/%s", tid, name);
+    const int n = std::snprintf(out, size, "/luma/plugins/gohan/%016llX/%s", tid, name);
     return n > 0 && (u32)n < size;
 }
 
 bool CommonPath(char *out, u32 size, const char *name) {
-    const int n = std::snprintf(out, size, "/gohan/common/%s", name);
+    const int n = std::snprintf(out, size, "/luma/plugins/gohan/common/%s", name);
     return n > 0 && (u32)n < size;
 }
 

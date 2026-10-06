@@ -65,7 +65,7 @@ bool Parse(void) {
     return false;
 }
 
-// ---- 没アイテムの表（sdmc:/gohan/<タイトル ID>/hidden_items.tsv）----
+// ---- 没アイテムの表（sdmc:/luma/plugins/gohan/<タイトル ID>/hidden_items.tsv）----
 // 書式は表の先頭のコメントのとおり: UTF-8、タブ区切り、# の行と空行は読まない、見出し行 "id\t..." も読まない。
 //   列 = id（0x 付きの 16 進）/ icon（10 進、0 = なし）/ kana / name。行の順は自由（読んでから ID 順に並べる）。同じ ID が 2 回あれば後の行を捨てる。
 const u32 kTableMaxBytes = 1024 * 1024;

@@ -5,7 +5,7 @@
 // - 通常アイテム: ゲームの ROM の Script/Str/STR_Item_name.umsbt を実行時に読む（3gx に名前を焼き込まない）。
 //   TXT2 の i 番目 = ID 0x2000 + i（ゲームの ItemName_ResolvePhrase 0x56D274 と同じ引き方。IDA-opus-5.5-F049）。
 //   読むのは頼まれたときに 1 回（約 190 KB を持ち続ける。ReleaseNormal で返す）。
-// - 没アイテム: SD の表 sdmc:/gohan/<タイトル ID>/hidden_items.tsv（漢字名・かな名・アイコン番号。GohanFiles.hpp）。
+// - 没アイテム: SD の表 sdmc:/luma/plugins/gohan/<タイトル ID>/hidden_items.tsv（漢字名・かな名・アイコン番号。GohanFiles.hpp）。
 //   起動時に LoadHidden で 1 回読む（無ければ没アイテムの名前・アイコンは出ない）。
 // - 自前表示: ゲームの名前の関数をフックし、没アイテムの名前を表の漢字名にする（SetCustomNames）。
 
@@ -16,7 +16,7 @@ namespace HiddenItemTable
     struct Entry
     {
         u16             id;
-        u16             icon;       // sdmc:/gohan/common/hidden_item_icons.arc の timg/<番号>.bclim（0 = 指定なし）
+        u16             icon;       // sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc の timg/<番号>.bclim（0 = 指定なし）
         const char16_t *name16;     // 漢字名（ゲームの名前に入れる）
         const char     *name;       // 漢字名 UTF-8
         const char     *kana;       // かな名 UTF-8（検索用）

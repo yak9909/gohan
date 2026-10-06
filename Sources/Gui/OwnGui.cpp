@@ -48,15 +48,18 @@ namespace CTRPluginFramework
             g_log += "\n";
         }
 
-        void    LogFlush(void)
+        // 診断の書き出し（利用者 2026-10-06: 組み込みだけではファイルを作らない。「自前 GUI の診断を書き出す」を選んだときだけ、
+        //   gohan.3gx と同じフォルダへ書く。CTRPF は作業フォルダを .3gx のフォルダにしているので、先頭に / を付けない名前で開く）
+        bool    LogFlush(void)
         {
             File    f;
 
-            if (File::Open(f, "/gohan_owngui.txt",
+            if (File::Open(f, "gohan_owngui.txt",
                            File::RWC | File::TRUNCATE | File::SYNC) != File::SUCCESS)
-                return;
+                return false;
             f.Write(g_log.c_str(), g_log.size());
             f.Close();
+            return true;
         }
 
         inline u32  R32(u32 a) { return *(volatile u32 *)a; }
@@ -580,7 +583,6 @@ namespace CTRPluginFramework
             //   GuiRenderer の kBorrowBytes と食い違っていた）。
             if (!BorrowHeap(GuiRenderer::BorrowBytes()))
             {
-                LogFlush();
                 return false;
             }
 
@@ -599,9 +601,7 @@ namespace CTRPluginFramework
             if (!GuiRenderer::Install())
             {
                 Log("[!] GuiRenderer::Install 失敗: %s", GuiRenderer::LastError());
-                GuiRenderer::DumpLog();
                 ReturnHeap();
-                LogFlush();
                 return false;
             }
             Log("アトラス 0x%08X (%u B)", (unsigned int)GuiRenderer::AtlasVa(),
@@ -612,7 +612,6 @@ namespace CTRPluginFramework
             {
                 GuiRenderer::Uninstall();
                 ReturnHeap();
-                LogFlush();
                 return false;
             }
 
@@ -629,7 +628,6 @@ namespace CTRPluginFramework
                     Log("[!] root Pane が入っていない。これでは記録長が 0 のままになる。中止。");
                     GuiRenderer::Uninstall();
                     ReturnHeap();
-                    LogFlush();
                     return false;
                 }
             }
@@ -643,7 +641,6 @@ namespace CTRPluginFramework
                 // ★途中で失敗してもケーブは残す。
                 //   生きているフックがゼロコードを実行すると死ぬ（F-284）。
                 GuiRenderer::Uninstall();
-                LogFlush();
                 return false;
             }
             g_enabled = true;
@@ -676,8 +673,6 @@ namespace CTRPluginFramework
                         "★溢れは無検査なので、これ以上増やしてはいけない。");
             }
             Log("組み込み完了。");
-            GuiRenderer::DumpLog();
-            LogFlush();
             return true;
         }
 
@@ -758,8 +753,18 @@ namespace CTRPluginFramework
                 svcInvalidateEntireInstructionCache();
             }
             g_enabled = false;
-            LogFlush();
         }
+    }
+
+    void    OwnGuiWriteDiagnostics(MenuEntry *entry)
+    {
+        (void)entry;
+        Log("=== 診断の書き出し（有効 %d / 上ノード記録長 %u / 下ノード記録長 %u）===", g_enabled ? 1 : 0,
+            (unsigned int)R32(kGuiNodeTop + 0x108), (unsigned int)R32(kGuiNodeBot + 0x108));
+        const bool gui = GuiRenderer::DumpLog();
+        const bool own = LogFlush();
+        MessageBox(u8"自前 GUI の診断", gui && own ? u8"gohan.3gx と同じフォルダに gohan_owngui.txt と gohan_gui.txt を書き出しました。"
+                                                   : u8"書き出せませんでした（SD に書けない）。")();
     }
 
     void    OwnGuiToggle(MenuEntry *entry)

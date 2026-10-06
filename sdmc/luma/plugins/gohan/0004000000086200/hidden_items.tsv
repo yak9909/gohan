@@ -3,9 +3,9 @@
 # 生成: 解析 repo tools/items/export_hidden_items.py（手で直してもよい。gohan は起動時に読む）。
 # 書式: UTF-8、タブ区切り。# で始まる行と空行は読まない。行の順は自由（読むときに ID 順に並べる）。
 #   id   = アイテム ID（16 進。0x を付ける）
-#   icon = アイコンの番号（sdmc:/gohan/common/hidden_item_icons.arc の timg/<番号>.bclim。0 = なし）
+#   icon = アイコンの番号（sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc の timg/<番号>.bclim。0 = なし）
 #   kana = 検索用のかな名 / name = 表示名（ゲームの書体で描く）
-#   ほかの言語は sdmc:/gohan/<その版のタイトル ID>/hidden_items.tsv に同じ形で置く。
+#   ほかの言語は sdmc:/luma/plugins/gohan/<その版のタイトル ID>/hidden_items.tsv に同じ形で置く。
 id	icon	kana	name
 0x0005	5282	かれたたけ	枯れた竹
 0x0006	5299	かれたき	枯れた木

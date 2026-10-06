@@ -1136,7 +1136,7 @@ Issue #15。2026-09-27 実装（解析 IDA-opus-5.5-F048 / F049）。
   （widget +308 の layout から探す）の material（vt+40）の TexMap（material +52）を自前の絵へ書き換える（ゲームと同じ書き方で書式 11 = ETC1A4、
   `nwlyt_TexMap_UpdateGpuRegs`、material +77 の bit2 を落とす）。
   - 絵: 利用者の PNG（64x64 RGBA8）を 2x2 の平均で 32x32 にして ETC1A4 にしたもの。75 枚（表で使う 77 種のうち 5352・5353 は PNG が無い）。
-    解析 repo `tools/items/export_hidden_icons.py` が `sdmc/gohan/common/hidden_item_icons.arc`（DARC。`timg/<番号>.bclim`、各 1,064 B =
+    解析 repo `tools/items/export_hidden_icons.py` が `sdmc/luma/plugins/gohan/common/hidden_item_icons.arc`（DARC。`timg/<番号>.bclim`、各 1,064 B =
     ETC1A4 32x32 + CLIM 見出し。ゲームの `Layout/ItemWin/item_icon_tex.arc` と同じ形）を作る。**★ゲーム由来の絵の可能性があるので Git に入れない**
     （`.gitignore`）。起動時にプラグインのヒープへ読む（`HiddenIcons::LoadIcons`。見出しの幅・高さ・書式・データ長を確かめる）。無ければ自前表示は名前だけになる。
   - 3gx のメモリは GPU から読めないので、表示するときに借りたヒープの末尾のキャッシュ（`GuiRenderer::GpuIconCache`、1,024 B x 16 枠。
@@ -1145,22 +1145,22 @@ Issue #15。2026-09-27 実装（解析 IDA-opus-5.5-F048 / F049）。
   - 自前表示の入り切りで、持ち物を開いていれば 16 枠のアイコンをゲームの処理で作り直す。
 - 連動型なので、メニューを開いたときに 1 語とフックの状態を読んで今の状態を出す。
 - ★`Inventory_GetSlot` の呼び元は 78 か所ある（持ち物以外の判定にも効く）。公開チートと同じ挙動。
-- 没アイテムの表（`sdmc:/gohan/<タイトル ID>/hidden_items.tsv`、332 件。2026-10-06 に 3gx 内蔵の `HiddenItemTable.h` から SD の人が読める表へ。
+- 没アイテムの表（`sdmc:/luma/plugins/gohan/<タイトル ID>/hidden_items.tsv`、332 件。2026-10-06 に 3gx 内蔵の `HiddenItemTable.h` から SD の人が読める表へ。
   UTF-8 タブ区切り `id icon kana name`、`#` の行は読まない。タイトル ID ごとに置けばその版の言語の名前になる。起動時に `ItemNames::LoadHidden` で読む）: 利用者の全アイテム表（`Item.h` の PDF）と ROM の `STR_Item_name.umsbt` の差分
   （解析 repo `tools/items/dump_item_names.py` → `diff_hidden_items.py` → `export_hidden_items.py`）。ROM に名前のある ID は通常アイテム。
   内訳: 通常の表より下（0x0005〜0x00FF）251 件、表の中で ROM の名前が空 76 件、表より上（ラッピングの形）5 件。
 - 名前を引く窓口 `ItemNames`（`Includes/Cheats/ItemNames.hpp`。今後のアイテム検索でも使う）: 通常アイテムは ROM の `STR_Item_name.umsbt` を
   実行時に読む（3gx に焼き込まない。TXT2 の i 番目 = ID 0x2000 + i）。没アイテムは SD の表（漢字名・かな名）。
 
-### 17.5.2 SD のリソース（sdmc:/gohan）【2026-10-06】
+### 17.5.2 SD のリソース（sdmc:/luma/plugins/gohan）【2026-10-06】
 
-利用者の指定で、プラグインが読むリソースは SD の `gohan` フォルダに置く（3gx に焼き込まない）。並びは `Includes/Cheats/GohanFiles.hpp` と repo の `sdmc/gohan/README.txt`。
+利用者の指定で、プラグインが読むリソースは SD の `gohan` フォルダに置く（3gx に焼き込まない）。置き場所は `sdmc:/luma/plugins/gohan/`（利用者 2026-10-06）。並びは `Includes/Cheats/GohanFiles.hpp` と repo の `sdmc/luma/plugins/gohan/README.txt`。
 
 | 置き場所 | 中身 | 読むところ |
 |---|---|---|
-| `sdmc:/gohan/common/hidden_item_icons.arc` | 没アイテムのアイコン（言語に依らない） | `HiddenIcons::LoadIcons`（起動時） |
-| `sdmc:/gohan/<タイトル ID 16 桁>/hidden_items.tsv` | 没アイテム表（人が読める。版ごと＝言語ごと） | `ItemNames::LoadHidden`（起動時） |
-| `sdmc:/gohan/<タイトル ID 16 桁>/hhd_charcreate.arc` | HHD式スタイル変更のレイアウト（上画面の文字が言語ごと） | `HhdScreen::Show`（開くとき） |
+| `sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc` | 没アイテムのアイコン（版に依らない） | `HiddenIcons::LoadIcons`（起動時） |
+| `sdmc:/luma/plugins/gohan/<タイトル ID 16 桁>/hidden_items.tsv` | 没アイテム表（人が読める。版ごと＝言語ごと） | `ItemNames::LoadHidden`（起動時） |
+| `sdmc:/luma/plugins/gohan/common/hhd_charcreate.arc` | HHD式スタイル変更のレイアウト（利用者の指定で common） | `HhdScreen::Show`（開くとき） |
 
 今は日本版 `0004000000086200` だけ。ほかの版はそのタイトル ID のフォルダに同じ名前で置く。
 

@@ -1,6 +1,6 @@
 #pragma once
 
-// HiddenIcons — 没アイテムの自前のアイコン（没アイテム表示の自前表示）。絵は sdmc:/gohan/common/hidden_item_icons.arc（GohanFiles.hpp）。
+// HiddenIcons — 没アイテムの自前のアイコン（没アイテム表示の自前表示）。絵は sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc（GohanFiles.hpp）。
 
 #include <3ds/types.h>
 

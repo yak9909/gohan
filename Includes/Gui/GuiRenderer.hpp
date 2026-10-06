@@ -87,7 +87,7 @@ namespace CTRPluginFramework
         u32         AtlasBytes(void);
         u32         RecordedBytes(Screen screen);   // ノード +0x108
         const char *LastError(void);
-        void        DumpLog(void);                  // /gohan_gui.txt へ書き出す
+        bool        DumpLog(void);                  // gohan.3gx と同じフォルダの gohan_gui.txt へ書き出す（診断の書き出しのときだけ）
 
         // ---- 容量（基準仕様 v2 §4.7 の安全弁）----
         int         MaxRects(Screen screen);

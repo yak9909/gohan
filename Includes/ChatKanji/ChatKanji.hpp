@@ -25,6 +25,9 @@ const uint16_t *Candidate(int index, int &length);
 // Normal chat open with its input bound to the shared TextManager buffer (read-only check, any thread).
 bool NormalChatOpen();
 bool FontReady();
+// GuiMenu's thread: FontReady, or prepare the game font now (it was only prepared by the first conversion request,
+// so the own keys' labels were missing until something was typed; user report 2026-10-06).
+bool EnsureFont();
 uint32_t FontAddress();
 int Glyph(uint32_t cp);
 int GlyphAdvance(int glyph);
