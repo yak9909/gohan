@@ -127,10 +127,10 @@ exit:
         );
 
         // T022 の下調べ（2026-10-06）。家具をその場で消す・置けるか（Item_PlaceItem をゲームのスレッドから）
-        menu += new MenuEntry(u8"試験: 目の前の家具を消す", nullptr, ::FurnitureTest::RemoveInFront,
-                              u8"家の中で、プレイヤーの目の前のマスの家具を Item_PlaceItem（操作 6）で消します。試験用。");
-        menu += new MenuEntry(u8"試験: 目の前に椅子を置く", nullptr, ::FurnitureTest::PlaceChairInFront,
-                              u8"家の中で、プレイヤーの目の前の空きマスに椅子（0x2AE9）を Item_PlaceItem（操作 0xA）で置きます。試験用。");
+        menu += new MenuEntry(u8"試験: 一番近い家具を消す", nullptr, ::FurnitureTest::RemoveInFront,
+                              u8"家の中で、プレイヤーに一番近い家具を Item_PlaceItem（操作 6）で消します。メニューを閉じると実行し、結果を通知に出します。試験用。");
+        menu += new MenuEntry(u8"試験: 近くに椅子を置く", nullptr, ::FurnitureTest::PlaceChairInFront,
+                              u8"家の中で、プレイヤーの周りの空いたマスに椅子（0x2AE9）を「かざる」と同じ部品（sub_6920CC → sub_68FA84）で置きます。メニューを閉じると実行し、結果を通知に出します。試験用。");
 
         menu += new MenuEntry(
             u8"GPU可視メモリ(linear/VRAM)を検証",
