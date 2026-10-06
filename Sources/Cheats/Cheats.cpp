@@ -17,6 +17,8 @@
 #include "ModelViewer.hpp"
 #include "PlayerClone.hpp"
 #include "HhdScreen.hpp"
+#include "HiddenIcons.hpp"
+#include "ItemNames.hpp"
 #include "PublicWorks.hpp"
 #include "PocketItem.hpp"
 #include "ChatIme.hpp"
@@ -251,6 +253,9 @@ namespace CTRPluginFramework
 
         void    Wire(void)
         {
+            // SD の gohan フォルダのリソース（没アイテム表・アイコン）。フックを入れる前に 1 回読む（GohanFiles.hpp）
+            ItemNames::LoadHidden();
+            HiddenIcons::LoadIcons();
             for (int i = 0; i < COUNT(g_patchCheats); i++)
             {
                 g_patchCheats[i].index = GuiMenu::FindItem(g_patchCheats[i].label);

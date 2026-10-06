@@ -10,6 +10,7 @@
 
 #include "ItemNames.hpp"
 
+#include "GohanFiles.hpp"
 #include "RomfsIndex.hpp"
 
 #include <3ds.h>
@@ -62,6 +63,71 @@ bool Parse(void) {
         o = (o + 16 + sz + 15) & ~15u;
     }
     return false;
+}
+
+// ---- 没アイテムの表（sdmc:/gohan/<タイトル ID>/hidden_items.tsv）----
+// 書式は表の先頭のコメントのとおり: UTF-8、タブ区切り、# の行と空行は読まない、見出し行 "id\t..." も読まない。
+//   列 = id（0x 付きの 16 進）/ icon（10 進、0 = なし）/ kana / name。行の順は自由（読んでから ID 順に並べる）。同じ ID が 2 回あれば後の行を捨てる。
+const u32 kTableMaxBytes = 1024 * 1024;
+HiddenItemTable::Entry *s_hidden;
+u32 s_hiddenCount;
+bool s_hiddenTried;
+char *s_hiddenText;         // 読んだファイル（タブと改行を 0 にして文字列にする）
+char16_t *s_hiddenWide;     // name16 の置き場
+
+u32 ParseNumber(const char *s, bool hex) {
+    u32 v = 0;
+    if (hex) {
+        if (s[0] != '0' || (s[1] != 'x' && s[1] != 'X'))
+            return 0xFFFFFFFFu;
+        s += 2;
+    }
+    if (*s == 0)
+        return 0xFFFFFFFFu;
+    for (; *s; ++s) {
+        const char c = *s;
+        u32 d;
+        if (c >= '0' && c <= '9')
+            d = (u32)(c - '0');
+        else if (hex && c >= 'a' && c <= 'f')
+            d = (u32)(c - 'a' + 10);
+        else if (hex && c >= 'A' && c <= 'F')
+            d = (u32)(c - 'A' + 10);
+        else
+            return 0xFFFFFFFFu;
+        v = v * (hex ? 16u : 10u) + d;
+        if (v > 0xFFFFu)
+            return 0xFFFFFFFFu;
+    }
+    return v;
+}
+
+// UTF-8 → UTF-16（0 終わり）。書いた単位数（0 を含む）
+u32 Utf8To16(const char *s, char16_t *out) {
+    u32 o = 0;
+    const u8 *p = reinterpret_cast<const u8 *>(s);
+    while (*p) {
+        u32 c = *p++;
+        if (c >= 0xF0 && p[0] && p[1] && p[2]) {
+            c = (c & 0x07) << 18 | (p[0] & 0x3F) << 12 | (p[1] & 0x3F) << 6 | (p[2] & 0x3F);
+            p += 3;
+        } else if (c >= 0xE0 && p[0] && p[1]) {
+            c = (c & 0x0F) << 12 | (p[0] & 0x3F) << 6 | (p[1] & 0x3F);
+            p += 2;
+        } else if (c >= 0xC0 && p[0]) {
+            c = (c & 0x1F) << 6 | (p[0] & 0x3F);
+            p += 1;
+        }
+        if (c >= 0x10000) {
+            c -= 0x10000;
+            out[o++] = (char16_t)(0xD800 + (c >> 10));
+            out[o++] = (char16_t)(0xDC00 + (c & 0x3FF));
+        } else {
+            out[o++] = (char16_t)c;
+        }
+    }
+    out[o++] = 0;
+    return o;
 }
 
 // ---- 自前表示のフック ----
@@ -149,13 +215,94 @@ const u16 *NormalName(u16 id, u32 &length) {
     return p;
 }
 
+u32 LoadHidden(void) {
+    if (s_hiddenTried)
+        return s_hiddenCount;
+    s_hiddenTried = true;
+    char path[64];
+    u32 size = 0;
+    if (!GohanFiles::TitlePath(path, sizeof(path), "hidden_items.tsv"))
+        return 0;
+    u8 *file = GohanFiles::ReadAll(path, kTableMaxBytes, size);
+    if (file == nullptr)
+        return 0;
+    char *text = reinterpret_cast<char *>(file);
+    u32 lines = 0;
+    for (u32 i = 0; i < size; ++i)
+        lines += text[i] == '\n' ? 1u : 0u;
+    HiddenItemTable::Entry *entries = new (std::nothrow) HiddenItemTable::Entry[lines + 1];
+    char16_t *wide = new (std::nothrow) char16_t[size + 1];     // UTF-16 の単位数 <= UTF-8 のバイト数
+    if (entries == nullptr || wide == nullptr) {
+        delete[] entries;
+        delete[] wide;
+        delete[] file;
+        return 0;
+    }
+    u32 count = 0, wideUsed = 0;
+    char *line = text;
+    while (line < text + size) {
+        char *end = line;
+        while (end < text + size && *end != '\n')
+            ++end;
+        *end = 0;
+        if (end > line && end[-1] == '\r')
+            end[-1] = 0;
+        char *next = end + 1;
+        if (line[0] != 0 && line[0] != '#' && !(line[0] == 'i' && line[1] == 'd' && line[2] == '\t')) {
+            char *col[4] = {};
+            u32 n = 0;
+            col[n++] = line;
+            for (char *p = line; *p && n < 4; ++p)
+                if (*p == '\t') {
+                    *p = 0;
+                    col[n++] = p + 1;
+                }
+            const u32 id = n == 4 ? ParseNumber(col[0], true) : 0xFFFFFFFFu;
+            const u32 icon = n == 4 ? ParseNumber(col[1], false) : 0xFFFFFFFFu;
+            if (id <= 0x7FFFu && icon <= 0xFFFFu && col[3][0] != 0) {
+                HiddenItemTable::Entry &e = entries[count++];
+                e.id = (u16)id;
+                e.icon = (u16)icon;
+                e.kana = col[2];
+                e.name = col[3];
+                e.name16 = wide + wideUsed;
+                wideUsed += Utf8To16(col[3], wide + wideUsed);
+            }
+        }
+        line = next;
+    }
+    // ID 順に並べる（挿入整列。数百件）。同じ ID は後のものを捨てる
+    for (u32 i = 1; i < count; ++i) {
+        const HiddenItemTable::Entry e = entries[i];
+        u32 j = i;
+        while (j > 0 && entries[j - 1].id > e.id) {
+            entries[j] = entries[j - 1];
+            --j;
+        }
+        entries[j] = e;
+    }
+    u32 unique = 0;
+    for (u32 i = 0; i < count; ++i)
+        if (unique == 0 || entries[unique - 1].id != entries[i].id)
+            entries[unique++] = entries[i];
+    s_hiddenText = text;
+    s_hiddenWide = wide;
+    s_hidden = entries;
+    s_hiddenCount = unique;
+    return unique;
+}
+
+u32 HiddenCount(void) {
+    return s_hiddenCount;
+}
+
 const HiddenItemTable::Entry *FindHidden(u16 id) {
-    u32 lo = 0, hi = HiddenItemTable::kCount;
+    u32 lo = 0, hi = s_hiddenCount;
     while (lo < hi) {
         const u32 mid = (lo + hi) / 2;
-        const u16 v = HiddenItemTable::kEntries[mid].id;
+        const u16 v = s_hidden[mid].id;
         if (v == id)
-            return &HiddenItemTable::kEntries[mid];
+            return &s_hidden[mid];
         if (v < id)
             lo = mid + 1;
         else

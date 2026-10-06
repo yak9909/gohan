@@ -7,6 +7,7 @@
 #include "GuiMenu.hpp"
 #include "GuiNotification.hpp"
 #include "Cheats/PlayerClone.hpp"
+#include "GohanFiles.hpp"
 
 #include <CTRPluginFramework.hpp>
 #include <cstdio>
@@ -187,7 +188,7 @@ const u8 kPriority = 0xFF;                  // 最前面（ゲームの下画面
 const u32 kScreenLower = 1, kScreenUpper = 0;   // AddLayout の画面（上画面 = 0 / 下画面 = 1。LayoutMgr_AddLayout 0x56928C）
 const u32 kTeardownWaitFrames = 3;          // GameLabel と同じ（描くのをやめてから壊すまで）
 
-const char kArcPath[] = "/hhd_charcreate.arc";
+const char kArcName[] = "hhd_charcreate.arc";   // sdmc:/gohan/<タイトル ID>/（GohanFiles.hpp。利用者 2026-10-06）
 const u32 kMaxArcBytes = 0x80000;
 
 // 組むレイアウト（この順に足す = 後ろほど手前）。コマンド領域は実機の測定（F074: 地 784・顔 13,344・目 23,104 バイト）に余裕を足した値。
@@ -1335,8 +1336,9 @@ bool Show(void) {
     }
     if (s_file == nullptr) {
         File f;
-        if (File::Open(f, kArcPath, File::READ) != File::SUCCESS) {
-            s_error = "SD に /hhd_charcreate.arc が無い";
+        char path[64];
+        if (!GohanFiles::TitlePath(path, sizeof(path), kArcName) || File::Open(f, path, File::READ) != File::SUCCESS) {
+            s_error = "SD に gohan/<タイトルID>/hhd_charcreate.arc が無い";
             return false;
         }
         const u64 size = f.GetSize();

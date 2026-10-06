@@ -17,3 +17,7 @@ __pycache__/
 
 # 没アイテムのアイコン（ゲーム由来の絵の可能性があるので入れない。解析 repo tools/items/export_hidden_icons.py で作る）
 /Includes/Cheats/HiddenItemIcons.h
+
+# SD のリソースのうち arc（ゲーム由来の素材を含む。解析 repo の tools/items/export_hidden_icons.py・tools/hhd/build_hhd_arc.py で作る）。表（.tsv）は入れる
+/sdmc/gohan/common/*.arc
+/sdmc/gohan/*/hhd_charcreate.arc

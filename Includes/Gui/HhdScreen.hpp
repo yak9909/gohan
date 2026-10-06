@@ -3,7 +3,7 @@
 #include <3ds.h>
 
 // HHD のキャラクリ画面を ACNL の下画面に出す（解析リポジトリの IDA-opus-5.5-D005 / T012）。
-// SD の DARC（/hhd_charcreate.arc。tools/hhd/build_hhd_arc.py）をゲームのヒープへ写して ArcResourceAccessor に渡し
+// SD の DARC（sdmc:/gohan/<タイトル ID>/hhd_charcreate.arc。GohanFiles.hpp。tools/hhd/build_hhd_arc.py）をゲームのヒープへ写して ArcResourceAccessor に渡し
 // （ArcResAccReader_LoadArcStep 0x567244 が読み込み後にする手順と同じ。F073 で実機確認）、
 // 地・顔・目・髪の 4 枚を組み、地・顔・目（髪のモードでは髪）を下画面の最前面（優先度 0xFF）へ毎フレーム出す。
 // 開いている間はゲームへの入力を止め、タッチで目の形・目の色・肌・髪・髪の色を選び、左のボタンで顔 ↔ 髪、右のボタンか B で閉じる（T013 段 2）。
