@@ -11,6 +11,20 @@
 #include <cstdio>
 #include <cstring>
 
+// ---- 切り替えの計測（案 D。利用者 2026-10-06）。ゲームの動きは変えない。nm で番地を引けるよう名前空間の外 ----
+//   g_previewProbe: ゲームのスレッドが FrameStep のたびに 1 件（表示中で何も変わらないフレームは書かない）。
+//     前の件との tick の差 = ゲームの 1 フレームの長さ、callTicks = その FrameStep 自身にかかった時間。
+//   g_previewShow: メニューのスレッドが選択の変化ごとに 1 件（Resolve = RomfsIndex で 3 ファイルを引く時間も）。
+//   読み方: tools/dynamic/read_preview_probe.py（停止中に読む）。tick = 268,111,856 Hz。
+extern "C" {
+struct PreviewProbeEntry { u32 tick; u32 callTicks; u8 before; u8 after; u8 loading; u8 attempts; s16 target; s16 built; };
+struct PreviewShowEntry { u32 tick; u32 resolveTicks; s32 id; u32 bytes; };
+PreviewProbeEntry g_previewProbe[1024];
+volatile u32 g_previewProbeNext;
+PreviewShowEntry g_previewShow[128];
+volatile u32 g_previewShowNext;
+}
+
 namespace BuildingPreview {
 
 using namespace GridCursor::Game;
@@ -383,7 +397,34 @@ bool Resolve(u16 id) {
 
 }  // namespace
 
+namespace {
+void FrameStepBody(void);
+}
+
 void FrameStep(void) {
+    const u32 t0 = (u32)svcGetSystemTick();
+    const u8 before = (u8)s_stage;
+    const s32 target = s_want ? s_pendId : -1;
+    FrameStepBody();
+    const u32 t1 = (u32)svcGetSystemTick();
+    const u8 after = (u8)s_stage;
+    const bool idle = before == after && (after == (u8)Stage::Ready || (after == (u8)Stage::Off && target < 0));
+    if (!idle) {
+        PreviewProbeEntry &e = g_previewProbe[g_previewProbeNext % 1024u];
+        e.tick = t0;
+        e.callTicks = t1 - t0;
+        e.before = before;
+        e.after = after;
+        e.loading = (u8)s_loading;
+        e.attempts = (u8)(s_loadAttempts > 255u ? 255u : s_loadAttempts);
+        e.target = (s16)target;
+        e.built = (s16)s_builtId;
+        g_previewProbeNext = g_previewProbeNext + 1;
+    }
+}
+
+namespace {
+void FrameStepBody(void) {
     {   // フリーズ調査: 段の変化
         static u32 lastStage = 0xFFFFFFFFu;
         if ((u32)s_stage != lastStage) {
@@ -450,6 +491,7 @@ void FrameStep(void) {
     if (*Word(s_node, 4) != 0u)
         Submit(s_node, 0);
 }
+}  // namespace
 
 // ---- メニュースレッド ----
 
@@ -462,9 +504,19 @@ void Show(u16 id, s32 x, s32 y) {
     s_shownId = id;
     // 次に出すものを書く。描画スレッドは待たない（切り替えは描画スレッドが切れ目で行う）。
     s_pendSeq = s_pendSeq + 1;                      // 奇数 = 書きかけ
+    const u32 r0 = (u32)svcGetSystemTick();
     const bool ok = Resolve(id);
+    const u32 r1 = (u32)svcGetSystemTick();
     s_pendSeq = s_pendSeq + 1;
     s_pendId = ok ? (s32)id : -1;
+    {
+        PreviewShowEntry &e = g_previewShow[g_previewShowNext % 128u];
+        e.tick = r0;
+        e.resolveTicks = r1 - r0;
+        e.id = ok ? (s32)id : -1 - (s32)id;
+        e.bytes = ok ? s_pendSize[0] + s_pendSize[1] + s_pendSize[2] : 0;
+        g_previewShowNext = g_previewShowNext + 1;
+    }
 }
 
 void Hide(void) {
