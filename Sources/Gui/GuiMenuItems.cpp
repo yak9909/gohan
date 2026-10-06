@@ -257,6 +257,9 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kInstantText,
                         u8"メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。");
                 AddItem(ITEM_CHECKBOX, kShizueSkip, u8"タイトル遷移後のしずえの会話をスキップします。ドパガキなあなたへ。");
+                AddItem(ITEM_CHECKBOX, kDecorTrash,
+                        u8"家の模様替えの左下にハッピーホームデザイナーのゴミ箱を出します。家具を掴んでゴミ箱に重ねて離すと、その家具を消します。"
+                        u8"SD の gohan フォルダのリソース（hhd_decorate.arc）が必要です。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

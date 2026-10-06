@@ -76,6 +76,8 @@ namespace CTRPluginFramework
         // ---- root/テスト／HHD キャラクリ（解析リポジトリ D005 / T012）----
         static const char kHhdStyle[] = u8"HHD式スタイル変更";   // root/プレイヤー/スタイル（アクション: 開いていれば閉じる・閉じていれば開く）
         static const char kHhdStat[] = u8"HHD 画面の状態";
+        // ---- root/ゲーム/模様替え（T022。解析リポジトリ docs/topics/t022_decorate_port_requirements.md）----
+        static const char kDecorTrash[] = u8"模様替えにゴミ箱";
 
         static const char kPcShow[]  = u8"複製を出す";
         static const char kPcHair[]  = u8"複製の髪型";

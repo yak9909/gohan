@@ -22,6 +22,7 @@
 #include "PublicWorks.hpp"
 #include "PocketItem.hpp"
 #include "ChatIme.hpp"
+#include "DecorTrash.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -232,6 +233,8 @@ namespace CTRPluginFramework
                     return;
                 if (ChatIme::Tick(index, held))
                     return;
+                if (DecorTrash::Tick(index, held))
+                    return;
                 GridCursorTick(index, held);
             }
 
@@ -244,6 +247,8 @@ namespace CTRPluginFramework
                 if (MapEditorDisable(index))
                     return;
                 if (ChatIme::Disable(index))
+                    return;
+                if (DecorTrash::Disable(index))
                     return;
                 GridCursorDisable(index);
             }
@@ -284,6 +289,7 @@ namespace CTRPluginFramework
             WireMapEditor();
             WirePocketItem();
             ChatIme::Wire();
+            DecorTrash::Wire();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }
