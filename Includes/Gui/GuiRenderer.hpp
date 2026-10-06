@@ -64,6 +64,14 @@ namespace CTRPluginFramework
         bool        SetGameTexture(int slot, const u32 *texMap, u32 color0);
         void        ClearGameTextures(void);
         void        FillTextured(Screen screen, int x, int y, int w, int h, int slot, u32 topColor, u32 bottomColor);
+        // ★下画面の切り抜き（2026-10-06。漢字候補欄）。BeginClip から EndClip までの下画面の FillRect / FillTextured は
+        //   専用の Layout ノードへ入り、[x, x + w) x [y, y + h) の外は画素単位で切られる（ゲームの一覧と同じシザー）。
+        //   切り抜き層は主ノードより後ろ（ゲームの UI より手前）に描かれる。段 1 は矩形だけ（文字は主ノードのまま）。
+        //   Begin(SCREEN_BOTTOM) で空になる。
+        void        BeginClip(int x, int y, int w, int h);
+        void        EndClip(void);
+        bool        ClipAvailable(void);    // 毎フレームの相乗りを載せられた（偽なら切り抜き層は描かれない）
+        void        ClipFrameStep(void);    // ゲームのスレッドから毎フレーム（Install が GridCursor に載せる）
         void        Commit(void);
 
         // ---- 寸法（左上原点・画素）----

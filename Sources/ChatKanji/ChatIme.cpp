@@ -1833,17 +1833,20 @@ namespace CTRPluginFramework
             //   伸ばせなかったときだけ Simulator の drawCandidateBar / drawPreviewControls の地と縁を自前で塗る。
             const bool  own = !g_shadeOn;
 
+            // 欄の内側 [left, right) x [kRowY + 1, kRowY + kRowH - 1) は切り抜き層（専用ノード + シザー。利用者の選択 2026-10-06）。
+            //   中の矩形（自前の地・選択・左右の印）は欄の外へはみ出しても画素単位で切られる。
+            //   切り抜き層は主ノードより後ろなので、主ノードは内側に何も描かない。
+            //   ★段 1: 文字はまだ主ノード（丸ごと入る候補だけ描く）。
+            if (GuiRenderer::ClipAvailable())   // 相乗りを載せられなかったときは切らずに主ノードへ描く
+                GuiRenderer::BeginClip((int)left, kRowY + 1 + dy, (int)(right - left), kRowH - 2);
             if (own)
                 GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
             if (font)
                 DrawCandidates(left, right, dy, buf, sizeof(buf), chars, cells);
-            // 候補欄からはみ出した字を隠す（切り抜きの代わり。描画器は登録した順に重ねる。利用者 2026-10-06: 範囲外の候補を消さずにはみ出した分だけ切る）。
-            //   左 = 欄の内側より左（画面の端まで）。右 = 全選択キー（x279..317）が覆う。キーの絵が無いときと、キーより右（x318..319）は塗る
-            GuiRenderer::FillRect(BOT, 0, kRowY + dy, (int)left, kRowH, kColBarPanel);
-            if (!m_texReady)
-                GuiRenderer::FillRect(BOT, kKeys[KEY_SELECT_ALL].x, kRowY + dy, kKeys[KEY_SELECT_ALL].w, kRowH, kColBarPanel);
-            GuiRenderer::FillRect(BOT, kKeys[KEY_SELECT_ALL].x + kKeys[KEY_SELECT_ALL].w, kRowY + dy,
-                                  320 - (kKeys[KEY_SELECT_ALL].x + kKeys[KEY_SELECT_ALL].w), kRowH, kColBarPanel);
+            GuiRenderer::EndClip();
+            // 自前の地のうち内側より右（x278 と全選択キーの下）は主ノードが塗る
+            if (own)
+                GuiRenderer::FillRect(BOT, (int)right, kRowY + dy, kRowX + kRowW - (int)right, kRowH, kColBarPanel);
             if (own)
             {
                 GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, 1, kColRowEdge);
@@ -1901,7 +1904,7 @@ namespace CTRPluginFramework
 
                 if (x + m_cellW[i] < (float)kBarX || x > (float)(kBarX + kBarW))
                     continue;
-                // 選択の塗りは内側へ詰める。文字は欄に一部でも掛かれば描き、はみ出した分は DrawBar が上から塗って隠す（Simulator の切り抜きと同じ見た目）
+                // 選択の塗りは切り抜き層（欄の外は切られる）。文字は段 1 では主ノードなので、丸ごと欄に入る候補だけ描く
                 if (i == m_sel || (m_dragging && !m_scrolling && i == m_tapCandidate))
                 {
                     float   x0 = x < left ? left : x;
@@ -1913,7 +1916,7 @@ namespace CTRPluginFramework
                 }
                 const float tx = x + (float)kBarPad;
 
-                if (tx + m_textW[i] <= left || tx >= right || cells >= kBarMaxCells)
+                if (tx < left || tx + m_textW[i] > right || cells >= kBarMaxCells)
                     continue;
                 if (!CandidateUtf8(i, buf, cap))
                     continue;

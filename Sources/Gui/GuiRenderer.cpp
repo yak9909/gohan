@@ -30,6 +30,7 @@
 #include "GuiCaves.h"
 #include "GuiFontUi.h"
 #include "ChatKanji.hpp"
+#include "GridCursor.hpp"
 
 namespace CTRPluginFramework
 {
@@ -245,6 +246,48 @@ namespace CTRPluginFramework
             u8          g_gameMat[kGameTexMats][0x100] __attribute__((aligned(0x80)));
             bool        g_gameMatReady[kGameTexMats] = { false, false };
             float       g_gameUv[kGameTexMats][4];
+
+            // ------------------------------------------------------------------
+            // ★下画面の切り抜き層（2026-10-06。漢字候補欄。利用者の選択「専用ノード＋シザー」）
+            //   ゲームの一覧と同じく、Layout ノード 1 つにシザーを 1 枚持たせて画素単位で切る。
+            //   ssys_ma_lyt_Layout_ReplayRecordedList 0x5682DC: ノード+0x138 のバイトが 1 なら、
+            //     再生の前に PICA のシザー（モード 3 = 内側）を +0x13C / +0x140 / +0x144 / +0x148 の float から出す。
+            //     下の 16 ビット = 画面の y 側（+0x140 から +0x140 + +0x148 - 1、+0x2C の高さで切る）、
+            //     上の 16 ビット = 320 - 画面の x 側（+0x13C から +0x13C + +0x144 - 1、+0x28 の幅で切る）。
+            //     下画面の画素の矩形 [x0, x1) x [y0, y1) なら +0x13C = 320 - x1 / +0x140 = y0 / +0x144 = x1 - x0 / +0x148 = y1 - y0。
+            //     ★0 以外の値は毎回シザーのコマンドを出す（+0x108 = 記録の長さが 0 でも）。後ろのノードが自分のシザーで戻す。
+            //   ノードは主ノード（OwnGui の A2 ケーブ）とは別に持つ。登録はゲームのスレッド（GridCursor の毎フレームの相乗り）で、
+            //     A2 ケーブと同じ手順（コマンドリストの作成・二重登録の見送り・投影・AddLayout）。優先度は HhdScreen と同じ 0xFF。
+            //     相乗りは描画より前に足すので、同じ 0xFF の主ノード（描画中に足す）より後ろ・ゲームの下画面の UI より手前になる。
+            //   ★Picture は主ノードの輪と共有しない（ゲームが旧い輪を辿っている最中に前後を別の輪へ書き換えると迷い込む）。
+            //     段 1（2026-10-06）は矩形だけ。文字は主ノードのまま。
+            const int   kMaxRectClip  = 8;          // 欄の地・選択・左右の印（4 枚）+ 余裕
+            const u32   kClipListSize = 0xA000;     // 40,960 B。段 2 の文字（13 本・32 字）の最悪 28,740 B が 80% に収まる
+            const u32   kClipNodeLen  = 0x340;      // 再生が読む一番奥は +0x320（上画面の立体視だけ）。余裕を見て丸ごと持つ
+            const u32   kClipQueue    = 16;         // GX キュー件数（A2 ケーブと同じ）
+            const u32   kGetProperty  = 0x00127EDC; // nngxGetCmdlistParameteri(prop, &out)
+            const u32   kGenLists     = 0x00121B34; // nngxGenCmdlists(n, ids)
+            const u32   kBindList     = 0x001216BC; // nngxBindCmdlist(id)
+            const u32   kListStorage  = 0x00121988; // nngxCmdlistStorage(size, qCount)
+            const u32   kDeleteLists  = 0x00127D98; // nngxDeleteCmdlists(n, ids)
+            const u32   kSetupProj    = 0x00567BC0; // ssys_ma_lyt_Layout_SetupProjectionMatrix(layout)
+            const u32   kAddLayout    = 0x0056928C; // LayoutMgr_AddLayout(mgr, layout, screen)
+            const u32   kPropBinding  = 519;        // NN_GX_CMDLIST_BINDING
+            const u32   kClipIdleFrames = 4;        // 登録をやめてからコマンドリストを消すまで待つフレーム
+
+            u8          g_clipNode[kClipNodeLen] __attribute__((aligned(0x80)));
+            u8          g_clipRoot[0x100] __attribute__((aligned(0x80)));
+            RectItem    g_clipRects[kMaxRectClip];
+            int         g_clipCount = 0;
+            bool        g_clipping = false;         // BeginClip 〜 EndClip の間（メニューのスレッド）
+            bool        g_clipSet = false;          // このフレームで切り抜きの矩形が決まった
+            s16         g_clipX = 0, g_clipY = 0, g_clipW = 0, g_clipH = 0;
+            volatile bool g_clipWanted = false;     // 描くものがある（Commit が決める。ゲームのスレッドが読む）
+            volatile bool g_clipStepOn = false;     // 相乗りを載せた
+            volatile u32  g_clipIdle = 0;           // ゲームのスレッド: 登録しなかったフレームの数
+            volatile u32  g_clipAdds = 0;           // 診断: 登録した回数
+            volatile u32  g_clipLists = 0;          // 診断: コマンドリストを作った回数
+            volatile u32  g_clipDeletes = 0;        // 診断: 消した回数
 
             // 配置（Install() で決める。アトラスだけ g_gpuBase 起点）
             u32         g_offPic   = 0;
@@ -500,7 +543,7 @@ namespace CTRPluginFramework
                 u32 off = kShared;
 
                 g_offPic = off;
-                off += (u32)kMaxRectAll * kPicStep;
+                off += (u32)(kMaxRectAll + kMaxRectClip) * kPicStep;   // 切り抜き層の Picture は末尾
                 off = AlignUp(off, 0x20);
 
                 g_offFont = off;
@@ -546,7 +589,7 @@ namespace CTRPluginFramework
                 int     n = 0;
 
                 r[n].name = "共有 Material/texMap"; r[n].off = 0;         r[n].len = kShared; n++;
-                r[n].name = "Picture 群";          r[n].off = g_offPic;  r[n].len = (u32)kMaxRectAll * kPicStep; n++;
+                r[n].name = "Picture 群";          r[n].off = g_offPic;  r[n].len = (u32)(kMaxRectAll + kMaxRectClip) * kPicStep; n++;
                 r[n].name = "フォント資源";         r[n].off = g_offFont;
                 r[n].len = kFontCwdhOff + FontCwdhLen()
                            + AlignUp(0x0E + 4 * kUiCmapMisakiCount, 0x20)
@@ -1323,12 +1366,59 @@ namespace CTRPluginFramework
             g_scr[screen].rectCount = 0;
             g_scr[screen].textCount = 0;
             g_scr[screen].oCount = 0;
+            if (screen == SCREEN_BOTTOM)
+            {
+                g_clipCount = 0;
+                g_clipping = false;
+                g_clipSet = false;
+            }
+        }
+
+        void    BeginClip(int x, int y, int w, int h)
+        {
+            if (w <= 0 || h <= 0)
+                return;
+            g_clipping = true;
+            g_clipSet = true;
+            g_clipX = (s16)x;
+            g_clipY = (s16)y;
+            g_clipW = (s16)w;
+            g_clipH = (s16)h;
+        }
+
+        void    EndClip(void)
+        {
+            g_clipping = false;
+        }
+
+        namespace
+        {
+            // 切り抜き層へ入れる（BeginClip 〜 EndClip の下画面の矩形）。入れたら true
+            bool    ClipRect(Screen screen, int x, int y, int w, int h, u32 color, u32 color2, u8 mat)
+            {
+                if (!g_clipping || screen != SCREEN_BOTTOM)
+                    return false;
+                if (g_clipCount >= kMaxRectClip || w <= 0 || h <= 0)
+                    return true;                // 切り抜きの中のものは主ノードへ漏らさない（溢れたら捨てる）
+                RectItem &r = g_clipRects[g_clipCount++];
+
+                r.x = (s16)x;
+                r.y = (s16)y;
+                r.w = (s16)w;
+                r.h = (s16)h;
+                r.color = color;
+                r.color2 = color2;
+                r.mat = mat;
+                return true;
+            }
         }
 
         void    FillRect(Screen screen, int x, int y, int w, int h, u32 color)
         {
             ScreenState &st = g_scr[screen];
 
+            if (ClipRect(screen, x, y, w, h, color, color, 0))
+                return;
             if (st.rectCount >= RectsOf(screen) || w <= 0 || h <= 0)
                 return;
             if (st.oCount < kMaxRect + kMaxSlots)
@@ -1387,6 +1477,8 @@ namespace CTRPluginFramework
             ScreenState &st = g_scr[screen];
 
             if (slot < 1 || slot > kGameTexMats || !g_gameMatReady[slot - 1])
+                return;
+            if (ClipRect(screen, x, y, w, h, topColor, bottomColor, (u8)slot))
                 return;
             if (st.rectCount >= RectsOf(screen) || w <= 0 || h <= 0)
                 return;
@@ -1468,6 +1560,122 @@ namespace CTRPluginFramework
                     w += (float)ChatKanji::GlyphRawAdvance(gi) * scale;
             }
             return w;
+        }
+
+        namespace
+        {
+            // 切り抜き層を組む（メニューのスレッド）。Picture は kMaxRectAll から先の専用の枠
+            void    CommitClip(void)
+            {
+                const u32   node = (u32)g_clipNode;
+                const u32   root = (u32)g_clipRoot;
+                u32         objs[kMaxRectClip];
+                int         n = 0;
+                int         i = 0;
+                const bool  on = g_clipSet && g_clipCount > 0;
+
+                if (on)
+                {
+                    while (i < g_clipCount)
+                    {
+                        UpdatePicture(kMaxRectAll + i, SCREEN_BOTTOM, g_clipRects[i]);
+                        objs[n++] = PicAddr(kMaxRectAll + i);
+                        i++;
+                    }
+                    // シザー（下画面の画素の矩形 [x, x + w) x [y, y + h)。0x5682DC の式の逆）
+                    WF(node + 0x13C, (float)(kGuiBotW - (g_clipX + g_clipW)));
+                    WF(node + 0x140, (float)g_clipY);
+                    WF(node + 0x144, (float)g_clipW);
+                    WF(node + 0x148, (float)g_clipH);
+                    W8(node + 0x138, 1);
+                }
+                while (i < kMaxRectClip)
+                {
+                    W8(PicAddr(kMaxRectAll + i) + 0xB7, 0x00);
+                    i++;
+                }
+                LinkRing(root, objs, n);
+                W8(node + 0x11D, 1);
+                g_clipWanted = on;
+            }
+        }
+
+        // ゲームのスレッド（GridCursor の毎フレームの相乗り）。A2 ケーブ（tools/patches/cave_node_record.py build_a）と同じ手順で登録する
+        void    ClipFrameStep(void)
+        {
+            typedef void (*Prop2Fn)(u32, u32 *);
+            typedef void (*ListsFn)(u32, u32 *);
+            typedef void (*U32Fn)(u32);
+            typedef void (*U32U32Fn)(u32, u32);
+            typedef void (*LayoutFn)(u32);
+            typedef void (*AddFn)(u32, u32, u32);
+            const u32   node = (u32)g_clipNode;
+            const u32   mgr = R32(kGLayoutMgr);
+
+            if (g_ready && g_clipWanted && mgr != 0)
+            {
+                if (R32(node + 0x100) == 0)
+                {
+                    u32 saved = 0;
+
+                    ((Prop2Fn)kGetProperty)(kPropBinding, &saved);
+                    ((ListsFn)kGenLists)(1, (u32 *)(node + 0x100));
+                    if (R32(node + 0x100) == 0)
+                        return;
+                    ((U32Fn)kBindList)(R32(node + 0x100));
+                    ((U32U32Fn)kListStorage)(kClipListSize, kClipQueue);
+                    ((U32Fn)kBindList)(saved);
+                    W32(node + 0x114, 0);
+                    W32(node + 0x118, kClipQueue);
+                    W8(node + 0x11C, 1);
+                    g_clipLists = g_clipLists + 1;
+                }
+                // 二重登録をしない（A2 ケーブと同じ。下画面のリスト = mgr+0x10: +4 先頭 / +8 末尾。ノードの +4 前 / +8 次）
+                if (R32(mgr + 0x14) == 0)
+                {
+                    W32(node + 0x04, 0);        // 死んだリストに残った前後を消す（F-375）
+                    W32(node + 0x08, 0);
+                }
+                else if (R32(mgr + 0x18) == node || R32(node + 0x04) != 0 || R32(node + 0x08) != 0)
+                    return;
+                W32(node + 0x00, kGuiVtbl);
+                W8(node + 0x0C, 0xFF);
+                W32(node + 0xFC, SCREEN_BOTTOM);
+                WF(node + 0x28, (float)kGuiBotW);
+                WF(node + 0x2C, (float)kGuiBotH);
+                W8(node + 0x121, 0);
+                ((LayoutFn)kSetupProj)(node);
+                W32(node + 0xF8, 1);
+                W8(node + 0x11D, 1);
+                ((AddFn)kAddLayout)(mgr, node, SCREEN_BOTTOM);
+                g_clipIdle = 0;
+                g_clipAdds = g_clipAdds + 1;
+                return;
+            }
+            // 登録しない。自前 GUI を外したら、GPU が読み終わるのを待ってコマンドリストを消す
+            if (g_ready || R32(node + 0x100) == 0)
+                return;
+            if (g_clipIdle < kClipIdleFrames)
+            {
+                g_clipIdle = g_clipIdle + 1;
+                return;
+            }
+            if (mgr != 0 && (R32(mgr + 0x14) == node || R32(mgr + 0x18) == node))
+                return;
+            if (R32(node + 0x04) != 0 || R32(node + 0x08) != 0)
+                return;
+            {
+                u32 bound = 0;
+                u32 id = R32(node + 0x100);
+
+                ((Prop2Fn)kGetProperty)(kPropBinding, &bound);
+                if (bound == id)
+                    return;                     // 束縛中のリストは消さない（free_cmdlists.py と同じ守り）
+                ((ListsFn)kDeleteLists)(1, &id);
+                W32(node + 0x100, 0);
+                W32(node + 0x108, 0);
+                g_clipDeletes = g_clipDeletes + 1;
+            }
         }
 
         void    Commit(void)
@@ -1667,6 +1875,7 @@ namespace CTRPluginFramework
                 W8(node + 0x11D, 1);            // 記録し直させる
                 s++;
             }
+            CommitClip();
         }
 
         // ==================================================================
@@ -1716,7 +1925,7 @@ namespace CTRPluginFramework
             {
                 int i = 0;
 
-                while (i < kMaxRectAll)
+                while (i < kMaxRectAll + kMaxRectClip)
                 {
                     InitPicture(i);
                     i++;
@@ -1758,6 +1967,29 @@ namespace CTRPluginFramework
                     Log("[!] LayoutMgr が取れない。文字は Commit まで待つ。");
             }
 
+            // ---- 切り抜き層のノード（ゲームのスレッドが登録する。ここでは登録していない = g_ready が偽）----
+            //   ★ノードは消さない（+0x100 のコマンドリストを前の Install から持ち越していることがある）
+            {
+                const u32 node = (u32)g_clipNode;
+                const u32 root = (u32)g_clipRoot;
+
+                std::memset((void *)root, 0, sizeof(g_clipRoot));
+                PaneCommon(root, kVtPane, (float)kGuiBotW, (float)kGuiBotH, 0.0f, 0.0f, 0.0f);
+                W32(node + 0x20, root);
+                W32(node + 0x30, kVpDrawInfo);
+                W8(node + 0x138, 0);
+                g_clipCount = 0;
+                g_clipSet = false;
+                g_clipWanted = false;
+                if (!g_clipStepOn)
+                {
+                    if (GridCursor::InstallFrameHook() && GridCursor::AddExtraFrameStep(ClipFrameStep))
+                        g_clipStepOn = true;
+                    else
+                        Log("[!] 切り抜き層: 毎フレームの相乗りを載せられない（候補欄は切り抜かずに描く）");
+                }
+            }
+
             // ---- 既定 TagProcessor（遅延初期化がまだなら入れる。F-304）----
             if (R32(kTagProcSlot) == 0)
             {
@@ -1785,7 +2017,16 @@ namespace CTRPluginFramework
             W8(kGuiNodeBot + 0x11D, 1);
             W32(kGuiNodeTop + 0xB0, 0);
             W32(kGuiNodeBot + 0xB0, 0);
+            // 切り抜き層: 登録をやめる（ゲームのスレッドが数フレーム後にコマンドリストを消す）
+            g_clipWanted = false;
+            W32((u32)g_clipNode + 0x20, 0);
+            W8((u32)g_clipNode + 0x11D, 1);
             g_ready = false;
+        }
+
+        bool    ClipAvailable(void)
+        {
+            return g_clipStepOn;
         }
 
         bool    DumpLog(void)
@@ -1797,6 +2038,17 @@ namespace CTRPluginFramework
                            File::RWC | File::TRUNCATE | File::SYNC) != File::SUCCESS)
                 return false;
             f.Write(g_log.c_str(), g_log.size());
+            {
+                char line[200];
+                const u32 node = (u32)g_clipNode;
+                const int n = std::snprintf(line, sizeof(line),
+                    "切り抜き層: 相乗り %d / リスト %u (作成 %u 消去 %u) / 登録 %u / 記録 %u B / 矩形 %d / シザー %d\n",
+                    g_clipStepOn ? 1 : 0, (unsigned int)R32(node + 0x100), (unsigned int)g_clipLists,
+                    (unsigned int)g_clipDeletes, (unsigned int)g_clipAdds, (unsigned int)R32(node + 0x108),
+                    g_clipCount, (int)*(volatile u8 *)(node + 0x138));
+                if (n > 0)
+                    f.Write(line, (u32)n);
+            }
             f.Close();
             return true;
         }

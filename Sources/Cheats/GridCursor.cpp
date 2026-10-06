@@ -184,7 +184,7 @@ static bool s_tintPremultiplied;
 
 static bool s_hookInstalled;
 // スタブから毎フレーム呼ぶ相乗り先。フックを 2 つは置けないのでここで配る。
-static const u32 kMaxExtraSteps = 8;   // 相乗り: ModelViewer / PlayerClone / PublicWorks / GameList ほか
+static const u32 kMaxExtraSteps = 12;  // 相乗り: ModelViewer / PlayerClone / PublicWorks / GameList / HhdScreen / 切り抜き層ほか（2026-10-06 に 8 -> 12）
 static void (*volatile s_extraSteps[kMaxExtraSteps])(void);
 static bool s_wantShown;   // 利用者が「出す」と言っている間だけ真。組み直しの可否はこれで決める
 static bool s_sceneOk;
