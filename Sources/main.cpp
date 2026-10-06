@@ -13,6 +13,11 @@
 
 #include <vector>
 
+namespace FurnitureTest {   // Sources/Debug/FurnitureTest.cpp（T022 の下調べ）
+void RemoveInFront(CTRPluginFramework::MenuEntry *);
+void PlaceChairInFront(CTRPluginFramework::MenuEntry *);
+}
+
 namespace CTRPluginFramework
 {
     // This patch the NFC disabling the touchscreen when scanning an amiibo, which prevents ctrpf to be used
@@ -120,6 +125,12 @@ exit:
             OwnGuiWriteDiagnostics,
             u8"自前 GUI の組み込み・取り外しの記録を、gohan.3gx と同じフォルダの gohan_owngui.txt と gohan_gui.txt に書き出します。"
         );
+
+        // T022 の下調べ（2026-10-06）。家具をその場で消す・置けるか（Item_PlaceItem をゲームのスレッドから）
+        menu += new MenuEntry(u8"試験: 目の前の家具を消す", nullptr, ::FurnitureTest::RemoveInFront,
+                              u8"家の中で、プレイヤーの目の前のマスの家具を Item_PlaceItem（操作 6）で消します。試験用。");
+        menu += new MenuEntry(u8"試験: 目の前に椅子を置く", nullptr, ::FurnitureTest::PlaceChairInFront,
+                              u8"家の中で、プレイヤーの目の前の空きマスに椅子（0x2AE9）を Item_PlaceItem（操作 0xA）で置きます。試験用。");
 
         menu += new MenuEntry(
             u8"GPU可視メモリ(linear/VRAM)を検証",
