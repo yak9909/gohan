@@ -1797,7 +1797,7 @@ namespace CTRPluginFramework
             return g_convOn && g_chatOpen && m_hooked && !g_broken;
         }
 
-        void    DrawCandidates(float left, float right, int dy, char *buf, unsigned cap, int &chars, int &cells);
+        void    DrawCandidates(float left, float right, int dy, bool clip, char *buf, unsigned cap, int &chars, int &cells);
 
         // 角 1 つを丸める（sx / sy = 角から内側への向き）
         void    RoundCorner(int cx, int cy, int sx, int sy, int kind)
@@ -1835,14 +1835,15 @@ namespace CTRPluginFramework
 
             // 欄の内側 [left, right) x [kRowY + 1, kRowY + kRowH - 1) は切り抜き層（専用ノード + シザー。利用者の選択 2026-10-06）。
             //   中の矩形（自前の地・選択・左右の印）は欄の外へはみ出しても画素単位で切られる。
-            //   切り抜き層は主ノードより後ろなので、主ノードは内側に何も描かない。
-            //   ★段 1: 文字はまだ主ノード（丸ごと入る候補だけ描く）。
-            if (GuiRenderer::ClipAvailable())   // 相乗りを載せられなかったときは切らずに主ノードへ描く
+            //   切り抜き層は主ノードより後ろなので、主ノードは内側に何も描かない。候補の文字も切り抜き層（段 2）。
+            const bool  clip = GuiRenderer::ClipAvailable();   // 相乗りを載せられなかったときは切らずに主ノードへ描く
+
+            if (clip)
                 GuiRenderer::BeginClip((int)left, kRowY + 1 + dy, (int)(right - left), kRowH - 2);
             if (own)
                 GuiRenderer::FillRect(BOT, kRowX, kRowY + dy, kRowW, kRowH, kColBarPanel);
             if (font)
-                DrawCandidates(left, right, dy, buf, sizeof(buf), chars, cells);
+                DrawCandidates(left, right, dy, clip, buf, sizeof(buf), chars, cells);
             GuiRenderer::EndClip();
             // 自前の地のうち内側より右（x278 と全選択キーの下）は主ノードが塗る
             if (own)
@@ -1887,7 +1888,7 @@ namespace CTRPluginFramework
             }
         }
 
-        void    DrawCandidates(float left, float right, int dy, char *buf, unsigned cap, int &chars, int &cells)
+        void    DrawCandidates(float left, float right, int dy, bool clip, char *buf, unsigned cap, int &chars, int &cells)
         {
             const GuiRenderer::Screen BOT = GuiRenderer::SCREEN_BOTTOM;
 
@@ -1904,7 +1905,8 @@ namespace CTRPluginFramework
 
                 if (x + m_cellW[i] < (float)kBarX || x > (float)(kBarX + kBarW))
                     continue;
-                // 選択の塗りは切り抜き層（欄の外は切られる）。文字は段 1 では主ノードなので、丸ごと欄に入る候補だけ描く
+                // 選択の塗りと文字は切り抜き層（欄の外は画素単位で切られる。利用者 2026-10-06）。欄に一部でも掛かれば描く。
+                //   切り抜けないとき（相乗りを載せられなかった）だけ、丸ごと欄に入る候補に限る
                 if (i == m_sel || (m_dragging && !m_scrolling && i == m_tapCandidate))
                 {
                     float   x0 = x < left ? left : x;
@@ -1916,7 +1918,9 @@ namespace CTRPluginFramework
                 }
                 const float tx = x + (float)kBarPad;
 
-                if (tx < left || tx + m_textW[i] > right || cells >= kBarMaxCells)
+                if (clip ? (tx + m_textW[i] <= left || tx >= right) : (tx < left || tx + m_textW[i] > right))
+                    continue;
+                if (cells >= kBarMaxCells)
                     continue;
                 if (!CandidateUtf8(i, buf, cap))
                     continue;

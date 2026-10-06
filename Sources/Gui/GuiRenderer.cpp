@@ -101,11 +101,11 @@ namespace CTRPluginFramework
             };
             const u8    kBotSlotCaps[] = {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 28,
-                28, 28, 28, 28, 28, 28, 28, 28,
-                28, 28, 28, 28, 28, 28, 28, 28  // 漢字候補欄（2026-09-25。見える候補は画面幅で 15 個まで）
+                28, 28, 28, 28, 28, 28, 28, 28  // ゲームの字形: 下画面リストボックス 8 行 / チャットの自前キー 3 本
             };
-            // dedicated multi-sheet game font rows: 8 listbox rows, or the chat candidate bar (up to 16 cells)
-            const int   kNativeSlots = 16;
+            // dedicated multi-sheet game font rows: 8 listbox rows, or the chat keys (3).
+            // ★2026-10-06: 漢字候補欄の文字は切り抜き層の専用の枠（kClipSlotCaps）へ移したので 16 -> 8 に戻した
+            const int   kNativeSlots = 8;
 
             const int   kTopSlots    = (int)(sizeof(kTopSlotCaps));
             const int   kBotSlots    = (int)(sizeof(kBotSlotCaps));
@@ -260,8 +260,13 @@ namespace CTRPluginFramework
             //     A2 ケーブと同じ手順（コマンドリストの作成・二重登録の見送り・投影・AddLayout）。優先度は HhdScreen と同じ 0xFF。
             //     相乗りは描画より前に足すので、同じ 0xFF の主ノード（描画中に足す）より後ろ・ゲームの下画面の UI より手前になる。
             //   ★Picture は主ノードの輪と共有しない（ゲームが旧い輪を辿っている最中に前後を別の輪へ書き換えると迷い込む）。
-            //     段 1（2026-10-06）は矩形だけ。文字は主ノードのまま。
+            //     段 1（2026-10-06）は矩形だけ。段 2（同日）で文字（ゲームの字形）も専用の枠 kClipSlotCaps で載せた。
             const int   kMaxRectClip  = 8;          // 欄の地・選択・左右の印（4 枚）+ 余裕
+            // 切り抜き層の文字の枠（ゲームの字形だけ。段 2 = 2026-10-06）。候補は最大 13 本・合計 32 字（ChatIme の kBarMaxCells / kBarMaxChars）。
+            //   長い順に「入る中で一番小さい枠」へ入れるので、k 番目に大きい枠 >= min(28, 32 / k) なら必ず入る
+            //   （k 番目に長い候補は 32 / k 字以下）。28 = kMaxChars。検査は verify_plugin_port_v2.py 群 4。
+            const u8    kClipSlotCaps[] = { 2, 2, 2, 3, 3, 4, 4, 5, 6, 8, 10, 16, 28 };
+            const int   kClipSlots    = (int)(sizeof(kClipSlotCaps));
             const u32   kClipListSize = 0xA000;     // 40,960 B。段 2 の文字（13 本・32 字）の最悪 28,740 B が 80% に収まる
             const u32   kClipNodeLen  = 0x340;      // 再生が読む一番奥は +0x320（上画面の立体視だけ）。余裕を見て丸ごと持つ
             const u32   kClipQueue    = 16;         // GX キュー件数（A2 ケーブと同じ）
@@ -277,8 +282,18 @@ namespace CTRPluginFramework
 
             u8          g_clipNode[kClipNodeLen] __attribute__((aligned(0x80)));
             u8          g_clipRoot[0x100] __attribute__((aligned(0x80)));
-            RectItem    g_clipRects[kMaxRectClip];
-            int         g_clipCount = 0;
+            // 描いた順の表示リスト（主ノードの ScreenState と同じ考え。0=矩形 / 1=文字）
+            struct ClipState
+            {
+                RectItem    rects[kMaxRectClip];
+                TextItem    texts[kClipSlots];
+                u8          oKind[kMaxRectClip + kClipSlots];
+                u8          oIdx[kMaxRectClip + kClipSlots];
+                int         oCount;
+                int         rectCount;
+                int         textCount;
+            };
+            ClipState   g_clip;
             bool        g_clipping = false;         // BeginClip 〜 EndClip の間（メニューのスレッド）
             bool        g_clipSet = false;          // このフレームで切り抜きの矩形が決まった
             s16         g_clipX = 0, g_clipY = 0, g_clipW = 0, g_clipH = 0;
@@ -293,8 +308,8 @@ namespace CTRPluginFramework
             u32         g_offPic   = 0;
             u32         g_offFont  = 0;         // ResFont から記述子まで
             u32         g_offSlot0 = 0;
-            u32         g_slotStep[kSlots];
-            u32         g_slotOff[kSlots];
+            u32         g_slotStep[kSlots + kClipSlots];     // 切り抜き層の枠は kSlots から先
+            u32         g_slotOff[kSlots + kClipSlots];
             u32         g_offAtlas = 0;
             u32         g_total    = 0;
 
@@ -342,11 +357,13 @@ namespace CTRPluginFramework
             // 続けて下画面 kTopSlots..kSlots-1。
             int     SlotChars(int i)
             {
+                if (i >= kSlots)
+                    return (int)kClipSlotCaps[i - kSlots];     // 切り抜き層（ゲームの字形）
                 return i < kTopSlots ? (int)kTopSlotCaps[i]
                                      : (int)kBotSlotCaps[i - kTopSlots];
             }
 
-            bool NativeSlot(int i) { return i >= kSlots - kNativeSlots; }
+            bool NativeSlot(int i) { return i >= kSlots - kNativeSlots; }   // 切り抜き層の枠（kSlots から先）も含む
             bool FontFitsSlot(int i, int font) { return NativeSlot(i) == (font == FONT_GAME); }
 
             // ★コマンド語の器（F-342）。**ゲーム流の `(78n+57)&~3` 語は取りすぎ。**
@@ -555,7 +572,7 @@ namespace CTRPluginFramework
 
                 g_offSlot0 = off;
                 int i = 0;
-                while (i < kSlots)
+                while (i < kSlots + kClipSlots)
                 {
                     g_slotOff[i] = off;
                     g_slotStep[i] = SlotBytes(i);
@@ -585,7 +602,7 @@ namespace CTRPluginFramework
                 }
 
                 // 重なり検査
-                Region  r[5 + kSlots];
+                Region  r[5 + kSlots + kClipSlots];
                 int     n = 0;
 
                 r[n].name = "共有 Material/texMap"; r[n].off = 0;         r[n].len = kShared; n++;
@@ -595,7 +612,7 @@ namespace CTRPluginFramework
                            + AlignUp(0x0E + 4 * kUiCmapMisakiCount, 0x20)
                            + AlignUp(0x0E + 4 * kUiCmapNumericCount, 0x20); n++;
                 i = 0;
-                while (i < kSlots)
+                while (i < kSlots + kClipSlots)
                 {
                     r[n].name = "文字スロット";
                     r[n].off = g_slotOff[i];
@@ -1368,7 +1385,9 @@ namespace CTRPluginFramework
             g_scr[screen].oCount = 0;
             if (screen == SCREEN_BOTTOM)
             {
-                g_clipCount = 0;
+                g_clip.rectCount = 0;
+                g_clip.textCount = 0;
+                g_clip.oCount = 0;
                 g_clipping = false;
                 g_clipSet = false;
             }
@@ -1398,9 +1417,12 @@ namespace CTRPluginFramework
             {
                 if (!g_clipping || screen != SCREEN_BOTTOM)
                     return false;
-                if (g_clipCount >= kMaxRectClip || w <= 0 || h <= 0)
+                if (g_clip.rectCount >= kMaxRectClip || w <= 0 || h <= 0)
                     return true;                // 切り抜きの中のものは主ノードへ漏らさない（溢れたら捨てる）
-                RectItem &r = g_clipRects[g_clipCount++];
+                g_clip.oKind[g_clip.oCount] = 0;
+                g_clip.oIdx[g_clip.oCount] = (u8)g_clip.rectCount;
+                g_clip.oCount++;
+                RectItem &r = g_clip.rects[g_clip.rectCount++];
 
                 r.x = (s16)x;
                 r.y = (s16)y;
@@ -1498,14 +1520,50 @@ namespace CTRPluginFramework
             st.rectCount++;
         }
 
+        namespace
+        {
+            void    SetTextItem(TextItem &t, int x, int y, const char *text, u32 color, int scale, Font font)
+            {
+                int k = 0;
+
+                t.x = (s16)x;
+                t.y = (s16)y;
+                t.scale = (u8)(scale < 1 ? 1 : scale);
+                t.font = (u8)font;
+                t.native = 0.0f;
+                t.slot = 0xFF;              // Commit が決める
+                t.color = color;
+                // ★ここはバイト数で切る（字数の上限は FillSlot 側の cap で効く）。
+                //   途中で切れて UTF-8 の続きバイトが残らないよう、残ったら戻す。
+                while (text[k] != '\0' && k < (int)sizeof(t.s) - 1)
+                    k++;
+                while (k > 0 && ((unsigned char)text[k] & 0xC0) == 0x80)
+                    k--;
+                std::memcpy(t.s, text, (size_t)k);
+                t.s[k] = '\0';
+            }
+        }
+
         void    DrawText(Screen screen, int x, int y, const char *text, u32 color, int scale,
                          Font font)
         {
             ScreenState &st = g_scr[screen];
             const int   maxSlots = MaxTexts(screen);
-            int         k = 0;
 
-            if (text == nullptr || st.textCount >= maxSlots)
+            if (text == nullptr)
+                return;
+            // 切り抜き層（ゲームの字形だけ。枠が全部ゲームの字形用なので、ほかの書体は捨てる）
+            if (g_clipping && screen == SCREEN_BOTTOM)
+            {
+                if (font != FONT_GAME || g_clip.textCount >= kClipSlots)
+                    return;
+                g_clip.oKind[g_clip.oCount] = 1;
+                g_clip.oIdx[g_clip.oCount] = (u8)g_clip.textCount;
+                g_clip.oCount++;
+                SetTextItem(g_clip.texts[g_clip.textCount++], x, y, text, color, scale, font);
+                return;
+            }
+            if (st.textCount >= maxSlots)
                 return;
             if (st.oCount < kMaxRect + kMaxSlots)
             {
@@ -1513,36 +1571,22 @@ namespace CTRPluginFramework
                 st.oIdx[st.oCount] = (u16)st.textCount;
                 st.oCount++;
             }
-            TextItem &t = st.texts[st.textCount];
-
-            t.x = (s16)x;
-            t.y = (s16)y;
-            t.scale = (u8)(scale < 1 ? 1 : scale);
-            t.font = (u8)font;
-            t.native = 0.0f;
-            t.slot = 0xFF;              // Commit が決める
-            t.color = color;
-            // ★ここはバイト数で切る（字数の上限は FillSlot 側の cap で効く）。
-            //   途中で切れて UTF-8 の続きバイトが残らないよう、残ったら戻す。
-            while (text[k] != '\0' && k < (int)sizeof(t.s) - 1)
-                k++;
-            while (k > 0 && ((unsigned char)text[k] & 0xC0) == 0x80)
-                k--;
-            std::memcpy(t.s, text, (size_t)k);
-            t.s[k] = '\0';
+            SetTextItem(st.texts[st.textCount], x, y, text, color, scale, font);
             st.textCount++;
         }
 
         void    DrawTextNative(Screen screen, int x, int y, const char *text, u32 color, float scale)
         {
-            ScreenState &st = g_scr[screen];
-            const int   before = st.textCount;
+            const bool  clip = g_clipping && screen == SCREEN_BOTTOM;
+            int        &count = clip ? g_clip.textCount : g_scr[screen].textCount;
+            TextItem   *items = clip ? g_clip.texts : g_scr[screen].texts;
+            const int   before = count;
 
             if (scale <= 0.0f)
                 return;
             DrawText(screen, x, y, text, color, 1, FONT_GAME);
-            if (st.textCount != before)
-                st.texts[before].native = scale;
+            if (count != before)
+                items[before].native = scale;
         }
 
         float   MeasureTextNative(const char *text, float scale)
@@ -1569,18 +1613,96 @@ namespace CTRPluginFramework
             {
                 const u32   node = (u32)g_clipNode;
                 const u32   root = (u32)g_clipRoot;
-                u32         objs[kMaxRectClip];
+                const u32   limit = kClipListSize * kRecLimitPct / 100;
+                u32         objs[kMaxRectClip + kClipSlots];
+                bool        taken[kClipSlots];
+                int         need[kClipSlots];
+                int         order[kClipSlots];
                 int         n = 0;
                 int         i = 0;
-                const bool  on = g_clipSet && g_clipCount > 0;
+                int         texts = g_clip.textCount;
+                int         chars = 0;
+                const bool  on = g_clipSet && (g_clip.rectCount > 0 || g_clip.textCount > 0);
 
+                std::memset(taken, 0, sizeof(taken));
+                // 安全弁（主ノードと同じ見積もり。文字は全部ゲームの字形）。溢れるなら後ろの文字から捨てる
+                while (i < texts)
+                {
+                    need[i] = CountChars(g_clip.texts[i], kMaxChars);
+                    chars += need[i];
+                    i++;
+                }
+                while (texts > 0 && EstimateRecorded(g_clip.rectCount, texts, chars, chars) > limit)
+                {
+                    texts--;
+                    chars -= need[texts];
+                }
+                // 枠: 長い順に、入る中で一番小さい枠（kClipSlotCaps は昇順）
+                i = 0;
+                while (i < texts)
+                {
+                    order[i] = i;
+                    g_clip.texts[i].slot = 0xFF;
+                    i++;
+                }
+                i = 1;
+                while (i < texts)
+                {
+                    const int   key = order[i];
+                    int         j = i - 1;
+
+                    while (j >= 0 && need[order[j]] < need[key])
+                    {
+                        order[j + 1] = order[j];
+                        j--;
+                    }
+                    order[j + 1] = key;
+                    i++;
+                }
+                i = 0;
+                while (i < texts)
+                {
+                    const int   t = order[i];
+                    int         j = 0;
+
+                    while (j < kClipSlots && (taken[j] || (int)kClipSlotCaps[j] < need[t]))
+                        j++;
+                    if (j == kClipSlots)
+                    {
+                        j = kClipSlots - 1;     // 入る枠が無い -> 一番大きい空きへ入れて切る
+                        while (j >= 0 && taken[j])
+                            j--;
+                    }
+                    if (j >= 0)
+                    {
+                        taken[j] = true;
+                        g_clip.texts[t].slot = (u8)j;
+                    }
+                    i++;
+                }
                 if (on)
                 {
-                    while (i < g_clipCount)
+                    i = 0;
+                    while (i < g_clip.oCount)
                     {
-                        UpdatePicture(kMaxRectAll + i, SCREEN_BOTTOM, g_clipRects[i]);
-                        objs[n++] = PicAddr(kMaxRectAll + i);
+                        const int k = (int)g_clip.oIdx[i];
+
+                        if (g_clip.oKind[i] == 0)
+                        {
+                            UpdatePicture(kMaxRectAll + k, SCREEN_BOTTOM, g_clip.rects[k]);
+                            objs[n++] = PicAddr(kMaxRectAll + k);
+                        }
+                        else if (k < texts && g_clip.texts[k].slot != 0xFF
+                                 && FillSlot(kSlots + (int)g_clip.texts[k].slot, SCREEN_BOTTOM, g_clip.texts[k]) > 0)
+                            objs[n++] = SlotTextBox(kSlots + (int)g_clip.texts[k].slot);
                         i++;
+                    }
+                    if (texts > 0)
+                    {
+                        const u32 mgr = R32(kGLayoutMgr);
+
+                        if (mgr != 0)
+                            W32(node + 0xB0, mgr + kWorkObjOff);     // TextBox が要る DrawInfo+0x80（§3.1 / F-302）
                     }
                     // シザー（下画面の画素の矩形 [x, x + w) x [y, y + h)。0x5682DC の式の逆）
                     WF(node + 0x13C, (float)(kGuiBotW - (g_clipX + g_clipW)));
@@ -1589,9 +1711,17 @@ namespace CTRPluginFramework
                     WF(node + 0x148, (float)g_clipH);
                     W8(node + 0x138, 1);
                 }
+                i = on ? g_clip.rectCount : 0;
                 while (i < kMaxRectClip)
                 {
                     W8(PicAddr(kMaxRectAll + i) + 0xB7, 0x00);
+                    i++;
+                }
+                i = 0;
+                while (i < kClipSlots)
+                {
+                    if (!on || !taken[i])
+                        W8(SlotTextBox(kSlots + i) + 0xB7, 0x00);
                     i++;
                 }
                 LinkRing(root, objs, n);
@@ -1931,9 +2061,9 @@ namespace CTRPluginFramework
                     i++;
                 }
                 i = 0;
-                while (i < kSlots)
+                while (i < kSlots + kClipSlots)
                 {
-                    BuildSlot(i, i < kTopSlots ? SCREEN_TOP : SCREEN_BOTTOM);
+                    BuildSlot(i, i < kTopSlots ? SCREEN_TOP : SCREEN_BOTTOM);   // 切り抜き層の枠（kSlots から先）は下画面
                     i++;
                 }
             }
@@ -1978,7 +2108,9 @@ namespace CTRPluginFramework
                 W32(node + 0x20, root);
                 W32(node + 0x30, kVpDrawInfo);
                 W8(node + 0x138, 0);
-                g_clipCount = 0;
+                g_clip.rectCount = 0;
+                g_clip.textCount = 0;
+                g_clip.oCount = 0;
                 g_clipSet = false;
                 g_clipWanted = false;
                 if (!g_clipStepOn)
@@ -2020,6 +2152,7 @@ namespace CTRPluginFramework
             // 切り抜き層: 登録をやめる（ゲームのスレッドが数フレーム後にコマンドリストを消す）
             g_clipWanted = false;
             W32((u32)g_clipNode + 0x20, 0);
+            W32((u32)g_clipNode + 0xB0, 0);
             W8((u32)g_clipNode + 0x11D, 1);
             g_ready = false;
         }
@@ -2042,10 +2175,10 @@ namespace CTRPluginFramework
                 char line[200];
                 const u32 node = (u32)g_clipNode;
                 const int n = std::snprintf(line, sizeof(line),
-                    "切り抜き層: 相乗り %d / リスト %u (作成 %u 消去 %u) / 登録 %u / 記録 %u B / 矩形 %d / シザー %d\n",
+                    "切り抜き層: 相乗り %d / リスト %u (作成 %u 消去 %u) / 登録 %u / 記録 %u B / 矩形 %d / 文字 %d / シザー %d\n",
                     g_clipStepOn ? 1 : 0, (unsigned int)R32(node + 0x100), (unsigned int)g_clipLists,
                     (unsigned int)g_clipDeletes, (unsigned int)g_clipAdds, (unsigned int)R32(node + 0x108),
-                    g_clipCount, (int)*(volatile u8 *)(node + 0x138));
+                    g_clip.rectCount, g_clip.textCount, (int)*(volatile u8 *)(node + 0x138));
                 if (n > 0)
                     f.Write(line, (u32)n);
             }
