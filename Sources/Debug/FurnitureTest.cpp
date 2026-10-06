@@ -7,7 +7,10 @@
 //     sub_690D24 → sub_691AD4（場所探し）→ 1 マスの試し sub_6920CC(記録, x, z, 向き, 品物, 層, プレイヤー x, z, 向き, 型) が 0 なら
 //     sub_68FA84(記録)（g_BsFtrMgr の下へ家具のオブジェクトを Actor_SpawnByProfile）。
 //     ここでは場所探しだけ自前（プレイヤーのマスから外へ、空いたマスを順に）にして、1 マスの試しと作成はゲームのまま。
-//   消す = プレイヤーに一番近い家具の基準のマスへ Item_PlaceItem の操作 6（空 = 家の中では 0x2001。Vapecord Dropper の決まり）。
+//   消す（試験 3 は Item_PlaceItem 操作 6 で、その場で消えず読み直すとリンゴ 0x2001 になった）→ 試験 4:
+//     ゲームが部屋の家具を消すときの手順（sub_4E4FD0）をそのまま使う。
+//     マス → 家具のオブジェクト sub_4E8CF4(0x9C1AB4, x, z, 層) → vtable +144 が真なら sub_56FD10(家具, 6)。
+//     片付け AcFtr_DestroyBegin（状態 6/7）→ sub_575F30 → sub_4E6240 が大きさの全マスを部屋のマップから空にする（静的、未実機）。
 // どちらもゲームのスレッド（GridCursor の毎フレームの相乗り）で 1 回だけ実行し、結果を OSD に出す。
 
 #include <3ds.h>
@@ -32,24 +35,25 @@ struct Item {
 typedef void (*PosToCellFn)(int *x, int *z, const float *pos);
 typedef void *(*MapMgrFn)(void);
 typedef Item *(*ItemAtFn)(void *mgr, int x, int z, int layer);
-typedef int (*PlaceItemFn)(int type, const Item *replace, const Item *place, const Item *show, u8 x, u8 z, u8 inside,
-                           u8 side, u8 fruit, u8 crash, u8 hits);
-typedef int (*DropStateFn)(int slot);
 typedef int (*TryPutFn)(void *record, int x, int z, int rot, const Item *item, int layer, int px, int pz, int prot, int pattern);
 typedef int (*SpawnFtrFn)(void *record);
+typedef void *(*FtrAtFn)(void *grid, int x, int z, int layer);
+typedef int (*FtrSetStateFn)(void *ftr, unsigned state);
+typedef int (*FtrReadyFn)(void *ftr);
 
 const PosToCellFn PosToCell = reinterpret_cast<PosToCellFn>(0x00317090);
 const MapMgrFn MapMgr = reinterpret_cast<MapMgrFn>(0x006A53DC);            // Field_GetMapManager
 const ItemAtFn ItemAt = reinterpret_cast<ItemAtFn>(0x002FEE38);            // Field_GetItemAtXY
-const PlaceItemFn PlaceItem = reinterpret_cast<PlaceItemFn>(0x0059E5B4);   // Item_PlaceItem
-const DropStateFn DropState = reinterpret_cast<DropStateFn>(0x00596C84);
 const TryPutFn TryPut = reinterpret_cast<TryPutFn>(0x006920CC);            // 1 マスの試し（置く記録を埋める）
 const SpawnFtrFn SpawnFtr = reinterpret_cast<SpawnFtrFn>(0x0068FA84);      // 記録から家具のオブジェクトを作る
+const FtrAtFn FtrAt = reinterpret_cast<FtrAtFn>(0x004E8CF4);                // マス → 家具のオブジェクト（無ければ 0）
+const FtrSetStateFn FtrSetState = reinterpret_cast<FtrSetStateFn>(0x0056FD10);   // 家具の状態を替える（0..12）
+void *const kFtrGrid = reinterpret_cast<void *>(0x009C1AB4);                // マス → 家具の番号の表
 
-const u16 kEmpty = 0x7FFE, kOccupied = 0x7FFC, kIndoorEmpty = 0x2001, kChair = 0x2AE9;   // rmk_smp_chairS
+const u16 kEmpty = 0x7FFE, kChair = 0x2AE9;   // rmk_smp_chairS
 
 volatile int s_request;      // 0 なし / 1 消す / 2 置く（メニューのスレッドが書く）
-int s_slot = -1;             // 片付けを待っている落とし物の枠
+int s_watchX = -1, s_watchZ = -1;   // 消したあと部屋のマップが空になるのを見ているマス
 int s_wait;
 bool s_hooked;
 
@@ -72,28 +76,36 @@ bool PlayerCell(void *actor, int &x, int &z, int &rot) {
 
 void Remove(void *mgr, int px, int pz) {
     int best = -1, bx = 0, bz = 0;
+    void *ftr = nullptr;
     for (int z = 0; z < 16; ++z)
         for (int x = 0; x < 16; ++x) {
-            Item *it = ItemAt(mgr, x, z, 0);
-            if (it == nullptr || it->id == kEmpty || it->id == kOccupied)
+            void *f = FtrAt(kFtrGrid, x, z, 0);
+            if (f == nullptr)
                 continue;
             const int d = (x - px) * (x - px) + (z - pz) * (z - pz);
             if (best < 0 || d < best) {
                 best = d;
                 bx = x;
                 bz = z;
+                ftr = f;
             }
         }
-    if (best < 0) {
-        Say("remove: no furniture in the room map");
+    if (ftr == nullptr) {
+        Say("remove: no furniture object in the room");
         return;
     }
-    const Item before = *ItemAt(mgr, bx, bz, 0);
-    const Item empty = { kIndoorEmpty, 0 };
-    const int slot = PlaceItem(6, &before, &empty, &empty, (u8)bx, (u8)bz, 0, 0, 0, 0, 0);
-    s_slot = slot;
+    const Item *it = ItemAt(mgr, bx, bz, 0);
+    const Item before = it ? *it : Item{ 0, 0 };
+    const FtrReadyFn ready = reinterpret_cast<FtrReadyFn>((*reinterpret_cast<u32 **>(ftr))[144 / 4]);
+    if (!ready(ftr)) {
+        Say("remove (%d,%d) item %04X: not ready (vtable+144 = 0)", bx, bz, before.id);
+        return;
+    }
+    const int res = FtrSetState(ftr, 6);
+    s_watchX = bx;
+    s_watchZ = bz;
     s_wait = 0;
-    Say("remove (%d,%d) item %04X:%04X -> slot %d (player %d,%d)", bx, bz, before.id, before.flags, slot, px, pz);
+    Say("remove (%d,%d) item %04X:%04X -> state 6 %d (player %d,%d)", bx, bz, before.id, before.flags, res, px, pz);
 }
 
 void Place(int px, int pz, int prot) {
@@ -118,11 +130,15 @@ void Place(int px, int pz, int prot) {
 }
 
 void FrameStep(void) {
-    if (s_slot >= 0) {                                       // 落とし物の枠を片付ける
-        const int st = DropState(s_slot);
-        if (st == 0 || st == 2 || st == 3 || ++s_wait > 120) {
-            Say("remove: slot %d state %d after %d frames", s_slot, st, s_wait);
-            s_slot = -1;
+    if (s_watchX >= 0) {                                     // 消したマスが部屋のマップから空になるまで見る
+        void *m = MapMgr();
+        const Item *it = m ? ItemAt(m, s_watchX, s_watchZ, 0) : nullptr;
+        const void *f = FtrAt(kFtrGrid, s_watchX, s_watchZ, 0);
+        ++s_wait;
+        if ((it != nullptr && it->id == kEmpty && f == nullptr) || s_wait > 180) {
+            Say("remove: (%d,%d) map %04X object %s after %d frames", s_watchX, s_watchZ, it ? it->id : 0,
+                f ? "still" : "gone", s_wait);
+            s_watchX = s_watchZ = -1;
         }
         return;
     }
