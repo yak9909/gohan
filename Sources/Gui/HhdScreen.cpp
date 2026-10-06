@@ -12,6 +12,7 @@
 #include <CTRPluginFramework.hpp>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 // 根拠（解析リポジトリ project_v2、主 IDB acnl_jpn_v15_annotated.i64）:
 //   メモリ上の DARC を渡す手順（IDA-opus-5.5-F073、実機で地を出せた）:
@@ -240,7 +241,7 @@ struct Panes {
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
 Lay s_lay[kLayouts];
 Panes s_p;
-u8 *s_file;                                 // SD から読んだ arc（プラグインのメモリ。メニューのスレッドが作る）
+u8 *s_file;                                 // SD から読んだ arc（プラグインのメモリ。メニューのスレッドが作り、Build がゲームのヒープへ写したら返す）
 u32 s_fileSize;
 void *s_heap, *s_arc;                       // ゲームのヒープに写した arc
 bool s_holderMade, s_hookReady;
@@ -1132,6 +1133,8 @@ void Build(void) {
     void *fontMgr = *reinterpret_cast<void *const *>(kFontMgrPtr);
     if (fontMgr == nullptr || FontGet(fontMgr, 0) == nullptr)
         return Fail("ゲームの書体が取れない");
+    if (s_file == nullptr)
+        return Fail("arc を読んでいない");
     s_heapFreeBefore = HeapFreeSize(heap);
     const u32 align = *reinterpret_cast<const volatile u32 *>(kLoaderAlignPtr);
     void *arc = reinterpret_cast<HeapAllocFn>((*reinterpret_cast<u32 **>(heap))[kHeapAllocSlot])(heap, s_fileSize, align);
@@ -1141,6 +1144,10 @@ void Build(void) {
     s_arc = arc;
     std::memcpy(arc, s_file, s_fileSize);
     FlushRange(arc, s_fileSize);
+    // プラグインのヒープの写しはここで返す（ゲームのヒープへ写したあとは誰も読まない。次に開くときは Show が SD から読み直す）。
+    //   持ったままだと約 400 KB がヒープの途中に残り、漢字変換の 5 MiB（1 塊）が取れなくなる（ERROR 2 / STAGE 1。利用者 2026-10-06）
+    delete[] s_file;
+    s_file = nullptr;
 
     ArcCtor(s_holder);
     s_holderMade = true;
@@ -1347,7 +1354,12 @@ bool Show(void) {
             s_error = "arc の大きさがおかしい";
             return false;
         }
-        u8 *buf = new u8[(u32)size];
+        u8 *buf = new (std::nothrow) u8[(u32)size];
+        if (buf == nullptr) {
+            f.Close();
+            s_error = "arc を読む領域が取れない";
+            return false;
+        }
         if (f.Read(buf, (u32)size) != File::SUCCESS || std::memcmp(buf, "darc", 4) != 0) {
             f.Close();
             delete[] buf;
