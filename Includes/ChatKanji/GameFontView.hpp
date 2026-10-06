@@ -46,6 +46,13 @@ public:
         if(address)return -1;
         return fallback ? U16(f+2) : -1;
     }
+    // The game draws cp with a glyph of its own (not the alternate "?" glyph FINF+0x02, which is what an
+    // unsupported code shows: 0xE03A in ACNL). Codes above U+FFFF (surrogate pairs) are never drawable.
+    bool Drawable(uint32_t cp) const {
+        const uint8_t *f=At(info_,24); if(!f)return false;
+        const int glyph=Glyph(cp,false);
+        return glyph>=0 && glyph!=int(U16(f+2));
+    }
     int Advance(int glyph) const {
         const uint8_t *f=At(info_,24); if(!f)return 0;
         const int advance=RawAdvance(glyph);

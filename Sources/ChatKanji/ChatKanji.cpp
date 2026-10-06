@@ -20,6 +20,7 @@ SwkbdEngine::Report report={};
 char rows[SwkbdEngine::MaxCandidates][kRowBytes]={};
 const char *rowPointers[SwkbdEngine::MaxCandidates]={};
 int rowCount=0;
+uint16_t rowSource[SwkbdEngine::MaxCandidates]={}; // published row -> engine candidate (rows with undrawable characters are skipped)
 char title[64]={}, error[96]={};
 alignas(4) uint32_t fontObject[6]={}; // private MapCharToGlyph cache; game tables/texture descriptors are borrowed
 GameFontView fontView;
@@ -139,6 +140,17 @@ RequestResult RequestText(const uint16_t *text,size_t length) {
     std::memset(input,0,sizeof(input));std::memcpy(input,copy,(length+1)*sizeof(uint16_t));
     return Start();
 }
+// Every UTF-16 unit (surrogate pairs combined) maps to a real glyph of the game font
+bool Drawable(const uint16_t *text,unsigned length) {
+    for(unsigned k=0;k<length;++k) {
+        uint32_t cp=text[k];
+        if(cp>=0xD800 && cp<=0xDBFF && k+1<length && text[k+1]>=0xDC00 && text[k+1]<=0xDFFF) {
+            cp=0x10000+((cp-0xD800)<<10)+(text[k+1]-0xDC00);++k;
+        }
+        if(!fontView.Drawable(cp))return false;
+    }
+    return true;
+}
 bool Poll() {
     // Result timeouts can be positive informational codes: only exact success permits freeing.
     if(!worker || !__atomic_load_n(&done,__ATOMIC_ACQUIRE) || threadJoin(worker,0)!=0)return false;
@@ -156,11 +168,14 @@ bool Poll() {
            !ChatKanjiText::Valid(report.candidates[i],SwkbdEngine::TextUnits,SwkbdEngine::TextUnits-1,checked) || checked!=length) {
             rowCount=0;std::snprintf(error,sizeof(error),"INVALID CANDIDATE");return true;
         }
-        const int prefix=std::snprintf(rows[i],sizeof(rows[i]),"%u. ",i+1);
-        if(prefix<0 || !ChatKanjiText::Utf8(report.candidates[i],length,rows[i]+prefix,sizeof(rows[i])-prefix)) {
+        // Candidates with a character the game font cannot draw (it would show the "?" glyph 0xE03A) are not offered (user 2026-10-06)
+        if(!Drawable(report.candidates[i],length))continue;
+        const unsigned row=static_cast<unsigned>(rowCount);
+        const int prefix=std::snprintf(rows[row],sizeof(rows[row]),"%u. ",row+1);
+        if(prefix<0 || !ChatKanjiText::Utf8(report.candidates[i],length,rows[row]+prefix,sizeof(rows[row])-prefix)) {
             rowCount=0;std::snprintf(error,sizeof(error),"INVALID TEXT");return true;
         }
-        rowPointers[i]=rows[i];++rowCount;
+        rowPointers[row]=rows[row];rowSource[row]=static_cast<uint16_t>(i);++rowCount;
     }
     if(!rowCount) {std::snprintf(error,sizeof(error),"NO CANDIDATES");return true;}
     std::snprintf(title,sizeof(title),"KANJI %d%s",rowCount,report.exhausted?"":"+ (LIMIT)");
@@ -195,8 +210,9 @@ int CandidateCount() {return owned?rowCount:0;}
 const uint16_t *Candidate(int index,int &length) {
     length=0;
     if(!owned || index<0 || index>=rowCount)return nullptr;
-    length=report.lengths[index];
-    return report.candidates[index];
+    const unsigned source=rowSource[index];
+    length=report.lengths[source];
+    return report.candidates[source];
 }
 bool NormalChatOpen() {return ChatBound();}
 int RowCount() {return rowCount;}
