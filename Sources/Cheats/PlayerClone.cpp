@@ -1517,15 +1517,20 @@ namespace CTRPluginFramework
                                      g_pcColorIndex >= 0 ? GuiMenu::ItemApplied(g_pcColorIndex) : -1);
             }
 
+            // メニューの「プレイヤー複製」で出したか（効果の状態はこれで報告する）。HHD式スタイル変更が Show / Hide を直接呼ぶので、
+            //   IsShown をそのまま返すと開閉のたびに「有効／無効にしました」の通知が出た（利用者 2026-10-06）
+            bool    g_pcMenuOn = false;
+
             bool    CloneIsActive(int index)
             {
                 (void)index;
-                return PlayerClone::IsShown();
+                return g_pcMenuOn;
             }
 
             void    CloneSetActive(int index, bool active)
             {
                 (void)index;
+                g_pcMenuOn = active;
                 if (!active)
                 {
                     PlayerClone::Hide();
@@ -1534,7 +1539,10 @@ namespace CTRPluginFramework
                 HairApplied(0, 0);
                 ScreenApplied(0, 0);
                 if (!PlayerClone::Show())
+                {
+                    g_pcMenuOn = false;
                     GuiNotification::NotifyRed(kPcShow, u8"フックを入れられない");
+                }
             }
 
             const GuiMenu::ToggleEffectFuncs kCloneFuncs = { CloneIsActive, CloneSetActive };
