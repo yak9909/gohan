@@ -7,6 +7,7 @@
 #include "RomfsIndex.hpp"
 
 #include <3ds.h>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -77,7 +78,35 @@ volatile u32 s_pendSeq;
 s32 s_shownId = -1;                 // メニュー側が最後に頼んだ id
 u32 s_stableFrames;                 // 頼まれた id が変わらずに続いたフレーム
 s32 s_lastSeen = -2;
-const u32 kDebounceFrames = 8;      // 十字キーを押し続けている間は読み込みを始めない
+// ★2026-10-06（利用者: gohan 側の待ちを無くす。IDA-opus-5.5-F098 の実測で、待ち 9 フレームのうち揺れ止めが 4、片付けが 5）
+//   揺れ止めは 0。読み始めた 1 本は次のフレームで読み終わる（F098）ので、途中の種類を読み始めても無駄は 1〜2 フレーム。
+const u32 kDebounceFrames = 0;
+//   片付けの待ちは 1 フレーム（ゲームのカタログのプレビューは、替えた前の枠を最後に出した 1 フレーム後に壊す。F099。
+//   こちらは Submit の第 2 引数がゲームと違う（0 / 1）ので、もう 1 フレームだけ余裕を見る）
+const u32 kTeardownFrames = 1;
+const s32 kPendResolving = -2;      // s_pendId: 大きさを引いている途中（何も出さない。出せない種類 = -1 とは別）
+
+// ---- 3 ファイルの大きさの記憶と、大きさを引くスレッド（2026-10-06）----
+//   RomfsIndex で 1 種類（3 本）引くと 72〜150 ms かかる（F098）。メニューのスレッドで引くとリストの入力が止まるので、
+//   引いた結果を覚え、まだ引いていない種類は専用のスレッドで引く。手が空いたらリストの全種類を先に引いておく。
+struct SizeEntry {
+    char name[48];
+    u32 size[3];
+    bool ok;                        // 3 本とも見つかった
+};
+const u32 kSizeEntries = 256;
+SizeEntry s_sizeCache[kSizeEntries];
+std::atomic<u32> s_sizeCount{0};    // 書くのは引くスレッドだけ。読む側は count までを見る（書き終えてから増やす）
+LightLock s_pendLock;               // s_pend* を書く 2 つのスレッド（メニュー / 引くスレッド）の排他
+LightEvent s_resolveEvent;
+Thread s_resolver;
+bool s_resolverStarted;
+std::atomic<bool> s_resolverQuit{false};
+std::atomic<u32> s_requestSeq{0};   // メニューのスレッドが頼むたびに増える
+s32 s_requestId = -1;               // 最新の依頼（s_pendLock の中で読み書き）
+char s_requestName[48];
+u8 s_prefetch[256];
+std::atomic<u32> s_prefetchCount{0};
 
 volatile Stage s_stage = Stage::Off;
 volatile u32 s_failReason;
@@ -356,43 +385,135 @@ void StepBuild(void) {
     }
 }
 
-// 名前からパスと大きさを決める（メニュースレッド。書く先は pend）。モデルかテクスチャが無い種類は false。
+// 種類のモデル名（ファイルは読まない）。fobj_ / sobj_ でなければ false。
 // 役場 0x50・駅 0x54・0x4F は PwpPreview_LoadSlot 0x227CFC と同じ特別な名前（村の今の見た目の番号を庭データから読む:
 // 庭 *(0x955F8C) +401848 の u16。役場 = 下位 2 ビット（sub_6CA35C）、駅 = ビット 8〜9（sub_6CA378））。
-bool Resolve(u16 id) {
-    char name[48];
+bool NameFor(u16 id, char *name, u32 cap) {
     const char *base = PublicWorks::NameOf(id);
     const u32 garden = *reinterpret_cast<const volatile u32 *>(0x00955F8C);
     const u32 look = (garden >= 0x08000000u && BuildingHighlight::SafeReadable(garden + 401848, 2))
                          ? *reinterpret_cast<const volatile u16 *>(garden + 401848) : 0u;
     if (id == 0x50)
-        std::snprintf(name, sizeof(name), "sobj_officeA%02u", (unsigned)(look & 3u));
+        std::snprintf(name, cap, "sobj_officeA%02u", (unsigned)(look & 3u));
     else if (id == 0x54)
-        std::snprintf(name, sizeof(name), "sobj_stationA%02u", (unsigned)((look >> 8) & 3u));
+        std::snprintf(name, cap, "sobj_stationA%02u", (unsigned)((look >> 8) & 3u));
     else if (id == 0x4F)
-        std::snprintf(name, sizeof(name), "sobj_reset_cls");
+        std::snprintf(name, cap, "sobj_reset_cls");
     else
-        std::snprintf(name, sizeof(name), "%s", base);
-    if (name[0] == '\0')
-        return false;
+        std::snprintf(name, cap, "%s", base);
+    return std::strncmp(name, "fobj_", 5) == 0 || std::strncmp(name, "sobj_", 5) == 0;
+}
+
+void PathsFor(const char *name, char (*paths)[96]) {
     const bool fobj = std::strncmp(name, "fobj_", 5) == 0;
-    const bool sobj = std::strncmp(name, "sobj_", 5) == 0;
-    if (!fobj && !sobj)
-        return false;
-    std::snprintf(s_pendPath[kLut], sizeof(s_pendPath[kLut]), fobj ? "Strc/fobj/lut/Lut_fieldobj.bcres"
-                                                                   : "Strc/sobj/lut/Lut_sobj.bcres");
-    std::snprintf(s_pendPath[kTex], sizeof(s_pendPath[kTex]),
-                  fobj ? "Strc/fobj/%s/Textures/season00.bcres" : "Strc/sobj/%s/Textures/season00/season00.bcres",
-                  name);
-    std::snprintf(s_pendPath[kModel], sizeof(s_pendPath[kModel]), fobj ? "Strc/fobj/%s/%s.bcres" : "Strc/sobj/%s/%s.bcres",
-                  name, name);
-    std::snprintf(s_pendName, sizeof(s_pendName), "%s", name);
-    for (u32 i = 0; i < kResCount; ++i) {
-        s_pendSize[i] = RomfsIndex::FileSize(s_pendPath[i]);
-        if (s_pendSize[i] == 0)
-            return false;
+    std::snprintf(paths[kLut], 96, fobj ? "Strc/fobj/lut/Lut_fieldobj.bcres" : "Strc/sobj/lut/Lut_sobj.bcres");
+    std::snprintf(paths[kTex], 96,
+                  fobj ? "Strc/fobj/%s/Textures/season00.bcres" : "Strc/sobj/%s/Textures/season00/season00.bcres", name);
+    std::snprintf(paths[kModel], 96, fobj ? "Strc/fobj/%s/%s.bcres" : "Strc/sobj/%s/%s.bcres", name, name);
+}
+
+const SizeEntry *FindSizes(const char *name) {
+    const u32 n = s_sizeCount.load(std::memory_order_acquire);
+    for (u32 i = 0; i < n; ++i)
+        if (std::strcmp(s_sizeCache[i].name, name) == 0)
+            return &s_sizeCache[i];
+    return nullptr;
+}
+
+// 次に出すものを書く（s_pendLock の中で呼ぶ）。描画スレッドは s_pendSeq が奇数の間は写さない
+void PublishLocked(s32 id, const char *name, const SizeEntry *sizes, u32 resolveTicks) {
+    s_pendSeq = s_pendSeq + 1;                      // 奇数 = 書きかけ
+    if (sizes != nullptr && sizes->ok) {
+        PathsFor(name, s_pendPath);
+        for (u32 i = 0; i < kResCount; ++i)
+            s_pendSize[i] = sizes->size[i];
+        std::snprintf(s_pendName, sizeof(s_pendName), "%s", name);
     }
-    return true;
+    s_pendSeq = s_pendSeq + 1;
+    s_pendId = sizes == nullptr ? kPendResolving : sizes->ok ? id : -1;
+    if (sizes != nullptr) {
+        PreviewShowEntry &e = g_previewShow[g_previewShowNext % 128u];
+        e.tick = (u32)svcGetSystemTick();
+        e.resolveTicks = resolveTicks;
+        e.id = sizes->ok ? id : -1 - id;
+        e.bytes = sizes->ok ? sizes->size[0] + sizes->size[1] + sizes->size[2] : 0;
+        g_previewShowNext = g_previewShowNext + 1;
+    }
+}
+
+// 引くスレッド: 1 種類ぶん引いて覚える（書くのはこのスレッドだけ）
+const SizeEntry *ResolveAndStore(const char *name, u32 &ticks) {
+    const SizeEntry *hit = FindSizes(name);
+    if (hit != nullptr)
+        return hit;
+    const u32 n = s_sizeCount.load(std::memory_order_relaxed);
+    if (n >= kSizeEntries)
+        return nullptr;
+    const u32 t0 = (u32)svcGetSystemTick();
+    char paths[kResCount][96];
+    PathsFor(name, paths);
+    SizeEntry &e = s_sizeCache[n];
+    std::snprintf(e.name, sizeof(e.name), "%s", name);
+    e.ok = true;
+    for (u32 i = 0; i < kResCount; ++i) {
+        e.size[i] = RomfsIndex::FileSize(paths[i]);
+        if (e.size[i] == 0)
+            e.ok = false;
+    }
+    ticks = (u32)svcGetSystemTick() - t0;
+    s_sizeCount.store(n + 1, std::memory_order_release);
+    return &e;
+}
+
+void ResolverMain(void *) {
+    u32 doneSeq = 0;
+    u32 prefetchAt = 0;
+    for (;;) {
+        // 依頼が無く先回りも済んでいれば眠る
+        if (s_requestSeq.load() == doneSeq && prefetchAt >= s_prefetchCount.load())
+            LightEvent_Wait(&s_resolveEvent);
+        if (s_resolverQuit.load())
+            return;
+        const u32 seq = s_requestSeq.load();
+        if (seq != doneSeq) {
+            char name[48];
+            s32 id;
+            LightLock_Lock(&s_pendLock);
+            id = s_requestId;
+            std::memcpy(name, s_requestName, sizeof(name));
+            LightLock_Unlock(&s_pendLock);
+            u32 ticks = 0;
+            const SizeEntry *e = id >= 0 ? ResolveAndStore(name, ticks) : nullptr;
+            LightLock_Lock(&s_pendLock);
+            // まだその種類が頼まれているときだけ出す（その間に別の種類へ移っていれば、そちらが次の依頼になっている）
+            if (e != nullptr && s_requestSeq.load() == seq && s_shownId == id)
+                PublishLocked(id, name, e, ticks);
+            LightLock_Unlock(&s_pendLock);
+            doneSeq = seq;
+            continue;
+        }
+        if (prefetchAt < s_prefetchCount.load()) {
+            char name[48];
+            if (NameFor(s_prefetch[prefetchAt], name, sizeof(name))) {
+                u32 ticks = 0;
+                ResolveAndStore(name, ticks);
+            }
+            ++prefetchAt;
+        }
+    }
+}
+
+bool StartResolver(void) {
+    if (s_resolverStarted)
+        return true;
+    RomfsIndex::OpenHandles();                      // 開くのはここ（メニューのスレッド）で 1 回だけ
+    LightLock_Init(&s_pendLock);
+    LightEvent_Init(&s_resolveEvent, RESET_ONESHOT);
+    // 優先度は低く（FS を待つだけ）。スタックは RomfsIndex の読み出しに足りる 16 KB
+    s_resolverQuit.store(false);
+    s_resolver = threadCreate(ResolverMain, nullptr, 0x4000, 0x3F, -2, false);
+    s_resolverStarted = s_resolver != nullptr;
+    return s_resolverStarted;
 }
 
 }  // namespace
@@ -451,7 +572,7 @@ void FrameStepBody(void) {
             s_quietFrames = 0;
             return;
         }
-        if (++s_quietFrames < 4)
+        if (++s_quietFrames < kTeardownFrames)
             return;
         TeardownAll();
         return;
@@ -501,28 +622,68 @@ void Show(u16 id, s32 x, s32 y) {
     s_want = true;
     if (s_shownId == (s32)id)
         return;
-    s_shownId = id;
-    // 次に出すものを書く。描画スレッドは待たない（切り替えは描画スレッドが切れ目で行う）。
-    s_pendSeq = s_pendSeq + 1;                      // 奇数 = 書きかけ
-    const u32 r0 = (u32)svcGetSystemTick();
-    const bool ok = Resolve(id);
-    const u32 r1 = (u32)svcGetSystemTick();
-    s_pendSeq = s_pendSeq + 1;
-    s_pendId = ok ? (s32)id : -1;
-    {
-        PreviewShowEntry &e = g_previewShow[g_previewShowNext % 128u];
-        e.tick = r0;
-        e.resolveTicks = r1 - r0;
-        e.id = ok ? (s32)id : -1 - (s32)id;
-        e.bytes = ok ? s_pendSize[0] + s_pendSize[1] + s_pendSize[2] : 0;
-        g_previewShowNext = g_previewShowNext + 1;
+    if (!StartResolver()) {
+        s_shownId = id;
+        s_pendId = -1;
+        return;
     }
+    // 次に出すものを書く。描画スレッドは待たない（切り替えは描画スレッドが切れ目で行う）。
+    //   大きさを覚えていればすぐ、まだなら引くスレッドへ頼む（その間は何も出さない）。
+    char name[48];
+    const bool named = NameFor(id, name, sizeof(name));
+    const SizeEntry *sizes = named ? FindSizes(name) : nullptr;
+    LightLock_Lock(&s_pendLock);
+    s_shownId = id;
+    if (!named) {
+        static const SizeEntry kNone = {};
+        PublishLocked(id, name, &kNone, 0);
+    } else if (sizes != nullptr) {
+        PublishLocked(id, name, sizes, 0);
+    } else {
+        PublishLocked(id, name, nullptr, 0);
+        s_requestId = id;
+        std::memcpy(s_requestName, name, sizeof(s_requestName));
+        s_requestSeq.fetch_add(1);
+    }
+    LightLock_Unlock(&s_pendLock);
+    if (named && sizes == nullptr)
+        LightEvent_Signal(&s_resolveEvent);
+}
+
+void Prefetch(const u8 *ids, u32 count) {
+    if (count > sizeof(s_prefetch) || !StartResolver())
+        return;
+    if (s_prefetchCount.load() != 0)
+        return;                                     // 一覧は 1 回だけ渡す
+    std::memcpy(s_prefetch, ids, count);
+    s_prefetchCount.store(count);
+    LightEvent_Signal(&s_resolveEvent);
+}
+
+void StopResolver(void) {
+    if (!s_resolverStarted)
+        return;
+    s_resolverQuit.store(true);
+    LightEvent_Signal(&s_resolveEvent);
+    threadJoin(s_resolver, U64_MAX);                // 引いている途中なら 1 種類（〜150 ms）待つ
+    threadFree(s_resolver);
+    s_resolver = nullptr;
+    s_resolverStarted = false;
+    // 覚えた大きさと一覧は残す（次に開いたとき、先回りは覚えていない種類だけ引く）
+    LightLock_Lock(&s_pendLock);
+    if (s_pendId == kPendResolving)
+        s_pendId = -1;
+    LightLock_Unlock(&s_pendLock);
 }
 
 void Hide(void) {
     s_want = false;
+    if (s_resolverStarted)
+        LightLock_Lock(&s_pendLock);
     s_shownId = -1;
     s_pendId = -1;
+    if (s_resolverStarted)
+        LightLock_Unlock(&s_pendLock);
 }
 
 void SetWave(const Wave &wave) {
@@ -534,7 +695,7 @@ const Wave &GetWave(void) { return s_wave; }
 Status GetStatus(void) {
     Status out;
     out.shownId = s_shownId;
-    out.available = s_pendId >= 0 || s_shownId < 0;
+    out.available = s_pendId != -1 || s_shownId < 0;      // 引いている途中（kPendResolving）は出せる側に数える
     out.failed = s_stage == Stage::Failed;
     out.failReason = s_failReason;
     out.ready = s_stage == Stage::Ready;

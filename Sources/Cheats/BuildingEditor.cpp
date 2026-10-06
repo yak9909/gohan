@@ -426,6 +426,7 @@ void ShowKindList(void) {
         for (u32 k = 0; k < s_kindCount; ++k)
             names[k] = PublicWorks::NameOf(s_kinds[k]);
         s_listGiven = GameList::SetItems(names, s_kindCount);
+        BuildingPreview::Prefetch(s_kinds, s_kindCount);    // プレビューの大きさを先に引いておく（2026-10-06）
         // 名前はゲームの「STR_Fobj_name」があればそれ（公共事業の一覧と同じ引き方: 建物 ID → byte_887B94 → 番号、
         //   sub_56CDEC / sub_5C97B8）。0xFF（名前なし）はモデル名のまま。
         static s16 msg[sizeof(s_kinds)];
@@ -480,8 +481,10 @@ void TakeListChoice(void) {
         s_mode = Mode::Place;
         Select(-1);
     } else {
-        s_tilesPending = true;                  // 選択が止まってから置き直す（上の説明）
-        s_tilesAt = NowMs() + kKindSettleMs;
+        // ★2026-10-06（利用者: gohan 側の待ちを無くす）: 選択が変わったらすぐ置き直す。プレビューの大きさ引きは
+        //   別のスレッドへ移した（BuildingPreview）ので、ここで止まるのは形の初回の読み出しだけ（種類ごとに 1 回）
+        s_tilesPending = false;
+        UpdateTiles();
     }
 }
 
@@ -717,6 +720,7 @@ void Stop(void) {
         svcSleepThread(16666667LL);
     GridCursor::Hide();
     BuildingPreview::Hide();
+    BuildingPreview::StopResolver();
     GameList::Hide();
     for (u32 i = 0; i < GameLabel::kSlots; ++i)
         GameLabel::Hide(i);

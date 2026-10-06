@@ -26,6 +26,11 @@ namespace BuildingPreview
     // id の建物を (x, y) に出す（違う id なら組み直す）。モデルが無い種類は何も出さない。
     void            Show(u16 id, s32 x, s32 y);
     void            Hide(void);
+    // 一覧の全種類の 3 ファイルの大きさを、手の空いたときに先に引いておく（1 回だけ。2026-10-06）
+    void            Prefetch(const u8 *ids, u32 count);
+    // 大きさを引くスレッドを止めてスタック（16 KB、プラグインのヒープ）を返す。エディターを止めるときに
+    //   （残すとヒープを分断し、漢字変換の 5 MiB が取れなくなるおそれ。HHD の arc と同じ理由）
+    void            StopResolver(void);
     void            SetWave(const Wave &wave);
     const Wave &    GetWave(void);
     // 通知用: いまの状態の名前

@@ -610,4 +610,9 @@ u32 FileSize(const char *path) {
     return ReadFile(path, nullptr, 0xFFFFFFFFu);
 }
 
+void OpenHandles(void) {
+    UpdateHandle();
+    BaseHandle();
+}
+
 }  // namespace RomfsIndex

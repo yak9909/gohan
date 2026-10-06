@@ -53,4 +53,7 @@ namespace RomfsIndex
     // 戻り値は読めたバイト数。見つからない・cap を超える・読めなければ 0。
     u32             ReadFile(const char *path, void *buf, u32 cap);   // buf が nullptr なら大きさだけ
     u32             FileSize(const char *path);                       // 無ければ 0
+    // 更新タイトルと base の RomFS を開いておく（開くのは 1 回だけで、ReadFile / FileSize は以後どのスレッドからでも読める。
+    //   開くところは排他していないので、別のスレッドで読む前にここを 1 回呼ぶ）
+    void            OpenHandles(void);
 }
