@@ -11,12 +11,14 @@
 //   マスに触れると select + touch と名前の吹き出し、離して決定 → 家具は空きマスへ置く（DecorPlace の順で 0x6920CC を試し、置けたら 0x68FA84）、
 //   壁紙・床紙はゲーム自身の貼り替え。成功したら窓を閉じる（HHD の StateID_Ok_）。置けなければ無効音（HHD の EditError_ の代わり）。
 //   B / 戻るで閉じる（out）。
-// まだ無いもの（次の段）: 出した家具のチップ（模様替え UI を開いたまま掴めるようにする。F002 の手順）。窓を閉じたあと UI を閉じて開き直せば掴める。
+//   出した家具のチップ（模様替え UI を開いたまま掴めるようにする）は IDA-gpt-6.1-sol-F002 の手順: 家具の完成（+0x66 bit1・状態 +0x5F8 == 2・破棄要求 +15 == 0）と
+//   記録の対応を 2 フレーム続けて確かめてから、一度も使っていないチップの枠へ Chip_Setup を 1 回、Editor_AttachActiveChipPanes を 1 回（ChipStep）。
 // スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
 
 #include "DecorCatalog.hpp"
 #include "DecorCatalogLayout.h"
 #include "DecorCatalogTable.h"
+#include "DecorCatalogCro.h"
 #include "DecorTrashTable.h"
 #include "DecorIcons.hpp"
 #include "DecorLayout.hpp"
@@ -90,6 +92,38 @@ bool EditorLive(u32 indoor, u32 calc) {
 }
 
 bool EditorNeutral(u32 indoor, u32 calc) { return indoor != 0 && calc == indoor + DecorTrashTable::kIndoorEditorNeutralCalc; }
+
+u32 EditorPtr(u32 indoor) {
+    if (indoor == 0)
+        return 0;
+    const u32 at = R32(indoor + DecorTrashTable::kIndoorEditorPtrLiteral);
+    if (!Process::CheckAddress(at, MEMPERM_READ))
+        return 0;
+    const u32 editor = R32(at);
+    return IsHeapPointer(editor) ? editor : 0;
+}
+
+// ModuleFtr の先頭（DecorTrash と同じ照合）
+u32 s_ftrSlotSeen = 0xFFFFFFFFu, s_ftr;
+
+u32 FtrBase(void) {
+    using namespace DecorTrashTable;
+    const u32 w = R32(kFtrSlot);
+    if (w != s_ftrSlotSeen) {
+        s_ftrSlotSeen = w;
+        s_ftr = 0;
+        static const u32 words[][2] = { { kFtrRecGet, kFtrRecGetWord }, { kFtrRecIsAlive, kFtrRecIsAliveWord }, { kFtrSlotTarget, kFtrSlotTargetWord } };
+        if (w != kUnloadedSlotWord && w > kFtrSlotOffset) {
+            const u32 base = w - kFtrSlotOffset;
+            bool ok = true;
+            for (u32 i = 0; i < sizeof(words) / sizeof(words[0]) && ok; ++i)
+                ok = Process::CheckAddress(base + words[i][0], MEMPERM_READ) && R32(base + words[i][0]) == words[i][1];
+            if (ok)
+                s_ftr = base;
+        }
+    }
+    return s_ftr;
+}
 
 // ---- ゲームの関数 ----
 struct Item { u16 id, flags; };
@@ -551,13 +585,13 @@ bool TryCell(void *ctx, s32 x, s32 z) {
     return TryPut(c.record, x, z, 0, &c.item, 0, c.px, c.pz, c.prot, 0) == 0;   // 向き 0（HHD の品の既定）・床の層 0・パターン 0（試験 3 と同じ）
 }
 
-bool PlaceFurniture(u16 acnl) {
+u32 PlaceFurniture(u16 acnl) {
     void *table = FtrTable();
     if (table == nullptr || FtrFree(table) <= 0)
-        return false;                               // 家の家具アクター 48 が満杯（F001 / F002）
+        return 0;                                   // 家の家具アクター 48 が満杯（F001 / F002）
     void *actor = GridCursor::Game::LocalPlayer();
     if (actor == nullptr)
-        return false;
+        return 0;
     PlaceCtx c;
     c.item = { acnl, 0 };
     const float *pos = reinterpret_cast<const float *>(reinterpret_cast<u8 *>(actor) + GridCursor::Game::kPlayerPositionOffset);
@@ -570,8 +604,104 @@ bool PlaceFurniture(u16 acnl) {
     b = { minX, minZ, maxX, maxZ };
     s32 x = 0, z = 0;
     if (!DecorPlace::Search(c.px, c.pz, b, 2, TryCell, &c, x, z))   // 押し引き中の家具は無いので HHD と同じく方向 2（F002）
-        return false;
-    return Spawn(c.record) != 0;                    // 0 = 拒否（失敗したら同じ決定で試し直さない。F002）
+        return 0;
+    return (u32)Spawn(c.record);                    // 生成した家具（0 = 拒否。失敗したら同じ決定で試し直さない。F002）
+}
+
+// ---- 出した家具のチップ（IDA-gpt-6.1-sol-F002 §2 の手順）----
+typedef void *(*RecGetFn)(const s16 *index);
+typedef int (*RecAliveFn)(const s16 *index);
+typedef void *(*FtrFromIndexFn)(u32 *index);       // sub_4E8650: 失敗すると *index = -1（写しを渡す）
+typedef void (*ChipSetupFn)(void *chip, void *resource, void *record);
+typedef void (*AttachPanesFn)(void *editor);
+const FtrFromIndexFn FtrFromIndex = reinterpret_cast<FtrFromIndexFn>(0x004E8650);
+const u32 kEditorChips = 1176, kChipStride = 1120, kChipCount = 112, kChipInUse = 1117, kChipRecord = 1032, kRecordFtrIndex = 4;
+const u32 kActorDestroy = 15, kActorCreateFlags = 0x66, kActorState = 0x5F8;   // 破棄要求 / 作成の旗（bit1 = 完成）/ 状態（2 = 通常）
+const u32 kPendTimeout = 600;                   // 20 秒（30 fps）待っても完成しなければやめる
+
+struct Pending { u32 actor, editor, frames, stable; bool active; };
+Pending s_pend;
+u32 s_chipEditor, s_chipNext;                   // 一度も使っていないチップの枠の先頭（開いた時点の使用中の最後 + 1 から）
+
+void ChipTrackEditor(u32 editor) {
+    if (editor == s_chipEditor)
+        return;
+    s_chipEditor = editor;                      // 新しいエディター（開き直した）: 枠の使い方を数え直す
+    s_chipNext = 0;
+    if (editor == 0)
+        return;
+    for (u32 i = 0; i < kChipCount; ++i)
+        if (*reinterpret_cast<const volatile u8 *>(editor + kEditorChips + kChipStride * i + kChipInUse) != 0)
+            s_chipNext = i + 1;
+}
+
+void ChipStep(u32 indoor) {
+    if (!s_pend.active)
+        return;
+    const u32 editor = EditorPtr(indoor), ftr = FtrBase();
+    if (editor == 0 || editor != s_pend.editor || ftr == 0 || ++s_pend.frames > kPendTimeout) {
+        s_pend.active = false;                  // エディターが閉じた（開き直せばゲームがチップを作る）・時間切れ
+        return;
+    }
+    if (!EditorNeutral(indoor, EditorCalc(indoor)))
+        return;
+    const u32 actor = s_pend.actor;
+    if (!Process::CheckAddress(actor, MEMPERM_READ) || *reinterpret_cast<const volatile u8 *>(actor + kActorDestroy) != 0) {
+        s_pend.active = false;
+        return;
+    }
+    if ((*reinterpret_cast<const volatile u8 *>(actor + kActorCreateFlags) & 2u) == 0
+        || *reinterpret_cast<const volatile u8 *>(actor + kActorState) != 2) {
+        s_pend.stable = 0;
+        return;
+    }
+    // 記録（ModuleFtr）: 生きていて +4 の家具の番号がこの家具を指すもの
+    const RecGetFn recGet = reinterpret_cast<RecGetFn>(ftr + DecorTrashTable::kFtrRecGet);
+    const RecAliveFn recAlive = reinterpret_cast<RecAliveFn>(ftr + DecorTrashTable::kFtrRecIsAlive);
+    s16 rec = -1;
+    void *recPtr = nullptr;
+    for (s16 r = 0; r < (s16)kChipCount; ++r) {
+        if (!recAlive(&r))
+            continue;
+        void *p = recGet(&r);
+        u32 index = R32(reinterpret_cast<u32>(p) + kRecordFtrIndex);
+        if (reinterpret_cast<u32>(FtrFromIndex(&index)) == actor) {
+            rec = r;
+            recPtr = p;
+            break;
+        }
+    }
+    if (rec < 0) {
+        s_pend.stable = 0;
+        return;
+    }
+    if (++s_pend.stable < 2)                    // 2 フレーム続いた = 完成後の位置の更新（AcFtr_Update の vslot+208）を通った
+        return;
+    // 同じ記録番号を、片付け中の古いチップがまだ持っていたら待つ（F002）
+    for (u32 i = 0; i < kChipCount; ++i) {
+        const u32 chip = editor + kEditorChips + kChipStride * i;
+        if (*reinterpret_cast<const volatile u8 *>(chip + kChipInUse) != 0 && *reinterpret_cast<const volatile s16 *>(chip + kChipRecord) == rec)
+            return;
+    }
+    ChipTrackEditor(editor);
+    if (s_chipNext >= kChipCount) {
+        s_pend.active = false;                  // 一度も使っていない枠が無い（Out 済みの枠は使わない。F002）
+        return;
+    }
+    const u32 chip = editor + kEditorChips + kChipStride * s_chipNext;
+    if (*reinterpret_cast<const volatile u8 *>(chip + kChipInUse) != 0) {
+        s_pend.active = false;
+        return;
+    }
+    using namespace DecorCatalogCro;
+    if (R32(indoor + kIndoorChipSetup) != kIndoorChipSetupWord || R32(indoor + kIndoorAttachChipPanes) != kIndoorAttachChipPanesWord) {
+        s_pend.active = false;
+        return;
+    }
+    reinterpret_cast<ChipSetupFn>(indoor + kIndoorChipSetup)(reinterpret_cast<void *>(chip), reinterpret_cast<void *>(editor + kEditorChipResource), recPtr);
+    ++s_chipNext;
+    reinterpret_cast<AttachPanesFn>(indoor + kIndoorAttachChipPanes)(reinterpret_cast<void *>(editor));
+    s_pend.active = false;                      // 描画リストへは次の描画の巡回でゲームが載せる
 }
 
 bool ApplyBackground(u16 acnl, u32 ctTab) {
@@ -598,7 +728,16 @@ void Decide(u32 frame, u32 slot) {
     if (s_main == 4) {
         ok = ApplyBackground(it->acnl, (u32)s_ctTab);
     } else {
-        ok = EditorNeutral(IndoorBase(), EditorCalc(IndoorBase())) && PlaceFurniture(it->acnl);
+        const u32 indoor = IndoorBase();
+        const u32 editor = EditorPtr(indoor);
+        ok = !s_pend.active && editor != 0 && EditorNeutral(indoor, EditorCalc(indoor));   // 前の家具のチップを待っている間は出さない
+        if (ok) {
+            ChipTrackEditor(editor);
+            const u32 actor = PlaceFurniture(it->acnl);
+            ok = actor != 0;
+            if (ok)
+                s_pend = { actor, editor, 0, 0, true };
+        }
         if (ok)
             PlaySound(kSndCellDecide);
     }
@@ -922,6 +1061,9 @@ void FrameStep(void) {
         WindowStep();
         if (s_stage != Stage::Live)
             return;
+        if (EditorNeutral(indoor, EditorCalc(indoor)))
+            ChipTrackEditor(EditorPtr(indoor));     // 開いて最初の Neutral（ゲームの CreateChips の直後・ゴミ箱で Out する前）で未使用の枠を数える
+        ChipStep(indoor);
         if (s_win_state == Win::Open) {
             if (DecorSlider::Step(s_slider)) {          // 滑りが終わってページが決まった
                 const s32 before = s_kind;
