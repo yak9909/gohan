@@ -17,10 +17,10 @@ struct Layout {
     alignas(8) u8 obj[332];
     bool made, built;
 };
-struct Anim {
+struct Anim {                                   // 1 つのアニメを最大 2 つの群に結ぶ（壁紙/床紙の窓の in / out は G_InOut と G_Page_00）
     alignas(8) u8 obj[40];
     Layout *lay;
-    void *group;
+    void *group[2];
     bool made, bound;
 };
 
@@ -40,7 +40,7 @@ void *Group(Layout &l, const char *name);       // 0x4B4328（入れ子も探す
 
 // ---- アニメ ----
 bool LoadAnim(Anim &an, Arc &a, const char *name);
-bool Bind(Anim &an, Layout &l, const char *group, float frame = 0.0f);   // 群に結んで frame から
+bool Bind(Anim &an, Layout &l, const char *group, float frame = 0.0f, const char *group2 = nullptr);   // 群に結んで frame から
 void Unbind(Anim &an);
 void FreeAnim(Anim &an);
 bool Step(Anim &an);                            // 1 コマ進める（終わっていたら偽。終わっても外さない）

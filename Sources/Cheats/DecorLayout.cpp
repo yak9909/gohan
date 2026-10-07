@@ -193,34 +193,40 @@ void *Group(Layout &l, const char *name) { return l.built ? FindGroup(l.obj, nam
 // ---- アニメ ----
 bool LoadAnim(Anim &an, Arc &a, const char *name) {
     an.lay = nullptr;
-    an.group = nullptr;
+    an.group[0] = an.group[1] = nullptr;
     an.bound = false;
     AnimCtor(an.obj);
     an.made = true;
     return AnimLoad(an.obj, name, a.holder) != 0;
 }
 
-bool Bind(Anim &an, Layout &l, const char *group, float frame) {
+bool Bind(Anim &an, Layout &l, const char *group, float frame, const char *group2) {
     if (!an.made || !l.built)
         return false;
     Unbind(an);
     void *g = FindGroup(l.obj, group, 1);
-    if (g == nullptr)
+    void *g2 = group2 != nullptr ? FindGroup(l.obj, group2, 1) : nullptr;
+    if (g == nullptr || (group2 != nullptr && g2 == nullptr))
         return false;
     GroupBind(l.obj, an.obj, g, 0);
+    if (g2 != nullptr)
+        GroupBind(l.obj, an.obj, g2, 0);
     AnimSetFrame(an.obj, frame);
     an.lay = &l;
-    an.group = g;
+    an.group[0] = g;
+    an.group[1] = g2;
     an.bound = true;
     return true;
 }
 
 void Unbind(Anim &an) {
     if (an.bound && an.lay != nullptr && an.lay->built)
-        GroupUnbind(an.lay->obj, an.obj, an.group, 0);
+        for (u32 i = 0; i < 2; ++i)
+            if (an.group[i] != nullptr)
+                GroupUnbind(an.lay->obj, an.obj, an.group[i], 0);
     an.bound = false;
     an.lay = nullptr;
-    an.group = nullptr;
+    an.group[0] = an.group[1] = nullptr;
 }
 
 void FreeAnim(Anim &an) {
