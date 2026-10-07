@@ -30,6 +30,7 @@ void FreeArc(Arc &a);
 void *HeapAlloc(u32 size, u32 align);           // 読み込みのヒープ [[0x96FC40]+4] から借りる（返すのは HeapFree）
 void HeapFree(void *p);
 u32 HeapFreeBytes(void);
+u32 HeapMaxAllocBytes(s32 align);               // 整列を考慮した最大連続空き。合計残量と分けて測る
 
 // ---- レイアウト ----
 bool Build(Layout &l, Arc &a, const char *name, u32 cmdBytes, u8 priority);

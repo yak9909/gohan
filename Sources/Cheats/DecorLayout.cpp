@@ -20,6 +20,7 @@ typedef void (*FlushFn)(void *p, u32 size);
 typedef void *(*HeapAllocFn)(void *heap, u32 size, u32 align);
 typedef void (*HeapFreeFn)(void *heap, void *p);
 typedef u32 (*HeapFreeSizeFn)(void *heap);
+typedef u32 (*HeapMaxSizeFn)(void *heap, s32 align);
 typedef void *(*FontSlotFn)(void *fontMgr, u32 kind);
 typedef void (*RegisterFontFn)(void *accessor, const char *name, void *font);
 typedef void *(*FindFn)(void *layout, const char *name);
@@ -59,6 +60,7 @@ const AnimSetFrameFn AnimSetFrame   = reinterpret_cast<AnimSetFrameFn>(0x00568C0
 const LayoutFn       AnimStep       = reinterpret_cast<LayoutFn>(0x00568964);
 const AnimFinishedFn AnimFinished   = reinterpret_cast<AnimFinishedFn>(0x0074F58C);
 const HeapFreeSizeFn HeapFreeSize   = reinterpret_cast<HeapFreeSizeFn>(0x0074D744);   // sead::ExpHeap::getFreeSize
+const HeapMaxSizeFn  HeapMaxSize    = reinterpret_cast<HeapMaxSizeFn>(0x0074D8B0);   // sead::ExpHeap::getMaxAllocatableSize（整列込み）
 const SetStringFn    SetString      = reinterpret_cast<SetStringFn>(0x004BACBC);
 const GetTextureFn   GetTexture     = reinterpret_cast<GetTextureFn>(0x004B5844);     // nwlyt_ArcResourceAccessor_GetTexture
 const TexMapUpdateFn TexMapUpdate   = reinterpret_cast<TexMapUpdateFn>(0x004B9830);   // nwlyt_TexMap_UpdateGpuRegs
@@ -123,6 +125,11 @@ void HeapFree(void *p) {
 u32 HeapFreeBytes(void) {
     void *heap = LoaderHeap();
     return heap != nullptr ? HeapFreeSize(heap) : 0;
+}
+
+u32 HeapMaxAllocBytes(s32 align) {
+    void *heap = LoaderHeap();
+    return heap != nullptr ? HeapMaxSize(heap, align) : 0;
 }
 
 bool LoadArc(Arc &a, const u8 *file, u32 size) {

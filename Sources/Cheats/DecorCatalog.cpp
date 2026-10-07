@@ -12,7 +12,8 @@
 //   壁紙・床紙はゲーム自身の貼り替え。成功したら窓を閉じる（HHD の StateID_Ok_）。置けなければ無効音（HHD の EditError_ の代わり）。
 //   B / 戻るで閉じる（out）。
 //   出した家具のチップ（模様替え UI を開いたまま掴めるようにする）は IDA-gpt-6.1-sol-F002 の手順: 家具の完成（+0x66 bit1・状態 +0x5F8 == 2・破棄要求 +15 == 0）と
-//   記録の対応を 2 フレーム続けて確かめてから、一度も使っていないチップの枠へ Chip_Setup を 1 回、Editor_AttachActiveChipPanes を 1 回（ChipStep）。
+//   記録の対応を 2 フレーム続けて確かめ、窓の資源を返してから未使用枠へ Chip_Setup → Chip_RestoreOwnRoot（ChipStep）。
+//   Neutral の通常の親は各チップ自身の root。共有ペインへ全チップを付け直すと既存チップも更新対象木から外れる（F???、fix3）。
 // スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
 
 #include "DecorCatalog.hpp"
@@ -164,6 +165,7 @@ const FtrTableFn   FtrTable    = reinterpret_cast<FtrTableFn>(0x004E9314);     /
 const FtrFreeFn    FtrFree     = reinterpret_cast<FtrFreeFn>(0x007449D4);      // FtrObjectTable_CountFreeSlots（家の家具 48）
 const SetBgFn      SetWall     = reinterpret_cast<SetBgFn>(0x002C5FA8);        // HouseRoom_SetWallpaper
 const SetBgFn      SetFloor    = reinterpret_cast<SetBgFn>(0x002C6CCC);        // HouseRoom_SetFlooring
+int (*const CanChangeBackground)(void) = reinterpret_cast<int (*)(void)>(0x005B39B4);   // F005。起動時・決定時とも本来の許可判定
 const PlaySoundFn  PlaySound   = reinterpret_cast<PlaySoundFn>(0x0058C7D4);    // Game_PlaySound
 
 // ---- 音（HHD の音は ACNL に無いので代用。要件書 §7.4。実機で利用者に決めてもらう）----
@@ -184,6 +186,7 @@ const u32 kTeardownWaitFrames = 3;
 // コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
 const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
 const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
+const u32 kWindowHeapReserve = 0x6000;          // 起動完了時に残す24KiB。実測6028Bの追加UI費用3件分＋6492B（fix3 report）
 
 // アニメの最後のコマ。frames は ACNL の数え方（HHD の frameSize + 1。tools/hhd/clan_pack.py の ★）で、AnimStep 0x568964 は frames − 1 で止まる
 float LastFrame(const CL::AnimRef &r) { return r.frames > 0 ? (float)(r.frames - 1) : 0.0f; }
@@ -195,9 +198,12 @@ u8 *volatile s_catFile;
 volatile u32 s_catSize;
 volatile bool s_wantCatFile, s_catFileFailed, s_catUploaded;   // s_catUploaded: ゲームのヒープへ写し終えた（プラグインの写しを返してよい）
 // 窓を組んだときの読み込みのヒープの空き（2026-10-08 実機: アイコンの枠 184,320 B が取れずに開かなかった。デバッガで読む）
-//   [0] 組む前 [1] arc を写した後 [2] レイアウト 3 つの後 [3] アニメの後 [4] 失敗して返した後
+//   [0] 組む前 [1] アイコン＋arc の後 [2] レイアウト 3 つの後 [3] アニメの後 [4] 失敗して返した後
 volatile u32 s_heapLog[5];
-volatile u8 s_openFail;                         // 窓を組めなかった（ゲームのスレッドが立て、メニューのスレッドが知らせる）: 1 レイアウト / 2 アイコンの枠
+volatile u32 s_heapMaxLog[5];                   // 同時点の0x80整列込み最大連続空き
+volatile u32 s_heapWindowReady;                // Bind / 最初のボタンを含めた起動完了時の残量
+bool s_canChangeBackground;                    // 模様替えを開いた時点のゲーム判定（家の外観から推測しない）
+volatile u8 s_openFail;                         // 窓を組めなかった: 1 レイアウト / 2 アイコンの枠 / 3 ゲーム用の残量
 u8 s_openStep;                                  // OpenWindow がどこまで進んだか（ゲームのスレッドだけ）
 volatile u8 s_catFailReason;                    // 窓の arc が読めなかった理由（メニューのスレッドが知らせる）: 0 なし / 1 ファイルが無い / 2 読めない・大きすぎる・メモリ不足
 
@@ -613,20 +619,34 @@ void SelectTab(u32 tab) {
 
 bool OpenWindow(void) {
     s_cat = &CL::kCatalogs[s_main == 1 ? 0 : 1];
-    s_openStep = 1;
+    s_openStep = 2;
     s_heapLog[0] = L::HeapFreeBytes();
+    s_heapMaxLog[0] = L::HeapMaxAllocBytes(0x80);
+    s_heapWindowReady = 0;
+    // 最大の連続領域が残っているうちに45枠を取る。小確保/arcの後では合計が足りても失敗する。
+    const u32 iconBytes = DecorIcons::kSlots * DecorIcons::kIconBytes;
+    if (s_slotsToFree != 0 || s_heapMaxLog[0] < iconBytes)
+        return false;
+    void *slots = L::HeapAlloc(iconBytes, 0x80);
+    if (slots == nullptr)
+        return false;
+    s_iconSlots = reinterpret_cast<u32>(slots);
+    s_openStep = 1;
     if (!L::LoadArc(s_arc, s_catFile, s_catSize))
         return false;
     s_heapLog[1] = L::HeapFreeBytes();
+    s_heapMaxLog[1] = L::HeapMaxAllocBytes(0x80);
     if (!L::Build(s_win, s_arc, s_cat->layout, kCmdWindow, kPriWindow) || !L::Build(s_grid, s_arc, CL::kGridLayout, kCmdGrid, kPriWindow)
         || !L::Build(s_name, s_arc, CL::kNameLayout, kCmdName, kPriWindow))
         return false;
     s_heapLog[2] = L::HeapFreeBytes();
+    s_heapMaxLog[2] = L::HeapMaxAllocBytes(0x80);
     if (!LoadRef(s_winIn, s_arc, s_cat->in) || !LoadRef(s_winOut, s_arc, s_cat->out) || !LoadRef(s_winLoop, s_arc, s_cat->loop)
         || !LoadRef(s_winKind, s_arc, s_cat->kind) || !LoadRef(s_gridIn, s_arc, CL::kGridIn) || !LoadRef(s_gridOut, s_arc, CL::kGridOut)
         || !LoadRef(s_gridKind, s_arc, CL::kGridKind) || !LoadRef(s_nameIn, s_arc, CL::kNameIn) || !LoadRef(s_nameOut, s_arc, CL::kNameOut))
         return false;
     s_heapLog[3] = L::HeapFreeBytes();
+    s_heapMaxLog[3] = L::HeapMaxAllocBytes(0x80);
     // ボタン
     s_tabCount = s_cat->tabCount < 8 ? s_cat->tabCount : 8;
     for (u32 i = 0; i < s_tabCount; ++i)
@@ -648,16 +668,6 @@ bool OpenWindow(void) {
             L::SetVisible(s_cellIcon[f][s], false);
         }
     }
-    // アイコンの枠（読み込みのヒープから。閉じたら返す）
-    if (s_slotsToFree != 0)
-        return false;                               // 前の枠をまだ返していない（すぐ返るので、もう一度押してもらう）
-    s_openStep = 2;
-    void *slots = L::HeapAlloc(DecorIcons::kSlots * DecorIcons::kIconBytes, 0x80);
-    if (slots == nullptr)
-        return false;
-    s_openStep = 0;
-    s_iconSlots = reinterpret_cast<u32>(slots);
-    DecorIcons::SetSlots(s_iconSlots);
     // 出入り・地の縞・小分類の段
     L::Bind(s_winIn, s_win, s_cat->in.group, 0.0f, s_cat->in.group2);
     s_winBound = &s_winIn;
@@ -670,6 +680,13 @@ bool OpenWindow(void) {
     L::Bind(s_nameOut, s_name, CL::kNameOut.group, LastFrame(CL::kNameOut), CL::kNameOut.group2);   // 吹き出しは閉じた形で始める
     s_tab = 0xFFFFFFFFu;
     SelectTab(0);
+    s_heapWindowReady = L::HeapFreeBytes();
+    if (s_heapWindowReady < kWindowHeapReserve) {
+        s_openStep = 3;                             // 組めてもゲーム用の余白を食い切る窓は出さず、全て返す
+        return false;
+    }
+    DecorIcons::SetSlots(s_iconSlots);              // 全工程が通ってからメニューのスレッドへ渡す
+    s_openStep = 0;
     return true;
 }
 
@@ -743,7 +760,7 @@ typedef void *(*RecGetFn)(const s16 *index);
 typedef int (*RecAliveFn)(const s16 *index);
 typedef void *(*FtrFromIndexFn)(u32 *index);       // sub_4E8650: 失敗すると *index = -1（写しを渡す）
 typedef void (*ChipSetupFn)(void *chip, void *resource, void *record);
-typedef void (*AttachPanesFn)(void *editor);
+typedef void (*ChipRootFn)(void *chip);
 const FtrFromIndexFn FtrFromIndex = reinterpret_cast<FtrFromIndexFn>(0x004E8650);
 const u32 kEditorChips = 1176, kChipStride = 1120, kChipCount = 112, kChipInUse = 1117, kChipRecord = 1032, kRecordFtrIndex = 4;
 const u32 kActorDestroy = 15, kActorCreateFlags = 0x66, kActorState = 0x5F8;   // 破棄要求 / 作成の旗（bit1 = 完成）/ 状態（2 = 通常）
@@ -775,6 +792,11 @@ void ChipStep(u32 indoor) {
     }
     if (!EditorNeutral(indoor, EditorCalc(indoor)))
         return;
+    // 窓を壊した後で追加する。窓の確保の途中へchipの小領域を挟まず、約1MiBの資源を返してから使う。
+    if (s_win_state != Win::Closed || s_arc.made || s_slotsToFree != 0 || Touch::IsDown())
+        return;
+    if (R32(editor + 129100) != 0 || R32(editor + 128640) != 0 || R32(editor + 126796) != 0 || R32(editor + 129288) != 0)
+        return;                                   // Neutralでも選択・まとめ・共通ボタン処理が残っていれば追加しない（F002）
     const u32 actor = s_pend.actor;
     if (!Process::CheckAddress(actor, MEMPERM_READ) || *reinterpret_cast<const volatile u8 *>(actor + kActorDestroy) != 0) {
         s_pend.active = false;
@@ -824,13 +846,13 @@ void ChipStep(u32 indoor) {
         return;
     }
     using namespace DecorCatalogCro;
-    if (R32(indoor + kIndoorChipSetup) != kIndoorChipSetupWord || R32(indoor + kIndoorAttachChipPanes) != kIndoorAttachChipPanesWord) {
+    if (R32(indoor + kIndoorChipSetup) != kIndoorChipSetupWord || R32(indoor + kIndoorChipRestoreOwnRoot) != kIndoorChipRestoreOwnRootWord) {
         s_pend.active = false;
         return;
     }
     reinterpret_cast<ChipSetupFn>(indoor + kIndoorChipSetup)(reinterpret_cast<void *>(chip), reinterpret_cast<void *>(editor + kEditorChipResource), recPtr);
     ++s_chipNext;
-    reinterpret_cast<AttachPanesFn>(indoor + kIndoorAttachChipPanes)(reinterpret_cast<void *>(editor));
+    reinterpret_cast<ChipRootFn>(indoor + kIndoorChipRestoreOwnRoot)(reinterpret_cast<void *>(chip));
     s_pend.active = false;                      // 描画リストへは次の描画の巡回でゲームが載せる
 }
 
@@ -933,6 +955,11 @@ Btn *PressBtn(Hit h, u32 idx) {
 void OnDecide(Hit h, u32 idx) {
     switch (h) {
     case Hit::TopTab:
+        if ((CL::kTopMain[idx] == 4 && (!s_canChangeBackground || CanChangeBackground() == 0)) || s_pend.active) {
+            PlaySound(kSndInvalid);
+            BtnUnselect(s_topBtn[idx], s_topArc, false, true);   // HHDの押した→戻す。不可では決定/窓を始めない
+            return;
+        }
         BtnDecide(s_topBtn[idx], s_topArc);
         PlaySound(kSndOpen);
         s_main = CL::kTopMain[idx];
@@ -1097,11 +1124,27 @@ void ReleaseAll(void) {
     FreeWindow();
     FreeTop();
     s_win_state = Win::Closed;
+    s_chipEditor = s_chipNext = 0;                 // 同じ番地で開き直したエディターも新しい使用歴として数え直す
+    s_pend.active = false;
+    s_canChangeBackground = false;
 }
+
+u32 s_closedWait;
 
 void WindowStep(void) {
     switch (s_win_state) {
     case Win::Loading:
+        // outが終わった直後の再タップでも旧資源を上書きしない。GPUの待ちとSD書込み終了を経てから作り直す。
+        if (s_arc.made) {
+            if (++s_closedWait >= kTeardownWaitFrames) {
+                FreeWindow();
+                s_closedWait = 0;
+            }
+            return;
+        }
+        FreeIconSlots(false);
+        if (s_slotsToFree != 0)
+            return;
         if (s_catFileFailed) {
             s_catFileFailed = false;
             PlaySound(kSndInvalid);
@@ -1118,6 +1161,7 @@ void WindowStep(void) {
             const u8 why = s_openStep;
             FreeWindow();
             s_heapLog[4] = L::HeapFreeBytes();
+            s_heapMaxLog[4] = L::HeapMaxAllocBytes(0x80);
             s_openFail = why != 0 ? why : 1;
             s_catUploaded = true;
             PlaySound(kSndInvalid);
@@ -1149,8 +1193,6 @@ void WindowStep(void) {
         return;
     }
 }
-
-u32 s_closedWait;
 
 void DrawAll(void) {
     L::Draw(s_top, kScreenLower);
@@ -1192,6 +1234,7 @@ void FrameStep(void) {
         const u32 indoor = IndoorBase();
         if (!EditorLive(indoor, EditorCalc(indoor)))
             return;
+        s_canChangeBackground = CanChangeBackground() != 0;
         if (!BuildTop()) {
             FreeTop();
             s_stage = Stage::Failed;
@@ -1336,8 +1379,10 @@ bool Tick(int index, unsigned short) {
         s_openFail = 0;
         char msg[160];
         if (why == 2)
-            std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
-                          (unsigned long)s_heapLog[3]);
+            std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 連続空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
+                          (unsigned long)s_heapMaxLog[0]);
+        else if (why == 3)
+            std::snprintf(msg, sizeof(msg), "ゲーム用の空きを残せず窓を開けません（残り %lu B）。", (unsigned long)s_heapWindowReady);
         else
             std::snprintf(msg, sizeof(msg), "窓を組めません（空き %lu B）。", (unsigned long)s_heapLog[0]);
         GuiNotification::NotifyRed(kDecorCatalog, msg);
