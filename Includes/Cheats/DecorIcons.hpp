@@ -26,5 +26,9 @@ void Want(u32 slot, u16 hhdId);
 u32 Ready(u32 slot, u16 hhdId);
 // 頼まれた絵を読む（メニューのスレッド。毎ティック）。1 回に読む数の上限 maxReads
 void Service(u32 maxReads);
+// 枠を返してよいか（ゲームのスレッド）。SetSlots(0) の後、読み込みの途中でないこと（Service が 1 回終わった、または読んでいない）を確かめる。
+//   メニューのスレッドが返した枠へ書き込まないため。SetSlots(0) の直後に ReleaseTicket() を取り、CanRelease(ticket) が真になってから HeapFree する
+u32 ReleaseTicket(void);
+bool CanRelease(u32 ticket);
 
 }  // namespace DecorIcons

@@ -276,7 +276,9 @@ s32 s_kind = -1;                                // 今の小分類（CT のタ�
 DecorSlider::Slider s_slider;
 float s_pageOrigX[3], s_pageY[3];
 void *s_pageNode[3];
+void *s_cellNode[3][15], *s_cellIcon[3][15];   // 開くときに 1 回だけ引く（FindPane は全ペインをたどる）
 u32 s_iconSlots;                                // ヒープの枠（45 × 4096）
+u32 s_slotsToFree, s_slotsTicket;              // 外したが、まだ返していない枠
 u16 s_applied[3][15];                           // 枠に貼った絵の HHD 品番
 bool s_namesLoaded;
 bool s_nameShown;
@@ -442,10 +444,9 @@ void UpdateGrid(void) {
         L::SetVisible(node, show);
         L::SetPos(node, s_slider.frameX[f], s_pageY[f]);
         for (u32 s = 0; s < 15; ++s) {
-            const CL::Button &c = CL::kPages[f].cells[s];
             const CT::Item *it = show ? CellItem(f, s) : nullptr;
-            void *cell = L::Pane(s_grid, c.node);
-            void *icon = L::Pane(s_grid, c.icon);
+            void *cell = s_cellNode[f][s];
+            void *icon = s_cellIcon[f][s];
             L::SetVisible(cell, it != nullptr);
             const u32 slot = f * 15 + s;
             const u16 want = it != nullptr ? it->hhd : 0;
@@ -487,13 +488,23 @@ void FreeWindow(void) {
     L::Free(s_grid);
     L::Free(s_win);
     L::FreeArc(s_arc);
-    if (s_iconSlots != 0)
-        L::HeapFree(reinterpret_cast<void *>(s_iconSlots));
+    if (s_iconSlots != 0) {
+        s_slotsToFree = s_iconSlots;            // メニューのスレッドが書き終えてから返す（FreeIconSlots）
+        s_slotsTicket = DecorIcons::ReleaseTicket();
+    }
     s_iconSlots = 0;
     s_cat = nullptr;
     s_nameShown = false;
     s_press = Hit::None;
     s_pressCell = -1;
+}
+
+// 外した枠を返す（メニューのスレッドが読み込みの途中でなくなってから。ゲームのスレッド）
+void FreeIconSlots(bool force) {
+    if (s_slotsToFree != 0 && (force || DecorIcons::CanRelease(s_slotsTicket))) {
+        L::HeapFree(reinterpret_cast<void *>(s_slotsToFree));
+        s_slotsToFree = 0;
+    }
 }
 
 bool LoadRef(L::Anim &an, L::Arc &arc, const CL::AnimRef &r) { return r.name == nullptr || L::LoadAnim(an, arc, r.name); }
@@ -550,10 +561,16 @@ bool OpenWindow(void) {
         s_pageY[f] = L::PosY(s_pageNode[f]);
         for (u32 s = 0; s < 15; ++s) {
             s_cellBtn[f][s] = { &CL::kPages[f].cells[s], &s_grid, {}, 0 };
-            L::SetVisible(L::Pane(s_grid, CL::kPages[f].cells[s].icon), false);
+            s_cellNode[f][s] = L::Pane(s_grid, CL::kPages[f].cells[s].node);
+            s_cellIcon[f][s] = L::Pane(s_grid, CL::kPages[f].cells[s].icon);
+            if (s_cellNode[f][s] == nullptr || s_cellIcon[f][s] == nullptr || s_pageNode[f] == nullptr)
+                return false;                       // 表と arc が食い違う（生成し直す）
+            L::SetVisible(s_cellIcon[f][s], false);
         }
     }
     // アイコンの枠（読み込みのヒープから。閉じたら返す）
+    if (s_slotsToFree != 0)
+        return false;                               // 前の枠をまだ返していない（すぐ返るので、もう一度押してもらう）
     void *slots = L::HeapAlloc(DecorIcons::kSlots * DecorIcons::kIconBytes, 0x80);
     if (slots == nullptr)
         return false;
@@ -1031,6 +1048,7 @@ void StepAnims(void) {
 void FrameStep(void) {
     switch (s_stage) {
     case Stage::Idle: {
+        FreeIconSlots(false);                       // 片付けの後でまだ返していない枠
         if (!s_enabled || s_topFile == nullptr)
             return;
         const u32 indoor = IndoorBase();
@@ -1064,6 +1082,7 @@ void FrameStep(void) {
         if (EditorNeutral(indoor, EditorCalc(indoor)))
             ChipTrackEditor(EditorPtr(indoor));     // 開いて最初の Neutral（ゲームの CreateChips の直後・ゴミ箱で Out する前）で未使用の枠を数える
         ChipStep(indoor);
+        FreeIconSlots(false);
         if (s_win_state == Win::Open) {
             if (DecorSlider::Step(s_slider)) {          // 滑りが終わってページが決まった
                 const s32 before = s_kind;

@@ -27,6 +27,8 @@ u32 s_count;
 volatile u32 s_slots;                         // ヒープの枠の先頭（0 = 無し）
 volatile u16 s_want[kSlots];                  // ゲームのスレッドが書く
 volatile u16 s_have[kSlots];                  // メニューのスレッドが書く（読み終えて掃き出した後）
+volatile bool s_busy;                         // Service が枠へ書いている途中
+volatile u32 s_serviceSeq;                    // Service が終わるたびに +1
 
 inline u32 Le32(const u8 *p) { return (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24; }
 
@@ -122,8 +124,11 @@ u32 Ready(u32 slot, u16 hhdId) {
 }
 
 void Service(u32 maxReads) {
-    if (!s_open)
+    if (!s_open) {
+        ++s_serviceSeq;
         return;
+    }
+    s_busy = true;
     for (u32 i = 0; i < kSlots && maxReads > 0; ++i) {
         const u32 base = s_slots;
         const u16 want = s_want[i];
@@ -141,6 +146,15 @@ void Service(u32 maxReads) {
             s_have[i] = want;
         --maxReads;
     }
+    s_busy = false;
+    ++s_serviceSeq;
+}
+
+u32 ReleaseTicket(void) { return s_serviceSeq; }
+
+bool CanRelease(u32 ticket) {
+    // 枠を外した（SetSlots(0)）後に Service が 1 回終わった = 外す前から読んでいた分も書き終えた。読んでいなければ（busy でない）すぐ返してよい
+    return !s_busy && (s_serviceSeq != ticket || s_slots == 0);
 }
 
 }  // namespace DecorIcons
