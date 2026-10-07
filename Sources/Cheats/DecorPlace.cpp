@@ -16,6 +16,11 @@ const s32 kMaxRadius = 32;
 }  // namespace
 
 bool Search(s32 startX, s32 startZ, const Bounds &b, u32 quadrant, TryFn tryFn, void *ctx, s32 &outX, s32 &outZ) {
+    if (b.minX > b.maxX || b.minZ > b.maxZ)
+        return false;
+    // HHD Room_GetPutStartCell 0x4D0C24〜0x4D0C4C: 入口側の行でも内側へ収めてから探索する。
+    startX = startX < b.minX ? b.minX : (startX > b.maxX ? b.maxX : startX);
+    startZ = startZ < b.minZ ? b.minZ : (startZ > b.maxZ ? b.maxZ : startZ);
     s32 cx[8], cz[8], ex[8], ez[8], kx[8], kz[8];
     u8 flag[8];
     for (u32 i = 0; i < 8; ++i) {

@@ -728,8 +728,10 @@ u32 PlaceFurniture(u16 acnl) {
     int minX = 0, minZ = 0, maxX = 0, maxZ = 0;
     CellBounds(&minX, &minZ, &maxX, &maxZ);
     b = { minX, minZ, maxX, maxZ };
-    if (minX > maxX || minZ > maxZ || s_origin.x < minX || s_origin.x > maxX || s_origin.z < minZ || s_origin.z > maxZ)
-        return 0;                                  // 起点が取れない場合、推測の部屋中心へ置き換えない
+    if (minX > maxX || minZ > maxZ)
+        return 0;
+    // 入口など範囲外の実位置は、DecorPlaceでHHD 0x4D0C24〜0x4D0C4Cと同じく内側へ収める。
+    // 占有チェック用のc.px/c.pzは実位置のまま。探索の起点だけを補正する。
     s32 x = 0, z = 0;
     if (!DecorPlace::Search(s_origin.x, s_origin.z, b, 2, TryCell, &c, x, z))   // 押し引き中の家具は無いので HHD と同じく方向 2（F002）
         return 0;

@@ -15,7 +15,8 @@ namespace DecorPlace {
 struct Bounds { s32 minX, minZ, maxX, maxZ; };   // 両端を含む（Room_GetInteriorCellBounds 0x2853A8 と同じ）
 typedef bool (*TryFn)(void *ctx, s32 x, s32 z);   // 置けたら真
 
-// start から探し、置けたマスを outX / outZ に返す。見つからなければ偽（部屋の 4 辺を全部越えた・半径 32 を越えた）
+// startをbへ収め（HHD Room_GetPutStartCell 0x4D0C24〜0x4D0C4C）、そこから探す。
+// 置けたマスをoutX/outZに返す。不正な範囲・部屋の4辺を全部越えた・半径32を越えた場合は偽。
 bool Search(s32 startX, s32 startZ, const Bounds &b, u32 quadrant, TryFn tryFn, void *ctx, s32 &outX, s32 &outZ);
 
 }  // namespace DecorPlace
