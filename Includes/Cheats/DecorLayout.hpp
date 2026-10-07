@@ -63,5 +63,7 @@ void SetText(void *textBox, const u16 *text, u32 len);                     // nw
 float MeasureText(void *textBox, const u16 *text, u32 len);                // ゲームの持ち物欄の測り方 sub_5E9430 の写し
 bool SetTexture(void *picture, u32 va, u16 w, u16 h, u32 format);         // HiddenIcons と同じ TexMap の書き方（format 11 = ETC1A4）
 bool SetTextureByName(void *picture, Arc &a, const char *name);           // arc の絵へ（HhdScreen::SetTexture と同じ）
+// BsMenuRoomLightSwitchの十字キー案内N_angl_00を一時的に隠す。ゲームスレッドから毎フレーム呼び、falseで元の可視bitへ戻す。
+void HideRoomAngleGuide(bool hide);
 
 }  // namespace DecorLayout

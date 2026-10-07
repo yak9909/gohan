@@ -91,6 +91,7 @@ namespace CTRPluginFramework
             bool    g_touchLatch = false;
             bool    g_dpadBlockReq = false;     // このフレームだけゲームの十字キーを遮断（BlockGameDpad）
             bool    g_touchBlockReq = false;    // このフレームだけゲームのタッチを遮断（BlockGameTouch）
+            volatile bool g_frameTouchCapture = false;  // ゲームスレッドからの要求。離すまでメニュースレッドが保持
             bool    g_barDrawn = false;         // 漢字変換の候補欄を前のフレームで描いた（消すために 1 回描き直す）
             bool    g_pickDrawn = false;        // マップエディターのスポイトの進捗バーを前のフレームで描いた
             bool    g_allBlockReq = false;      // このフレームだけスライドパッドも含めて全部遮断（BlockGameAll）
@@ -107,7 +108,10 @@ namespace CTRPluginFramework
                 // タッチ遮断: 下画面 UI がある間（退場中も）。消えた後も指が離れるまで続ける。
                 //   ホットキー入力待ちを「無効」「取消」のタッチで閉じた瞬間に遮断を外すと、
                 //   触れたままの指がゲームへ新しいタッチとして届いていた。
-                const bool present = BottomUiPresent() || g_touchBlockReq;
+                const bool capture = g_frameTouchCapture && in.touch;
+                if (!in.touch)
+                    g_frameTouchCapture = false;
+                const bool present = BottomUiPresent() || g_touchBlockReq || capture;
 
                 g_touchBlockReq = false;
 
@@ -452,6 +456,13 @@ namespace CTRPluginFramework
         void    BlockGameTouch(void)
         {
             g_touchBlockReq = true;
+        }
+
+        void    CaptureGameTouchUntilRelease(void)
+        {
+            g_frameTouchCapture = true;
+            // FrameStepの要求を次のメニュー更新まで遅らせない。既存ケーブの旗だけを使う。
+            GuiRenderer::SetTouchBlock(true);
         }
 
         void    BlockGameAll(void)

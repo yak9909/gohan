@@ -104,6 +104,26 @@ u32 EditorPtr(u32 indoor) {
     return IsHeapPointer(editor) ? editor : 0;
 }
 
+void CancelCapturedRangeTouch(u32 indoor) {
+    const u32 editor = EditorPtr(indoor);
+    if (editor == 0 || !EditorNeutral(indoor, EditorCalc(indoor)))
+        return;
+    // ModuleIndoor .text先頭からのオフセット。入口と同関数の4欄クリア命令を照合してから触る。
+    static const u32 checks[][2] = {
+        { 0xAAF0, 0xE92D4010 }, { 0xAB30, 0xED848A6A }, { 0xAB34, 0xED848A6B },
+        { 0xAB38, 0xED848A6C }, { 0xAB3C, 0xED848A6D },
+    };
+    for (u32 i = 0; i < sizeof(checks) / sizeof(checks[0]); ++i)
+        if (!Process::CheckAddress(indoor + checks[i][0], MEMPERM_READ) || R32(indoor + checks[i][0]) != checks[i][1])
+            return;
+    // Neutralから呼ぶ範囲選択器（+128200）。0xB0AAF0は開始点（+424/+428）が非0ならreleaseで選択確定する。
+    // 先行するゲーム更新に最初のpressが届いていても、この指だけの開始/現在点を同じ経路で0へ戻し、
+    // 次の遮断フレームがreleaseとして見えても範囲を確定させない。状態/選択vectorは変更しない。
+    volatile u32 *points = reinterpret_cast<volatile u32 *>(editor + 128200 + 424);
+    for (u32 i = 0; i < 4; ++i)
+        points[i] = 0;
+}
+
 // ModuleFtr の先頭（DecorTrash と同じ照合）
 u32 s_ftrSlotSeen = 0xFFFFFFFFu, s_ftr;
 
@@ -158,7 +178,7 @@ const u32 kSndBack = 0x01000391;            // SE_SYS_DECIDE_QUIT
 const u32 kSndInvalid = 0x0100039A;         // SE_SYS_BTN_ACT_INVALID
 
 // ---- 描く順（Layout +12。昇順、同じ値なら後に足した方が手前）: チップ 6 / 掴んでいる 7（F105）。タブはゴミ箱と同じ 6、窓はその上 ----
-const u8 kPriTop = 6, kPriWindow = 0x80;
+const u8 kPriTop = 6, kPriWindow = 0x88;   // rom_lgt/rom_chip/rom_strg は 0x87（0x325950 / 0x325A80）。その次に描く
 const u32 kScreenLower = 1;
 const u32 kTeardownWaitFrames = 3;
 // コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
@@ -332,7 +352,9 @@ bool s_nameShown;
 s32 s_pressCell = -1;                           // 触れているマス（frame * 15 + slot）
 Hit s_press = Hit::None;
 u32 s_pressIdx;
-bool s_touchPrev;
+volatile bool s_touchPrev;
+UIntVector s_lastTouch;
+volatile bool s_topTouchCaptured;
 bool s_closeAfter;                              // 決めた後に閉じる（out へ）
 
 // ---- 論理ページ ↔ 小分類 ----
@@ -457,9 +479,15 @@ void ShowName(u32 frame, u32 slot) {
     const u32 n = CleanName(it->acnl, text, 64);
     void *tx = L::Pane(s_name, CL::kName[2]), *sh = L::Pane(s_name, CL::kName[3]);
     void *win = L::Pane(s_name, CL::kName[4]), *ws = L::Pane(s_name, CL::kName[5]);
+    const float textWidth = L::MeasureText(tx, text, n);
+    const float shadowWidth = L::MeasureText(sh, text, n);
+    // TextBox +0x48 が折返し幅になる（0x4BAD78）。影も自分の字幅で測る。
+    // 文字幅より少し広い箱を中央に置き、浮動小数点の端で最後の字が次行へ行くのを防ぐ。
+    L::SetSize(tx, textWidth + 1.0f, L::Height(tx));
+    L::SetSize(sh, shadowWidth + 1.0f, L::Height(sh));
     L::SetText(tx, text, n);
     L::SetText(sh, text, n);
-    const float w = L::MeasureText(tx, text, n) + 32.0f;
+    const float w = textWidth + 32.0f;
     const float h = L::Height(win);
     L::SetSize(win, w, h);
     L::SetSize(ws, w, L::Height(ws));
@@ -648,6 +676,31 @@ bool OpenWindow(void) {
 // ---- 置く ----
 struct PlaceCtx { Item item; int px, pz, prot; u8 record[12]; };
 
+struct PlaceOrigin { u32 scene; u8 room; int x, z, rot; bool valid; };
+PlaceOrigin s_origin;
+
+void TrackPlacementOrigin(void) {
+    const u32 scene = reinterpret_cast<u32>(*GridCursor::Game::kSceneOwner);
+    const u8 room = *GridCursor::Game::kRoomId;
+    if (!s_enabled || scene != s_origin.scene || room != s_origin.room) {
+        s_origin = { scene, room, 0, 0, 0, false };
+    }
+    if (!s_enabled || scene == 0)
+        return;
+    const u32 indoor = IndoorBase();
+    if (s_origin.valid && EditorLive(indoor, EditorCalc(indoor)))
+        return;                                    // エディターの間は入る直前の実位置。非表示化後の位置で上書きしない
+    void *actor = GridCursor::Game::LocalPlayer();
+    if (actor == nullptr || !IsHeapPointer(reinterpret_cast<u32>(actor)))
+        return;                                    // 同じ部屋で観測した起点を保持。別の部屋の座標は使わない
+    int x = 0, z = 0;
+    const float *pos = reinterpret_cast<const float *>(reinterpret_cast<const u8 *>(actor) + GridCursor::Game::kPlayerPositionOffset);
+    PosToCell(&x, &z, pos);
+    const u16 angle = *reinterpret_cast<const u16 *>(reinterpret_cast<const u8 *>(actor) + 46);
+    const int rot = (int)((((u32)angle >> 12 << 28) + 0x20000000u) >> 30);
+    s_origin = { scene, room, x, z, rot, true };
+}
+
 bool TryCell(void *ctx, s32 x, s32 z) {
     PlaceCtx &c = *reinterpret_cast<PlaceCtx *>(ctx);
     if (x < 0 || z < 0)
@@ -660,21 +713,25 @@ u32 PlaceFurniture(u16 acnl) {
     void *table = FtrTable();
     if (table == nullptr || FtrFree(table) <= 0)
         return 0;                                   // 家の家具アクター 48 が満杯（F001 / F002）
-    void *actor = GridCursor::Game::LocalPlayer();
-    if (actor == nullptr)
+    if (!s_origin.valid || s_origin.scene != reinterpret_cast<u32>(*GridCursor::Game::kSceneOwner)
+                        || s_origin.room != *GridCursor::Game::kRoomId)
         return 0;
     PlaceCtx c;
     c.item = { acnl, 0 };
-    const float *pos = reinterpret_cast<const float *>(reinterpret_cast<u8 *>(actor) + GridCursor::Game::kPlayerPositionOffset);
-    PosToCell(&c.px, &c.pz, pos);
-    const u16 angle = *reinterpret_cast<const u16 *>(reinterpret_cast<u8 *>(actor) + 46);
-    c.prot = (int)((((u32)angle >> 12 << 28) + 0x20000000u) >> 30);           // sub_691AD4 と同じ式
+    // 探す起点と「プレイヤーが占有するマス」を分ける。0x6920CCは負値なら占有チェックを省く。
+    // 模様替え中に実体が消えても、直前に実際に観測した位置からHHDの順で探せる。
+    const bool playerPresent = GridCursor::Game::LocalPlayer() != nullptr;
+    c.px = playerPresent ? s_origin.x : -1;
+    c.pz = playerPresent ? s_origin.z : -1;
+    c.prot = s_origin.rot;
     DecorPlace::Bounds b;
     int minX = 0, minZ = 0, maxX = 0, maxZ = 0;
     CellBounds(&minX, &minZ, &maxX, &maxZ);
     b = { minX, minZ, maxX, maxZ };
+    if (minX > maxX || minZ > maxZ || s_origin.x < minX || s_origin.x > maxX || s_origin.z < minZ || s_origin.z > maxZ)
+        return 0;                                  // 起点が取れない場合、推測の部屋中心へ置き換えない
     s32 x = 0, z = 0;
-    if (!DecorPlace::Search(c.px, c.pz, b, 2, TryCell, &c, x, z))   // 押し引き中の家具は無いので HHD と同じく方向 2（F002）
+    if (!DecorPlace::Search(s_origin.x, s_origin.z, b, 2, TryCell, &c, x, z))   // 押し引き中の家具は無いので HHD と同じく方向 2（F002）
         return 0;
     return (u32)Spawn(c.record);                    // 生成した家具（0 = 拒否。失敗したら同じ決定で試し直さない。F002）
 }
@@ -895,7 +952,6 @@ void OnDecide(Hit h, u32 idx) {
             for (u32 s = 0; s < 15; ++s)
                 s_applied[f][s] = 0;
         HideName();
-        s_kind = -1;
         ShowKindSelection();                        // 選ばれた見た目（select の最後のコマ）
         BtnPlay(s_kindBtn[idx], s_arc, CL::kTouchOk, false);
         SetPageText();
@@ -923,13 +979,25 @@ void InputStep(void) {
         return;
     }
     const bool down = Touch::IsDown();
-    const UIntVector p = Touch::GetPosition();
+    if (down)
+        s_lastTouch = Touch::GetPosition();
+    const UIntVector p = s_lastTouch;                // release は最後の有効な接触点（CTRPF EventManager と同じ）
     const float x = (float)p.x, y = (float)p.y;
+    if (down && s_topTouchCaptured) {
+        // メニュー更新との境界でも要求を保持する。捕捉した指が外へ滑っても範囲選択へ渡さない。
+        GuiMenu::CaptureGameTouchUntilRelease();
+        CancelCapturedRangeTouch(IndoorBase());
+    }
     if (down && !s_touchPrev) {                     // 触れた
         u32 idx = 0;
         const Hit h = HitTest(x, y, idx);
         s_press = h;
         s_pressIdx = idx;
+        if (h == Hit::TopTab) {
+            s_topTouchCaptured = true;
+            GuiMenu::CaptureGameTouchUntilRelease();
+            CancelCapturedRangeTouch(IndoorBase());
+        }
         if (s_win_state == Win::Open && (h == Hit::Cell || h == Hit::Grid))
             DecorSlider::TouchStart(s_slider, x, y);
         if (Btn *b = PressBtn(h, idx)) {
@@ -976,6 +1044,8 @@ void InputStep(void) {
         }
     }
     s_touchPrev = down;
+    if (!down)
+        s_topTouchCaptured = false;
     if (s_win_state != Win::Open) {
         s_keysPrev = Controller::GetKeysDown();
         return;
@@ -1111,6 +1181,7 @@ void StepAnims(void) {
 }
 
 void FrameStep(void) {
+    TrackPlacementOrigin();                        // エディターがプレイヤー実体を隠す前から実位置を保持する
     switch (s_stage) {
     case Stage::Idle: {
         FreeIconSlots(false);                       // 片付けの後でまだ返していない枠
@@ -1126,6 +1197,7 @@ void FrameStep(void) {
         }
         s_leaving = false;
         s_touchPrev = Touch::IsDown();              // 開いた瞬間に押していた指は使わない
+        s_topTouchCaptured = false;                 // 前のエディター表示の捕捉を次の指へ持ち越さない
         s_stage = Stage::Live;
         [[fallthrough]];
     }
@@ -1244,6 +1316,13 @@ bool Tick(int index, unsigned short) {
     if (s_stage == Stage::Live && s_win_state != Win::Closed) {
         GuiMenu::BlockGameAll();                    // 窓が出ている間はゲームへの入力を止める（HhdScreen と同じ。タッチは別に止める）
         GuiMenu::BlockGameTouch();
+    }
+    // ゲームのFrameStepより早く検出できた場合にも遮断する。外へずらしても指を離すまで保持。
+    if (s_stage == Stage::Live && !s_leaving && s_win_state == Win::Closed && Touch::IsDown()) {
+        const UIntVector p = Touch::GetPosition();
+        if (s_topTouchCaptured || (!s_touchPrev && (InRect(CL::kTopTabs[0].rect, (float)p.x, (float)p.y)
+                                                  || InRect(CL::kTopTabs[1].rect, (float)p.x, (float)p.y))))
+            GuiMenu::CaptureGameTouchUntilRelease();
     }
     ServiceFiles();
     if (const u8 why = s_catFailReason) {            // 窓が開かなかった理由を知らせる（2026-10-07 の実機で何も出ずに開かなかった）

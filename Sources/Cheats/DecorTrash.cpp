@@ -16,6 +16,7 @@
 
 #include "DecorTrash.hpp"
 #include "DecorTrashTable.h"
+#include "DecorLayout.hpp"
 #include "Cheats.hpp"
 #include "GridCursor.hpp"
 #include "GuiMenu.hpp"
@@ -535,6 +536,9 @@ void TrashStep(const Mods &m) {
 }
 
 void FrameStep(void) {
+    // カタログを閉じていても、ゴミ箱の機能が有効な間は左下の操作案内との重なりを避ける。
+    // 無効化・エディター終了・失敗では同じ所有者の元の可視bitへ戻す。
+    DecorLayout::HideRoomAngleGuide(s_enabled && s_stage != Stage::Failed && EditorLive(Modules()));
     switch (s_stage) {
     case Stage::Idle: {
         if (!s_enabled || s_file == nullptr)

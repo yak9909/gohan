@@ -107,6 +107,8 @@ namespace CTRPluginFramework
         void    BlockGameDpad(void);
         // このフレームだけゲーム側のタッチを無効にする。OnTick から毎フレーム呼び続けている間だけ効く。
         void    BlockGameTouch(void);
+        // ゲームスレッド/OnTickから即時に遮断を要求し、同じ指が離れるまで保持する。
+        void    CaptureGameTouchUntilRelease(void);
         // このフレームだけゲーム側の入力をスライドパッドも含めて全部無効にする（建物エディター）。
         // メニューの表示中も優先する。OnTick から毎フレーム呼び続けている間だけ効く。
         void    BlockGameAll(void);

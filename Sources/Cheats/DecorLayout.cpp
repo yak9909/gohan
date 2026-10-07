@@ -81,6 +81,10 @@ const u32 kPicMaterial = 0x13C, kMatFlags = 0x4D, kMatTexMaps = 52;
 // TextBox の欄（sub_5E9430 が TextWriter へ写す）: +0xE0 書体、+0xE4 / +0xE8 大きさ、+0xEC / +0xF0 文字間・行間
 const u32 kBoxFont = 0xE0, kBoxScale = 0xE4, kBoxCharSpace = 0xEC, kBoxLineSpace = 0xF0;
 const u32 kWriterBytes = 0x74, kTagProcVtbl = 0x00903864;
+// 0x326CF8が登録し、0x326F60が0へ戻す。0x32592CがN_angl_00を+0x474へ置く。
+const u32 kRoomLightSwitchPtr = 0x0094A02C, kRoomLightSwitchVtbl = 0x008EF3A8, kRoomAnglePane = 0x474;
+void *s_angleOwner, *s_anglePane;
+bool s_angleSavedVisible;
 
 inline u8 &B(void *p, u32 off) { return reinterpret_cast<u8 *>(p)[off]; }
 inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(reinterpret_cast<u8 *>(p) + off); }
@@ -368,6 +372,33 @@ bool SetTextureByName(void *picture, Arc &a, const char *name) {
     TexMapUpdate(reinterpret_cast<u32>(t));
     B(mat, kMatFlags) &= ~4u;
     return true;
+}
+
+void HideRoomAngleGuide(bool hide) {
+    void *owner = *reinterpret_cast<void *const volatile *>(kRoomLightSwitchPtr);
+    void *pane = nullptr;
+    if (IsHeapPointer(owner) && W(owner, 0) == kRoomLightSwitchVtbl) {
+        pane = reinterpret_cast<void *>(W(owner, kRoomAnglePane));
+        if (!IsHeapPointer(pane))
+            pane = nullptr;
+    }
+    // teardown後の古いポインタを復元先にしない。現在のゲーム所有者とペインを照合する。
+    if (owner != s_angleOwner || pane != s_anglePane) {
+        s_angleOwner = nullptr;
+        s_anglePane = nullptr;
+    }
+    if (hide && pane != nullptr) {
+        if (s_anglePane == nullptr) {
+            s_angleOwner = owner;
+            s_anglePane = pane;
+            s_angleSavedVisible = Visible(pane);
+        }
+        SetVisible(pane, false);
+    } else if (s_anglePane != nullptr) {
+        SetVisible(s_anglePane, s_angleSavedVisible);
+        s_angleOwner = nullptr;
+        s_anglePane = nullptr;
+    }
 }
 
 }  // namespace DecorLayout
