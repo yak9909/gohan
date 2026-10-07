@@ -1,0 +1,1052 @@
+// DecorCatalog — 家の模様替えに HHD の家具リスト・壁紙/床紙リストを足す（T022 段 2、2026-10-07。未実機）
+//
+// 根拠（解析リポジトリ project_v2）:
+//   HHD の動き IDA-gpt-6.1-sol-HHD-F001（格子 Tum15・タブ・吹き出し・音）、HHD-F016 / F018 / F019（置く順・上段タブ・品の並び）。
+//   ACNL の置き方 IDA-gpt-6.1-sol-F001 / F002、IDA-opus-5.5-F103（かざるの判定 0x6920CC と生成 0x68FA84。試験 3 で実機の即反映を確認）。
+//   壁紙・床 IDA-opus-5.5-F106（HouseRoom_SetWallpaper 0x2C5FA8 / SetFlooring 0x2C6CCC）。品番 F101 / F107。
+//   設計 docs/topics/t022_decorate_port_requirements.md §7。
+// 流れ（HHD の写し）:
+//   模様替え UI が開いている間（DecorTrash と同じ EditorLive）、上段タブ 2 つを出す。押している間 select + touch、離して決定 touch_ok + select_ok。
+//   決定で窓（家具 / 壁紙・床紙）を開く（in）。窓の上段タブ・小分類・戻る・格子（横送りは DecorSlider = HHD の PageSlider）。
+//   マスに触れると select + touch と名前の吹き出し、離して決定 → 家具は空きマスへ置く（DecorPlace の順で 0x6920CC を試し、置けたら 0x68FA84）、
+//   壁紙・床紙はゲーム自身の貼り替え。成功したら窓を閉じる（HHD の StateID_Ok_）。置けなければ無効音（HHD の EditError_ の代わり）。
+//   B / 戻るで閉じる（out）。
+// まだ無いもの（次の段）: 出した家具のチップ（模様替え UI を開いたまま掴めるようにする。F002 の手順）。窓を閉じたあと UI を閉じて開き直せば掴める。
+// スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
+
+#include "DecorCatalog.hpp"
+#include "DecorCatalogLayout.h"
+#include "DecorCatalogTable.h"
+#include "DecorTrashTable.h"
+#include "DecorIcons.hpp"
+#include "DecorLayout.hpp"
+#include "DecorPlace.hpp"
+#include "DecorSlider.hpp"
+#include "Cheats.hpp"
+#include "GohanFiles.hpp"
+#include "GridCursor.hpp"
+#include "GridCursorGameApi.hpp"
+#include "GuiMenu.hpp"
+#include "GuiNotification.hpp"
+#include "ItemNames.hpp"
+
+#include <CTRPluginFramework.hpp>
+#include <cstring>
+#include <new>
+
+namespace DecorCatalog {
+
+namespace {
+
+using namespace CTRPluginFramework;
+namespace L = DecorLayout;
+namespace CL = DecorCatalogLayout;
+namespace CT = DecorCatalogTable;
+using Cheats::kDecorCatalog;
+
+inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
+inline bool IsHeapPointer(u32 v) { return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u; }
+
+// ---- 模様替え UI（DecorTrash と同じ照合。DecorTrashTable.h の番地）----
+u32 s_slotSeen = 0xFFFFFFFFu, s_indoor;
+
+u32 IndoorBase(void) {
+    using namespace DecorTrashTable;
+    const u32 w = R32(kIndoorSlot);
+    if (w != s_slotSeen) {
+        s_slotSeen = w;
+        s_indoor = 0;
+        static const u32 words[][2] = {
+            { kIndoorEditorInCalc, kIndoorEditorInCalcWord }, { kIndoorEditorNeutralCalc, kIndoorEditorNeutralCalcWord },
+            { kIndoorEditorOutCalc, kIndoorEditorOutCalcWord }, { kIndoorSlotTarget, kIndoorSlotTargetWord },
+            { kIndoorEditorCmnBtnInCalc, kIndoorEditorCmnBtnInCalcWord }, { kIndoorEditorCmnBtnOutCalc, kIndoorEditorCmnBtnOutCalcWord },
+        };
+        if (w != kUnloadedSlotWord && w > kIndoorSlotOffset) {
+            const u32 base = w - kIndoorSlotOffset;
+            bool ok = true;
+            for (u32 i = 0; i < sizeof(words) / sizeof(words[0]) && ok; ++i)
+                ok = Process::CheckAddress(base + words[i][0], MEMPERM_READ) && R32(base + words[i][0]) == words[i][1];
+            if (ok)
+                s_indoor = base;
+        }
+    }
+    return s_indoor;
+}
+
+u32 EditorCalc(u32 indoor) {
+    if (indoor == 0)
+        return 0;
+    const u32 at = R32(indoor + DecorTrashTable::kIndoorEditorPtrLiteral);
+    if (!Process::CheckAddress(at, MEMPERM_READ))
+        return 0;
+    const u32 editor = R32(at);
+    return IsHeapPointer(editor) ? R32(editor + 52) : 0;   // エディター +52 = 今の calc（F105）
+}
+
+bool EditorLive(u32 indoor, u32 calc) {
+    using namespace DecorTrashTable;
+    return indoor != 0 && (calc == indoor + kIndoorEditorInCalc || calc == indoor + kIndoorEditorCmnBtnInCalc
+                           || calc == indoor + kIndoorEditorNeutralCalc || calc == indoor + kIndoorEditorCmnBtnOutCalc);
+}
+
+bool EditorNeutral(u32 indoor, u32 calc) { return indoor != 0 && calc == indoor + DecorTrashTable::kIndoorEditorNeutralCalc; }
+
+// ---- ゲームの関数 ----
+struct Item { u16 id, flags; };
+typedef int (*TryPutFn)(void *record, int x, int z, int rot, const Item *item, int layer, int px, int pz, int prot, int pattern);
+typedef int (*SpawnFn)(void *record);
+typedef void (*PosToCellFn)(int *x, int *z, const float *pos);
+typedef void (*CellBoundsFn)(int *minX, int *minZ, int *maxX, int *maxZ);
+typedef void *(*FtrTableFn)(void);
+typedef int (*FtrFreeFn)(void *table);
+typedef int (*SetBgFn)(const Item *item, int playSound);
+typedef void (*PlaySoundFn)(u32 id);
+const TryPutFn     TryPut      = reinterpret_cast<TryPutFn>(0x006920CC);       // Room_TryPutFurnitureAt（判定のみ）
+const SpawnFn      Spawn       = reinterpret_cast<SpawnFn>(0x0068FA84);        // BsFtrMgr_SpawnFromRecord
+const PosToCellFn  PosToCell   = reinterpret_cast<PosToCellFn>(0x00317090);    // Field_WorldToCellXZ
+const CellBoundsFn CellBounds  = reinterpret_cast<CellBoundsFn>(0x002853A8);   // Room_GetInteriorCellBounds（両端を含む）
+const FtrTableFn   FtrTable    = reinterpret_cast<FtrTableFn>(0x004E9314);     // FtrObjectTable_GetCurrent
+const FtrFreeFn    FtrFree     = reinterpret_cast<FtrFreeFn>(0x007449D4);      // FtrObjectTable_CountFreeSlots（家の家具 48）
+const SetBgFn      SetWall     = reinterpret_cast<SetBgFn>(0x002C5FA8);        // HouseRoom_SetWallpaper
+const SetBgFn      SetFloor    = reinterpret_cast<SetBgFn>(0x002C6CCC);        // HouseRoom_SetFlooring
+const PlaySoundFn  PlaySound   = reinterpret_cast<PlaySoundFn>(0x0058C7D4);    // Game_PlaySound
+
+// ---- 音（HHD の音は ACNL に無いので代用。要件書 §7.4。実機で利用者に決めてもらう）----
+const u32 kSndCellTouch = 0x01000399;       // SE_SYS_BTN_ACTIVE_S
+const u32 kSndCellDecide = 0x0100038F;      // SE_SYS_DECIDE_L
+const u32 kSndTabTouch = 0x0100046B;        // SE_SYS_CTLG_TOP_BTN_ACTIVE
+const u32 kSndTabDecide = 0x0100046C;       // SE_SYS_CTLG_TOP_BTN_SELECTED
+const u32 kSndOpen = 0x010003C2;            // SE_SYS_WIN_SELECT_OPEN
+const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
+const u32 kSndSlide = 0x0100046A;           // SE_SYS_CTLG_PAGE_CHANGE（横スライド・小分類の境目）
+const u32 kSndBack = 0x01000391;            // SE_SYS_DECIDE_QUIT
+const u32 kSndInvalid = 0x0100039A;         // SE_SYS_BTN_ACT_INVALID
+
+// ---- 描く順（Layout +12。昇順、同じ値なら後に足した方が手前）: チップ 6 / 掴んでいる 7（F105）。タブはゴミ箱と同じ 6、窓はその上 ----
+const u8 kPriTop = 6, kPriWindow = 0x80;
+const u32 kScreenLower = 1;
+const u32 kTeardownWaitFrames = 3;
+// コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
+const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
+const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
+
+// ---- 資源（メニューのスレッドが読み、ゲームのスレッドがヒープへ写す）----
+u8 *s_topFile;
+u32 s_topSize;
+u8 *volatile s_catFile;
+volatile u32 s_catSize;
+volatile bool s_wantCatFile, s_catFileFailed, s_catUploaded;   // s_catUploaded: ゲームのヒープへ写し終えた（プラグインの写しを返してよい）
+
+// ---- ボタン ----
+struct Btn {
+    const CL::Button *def;
+    L::Layout *lay;
+    L::Anim an[5];
+    u8 loaded;                                   // 読んだアニメのビット
+};
+
+bool BtnAnim(Btn &b, L::Arc &arc, u32 k) {
+    if (b.def == nullptr || b.def->anim[k].name == nullptr)
+        return false;
+    if ((b.loaded & (1u << k)) == 0) {
+        if (!L::LoadAnim(b.an[k], arc, b.def->anim[k].name))
+            return false;
+        b.loaded |= (u8)(1u << k);
+    }
+    return true;
+}
+
+bool BtnPlay(Btn &b, L::Arc &arc, u32 k, bool last) {
+    if (!BtnAnim(b, arc, k))
+        return false;
+    const CL::AnimRef &r = b.def->anim[k];
+    return L::Bind(b.an[k], *b.lay, r.group, last ? (float)r.frames : 0.0f, r.group2);
+}
+
+void BtnStop(Btn &b, u32 k) {
+    if (b.loaded & (1u << k))
+        L::Unbind(b.an[k]);
+}
+
+void BtnReset(Btn &b) {
+    for (u32 k = 0; k < 5; ++k)
+        BtnStop(b, k);
+}
+
+void BtnFree(Btn &b) {
+    for (u32 k = 0; k < 5; ++k)
+        if (b.loaded & (1u << k))
+            L::FreeAnim(b.an[k]);
+    b.loaded = 0;
+}
+
+void BtnStep(Btn &b) {
+    for (u32 k = 0; k < 5; ++k)
+        if (b.loaded & (1u << k))
+            L::Step(b.an[k]);
+}
+
+// HHD の ButtonBaseActor（HHD-F001 §2）: 触れた = select の最後のコマ + touch、外れた = 戻す、離した = touch_ok + select_ok
+void BtnPress(Btn &b, L::Arc &arc) {
+    BtnReset(b);
+    BtnPlay(b, arc, CL::kSelect, true);
+    BtnPlay(b, arc, CL::kTouch, false);
+}
+
+void BtnDecide(Btn &b, L::Arc &arc) {
+    BtnStop(b, CL::kTouch);
+    BtnStop(b, CL::kSelect);
+    BtnPlay(b, arc, CL::kTouchOk, false);
+    BtnPlay(b, arc, CL::kSelectOk, false);
+}
+
+// 選ばれている見た目（窓の上段タブ = select_ok の最後 + loop、小分類・マス = select の最後）
+void BtnSelected(Btn &b, L::Arc &arc, bool tab) {
+    BtnReset(b);
+    if (tab) {
+        BtnPlay(b, arc, CL::kSelectOk, true);
+        BtnPlay(b, arc, CL::kLoop, false);
+    } else {
+        BtnPlay(b, arc, CL::kSelect, true);
+    }
+}
+
+bool InRect(const CL::Rect &r, float x, float y, float dx = 0.0f) { return x >= r.l + dx && x < r.r + dx && y >= r.t && y < r.b; }
+
+// ---- 状態 ----
+enum class Stage : u8 { Idle, Live, Teardown, Failed };
+enum class Win : u8 { Closed, Loading, Opening, Open, Closing };
+enum class Hit : u8 { None, TopTab, Tab, Kind, Back, Cell, Grid };
+
+volatile bool s_enabled;
+bool s_hooked, s_toldFail;
+int s_index = -1;
+Stage s_stage = Stage::Idle;
+u32 s_wait;
+bool s_leaving;
+
+L::Arc s_topArc, s_arc;
+L::Layout s_top, s_win, s_grid, s_name;
+L::Anim s_topIn, s_topOut, s_winIn, s_winOut, s_winLoop, s_winKind, s_gridIn, s_gridOut, s_gridKind, s_nameIn, s_nameOut;
+L::Anim *s_topBound, *s_winBound;
+Btn s_topBtn[2];
+Btn s_tabBtn[8], s_kindBtn[10], s_backBtn, s_cellBtn[3][15];
+u32 s_tabCount, s_kindSlots;
+
+Win s_win_state = Win::Closed;
+u32 s_main;                                     // 1 = 家具、4 = 壁紙・床紙
+const CL::Catalog *s_cat;
+u32 s_tab;                                      // 窓の上段タブ（CT の通し番号の中の何番目か）
+s32 s_ctTab;                                    // CT::kTabs の番号
+s32 s_kind = -1;                                // 今の小分類（CT のタブの中の何番目か）
+DecorSlider::Slider s_slider;
+float s_pageOrigX[3], s_pageY[3];
+void *s_pageNode[3];
+u32 s_iconSlots;                                // ヒープの枠（45 × 4096）
+u16 s_applied[3][15];                           // 枠に貼った絵の HHD 品番
+bool s_namesLoaded;
+bool s_nameShown;
+s32 s_pressCell = -1;                           // 触れているマス（frame * 15 + slot）
+Hit s_press = Hit::None;
+u32 s_pressIdx;
+bool s_touchPrev;
+bool s_closeAfter;                              // 決めた後に閉じる（out へ）
+
+// ---- 論理ページ ↔ 小分類 ----
+u32 TabPages(s32 ctTab) {
+    if (ctTab < 0)
+        return 1;
+    const CT::Tab &t = CT::kTabs[ctTab];
+    u32 n = 0;
+    for (u32 k = 0; k < t.kindCount; ++k)
+        n += CT::kKinds[t.firstKind + k].pages;
+    return n == 0 ? 1 : n;
+}
+
+// 論理ページ → (小分類, 小分類の中のページ)
+bool PageKind(s32 page, s32 &kind, s32 &sub) {
+    if (s_ctTab < 0 || page < 0)
+        return false;
+    const CT::Tab &t = CT::kTabs[s_ctTab];
+    s32 p = page;
+    for (u32 k = 0; k < t.kindCount; ++k) {
+        const s32 pages = CT::kKinds[t.firstKind + k].pages;
+        if (p < pages) {
+            kind = (s32)k;
+            sub = p;
+            return true;
+        }
+        p -= pages;
+    }
+    return false;
+}
+
+s32 KindFirstPage(s32 kind) {
+    const CT::Tab &t = CT::kTabs[s_ctTab];
+    s32 p = 0;
+    for (s32 k = 0; k < kind && k < (s32)t.kindCount; ++k)
+        p += CT::kKinds[t.firstKind + k].pages;
+    return p;
+}
+
+const CT::Item *CellItem(u32 frame, u32 slot) {
+    s32 kind = 0, sub = 0;
+    if (!PageKind(s_slider.framePage[frame], kind, sub))
+        return nullptr;
+    const CT::Kind &k = CT::kKinds[CT::kTabs[s_ctTab].firstKind + kind];
+    const u32 i = (u32)sub * CT::kPerPage + slot;
+    return i < k.count ? &CT::kItems[k.first + i] : nullptr;
+}
+
+s32 FindCtTab(u32 main, u32 tab) {
+    for (u32 i = 0; i < CT::kTabCount; ++i)
+        if (CT::kTabs[i].main == main && CT::kTabs[i].tab == tab)
+            return (s32)i;
+    return -1;
+}
+
+// ---- 文字 ----
+u32 Digits(u16 *out, u32 v) {
+    char buf[12];
+    u32 n = 0;
+    do {
+        buf[n++] = (char)('0' + v % 10);
+        v /= 10;
+    } while (v != 0 && n < sizeof(buf));
+    for (u32 i = 0; i < n; ++i)
+        out[i] = (u16)buf[n - 1 - i];
+    return n;
+}
+
+// ゲームの品名（制御タグ 0x000E は除く: 0x000E, 群, 種類, 引数のバイト数, 引数…）
+u32 CleanName(u16 acnl, u16 *out, u32 cap) {
+    u32 len = 0, o = 0;
+    const u16 *p = s_namesLoaded ? ItemNames::NormalName(acnl, len) : nullptr;
+    for (u32 i = 0; p != nullptr && i < len && o + 1 < cap;) {
+        if (p[i] == 0x000E && i + 3 < len) {
+            i += 4 + p[i + 3] / 2;
+            continue;
+        }
+        out[o++] = p[i++];
+    }
+    return o;
+}
+
+// ---- 窓 ----
+void SetPageText(void) {
+    if (s_cat == nullptr || s_cat->pageNode == nullptr)
+        return;
+    u16 buf[8];
+    const u32 total = TabPages(s_ctTab);
+    s32 cur = DecorSlider::CurrentPage(s_slider);
+    if (cur < 0)
+        cur = 0;
+    L::SetText(L::Pane(s_win, s_cat->pageCurrent), buf, Digits(buf, (u32)cur + 1));
+    L::SetText(L::Pane(s_win, s_cat->pageTotal), buf, Digits(buf, total));
+}
+
+void ShowKindSelection(void) {
+    s32 kind = 0, sub = 0;
+    if (!PageKind(DecorSlider::CurrentPage(s_slider), kind, sub))
+        return;
+    if (kind == s_kind)
+        return;
+    if (s_kind >= 0 && (u32)s_kind < s_kindSlots)
+        BtnReset(s_kindBtn[s_kind]);
+    s_kind = kind;
+    if ((u32)kind < s_kindSlots)
+        BtnSelected(s_kindBtn[kind], s_arc, false);
+}
+
+void HideName(void) {
+    if (!s_nameShown)
+        return;
+    s_nameShown = false;
+    L::Bind(s_nameOut, s_name, CL::kNameOut.group, 0.0f, CL::kNameOut.group2);
+}
+
+// 吹き出しの位置（HHD 0x3BB514）: N_All = (マス X, マス Y + マス高/2 + 窓高/2 − 2)、窓の N のローカル X は (窓幅 + 5)/2 が ±160 を越えないように
+void ShowName(u32 frame, u32 slot) {
+    const CT::Item *it = CellItem(frame, slot);
+    if (it == nullptr)
+        return;
+    u16 text[64];
+    const u32 n = CleanName(it->acnl, text, 64);
+    void *tx = L::Pane(s_name, CL::kName[2]), *sh = L::Pane(s_name, CL::kName[3]);
+    void *win = L::Pane(s_name, CL::kName[4]), *ws = L::Pane(s_name, CL::kName[5]);
+    L::SetText(tx, text, n);
+    L::SetText(sh, text, n);
+    const float w = L::MeasureText(tx, text, n) + 32.0f;
+    const float h = L::Height(win);
+    L::SetSize(win, w, h);
+    L::SetSize(ws, w, L::Height(ws));
+    const CL::Rect &r = CL::kPages[frame].cells[slot].rect;
+    const float dx = s_slider.frameX[frame] - s_pageOrigX[frame];
+    const float cx = (r.l + r.r) * 0.5f + dx - 160.0f, cy = 120.0f - (r.t + r.b) * 0.5f, ch = r.b - r.t;
+    L::SetPos(L::Pane(s_name, CL::kName[0]), cx, cy + ch * 0.5f + h * 0.5f - 2.0f);
+    const float half = (w + 5.0f) * 0.5f;
+    float lx = 0.0f;
+    if (cx + half > 160.0f)
+        lx = 160.0f - half - cx;
+    else if (cx - half < -160.0f)
+        lx = -160.0f + half - cx;
+    void *node = L::Pane(s_name, CL::kName[1]);
+    L::SetPos(node, lx, L::PosY(node));
+    if (!s_nameShown) {
+        L::Bind(s_nameIn, s_name, CL::kNameIn.group, 0.0f, CL::kNameIn.group2);
+        s_nameShown = true;
+    }
+}
+
+// 3 枠の位置とマスの中身・アイコン
+void UpdateGrid(void) {
+    const s32 total = (s32)TabPages(s_ctTab);
+    for (u32 f = 0; f < 3; ++f) {
+        void *node = s_pageNode[f];
+        const s32 page = s_slider.framePage[f];
+        const bool show = page >= 0 && page < total;
+        L::SetVisible(node, show);
+        L::SetPos(node, s_slider.frameX[f], s_pageY[f]);
+        for (u32 s = 0; s < 15; ++s) {
+            const CL::Button &c = CL::kPages[f].cells[s];
+            const CT::Item *it = show ? CellItem(f, s) : nullptr;
+            void *cell = L::Pane(s_grid, c.node);
+            void *icon = L::Pane(s_grid, c.icon);
+            L::SetVisible(cell, it != nullptr);
+            const u32 slot = f * 15 + s;
+            const u16 want = it != nullptr ? it->hhd : 0;
+            DecorIcons::Want(slot, want);
+            if (want == 0) {
+                s_applied[f][s] = 0;
+                continue;
+            }
+            if (s_applied[f][s] != want) {
+                const u32 va = DecorIcons::Ready(slot, want);
+                if (va != 0 && L::SetTexture(icon, va, 64, 64, 11)) {
+                    s_applied[f][s] = want;
+                } else {
+                    L::SetVisible(icon, false);         // 絵が来るまで隠す（前のページの絵を見せない）
+                    continue;
+                }
+            }
+            L::SetVisible(icon, true);
+        }
+    }
+}
+
+void FreeWindow(void) {
+    DecorIcons::SetSlots(0);
+    for (u32 i = 0; i < 8; ++i)
+        BtnFree(s_tabBtn[i]);
+    for (u32 i = 0; i < 10; ++i)
+        BtnFree(s_kindBtn[i]);
+    BtnFree(s_backBtn);
+    for (u32 f = 0; f < 3; ++f)
+        for (u32 s = 0; s < 15; ++s)
+            BtnFree(s_cellBtn[f][s]);
+    L::Anim *anims[] = { &s_winIn, &s_winOut, &s_winLoop, &s_winKind, &s_gridIn, &s_gridOut, &s_gridKind, &s_nameIn, &s_nameOut };
+    for (L::Anim *a : anims)
+        if (a->made)
+            L::FreeAnim(*a);
+    s_winBound = nullptr;
+    L::Free(s_name);
+    L::Free(s_grid);
+    L::Free(s_win);
+    L::FreeArc(s_arc);
+    if (s_iconSlots != 0)
+        L::HeapFree(reinterpret_cast<void *>(s_iconSlots));
+    s_iconSlots = 0;
+    s_cat = nullptr;
+    s_nameShown = false;
+    s_press = Hit::None;
+    s_pressCell = -1;
+}
+
+bool LoadRef(L::Anim &an, L::Arc &arc, const CL::AnimRef &r) { return r.name == nullptr || L::LoadAnim(an, arc, r.name); }
+
+void SelectTab(u32 tab) {
+    if (s_tab < s_tabCount)
+        BtnReset(s_tabBtn[s_tab]);
+    s_tab = tab;
+    s_ctTab = FindCtTab(s_main, tab);           // 窓の上段タブの並び = HHD のタブ番号（catalog_kinds.json の tab。生成器が同じ順で書く）
+    BtnSelected(s_tabBtn[tab], s_arc, true);
+    // 小分類の絵（窓の上段タブごとに違う）と数
+    const CL::Tab &t = s_cat->tabs[tab];
+    for (u32 k = 0; k < s_kindSlots; ++k) {
+        BtnReset(s_kindBtn[k]);
+        const bool used = k < t.kindCount;
+        L::SetVisible(L::Pane(s_win, s_kindBtn[k].def->node), used);
+        if (used)
+            L::SetTextureByName(L::Pane(s_win, s_kindBtn[k].def->icon), s_arc, CL::kKinds[t.kindFirst + k].icon);
+    }
+    s_kind = -1;
+    DecorSlider::Setup(s_slider, 288.0f, (s32)TabPages(s_ctTab), 0);
+    for (u32 f = 0; f < 3; ++f)
+        for (u32 s = 0; s < 15; ++s) {
+            s_applied[f][s] = 0;
+            BtnReset(s_cellBtn[f][s]);
+        }
+    HideName();
+    ShowKindSelection();
+    SetPageText();
+}
+
+bool OpenWindow(void) {
+    s_cat = &CL::kCatalogs[s_main == 1 ? 0 : 1];
+    if (!L::LoadArc(s_arc, s_catFile, s_catSize))
+        return false;
+    if (!L::Build(s_win, s_arc, s_cat->layout, kCmdWindow, kPriWindow) || !L::Build(s_grid, s_arc, CL::kGridLayout, kCmdGrid, kPriWindow)
+        || !L::Build(s_name, s_arc, CL::kNameLayout, kCmdName, kPriWindow))
+        return false;
+    if (!LoadRef(s_winIn, s_arc, s_cat->in) || !LoadRef(s_winOut, s_arc, s_cat->out) || !LoadRef(s_winLoop, s_arc, s_cat->loop)
+        || !LoadRef(s_winKind, s_arc, s_cat->kind) || !LoadRef(s_gridIn, s_arc, CL::kGridIn) || !LoadRef(s_gridOut, s_arc, CL::kGridOut)
+        || !LoadRef(s_gridKind, s_arc, CL::kGridKind) || !LoadRef(s_nameIn, s_arc, CL::kNameIn) || !LoadRef(s_nameOut, s_arc, CL::kNameOut))
+        return false;
+    // ボタン
+    s_tabCount = s_cat->tabCount < 8 ? s_cat->tabCount : 8;
+    for (u32 i = 0; i < s_tabCount; ++i)
+        s_tabBtn[i] = { &s_cat->tabs[i].btn, &s_win, {}, 0 };
+    s_kindSlots = s_cat->kindSlotCount < 10 ? s_cat->kindSlotCount : 10;
+    for (u32 i = 0; i < s_kindSlots; ++i)
+        s_kindBtn[i] = { &s_cat->kindSlots[i], &s_win, {}, 0 };
+    s_backBtn = { &s_cat->back, &s_win, {}, 0 };
+    for (u32 f = 0; f < 3; ++f) {
+        s_pageNode[f] = L::Pane(s_grid, CL::kPages[f].node);
+        s_pageOrigX[f] = L::PosX(s_pageNode[f]);
+        s_pageY[f] = L::PosY(s_pageNode[f]);
+        for (u32 s = 0; s < 15; ++s) {
+            s_cellBtn[f][s] = { &CL::kPages[f].cells[s], &s_grid, {}, 0 };
+            L::SetVisible(L::Pane(s_grid, CL::kPages[f].cells[s].icon), false);
+        }
+    }
+    // アイコンの枠（読み込みのヒープから。閉じたら返す）
+    void *slots = L::HeapAlloc(DecorIcons::kSlots * DecorIcons::kIconBytes, 0x80);
+    if (slots == nullptr)
+        return false;
+    s_iconSlots = reinterpret_cast<u32>(slots);
+    DecorIcons::SetSlots(s_iconSlots);
+    // 出入り・地の縞・小分類の段
+    L::Bind(s_winIn, s_win, s_cat->in.group, 0.0f, s_cat->in.group2);
+    s_winBound = &s_winIn;
+    if (s_cat->loop.name != nullptr)
+        L::Bind(s_winLoop, s_win, s_cat->loop.group, 0.0f, s_cat->loop.group2);
+    if (s_cat->kind.name != nullptr)
+        L::Bind(s_winKind, s_win, s_cat->kind.group, 0.0f, s_cat->kind.group2);
+    L::Bind(s_gridIn, s_grid, CL::kGridIn.group, 0.0f, CL::kGridIn.group2);
+    L::Bind(s_gridKind, s_grid, CL::kGridKind.group, 0.0f, CL::kGridKind.group2);
+    L::Bind(s_nameOut, s_name, CL::kNameOut.group, (float)CL::kNameOut.frames, CL::kNameOut.group2);   // 吹き出しは閉じた形で始める
+    s_tab = 0xFFFFFFFFu;
+    SelectTab(0);
+    return true;
+}
+
+// ---- 置く ----
+struct PlaceCtx { Item item; int px, pz, prot; u8 record[12]; };
+
+bool TryCell(void *ctx, s32 x, s32 z) {
+    PlaceCtx &c = *reinterpret_cast<PlaceCtx *>(ctx);
+    if (x < 0 || z < 0)
+        return false;
+    std::memset(c.record, 0, sizeof(c.record));
+    return TryPut(c.record, x, z, 0, &c.item, 0, c.px, c.pz, c.prot, 0) == 0;   // 向き 0（HHD の品の既定）・床の層 0・パターン 0（試験 3 と同じ）
+}
+
+bool PlaceFurniture(u16 acnl) {
+    void *table = FtrTable();
+    if (table == nullptr || FtrFree(table) <= 0)
+        return false;                               // 家の家具アクター 48 が満杯（F001 / F002）
+    void *actor = GridCursor::Game::LocalPlayer();
+    if (actor == nullptr)
+        return false;
+    PlaceCtx c;
+    c.item = { acnl, 0 };
+    const float *pos = reinterpret_cast<const float *>(reinterpret_cast<u8 *>(actor) + GridCursor::Game::kPlayerPositionOffset);
+    PosToCell(&c.px, &c.pz, pos);
+    const u16 angle = *reinterpret_cast<const u16 *>(reinterpret_cast<u8 *>(actor) + 46);
+    c.prot = (int)((((u32)angle >> 12 << 28) + 0x20000000u) >> 30);           // sub_691AD4 と同じ式
+    DecorPlace::Bounds b;
+    int minX = 0, minZ = 0, maxX = 0, maxZ = 0;
+    CellBounds(&minX, &minZ, &maxX, &maxZ);
+    b = { minX, minZ, maxX, maxZ };
+    s32 x = 0, z = 0;
+    if (!DecorPlace::Search(c.px, c.pz, b, 2, TryCell, &c, x, z))   // 押し引き中の家具は無いので HHD と同じく方向 2（F002）
+        return false;
+    return Spawn(c.record) != 0;                    // 0 = 拒否（失敗したら同じ決定で試し直さない。F002）
+}
+
+bool ApplyBackground(u16 acnl, u32 ctTab) {
+    const Item item = { acnl, 0 };
+    const bool floor = CT::kTabs[ctTab].tab == 1;   // 上段 4 のタブ 0 = 壁紙、1 = 床紙（HHD-F019）
+    return (floor ? SetFloor(&item, 1) : SetWall(&item, 1)) != 0;   // ゲーム自身の音が鳴る（F106）
+}
+
+void BeginClose(void) {
+    HideName();
+    L::Bind(s_winOut, s_win, s_cat->out.group, 0.0f, s_cat->out.group2);
+    s_winBound = &s_winOut;
+    L::Bind(s_gridOut, s_grid, CL::kGridOut.group, 0.0f, CL::kGridOut.group2);
+    s_win_state = Win::Closing;
+    s_press = Hit::None;
+    s_pressCell = -1;
+}
+
+void Decide(u32 frame, u32 slot) {
+    const CT::Item *it = CellItem(frame, slot);
+    if (it == nullptr || s_ctTab < 0)
+        return;
+    bool ok;
+    if (s_main == 4) {
+        ok = ApplyBackground(it->acnl, (u32)s_ctTab);
+    } else {
+        ok = EditorNeutral(IndoorBase(), EditorCalc(IndoorBase())) && PlaceFurniture(it->acnl);
+        if (ok)
+            PlaySound(kSndCellDecide);
+    }
+    if (!ok) {
+        PlaySound(kSndInvalid);
+        BtnReset(s_cellBtn[frame][slot]);
+        return;
+    }
+    BtnDecide(s_cellBtn[frame][slot], s_arc);
+    BeginClose();                                   // HHD の StateID_Ok_
+}
+
+// ---- 入力（ゲームのスレッド。CTRPF の Touch / Controller は HID を直接読む）----
+Hit HitTest(float x, float y, u32 &idx) {
+    if (s_win_state != Win::Open) {
+        for (u32 i = 0; i < 2; ++i)
+            if (InRect(CL::kTopTabs[i].rect, x, y)) {
+                idx = i;
+                return Hit::TopTab;
+            }
+        return Hit::None;
+    }
+    for (u32 i = 0; i < s_tabCount; ++i)
+        if (InRect(s_cat->tabs[i].btn.rect, x, y)) {
+            idx = i;
+            return Hit::Tab;
+        }
+    if (InRect(s_cat->back.rect, x, y)) {
+        idx = 0;
+        return Hit::Back;
+    }
+    const CL::Tab &t = s_cat->tabs[s_tab];
+    for (u32 i = 0; i < s_kindSlots && i < t.kindCount; ++i)
+        if (InRect(s_cat->kindSlots[i].rect, x, y)) {
+            idx = i;
+            return Hit::Kind;
+        }
+    if (InRect(CL::kGridDrag, x, y)) {
+        const u32 f = s_slider.center;
+        const float dx = s_slider.frameX[f] - s_pageOrigX[f];
+        for (u32 s = 0; s < 15; ++s)
+            if (InRect(CL::kPages[f].cells[s].rect, x, y, dx) && CellItem(f, s) != nullptr) {
+                idx = f * 15 + s;
+                return Hit::Cell;
+            }
+        idx = 0;
+        return Hit::Grid;
+    }
+    return Hit::None;
+}
+
+Btn *PressBtn(Hit h, u32 idx) {
+    switch (h) {
+    case Hit::TopTab: return &s_topBtn[idx];
+    case Hit::Tab: return &s_tabBtn[idx];
+    case Hit::Kind: return &s_kindBtn[idx];
+    case Hit::Back: return &s_backBtn;
+    case Hit::Cell: return &s_cellBtn[idx / 15][idx % 15];
+    default: return nullptr;
+    }
+}
+
+void OnDecide(Hit h, u32 idx) {
+    switch (h) {
+    case Hit::TopTab:
+        BtnDecide(s_topBtn[idx], s_topArc);
+        PlaySound(kSndOpen);
+        s_main = CL::kTopMain[idx];
+        s_catUploaded = false;
+        s_wantCatFile = true;                       // メニューのスレッドが arc を読む
+        s_win_state = Win::Loading;
+        return;
+    case Hit::Tab:
+        PlaySound(kSndTabDecide);
+        if (idx != s_tab)
+            SelectTab(idx);
+        BtnDecide(s_tabBtn[idx], s_arc);
+        return;
+    case Hit::Kind: {
+        PlaySound(kSndTabDecide);
+        const s32 page = KindFirstPage((s32)idx);
+        DecorSlider::Setup(s_slider, 288.0f, (s32)TabPages(s_ctTab), page);
+        for (u32 f = 0; f < 3; ++f)
+            for (u32 s = 0; s < 15; ++s)
+                s_applied[f][s] = 0;
+        HideName();
+        s_kind = -1;
+        ShowKindSelection();                        // 選ばれた見た目（select の最後のコマ）
+        BtnPlay(s_kindBtn[idx], s_arc, CL::kTouchOk, false);
+        SetPageText();
+        return;
+    }
+    case Hit::Back:
+        PlaySound(kSndBack);
+        BtnDecide(s_backBtn, s_arc);
+        BeginClose();
+        return;
+    case Hit::Cell:
+        Decide(idx / 15, idx % 15);
+        return;
+    default:
+        return;
+    }
+}
+
+u32 s_keysPrev;
+
+void InputStep(void) {
+    if (s_win_state != Win::Closed && s_win_state != Win::Open) {
+        s_touchPrev = Touch::IsDown();              // 読み込み・出入りのアニメの間は受け付けない
+        s_press = Hit::None;
+        return;
+    }
+    const bool down = Touch::IsDown();
+    const UIntVector p = Touch::GetPosition();
+    const float x = (float)p.x, y = (float)p.y;
+    if (down && !s_touchPrev) {                     // 触れた
+        u32 idx = 0;
+        const Hit h = HitTest(x, y, idx);
+        s_press = h;
+        s_pressIdx = idx;
+        if (s_win_state == Win::Open && (h == Hit::Cell || h == Hit::Grid))
+            DecorSlider::TouchStart(s_slider, x, y);
+        if (Btn *b = PressBtn(h, idx)) {
+            BtnPress(*b, h == Hit::TopTab ? s_topArc : s_arc);
+            PlaySound(h == Hit::Cell ? kSndCellTouch : kSndTabTouch);
+            if (h == Hit::Cell)
+                ShowName(idx / 15, idx % 15);
+        }
+    } else if (down && s_press != Hit::None) {      // 触れている
+        if (s_win_state == Win::Open && (s_press == Hit::Cell || s_press == Hit::Grid)) {
+            if (DecorSlider::TouchMove(s_slider, x, y) && s_press == Hit::Cell) {
+                BtnReset(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15]);   // ドラッグになった: 決定しない（HHD の TouchUnSelect）
+                HideName();
+                s_press = Hit::Grid;
+            }
+        } else {
+            u32 idx = 0;
+            if (HitTest(x, y, idx) != s_press || idx != s_pressIdx) {   // 外れた
+                if (Btn *b = PressBtn(s_press, s_pressIdx))
+                    BtnReset(*b);
+                if (s_press == Hit::Tab)
+                    BtnSelected(s_tabBtn[s_tab], s_arc, true);
+                s_press = Hit::None;
+            }
+        }
+    } else if (!down && s_touchPrev) {              // 離した
+        const Hit h = s_press;
+        s_press = Hit::None;
+        if (s_win_state == Win::Open && (h == Hit::Cell || h == Hit::Grid))
+            DecorSlider::TouchEnd(s_slider);
+        if (h == Hit::Cell) {
+            u32 idx = 0;
+            if (HitTest(x, y, idx) == Hit::Cell && idx == s_pressIdx)
+                OnDecide(h, s_pressIdx);
+            else {
+                BtnReset(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15]);
+                HideName();
+            }
+        } else if (h != Hit::None && h != Hit::Grid) {
+            OnDecide(h, s_pressIdx);
+        }
+    }
+    s_touchPrev = down;
+    if (s_win_state != Win::Open) {
+        s_keysPrev = Controller::GetKeysDown();
+        return;
+    }
+    // L / R / B（押されているかを 1 回読み、押した瞬間は自前で作る。IsKeyPressed は取りこぼし・二重が出る: GuiMenu F-321）
+    const u32 keys = Controller::GetKeysDown();
+    const u32 pressed = keys & ~s_keysPrev;
+    s_keysPrev = keys;
+    if ((pressed & (u32)Key::L) && DecorSlider::RequestStep(s_slider, true))
+        PlaySound(kSndPageDec);
+    if ((pressed & (u32)Key::R) && DecorSlider::RequestStep(s_slider, false))
+        PlaySound(kSndPageInc);
+    if (pressed & (u32)Key::B) {
+        PlaySound(kSndBack);
+        BeginClose();
+    }
+}
+
+// ---- 上段タブ（模様替え画面）----
+bool BuildTop(void) {
+    if (!L::LoadArc(s_topArc, s_topFile, s_topSize) || !L::Build(s_top, s_topArc, CL::kTopLayout, kCmdTop, kPriTop))
+        return false;
+    if (!L::LoadAnim(s_topIn, s_topArc, CL::kTopIn.name) || !L::LoadAnim(s_topOut, s_topArc, CL::kTopOut.name))
+        return false;
+    for (u32 i = 0; i < 2; ++i)
+        s_topBtn[i] = { &CL::kTopTabs[i], &s_top, {}, 0 };
+    L::Bind(s_topIn, s_top, CL::kTopIn.group, 0.0f, CL::kTopIn.group2);
+    s_topBound = &s_topIn;
+    for (u32 i = 0; i < 2; ++i)
+        BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
+    return true;
+}
+
+void FreeTop(void) {
+    for (u32 i = 0; i < 2; ++i)
+        BtnFree(s_topBtn[i]);
+    if (s_topIn.made)
+        L::FreeAnim(s_topIn);
+    if (s_topOut.made)
+        L::FreeAnim(s_topOut);
+    s_topBound = nullptr;
+    L::Free(s_top);
+    L::FreeArc(s_topArc);
+}
+
+void ReleaseAll(void) {
+    FreeWindow();
+    FreeTop();
+    s_win_state = Win::Closed;
+}
+
+void WindowStep(void) {
+    switch (s_win_state) {
+    case Win::Loading:
+        if (s_catFileFailed) {
+            s_catFileFailed = false;
+            PlaySound(kSndInvalid);
+            s_win_state = Win::Closed;
+            for (u32 i = 0; i < 2; ++i) {
+                BtnReset(s_topBtn[i]);
+                BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
+            }
+            return;
+        }
+        if (s_catFile == nullptr)
+            return;
+        if (!OpenWindow()) {
+            FreeWindow();
+            s_catUploaded = true;
+            s_stage = Stage::Failed;
+            return;
+        }
+        s_catUploaded = true;                       // ゲームのヒープへ写した。プラグインの写し（518 KB）はメニューのスレッドが返す
+        s_win_state = Win::Opening;
+        return;
+    case Win::Opening:
+        if (L::Done(s_winIn) && L::Done(s_gridIn))
+            s_win_state = Win::Open;
+        return;
+    case Win::Closing:
+        if (L::Done(s_winOut) && L::Done(s_gridOut)) {
+            s_win_state = Win::Closed;
+            s_wait = 0;
+            for (u32 i = 0; i < 2; ++i) {
+                BtnReset(s_topBtn[i]);
+                BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
+            }
+        }
+        return;
+    default:
+        return;
+    }
+}
+
+u32 s_closedWait;
+
+void DrawAll(void) {
+    L::Draw(s_top, kScreenLower);
+    if (s_win_state == Win::Opening || s_win_state == Win::Open || s_win_state == Win::Closing) {
+        L::Draw(s_win, kScreenLower);
+        L::Draw(s_grid, kScreenLower);
+        L::Draw(s_name, kScreenLower);
+    }
+}
+
+void StepAnims(void) {
+    if (s_topBound != nullptr)
+        L::Step(*s_topBound);
+    for (u32 i = 0; i < 2; ++i)
+        BtnStep(s_topBtn[i]);
+    if (s_win_state == Win::Opening || s_win_state == Win::Open || s_win_state == Win::Closing) {
+        L::Anim *anims[] = { s_winBound, &s_winLoop, &s_gridIn, &s_gridOut, &s_nameIn, &s_nameOut };
+        for (L::Anim *a : anims)
+            if (a != nullptr && a->bound)
+                L::Step(*a);
+        for (u32 i = 0; i < s_tabCount; ++i)
+            BtnStep(s_tabBtn[i]);
+        for (u32 i = 0; i < s_kindSlots; ++i)
+            BtnStep(s_kindBtn[i]);
+        BtnStep(s_backBtn);
+        for (u32 f = 0; f < 3; ++f)
+            for (u32 s = 0; s < 15; ++s)
+                BtnStep(s_cellBtn[f][s]);
+    }
+}
+
+void FrameStep(void) {
+    switch (s_stage) {
+    case Stage::Idle: {
+        if (!s_enabled || s_topFile == nullptr)
+            return;
+        const u32 indoor = IndoorBase();
+        if (!EditorLive(indoor, EditorCalc(indoor)))
+            return;
+        if (!BuildTop()) {
+            FreeTop();
+            s_stage = Stage::Failed;
+            return;
+        }
+        s_leaving = false;
+        s_touchPrev = Touch::IsDown();              // 開いた瞬間に押していた指は使わない
+        s_stage = Stage::Live;
+        [[fallthrough]];
+    }
+    case Stage::Live: {
+        const u32 indoor = IndoorBase();
+        const bool want = s_enabled && EditorLive(indoor, EditorCalc(indoor));
+        if (!want && !s_leaving) {
+            s_leaving = true;
+            if (s_win_state == Win::Open || s_win_state == Win::Opening)
+                BeginClose();
+            L::Bind(s_topOut, s_top, CL::kTopOut.group, 0.0f, CL::kTopOut.group2);
+            s_topBound = &s_topOut;
+        }
+        if (!s_leaving)
+            InputStep();
+        WindowStep();
+        if (s_stage != Stage::Live)
+            return;
+        if (s_win_state == Win::Open) {
+            if (DecorSlider::Step(s_slider)) {          // 滑りが終わってページが決まった
+                const s32 before = s_kind;
+                ShowKindSelection();
+                if (before != s_kind)
+                    PlaySound(kSndSlide);
+                SetPageText();
+            }
+        }
+        if (s_win_state == Win::Opening || s_win_state == Win::Open || s_win_state == Win::Closing)
+            UpdateGrid();
+        StepAnims();
+        if (s_leaving && L::Done(s_topOut) && (s_win_state == Win::Closed || s_win_state == Win::Loading)) {
+            s_stage = Stage::Teardown;                  // このフレームから描かない。壊すのは数フレーム後
+            s_wait = 0;
+            return;
+        }
+        DrawAll();
+        // 閉じ終わった窓の資源を返す（描くのをやめてから数フレーム後）
+        if (s_win_state == Win::Closed && s_arc.made) {
+            if (++s_closedWait >= kTeardownWaitFrames) {
+                FreeWindow();
+                s_closedWait = 0;
+            }
+        } else {
+            s_closedWait = 0;
+        }
+        return;
+    }
+    case Stage::Teardown:
+        if (++s_wait < kTeardownWaitFrames)
+            return;
+        ReleaseAll();
+        s_wantCatFile = false;
+        s_stage = Stage::Idle;
+        return;
+    case Stage::Failed:
+        ReleaseAll();
+        s_wantCatFile = false;
+        s_enabled = false;
+        s_stage = Stage::Idle;
+        return;
+    }
+}
+
+bool LoadTop(void) {
+    if (s_topFile != nullptr)
+        return true;
+    char path[96];
+    if (!GohanFiles::CommonPath(path, sizeof(path), CL::kTopArcName))
+        return false;
+    u32 size = 0;
+    u8 *data = GohanFiles::ReadAll(path, kMaxTopArc, size);
+    if (data == nullptr)
+        return false;
+    s_topSize = size;
+    s_topFile = data;
+    return true;
+}
+
+// メニューのスレッド: 窓の arc を読む・返す
+void ServiceFiles(void) {
+    if (s_wantCatFile && s_catFile == nullptr && !s_catFileFailed) {
+        char path[96];
+        u32 size = 0;
+        u8 *data = GohanFiles::CommonPath(path, sizeof(path), CL::kArcName) ? GohanFiles::ReadAll(path, kMaxCatalogArc, size) : nullptr;
+        if (data == nullptr) {
+            s_catFileFailed = true;
+            s_wantCatFile = false;
+            return;
+        }
+        s_catSize = size;
+        s_catFile = data;
+    } else if (s_catFile != nullptr && (s_catUploaded || (!s_wantCatFile && s_win_state != Win::Loading))) {
+        u8 *p = s_catFile;                          // ヒープへ写し終えた・窓を開くのをやめた
+        s_catFile = nullptr;
+        s_catSize = 0;
+        s_wantCatFile = false;
+        s_catUploaded = false;
+        delete[] p;
+    }
+}
+
+}  // namespace
+
+void Wire(void) {
+    s_index = GuiMenu::FindItem(kDecorCatalog);
+}
+
+bool Tick(int index, unsigned short) {
+    if (index != s_index || index < 0)
+        return false;
+    if (s_stage == Stage::Live && s_win_state != Win::Closed) {
+        GuiMenu::BlockGameAll();                    // 窓が出ている間はゲームへの入力を止める（HhdScreen と同じ。タッチは別に止める）
+        GuiMenu::BlockGameTouch();
+    }
+    ServiceFiles();
+    DecorIcons::Service(6);
+    if (s_enabled)
+        return true;
+    if (!LoadTop() || !DecorIcons::Open()) {
+        if (!s_toldFail)
+            GuiNotification::NotifyRed(kDecorCatalog, u8"SD の gohan/common/ に hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin が要ります。");
+        s_toldFail = true;
+        return true;
+    }
+    s_namesLoaded = ItemNames::LoadNormal();
+    if (!s_hooked)
+        s_hooked = GridCursor::InstallFrameHook() && GridCursor::AddExtraFrameStep(FrameStep);
+    if (!s_hooked) {
+        if (!s_toldFail)
+            GuiNotification::NotifyRed(kDecorCatalog, u8"フレームの相乗りを入れられません。");
+        s_toldFail = true;
+        return true;
+    }
+    s_toldFail = false;
+    s_enabled = true;
+    return true;
+}
+
+bool Disable(int index) {
+    if (index != s_index || index < 0)
+        return false;
+    s_enabled = false;                              // ゲームのスレッドが退場させて片付ける
+    return true;
+}
+
+}  // namespace DecorCatalog

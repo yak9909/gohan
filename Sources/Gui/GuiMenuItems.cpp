@@ -260,6 +260,9 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kDecorTrash,
                         u8"家の模様替えの左下にハッピーホームデザイナーのゴミ箱を出します。家具を掴んでゴミ箱に重ねて離すと、その家具を消します。"
                         u8"SD の gohan フォルダのリソース（hhd_decorate.arc）が必要です。");
+                AddItem(ITEM_CHECKBOX, kDecorCatalog,
+                        u8"家の模様替えの上にハッピーホームデザイナーの家具リスト・壁紙/床紙リストのタブを出します。品を選ぶと家具は空いている所に置き、壁紙・床紙は貼り替えます。"
+                        u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

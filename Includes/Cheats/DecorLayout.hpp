@@ -52,6 +52,8 @@ void SetVisible(void *pane, bool on);           // +0xB7 bit0
 bool Visible(const void *pane);
 void SetAlpha(void *pane, u8 a);                // +180
 void SetPos(void *pane, float x, float y);      // +0x28 / +0x2C（行列を作り直させる）
+float PosX(const void *pane);
+float PosY(const void *pane);
 void SetSize(void *pane, float w, float h);     // +0x48 / +0x4C
 float Width(const void *pane);
 float Height(const void *pane);

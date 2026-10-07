@@ -18,7 +18,8 @@ struct Catalog { u8 main; const char *layout; AnimRef in, out, loop, kind; Butto
                  const Button *kindSlots; u8 kindSlotCount; const char *pageNode, *pageCurrent, *pageTotal; };
 struct Page { const char *node, *pos, *hit; Rect rect; Button cells[15]; };
 
-const char kArcName[] = "hhd_catalog.arc";
+const char kArcName[] = "hhd_catalog.arc";          // 窓（家具 / 壁紙・床紙）・格子・吹き出し。タブを押したときに読む
+const char kTopArcName[] = "hhd_catalog_top.arc";   // 模様替え画面の上段タブ。模様替え UI を開いている間ずっと置く
 const char kTopLayout[] = "hhd_catalog_top.bclyt";
 const AnimRef kTopIn = { "hhd_catalog_top_in.bclan", "G_InOut", nullptr, 6, false }, kTopOut = { "hhd_catalog_top_out.bclan", "G_InOut", nullptr, 5, false };
 const u8 kTopMain[2] = { 1, 4 };

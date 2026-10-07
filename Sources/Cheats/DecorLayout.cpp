@@ -273,6 +273,9 @@ void SetPos(void *pane, float x, float y) {
     B(pane, kPaneFlags) &= 0xCFu;               // 行列を作り直させる（HhdScreen::MovePaneX と同じ）
 }
 
+float PosX(const void *pane) { return pane != nullptr ? *reinterpret_cast<const float *>(reinterpret_cast<const u8 *>(pane) + kPaneX) : 0.0f; }
+float PosY(const void *pane) { return pane != nullptr ? *reinterpret_cast<const float *>(reinterpret_cast<const u8 *>(pane) + kPaneY) : 0.0f; }
+
 void SetSize(void *pane, float w, float h) {
     if (pane == nullptr)
         return;
