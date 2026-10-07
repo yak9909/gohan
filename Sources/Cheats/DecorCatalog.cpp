@@ -164,12 +164,16 @@ const u32 kTeardownWaitFrames = 3;
 const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
 const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
 
+// アニメの最後のコマ。frames は ACNL の数え方（HHD の frameSize + 1。tools/hhd/clan_pack.py の ★）で、AnimStep 0x568964 は frames − 1 で止まる
+float LastFrame(const CL::AnimRef &r) { return r.frames > 0 ? (float)(r.frames - 1) : 0.0f; }
+
 // ---- 資源（メニューのスレッドが読み、ゲームのスレッドがヒープへ写す）----
 u8 *s_topFile;
 u32 s_topSize;
 u8 *volatile s_catFile;
 volatile u32 s_catSize;
 volatile bool s_wantCatFile, s_catFileFailed, s_catUploaded;   // s_catUploaded: ゲームのヒープへ写し終えた（プラグインの写しを返してよい）
+volatile u8 s_catFailReason;                    // 窓の arc が読めなかった理由（メニューのスレッドが知らせる）: 0 なし / 1 ファイルが無い / 2 読めない・大きすぎる・メモリ不足
 
 // ---- ボタン ----
 struct Btn {
@@ -194,7 +198,7 @@ bool BtnPlay(Btn &b, L::Arc &arc, u32 k, bool last) {
     if (!BtnAnim(b, arc, k))
         return false;
     const CL::AnimRef &r = b.def->anim[k];
-    return L::Bind(b.an[k], *b.lay, r.group, last ? (float)r.frames : 0.0f, r.group2);
+    return L::Bind(b.an[k], *b.lay, r.group, last ? LastFrame(r) : 0.0f, r.group2);
 }
 
 void BtnStop(Btn &b, u32 k) {
@@ -585,7 +589,7 @@ bool OpenWindow(void) {
         L::Bind(s_winKind, s_win, s_cat->kind.group, 0.0f, s_cat->kind.group2);
     L::Bind(s_gridIn, s_grid, CL::kGridIn.group, 0.0f, CL::kGridIn.group2);
     L::Bind(s_gridKind, s_grid, CL::kGridKind.group, 0.0f, CL::kGridKind.group2);
-    L::Bind(s_nameOut, s_name, CL::kNameOut.group, (float)CL::kNameOut.frames, CL::kNameOut.group2);   // 吹き出しは閉じた形で始める
+    L::Bind(s_nameOut, s_name, CL::kNameOut.group, LastFrame(CL::kNameOut), CL::kNameOut.group2);   // 吹き出しは閉じた形で始める
     s_tab = 0xFFFFFFFFu;
     SelectTab(0);
     return true;
@@ -1150,6 +1154,7 @@ void ServiceFiles(void) {
         u32 size = 0;
         u8 *data = GohanFiles::CommonPath(path, sizeof(path), CL::kArcName) ? GohanFiles::ReadAll(path, kMaxCatalogArc, size) : nullptr;
         if (data == nullptr) {
+            s_catFailReason = File::Exists(path) == 1 ? 2 : 1;
             s_catFileFailed = true;
             s_wantCatFile = false;
             return;
@@ -1180,6 +1185,11 @@ bool Tick(int index, unsigned short) {
         GuiMenu::BlockGameTouch();
     }
     ServiceFiles();
+    if (const u8 why = s_catFailReason) {            // 窓が開かなかった理由を知らせる（2026-10-07 の実機で何も出ずに開かなかった）
+        s_catFailReason = 0;
+        GuiNotification::NotifyRed(kDecorCatalog, why == 1 ? u8"SD の gohan/common/hhd_catalog.arc がありません。"
+                                                            : u8"hhd_catalog.arc を読めません（大きさ・メモリ）。");
+    }
     DecorIcons::Service(6);
     if (s_enabled)
         return true;
