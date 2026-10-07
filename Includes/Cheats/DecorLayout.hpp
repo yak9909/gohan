@@ -21,7 +21,7 @@ struct Anim {                                   // 1 つのアニメを最大 2 
     alignas(8) u8 obj[40];
     Layout *lay;
     void *group[2];
-    bool made, bound;
+    bool made, bound, hold;                     // hold: 結んだまま止める（Step で進めない。そのコマの見た目を保つ）
 };
 
 // ---- 資源 ----
@@ -45,6 +45,8 @@ void Unbind(Anim &an);
 void FreeAnim(Anim &an);
 bool Step(Anim &an);                            // 1 コマ進める（終わっていたら偽。終わっても外さない）
 bool Done(const Anim &an);
+void Hold(Anim &an);                            // そのコマで止める（外すとペインは最後に当てた値のまま残るので、戻すときは 0 コマ目で止める）
+void Reverse(Anim &an);                         // 今のコマから 0 へ逆に再生する（UiAnim の +0x14 bit1。Done は 0 に着いたら真。F108）
 void SetFrame(Anim &an, float frame);           // 最後のコマへ飛ぶときはアニメのコマ数（生成した表の frame_size）を渡す
 
 // ---- ペイン ----

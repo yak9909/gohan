@@ -74,6 +74,8 @@ const u32 kLoaderAlignPtr = 0x0096FC2C;
 const u32 kHeapAllocSlot = 24 / 4, kHeapFreeSlot = 28 / 4;
 const u32 kHolderArc = 8, kHolderAccessor = 0xC, kHolderArcLoaded = 0x158;
 const u32 kLayoutHolder = 236, kLayoutPriority = 12;
+const u32 kAnimFlags = 0x14;                    // UiAnim の再生の旗（bit0 ループしない / bit1 逆。F108）
+const u8 kAnimReverse = 2;
 const u32 kPaneFlags = 0xB7, kPaneX = 0x28, kPaneY = 0x2C, kPaneW = 0x48, kPaneH = 0x4C, kPaneAlpha = 180;
 const u32 kPicMaterial = 0x13C, kMatFlags = 0x4D, kMatTexMaps = 52;
 // TextBox の欄（sub_5E9430 が TextWriter へ写す）: +0xE0 書体、+0xE4 / +0xE8 大きさ、+0xEC / +0xF0 文字間・行間
@@ -195,6 +197,7 @@ bool LoadAnim(Anim &an, Arc &a, const char *name) {
     an.lay = nullptr;
     an.group[0] = an.group[1] = nullptr;
     an.bound = false;
+    an.hold = false;
     AnimCtor(an.obj);
     an.made = true;
     return AnimLoad(an.obj, name, a.holder) != 0;
@@ -212,6 +215,8 @@ bool Bind(Anim &an, Layout &l, const char *group, float frame, const char *group
     if (g2 != nullptr)
         GroupBind(l.obj, an.obj, g2, 0);
     AnimSetFrame(an.obj, frame);
+    an.obj[kAnimFlags] &= (u8)~kAnimReverse;    // 順に再生（Reverse の後に結び直したとき）
+    an.hold = false;
     an.lay = &l;
     an.group[0] = g;
     an.group[1] = g2;
@@ -225,6 +230,7 @@ void Unbind(Anim &an) {
             if (an.group[i] != nullptr)
                 GroupUnbind(an.lay->obj, an.obj, an.group[i], 0);
     an.bound = false;
+    an.hold = false;
     an.lay = nullptr;
     an.group[0] = an.group[1] = nullptr;
 }
@@ -237,13 +243,24 @@ void FreeAnim(Anim &an) {
 }
 
 bool Step(Anim &an) {
-    if (!an.bound || AnimFinished(an.obj))
+    if (!an.bound || an.hold || AnimFinished(an.obj))
         return false;
     AnimStep(an.obj);
     return true;
 }
 
 bool Done(const Anim &an) { return !an.bound || AnimFinished(an.obj); }
+
+void Hold(Anim &an) { an.hold = true; }
+
+// UiAnim_Step 0x568964: +0x14 bit0 = ループしない（AnimLoad 0x568B94 が入れる）、bit1 = 逆。逆なら frame − 速さ、0 で止まる。
+//   UiAnim_IsFinished 0x74F58C: +0x14 == 3 なら frame <= 0 で終わり（IDA-opus-5.5-F108）
+void Reverse(Anim &an) {
+    if (!an.made)
+        return;
+    an.obj[kAnimFlags] |= kAnimReverse;
+    an.hold = false;
+}
 
 void SetFrame(Anim &an, float frame) {
     if (an.made)

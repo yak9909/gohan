@@ -33,6 +33,7 @@
 #include "ItemNames.hpp"
 
 #include <CTRPluginFramework.hpp>
+#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -173,6 +174,11 @@ u32 s_topSize;
 u8 *volatile s_catFile;
 volatile u32 s_catSize;
 volatile bool s_wantCatFile, s_catFileFailed, s_catUploaded;   // s_catUploaded: ゲームのヒープへ写し終えた（プラグインの写しを返してよい）
+// 窓を組んだときの読み込みのヒープの空き（2026-10-08 実機: アイコンの枠 184,320 B が取れずに開かなかった。デバッガで読む）
+//   [0] 組む前 [1] arc を写した後 [2] レイアウト 3 つの後 [3] アニメの後 [4] 失敗して返した後
+volatile u32 s_heapLog[5];
+volatile u8 s_openFail;                         // 窓を組めなかった（ゲームのスレッドが立て、メニューのスレッドが知らせる）: 1 レイアウト / 2 アイコンの枠
+u8 s_openStep;                                  // OpenWindow がどこまで進んだか（ゲームのスレッドだけ）
 volatile u8 s_catFailReason;                    // 窓の arc が読めなかった理由（メニューのスレッドが知らせる）: 0 なし / 1 ファイルが無い / 2 読めない・大きすぎる・メモリ不足
 
 // ---- ボタン ----
@@ -181,6 +187,9 @@ struct Btn {
     L::Layout *lay;
     L::Anim an[5];
     u8 loaded;                                   // 読んだアニメのビット
+    u8 unsel;                                    // 逆再生で戻している途中（BtnUnselect）: 0 なし / 1 戻すだけ / 2 戻したら loop
+    bool keepSelect;                             // 戻すのは touch だけ（選ばれている小分類）
+    L::Arc *arc;
 };
 
 bool BtnAnim(Btn &b, L::Arc &arc, u32 k) {
@@ -206,9 +215,37 @@ void BtnStop(Btn &b, u32 k) {
         L::Unbind(b.an[k]);
 }
 
+// 結んでいるアニメを全部外す。★外してもペインは最後に当てた値のまま残る（色・位置が戻らない）。見た目を戻すのは BtnRest / BtnUnselect
 void BtnReset(Btn &b) {
     for (u32 k = 0; k < 5; ++k)
         BtnStop(b, k);
+    b.unsel = 0;
+}
+
+// 素の見た目へすぐ戻す: select と touch の 0 コマ目で止める（一度もアニメを読んでいなければレイアウトの値のまま）
+void BtnRest(Btn &b, L::Arc &arc) {
+    const bool touched = b.loaded != 0;
+    BtnReset(b);
+    if (!touched)
+        return;
+    for (u32 k : { (u32)CL::kSelect, (u32)CL::kTouch })
+        if (BtnPlay(b, arc, k, false))
+            L::Hold(b.an[k]);
+}
+
+// HHD の TouchUnSelect / UnSelect（HHD-F001 §2: select と touch を逆に再生し、両方 0 に着いたら Wait）。
+//   keepSelect: 選ばれている小分類は touch だけ戻す。loopAfter: 戻し終えたら loop を流す（上段タブ）
+void BtnUnselect(Btn &b, L::Arc &arc, bool keepSelect, bool loopAfter) {
+    BtnStop(b, CL::kTouchOk);
+    BtnStop(b, CL::kSelectOk);
+    BtnStop(b, CL::kLoop);
+    if (b.loaded & (1u << CL::kTouch))
+        L::Reverse(b.an[CL::kTouch]);
+    if (!keepSelect && (b.loaded & (1u << CL::kSelect)))
+        L::Reverse(b.an[CL::kSelect]);
+    b.unsel = loopAfter ? 2 : 1;
+    b.keepSelect = keepSelect;
+    b.arc = &arc;
 }
 
 void BtnFree(Btn &b) {
@@ -222,6 +259,12 @@ void BtnStep(Btn &b) {
     for (u32 k = 0; k < 5; ++k)
         if (b.loaded & (1u << k))
             L::Step(b.an[k]);
+    if (b.unsel != 0 && L::Done(b.an[CL::kTouch]) && (b.keepSelect || L::Done(b.an[CL::kSelect]))) {
+        const bool loop = b.unsel == 2;
+        b.unsel = 0;                             // 0 コマ目で止まっている（結んだまま。外すと値が残るだけなので外さない）
+        if (loop && b.arc != nullptr)
+            BtnPlay(b, *b.arc, CL::kLoop, false);
+    }
 }
 
 // HHD の ButtonBaseActor（HHD-F001 §2）: 触れた = select の最後のコマ + touch、外れた = 戻す、離した = touch_ok + select_ok
@@ -392,7 +435,7 @@ void ShowKindSelection(void) {
     if (kind == s_kind)
         return;
     if (s_kind >= 0 && (u32)s_kind < s_kindSlots)
-        BtnReset(s_kindBtn[s_kind]);
+        BtnUnselect(s_kindBtn[s_kind], s_arc, false, false);   // HHD の UnSelect（select を逆に）
     s_kind = kind;
     if ((u32)kind < s_kindSlots)
         BtnSelected(s_kindBtn[kind], s_arc, false);
@@ -515,14 +558,14 @@ bool LoadRef(L::Anim &an, L::Arc &arc, const CL::AnimRef &r) { return r.name == 
 
 void SelectTab(u32 tab) {
     if (s_tab < s_tabCount)
-        BtnReset(s_tabBtn[s_tab]);
+        BtnRest(s_tabBtn[s_tab], s_arc);
     s_tab = tab;
     s_ctTab = FindCtTab(s_main, tab);           // 窓の上段タブの並び = HHD のタブ番号（catalog_kinds.json の tab。生成器が同じ順で書く）
     BtnSelected(s_tabBtn[tab], s_arc, true);
     // 小分類の絵（窓の上段タブごとに違う）と数
     const CL::Tab &t = s_cat->tabs[tab];
     for (u32 k = 0; k < s_kindSlots; ++k) {
-        BtnReset(s_kindBtn[k]);
+        BtnRest(s_kindBtn[k], s_arc);
         const bool used = k < t.kindCount;
         L::SetVisible(L::Pane(s_win, s_kindBtn[k].def->node), used);
         if (used)
@@ -533,7 +576,7 @@ void SelectTab(u32 tab) {
     for (u32 f = 0; f < 3; ++f)
         for (u32 s = 0; s < 15; ++s) {
             s_applied[f][s] = 0;
-            BtnReset(s_cellBtn[f][s]);
+            BtnRest(s_cellBtn[f][s], s_arc);
         }
     HideName();
     ShowKindSelection();
@@ -542,15 +585,20 @@ void SelectTab(u32 tab) {
 
 bool OpenWindow(void) {
     s_cat = &CL::kCatalogs[s_main == 1 ? 0 : 1];
+    s_openStep = 1;
+    s_heapLog[0] = L::HeapFreeBytes();
     if (!L::LoadArc(s_arc, s_catFile, s_catSize))
         return false;
+    s_heapLog[1] = L::HeapFreeBytes();
     if (!L::Build(s_win, s_arc, s_cat->layout, kCmdWindow, kPriWindow) || !L::Build(s_grid, s_arc, CL::kGridLayout, kCmdGrid, kPriWindow)
         || !L::Build(s_name, s_arc, CL::kNameLayout, kCmdName, kPriWindow))
         return false;
+    s_heapLog[2] = L::HeapFreeBytes();
     if (!LoadRef(s_winIn, s_arc, s_cat->in) || !LoadRef(s_winOut, s_arc, s_cat->out) || !LoadRef(s_winLoop, s_arc, s_cat->loop)
         || !LoadRef(s_winKind, s_arc, s_cat->kind) || !LoadRef(s_gridIn, s_arc, CL::kGridIn) || !LoadRef(s_gridOut, s_arc, CL::kGridOut)
         || !LoadRef(s_gridKind, s_arc, CL::kGridKind) || !LoadRef(s_nameIn, s_arc, CL::kNameIn) || !LoadRef(s_nameOut, s_arc, CL::kNameOut))
         return false;
+    s_heapLog[3] = L::HeapFreeBytes();
     // ボタン
     s_tabCount = s_cat->tabCount < 8 ? s_cat->tabCount : 8;
     for (u32 i = 0; i < s_tabCount; ++i)
@@ -575,9 +623,11 @@ bool OpenWindow(void) {
     // アイコンの枠（読み込みのヒープから。閉じたら返す）
     if (s_slotsToFree != 0)
         return false;                               // 前の枠をまだ返していない（すぐ返るので、もう一度押してもらう）
+    s_openStep = 2;
     void *slots = L::HeapAlloc(DecorIcons::kSlots * DecorIcons::kIconBytes, 0x80);
     if (slots == nullptr)
         return false;
+    s_openStep = 0;
     s_iconSlots = reinterpret_cast<u32>(slots);
     DecorIcons::SetSlots(s_iconSlots);
     // 出入り・地の縞・小分類の段
@@ -764,7 +814,7 @@ void Decide(u32 frame, u32 slot) {
     }
     if (!ok) {
         PlaySound(kSndInvalid);
-        BtnReset(s_cellBtn[frame][slot]);
+        BtnUnselect(s_cellBtn[frame][slot], s_arc, false, false);
         return;
     }
     BtnDecide(s_cellBtn[frame][slot], s_arc);
@@ -891,17 +941,20 @@ void InputStep(void) {
     } else if (down && s_press != Hit::None) {      // 触れている
         if (s_win_state == Win::Open && (s_press == Hit::Cell || s_press == Hit::Grid)) {
             if (DecorSlider::TouchMove(s_slider, x, y) && s_press == Hit::Cell) {
-                BtnReset(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15]);   // ドラッグになった: 決定しない（HHD の TouchUnSelect）
+                BtnUnselect(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15], s_arc, false, false);   // ドラッグになった: 決定しない（HHD の TouchUnSelect）
                 HideName();
                 s_press = Hit::Grid;
             }
         } else {
             u32 idx = 0;
             if (HitTest(x, y, idx) != s_press || idx != s_pressIdx) {   // 外れた
-                if (Btn *b = PressBtn(s_press, s_pressIdx))
-                    BtnReset(*b);
-                if (s_press == Hit::Tab)
-                    BtnSelected(s_tabBtn[s_tab], s_arc, true);
+                // HHD の TouchUnSelect: select と touch を逆に再生して戻す（2026-10-08 実機: 外へずらして離すと押した色のまま残った。
+                //   アニメを外すだけではペインの値が戻らない）
+                if (s_press == Hit::Tab && s_pressIdx == s_tab)
+                    BtnSelected(s_tabBtn[s_tab], s_arc, true);      // 今の窓のタブは選ばれた見た目へ
+                else if (Btn *b = PressBtn(s_press, s_pressIdx))
+                    BtnUnselect(*b, s_press == Hit::TopTab ? s_topArc : s_arc, s_press == Hit::Kind && (s32)s_pressIdx == s_kind,
+                                s_press == Hit::TopTab);
                 s_press = Hit::None;
             }
         }
@@ -915,7 +968,7 @@ void InputStep(void) {
             if (HitTest(x, y, idx) == Hit::Cell && idx == s_pressIdx)
                 OnDecide(h, s_pressIdx);
             else {
-                BtnReset(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15]);
+                BtnUnselect(s_cellBtn[s_pressIdx / 15][s_pressIdx % 15], s_arc, false, false);
                 HideName();
             }
         } else if (h != Hit::None && h != Hit::Grid) {
@@ -982,17 +1035,25 @@ void WindowStep(void) {
             PlaySound(kSndInvalid);
             s_win_state = Win::Closed;
             for (u32 i = 0; i < 2; ++i) {
-                BtnReset(s_topBtn[i]);
+                BtnRest(s_topBtn[i], s_topArc);
                 BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
             }
             return;
         }
         if (s_catFile == nullptr)
             return;
-        if (!OpenWindow()) {
+        if (!OpenWindow()) {                        // 組めなかった: 返して閉じたまま（模様替えの上段タブは残す。以前は Failed にして上段タブごと作り直していた）
+            const u8 why = s_openStep;
             FreeWindow();
+            s_heapLog[4] = L::HeapFreeBytes();
+            s_openFail = why != 0 ? why : 1;
             s_catUploaded = true;
-            s_stage = Stage::Failed;
+            PlaySound(kSndInvalid);
+            s_win_state = Win::Closed;
+            for (u32 i = 0; i < 2; ++i) {
+                BtnRest(s_topBtn[i], s_topArc);
+                BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
+            }
             return;
         }
         s_catUploaded = true;                       // ゲームのヒープへ写した。プラグインの写し（518 KB）はメニューのスレッドが返す
@@ -1007,7 +1068,7 @@ void WindowStep(void) {
             s_win_state = Win::Closed;
             s_wait = 0;
             for (u32 i = 0; i < 2; ++i) {
-                BtnReset(s_topBtn[i]);
+                BtnRest(s_topBtn[i], s_topArc);
                 BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
             }
         }
@@ -1189,6 +1250,16 @@ bool Tick(int index, unsigned short) {
         s_catFailReason = 0;
         GuiNotification::NotifyRed(kDecorCatalog, why == 1 ? u8"SD の gohan/common/hhd_catalog.arc がありません。"
                                                             : u8"hhd_catalog.arc を読めません（大きさ・メモリ）。");
+    }
+    if (const u8 why = s_openFail) {
+        s_openFail = 0;
+        char msg[160];
+        if (why == 2)
+            std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
+                          (unsigned long)s_heapLog[3]);
+        else
+            std::snprintf(msg, sizeof(msg), "窓を組めません（空き %lu B）。", (unsigned long)s_heapLog[0]);
+        GuiNotification::NotifyRed(kDecorCatalog, msg);
     }
     DecorIcons::Service(6);
     if (s_enabled)
