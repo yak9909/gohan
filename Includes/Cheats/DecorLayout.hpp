@@ -25,9 +25,10 @@ struct Anim {                                   // 1 つのアニメを最大 2 
 };
 
 // ---- 資源 ----
-bool LoadArc(Arc &a, const u8 *file, u32 size);  // ヒープへ写し、アクセサを作り、書体（種類 0 = Garden_msg_size16）とテクスチャを登録する
+bool LoadArc(Arc &a, const u8 *file, u32 size, bool fromTail = false);  // fromTail: 閉窓で返す大きな写しを末尾側へ
 void FreeArc(Arc &a);
 void *HeapAlloc(u32 size, u32 align);           // 読み込みのヒープ [[0x96FC40]+4] から借りる（返すのは HeapFree）
+void *HeapAllocTail(u32 size, u32 align);       // ExpHeap の方向を照合して末尾側から借りる。返すのは同じ HeapFree
 void HeapFree(void *p);
 u32 HeapFreeBytes(void);
 u32 HeapMaxAllocBytes(s32 align);               // 整列を考慮した最大連続空き。合計残量と分けて測る

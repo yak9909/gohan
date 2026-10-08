@@ -12,7 +12,7 @@
 //   壁紙・床紙はゲーム自身の貼り替え。成功したら窓を閉じる（HHD の StateID_Ok_）。置けなければ無効音（HHD の EditError_ の代わり）。
 //   B / 戻るで閉じる（out）。
 //   出した家具のチップは資源のFinalize（+0x66 bit1）と記録を確認し、層0/親なしのanchorを計算して未使用枠へSetup→自身root。
-//   利用者指定の差（IDA-gpt-6.1-sol-F???）: 配置演出（状態+0x5F8が0）の完了と2フレーム安定は待たない。
+//   利用者指定の差（IDA-gpt-6.1-sol-F010）: 配置演出（状態+0x5F8が0）の完了と2フレーム安定は待たない。
 //   fix6: 家具生成の前に窓を隠し、GPU待ちとSDの借用終了を経て窓を返す。再開のタップは待ち中も保持する。
 //   Neutral の通常の親は各チップ自身の root。共有ペインへ全チップを付け直すと既存チップも更新対象木から外れる（IDA-gpt-6.1-sol-F006、fix3）。
 // スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
@@ -183,7 +183,7 @@ bool BackgroundAbiReady(void) {
     return true;
 }
 
-// IDA-gpt-6.1-sol-F???: 家具リストの通常許可が偽のときだけ外観0を例外化。所有者・室・通信条件は残す。
+// IDA-gpt-6.1-sol-F010: 家具リストの通常許可が偽のときだけ外観0を例外化。所有者・室・通信条件は残す。
 u32 TentRoomData(void) {
     if (!BackgroundAbiReady() || reinterpret_cast<int (*)(void)>(0x00300914)() != 0)
         return 0;
@@ -232,11 +232,23 @@ const u32 kTeardownWaitFrames = 3;
 // コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
 const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
 const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
-const u32 kMinimumHeapReserve = 0x96000;        // 600 KiB。開始時空きの半分の方が大きければそちらを残す。
-volatile u32 s_heapBaseline;                   // 初回の模様替え空き。親が基準の計算を読めるよう保持する。
-u32 s_heapReserve = kMinimumHeapReserve;
+// IDA-gpt-6.1-sol-F010: 親実測 Setup 5,616 B、完成残量658,136/連続499,448 B。
+// 既存チップの消費は現在空きへ反映済み。新規家具/チップは閉窓・返却後に作る。
+const u32 kHeapTotalReserve = 0x60000;          // 総空き384 KiB。48回分269,568 BとUI等123,648 B。
+const u32 kHeapContiguousReserve = 0x20000;     // 連続128 KiB。単品Setup実測全量とUIの小さな器より大きく取る。
+volatile u32 s_heapBaseline;                   // 初回の模様替え空き。診断のみ、基準の計算には使わない。
+volatile u32 s_heapReserve = kHeapTotalReserve;
+volatile u32 s_heapContiguousReserve = kHeapContiguousReserve;
+volatile u32 s_heapFailFree, s_heapFailMax, s_heapFailRequiredFree, s_heapFailRequiredMax, s_heapFailMask;
 u32 HeapReserve(void) { return s_heapReserve; }
-bool HeapRoom(void) { return L::HeapFreeBytes() >= HeapReserve() && L::HeapMaxAllocBytes(0x80) >= HeapReserve(); }
+bool HeapRoom(void) { return L::HeapFreeBytes() >= HeapReserve() && L::HeapMaxAllocBytes(0x80) >= s_heapContiguousReserve; }
+void RecordHeapFailure(u32 freeBytes, u32 maxBytes, u32 requiredFree, u32 requiredMax) {
+    s_heapFailFree = freeBytes;
+    s_heapFailMax = maxBytes;
+    s_heapFailRequiredFree = requiredFree;
+    s_heapFailRequiredMax = requiredMax;
+    s_heapFailMask = (freeBytes < requiredFree ? 1u : 0u) | (maxBytes < requiredMax ? 2u : 0u);
+}
 
 // アニメの最後のコマ。frames は ACNL の数え方（HHD の frameSize + 1。tools/hhd/clan_pack.py の ★）で、AnimStep 0x568964 は frames − 1 で止まる
 float LastFrame(const CL::AnimRef &r) { return r.frames > 0 ? (float)(r.frames - 1) : 0.0f; }
@@ -767,16 +779,18 @@ bool OpenWindow(void) {
     s_heapLog[0] = L::HeapFreeBytes();
     s_heapMaxLog[0] = L::HeapMaxAllocBytes(0x80);
     s_heapWindowReady = 0;
-    // 最大の連続領域が残っているうちに可視枠プールを取る。
+    // 閉窓で返す大きな塊を末尾側へ集める。ゲーム側の小さな器の確保先は変えない。
     const u32 iconBytes = DecorIcons::kSlots * DecorIcons::kIconBytes;
-    if (!HeapRoom() || s_heapLog[0] < HeapReserve() + iconBytes + s_catSize) {
+    const u32 requiredFree = HeapReserve() + iconBytes + s_catSize;
+    if (s_heapLog[0] < requiredFree || s_heapMaxLog[0] < s_heapContiguousReserve) {
         s_openStep = 3;
         s_heapWindowReady = s_heapLog[0];
+        RecordHeapFailure(s_heapLog[0], s_heapMaxLog[0], requiredFree, s_heapContiguousReserve);
         return false;
     }
     if (s_slotsToFree != 0 || s_heapMaxLog[0] < iconBytes)
         return false;
-    void *slots = L::HeapAlloc(iconBytes, 0x80);
+    void *slots = L::HeapAllocTail(iconBytes, 0x80);
     if (slots == nullptr)
         return false;
     s_iconSlots = reinterpret_cast<u32>(slots);
@@ -785,7 +799,7 @@ bool OpenWindow(void) {
         s_iconRetired[i] = s_frameSeq - kTeardownWaitFrames;
     }
     s_openStep = 1;
-    if (!L::LoadArc(s_arc, s_catFile, s_catSize))
+    if (!L::LoadArc(s_arc, s_catFile, s_catSize, true))
         return false;
     s_heapLog[1] = L::HeapFreeBytes();
     s_heapMaxLog[1] = L::HeapMaxAllocBytes(0x80);
@@ -841,8 +855,10 @@ bool OpenWindow(void) {
         SetPageText();
     }
     s_heapWindowReady = L::HeapFreeBytes();
-    if (!HeapRoom()) {
+    const u32 readyMax = L::HeapMaxAllocBytes(0x80);
+    if (s_heapWindowReady < HeapReserve() || readyMax < s_heapContiguousReserve) {
         s_openStep = 3;                             // 組めてもゲーム用の余白を食い切る窓は出さず、全て返す
+        RecordHeapFailure(s_heapWindowReady, readyMax, HeapReserve(), s_heapContiguousReserve);
         return false;
     }
     DecorIcons::SetSlots(s_iconSlots);              // 全工程が通ってからメニューのスレッドへ渡す
@@ -1558,8 +1574,6 @@ void FrameStep(void) {
             return;
         }
         s_heapBaseline = L::HeapFreeBytes();
-        const u32 half = (s_heapBaseline + 1) / 2;
-        s_heapReserve = half > kMinimumHeapReserve ? half : kMinimumHeapReserve;
         s_heapSampleTick = 0;
         s_leaving = false;
         s_touchPrev = Touch::IsDown();              // 開いた瞬間に押していた指は使わない
@@ -1719,7 +1733,11 @@ bool Tick(int index, unsigned short) {
             std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 連続空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
                           (unsigned long)s_heapMaxLog[0]);
         else if (why == 3)
-            std::snprintf(msg, sizeof(msg), "ゲーム用の空きを残せず窓を開けません（残り %lu B）。", (unsigned long)s_heapWindowReady);
+            // 通知の本文欄は96 B。32bit最大値4つでも95 B以内に収める。
+            std::snprintf(msg, sizeof(msg), "%s\nB:残り/必要\n合計 %lu/%lu\n連続 %lu/%lu",
+                          s_heapFailMask == 3 ? "合計・連続不足" : s_heapFailMask == 1 ? "合計不足" : "連続不足",
+                          (unsigned long)s_heapFailFree, (unsigned long)s_heapFailRequiredFree,
+                          (unsigned long)s_heapFailMax, (unsigned long)s_heapFailRequiredMax);
         else
             std::snprintf(msg, sizeof(msg), "窓を組めません（空き %lu B）。", (unsigned long)s_heapLog[0]);
         GuiNotification::NotifyRed(kDecorCatalog, msg);

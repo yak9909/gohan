@@ -17,7 +17,7 @@ typedef void (*LayoutFn)(void *layout);
 typedef void (*AddLayoutFn)(void *mgr, void *layout, u32 screen);
 typedef int (*RegisterTexFn)(void *holder);
 typedef void (*FlushFn)(void *p, u32 size);
-typedef void *(*HeapAllocFn)(void *heap, u32 size, u32 align);
+typedef void *(*HeapAllocFn)(void *heap, u32 size, s32 align);
 typedef void (*HeapFreeFn)(void *heap, void *p);
 typedef u32 (*HeapFreeSizeFn)(void *heap);
 typedef u32 (*HeapMaxSizeFn)(void *heap, s32 align);
@@ -106,6 +106,19 @@ void *LoaderHeap(void) {
     return IsHeapPointer(heap) ? heap : nullptr;
 }
 
+// IDA-gpt-6.1-sol-F010: 0x55D8E8 の signed direction×align が負なら
+// 0x55D2DC→0x74DC18。反転ヒープでも絶対末尾を選び、未知の種類/方向では確保しない。
+void *AllocTail(void *heap, u32 size, u32 align) {
+    if (heap == nullptr || W(heap, 0) != 0x008FFEF8 || align < 4 || align > 0x40000000u || (align & (align - 1)) != 0)
+        return nullptr;
+    const s8 direction = *reinterpret_cast<const s8 *>(reinterpret_cast<const u8 *>(heap) + 0x50);
+    if (direction != 1 && direction != -1)
+        return nullptr;
+    const s32 signedAlign = direction == 1 ? -static_cast<s32>(align) : static_cast<s32>(align);
+    void *p = reinterpret_cast<HeapAllocFn>((*reinterpret_cast<u32 **>(heap))[kHeapAllocSlot])(heap, size, signedAlign);
+    return IsHeapPointer(p) ? p : nullptr;
+}
+
 }  // namespace
 
 // ---- 資源 ----
@@ -115,6 +128,10 @@ void *HeapAlloc(u32 size, u32 align) {
         return nullptr;
     void *p = reinterpret_cast<HeapAllocFn>((*reinterpret_cast<u32 **>(heap))[kHeapAllocSlot])(heap, size, align);
     return IsHeapPointer(p) ? p : nullptr;
+}
+
+void *HeapAllocTail(u32 size, u32 align) {
+    return AllocTail(LoaderHeap(), size, align);
 }
 
 void HeapFree(void *p) {
@@ -133,7 +150,7 @@ u32 HeapMaxAllocBytes(s32 align) {
     return heap != nullptr ? HeapMaxSize(heap, align) : 0;
 }
 
-bool LoadArc(Arc &a, const u8 *file, u32 size) {
+bool LoadArc(Arc &a, const u8 *file, u32 size, bool fromTail) {
     a.heap = a.data = nullptr;
     a.made = false;
     void *heap = LoaderHeap();
@@ -141,7 +158,8 @@ bool LoadArc(Arc &a, const u8 *file, u32 size) {
     if (heap == nullptr || fontMgr == nullptr || FontGet(fontMgr, 0) == nullptr || file == nullptr || size == 0)
         return false;
     const u32 align = *reinterpret_cast<const volatile u32 *>(kLoaderAlignPtr);
-    void *data = reinterpret_cast<HeapAllocFn>((*reinterpret_cast<u32 **>(heap))[kHeapAllocSlot])(heap, size, align);
+    void *data = fromTail ? AllocTail(heap, size, align)
+                          : reinterpret_cast<HeapAllocFn>((*reinterpret_cast<u32 **>(heap))[kHeapAllocSlot])(heap, size, align);
     if (!IsHeapPointer(data))
         return false;
     a.heap = heap;
