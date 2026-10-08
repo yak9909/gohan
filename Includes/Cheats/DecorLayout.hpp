@@ -29,6 +29,9 @@ bool LoadArc(Arc &a, const u8 *file, u32 size, bool fromTail = false);  // fromT
 void FreeArc(Arc &a);
 void *HeapAlloc(u32 size, u32 align);           // 読み込みのヒープ [[0x96FC40]+4] から借りる（返すのは HeapFree）
 void *HeapAllocTail(u32 size, u32 align);       // ExpHeap の方向を照合して末尾側から借りる。返すのは同じ HeapFree
+void *GraphicsAllocTail(u32 size, u32 align, u32 pendingCommands, void *&owner); // 命令用FCRAM。256 KiBと未構築命令分を残せた場合だけ。失敗時owner=nullptr
+void *HeapOwner(void);                         // 読み込みのヒープ。確保時の返却先を保持するため
+void HeapFreeFrom(void *owner, void *p);        // 確保時に保持したヒープへ返す（ゲームスレッド）
 void HeapFree(void *p);
 u32 HeapFreeBytes(void);
 u32 HeapMaxAllocBytes(s32 align);               // 整列を考慮した最大連続空き。合計残量と分けて測る

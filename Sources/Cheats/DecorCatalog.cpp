@@ -232,14 +232,15 @@ const u32 kTeardownWaitFrames = 3;
 // コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
 const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
 const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
-// IDA-gpt-6.1-sol-F010: 親実測 Setup 5,616 B、完成残量658,136/連続499,448 B。
-// 既存チップの消費は現在空きへ反映済み。新規家具/チップは閉窓・返却後に作る。
-const u32 kHeapTotalReserve = 0x60000;          // 総空き384 KiB。48回分269,568 BとUI等123,648 B。
+// IDA-gpt-6.1-sol-F???: 観測73→112チップの窓後モデル173,852 B。新チップは窓返却後に作る。
+// 開窓中の家具/チップ費用は重ねて積まない。アイコン枠は余裕のあるgraphicHeapを優先する。
+const u32 kHeapTotalReserve = 0x20000;          // 総空き128 KiB。開窓中の遅延アニメは確保後にも再検査。
 const u32 kHeapContiguousReserve = 0x20000;     // 連続128 KiB。単品Setup実測全量とUIの小さな器より大きく取る。
 volatile u32 s_heapBaseline;                   // 初回の模様替え空き。診断のみ、基準の計算には使わない。
 volatile u32 s_heapReserve = kHeapTotalReserve;
 volatile u32 s_heapContiguousReserve = kHeapContiguousReserve;
-volatile u32 s_heapFailFree, s_heapFailMax, s_heapFailRequiredFree, s_heapFailRequiredMax, s_heapFailMask;
+volatile u32 s_heapFailFree, s_heapFailMax, s_heapFailRequiredFree, s_heapFailRequiredMax, s_heapFailMask, s_heapFailChips;
+u32 s_chipEditor, s_chipNext;                   // チップの確保履歴。Out後も保持するので使用中の数と区別する。
 u32 HeapReserve(void) { return s_heapReserve; }
 bool HeapRoom(void) { return L::HeapFreeBytes() >= HeapReserve() && L::HeapMaxAllocBytes(0x80) >= s_heapContiguousReserve; }
 void RecordHeapFailure(u32 freeBytes, u32 maxBytes, u32 requiredFree, u32 requiredMax) {
@@ -248,6 +249,7 @@ void RecordHeapFailure(u32 freeBytes, u32 maxBytes, u32 requiredFree, u32 requir
     s_heapFailRequiredFree = requiredFree;
     s_heapFailRequiredMax = requiredMax;
     s_heapFailMask = (freeBytes < requiredFree ? 1u : 0u) | (maxBytes < requiredMax ? 2u : 0u);
+    s_heapFailChips = s_chipNext <= 112 ? s_chipNext : 112;
 }
 
 // アニメの最後のコマ。frames は ACNL の数え方（HHD の frameSize + 1。tools/hhd/clan_pack.py の ★）で、AnimStep 0x568964 は frames − 1 で止まる
@@ -469,6 +471,7 @@ float s_pageOrigX[3], s_pageY[3];
 void *s_pageNode[3];
 void *s_cellNode[3][15], *s_cellIcon[3][15];   // 開くときに 1 回だけ引く（FindPane は全ペインをたどる）
 u32 s_iconSlots;                                // ヒープの可視枠プール（DecorIcons::kSlots × kIconBytes）
+void *s_iconHeap, *s_slotsHeapToFree;            // 確保したヒープを保持。遅延返却も同じ所有者へ。
 u32 s_slotsToFree, s_slotsTicket;              // 外したが、まだ返していない枠
 u16 s_applied[3][15];                           // 枠に貼った絵の HHD 品番
 s32 s_iconOwner[DecorIcons::kSlots];             // プールの所有論理セル。-1は空き。
@@ -726,9 +729,11 @@ void FreeWindow(void) {
     L::FreeArc(s_arc);
     if (s_iconSlots != 0) {
         s_slotsToFree = s_iconSlots;            // メニューのスレッドが書き終えてから返す（FreeIconSlots）
+        s_slotsHeapToFree = s_iconHeap;
         s_slotsTicket = DecorIcons::ReleaseTicket();
     }
     s_iconSlots = 0;
+    s_iconHeap = nullptr;
     s_cat = nullptr;
     s_nameShown = false;
     s_reclaimWindow = false;
@@ -739,8 +744,9 @@ void FreeWindow(void) {
 // 外した枠を返す（メニューのスレッドが読み込みの途中でなくなってから。ゲームのスレッド）
 void FreeIconSlots(bool force) {
     if (s_slotsToFree != 0 && (force || DecorIcons::CanRelease(s_slotsTicket))) {
-        L::HeapFree(reinterpret_cast<void *>(s_slotsToFree));
+        L::HeapFreeFrom(s_slotsHeapToFree, reinterpret_cast<void *>(s_slotsToFree));
         s_slotsToFree = 0;
+        s_slotsHeapToFree = nullptr;
     }
 }
 
@@ -781,16 +787,23 @@ bool OpenWindow(void) {
     s_heapWindowReady = 0;
     // 閉窓で返す大きな塊を末尾側へ集める。ゲーム側の小さな器の確保先は変えない。
     const u32 iconBytes = DecorIcons::kSlots * DecorIcons::kIconBytes;
-    const u32 requiredFree = HeapReserve() + iconBytes + s_catSize;
+    if (s_slotsToFree != 0)
+        return false;
+    // 命令器3つ（各queue 28 B）と管理/整列用4 KiBを残せる時だけ、アイコンを別FCRAMへ。
+    void *slots = L::GraphicsAllocTail(iconBytes, 0x80, kCmdWindow + kCmdGrid + kCmdName + 0x1000, s_iconHeap);
+    const u32 requiredFree = HeapReserve() + (slots == nullptr ? iconBytes : 0) + s_catSize;
     if (s_heapLog[0] < requiredFree || s_heapMaxLog[0] < s_heapContiguousReserve) {
         s_openStep = 3;
         s_heapWindowReady = s_heapLog[0];
         RecordHeapFailure(s_heapLog[0], s_heapMaxLog[0], requiredFree, s_heapContiguousReserve);
+        L::HeapFreeFrom(s_iconHeap, slots);
+        s_iconHeap = nullptr;
         return false;
     }
-    if (s_slotsToFree != 0 || s_heapMaxLog[0] < iconBytes)
-        return false;
-    void *slots = L::HeapAllocTail(iconBytes, 0x80);
+    if (slots == nullptr && s_heapMaxLog[0] >= iconBytes) {
+        s_iconHeap = L::HeapOwner();
+        slots = L::HeapAllocTail(iconBytes, 0x80);
+    }
     if (slots == nullptr)
         return false;
     s_iconSlots = reinterpret_cast<u32>(slots);
@@ -947,7 +960,6 @@ Pending s_pend;
 u16 s_chipItem;
 struct Decision { u16 item; u32 main, ctTab, editor, frames; bool active; };
 Decision s_decision;
-u32 s_chipEditor, s_chipNext;                   // 一度も使っていないチップの枠の先頭（開いた時点の使用中の最後 + 1 から）
 
 void ChipTrackEditor(u32 editor) {
     if (editor == s_chipEditor)
@@ -1733,9 +1745,9 @@ bool Tick(int index, unsigned short) {
             std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 連続空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
                           (unsigned long)s_heapMaxLog[0]);
         else if (why == 3)
-            // 通知の本文欄は96 B。32bit最大値4つでも95 B以内に収める。
-            std::snprintf(msg, sizeof(msg), "%s\nB:残り/必要\n合計 %lu/%lu\n連続 %lu/%lu",
-                          s_heapFailMask == 3 ? "合計・連続不足" : s_heapFailMask == 1 ? "合計不足" : "連続不足",
+            // 通知の本文欄は96 B。チップ履歴112と32bit最大値4つでも94 B以内。
+            std::snprintf(msg, sizeof(msg), "家具で不足\nチップ%lu\nB:残り/必要\n計%lu/%lu\n続%lu/%lu",
+                          (unsigned long)s_heapFailChips,
                           (unsigned long)s_heapFailFree, (unsigned long)s_heapFailRequiredFree,
                           (unsigned long)s_heapFailMax, (unsigned long)s_heapFailRequiredMax);
         else

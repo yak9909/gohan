@@ -74,6 +74,9 @@ const u32 kLayoutMgrPtr = 0x0096FC38;
 const u32 kFontMgrPtr = 0x0094C9C8;
 const u32 kLoaderPtr = 0x0096FC40, kLoaderHeap = 4;
 const u32 kLoaderAlignPtr = 0x0096FC2C;
+// IDA-gpt-6.1-sol-F???: 0x11DA78 / 0x616620。a1[5]はFCRAMの命令用ExpHeap、a1[6]/[7]はVRAM。
+const u32 kGraphicsMgrPtr = 0x0096F304, kGraphicsMgrVtbl = 0x00904FA4, kGraphicsHeapOffset = 0x14;
+const u32 kGraphicsReserve = 0x40000;          // アイコン以外の描画用に256 KiBを維持する設計値
 const u32 kHeapAllocSlot = 24 / 4, kHeapFreeSlot = 28 / 4;
 const u32 kHolderArc = 8, kHolderAccessor = 0xC, kHolderArcLoaded = 0x158;
 const u32 kLayoutHolder = 236, kLayoutPriority = 12;
@@ -132,6 +135,38 @@ void *HeapAlloc(u32 size, u32 align) {
 
 void *HeapAllocTail(u32 size, u32 align) {
     return AllocTail(LoaderHeap(), size, align);
+}
+
+void *HeapOwner(void) { return LoaderHeap(); }
+
+void HeapFreeFrom(void *owner, void *p) {
+    if (IsHeapPointer(owner) && W(owner, 0) == 0x008FFEF8 && p != nullptr)
+        reinterpret_cast<HeapFreeFn>((*reinterpret_cast<u32 **>(owner))[kHeapFreeSlot])(owner, p);
+}
+
+void *GraphicsAllocTail(u32 size, u32 align, u32 pendingCommands, void *&owner) {
+    owner = nullptr;
+    const u32 mgr = *reinterpret_cast<const volatile u32 *>(kGraphicsMgrPtr);
+    if (!IsHeapPointer(reinterpret_cast<void *>(mgr)) || W(reinterpret_cast<void *>(mgr), 0) != kGraphicsMgrVtbl)
+        return nullptr;
+    void *heap = *reinterpret_cast<void **>(mgr + kGraphicsHeapOffset);
+    if (!IsHeapPointer(heap) || heap == LoaderHeap() || W(heap, 0) != 0x008FFEF8
+        || align != 0x80 || size > 0x100000 || pendingCommands > 0x100000)
+        return nullptr;
+    // 0x55D818のヘッダ/整列分も先に見込む。命令の未確保分を含めて連続空きを検査する。
+    const u32 allocCost = size + align + 20;
+    if (HeapFreeSize(heap) < kGraphicsReserve + pendingCommands + allocCost
+        || HeapMaxSize(heap, align) < allocCost + pendingCommands)
+        return nullptr;
+    void *p = AllocTail(heap, size, align);
+    if (p == nullptr)
+        return nullptr;
+    if (HeapFreeSize(heap) < kGraphicsReserve + pendingCommands || HeapMaxSize(heap, align) < pendingCommands) {
+        HeapFreeFrom(heap, p);
+        return nullptr;
+    }
+    owner = heap;
+    return p;
 }
 
 void HeapFree(void *p) {
