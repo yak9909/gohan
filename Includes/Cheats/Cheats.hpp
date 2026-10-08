@@ -79,7 +79,6 @@ namespace CTRPluginFramework
         // ---- root/ゲーム/模様替え（T022。解析リポジトリ docs/topics/t022_decorate_port_requirements.md）----
         static const char kDecorTrash[] = u8"模様替えにゴミ箱";
         static const char kDecorCatalog[] = u8"模様替えに家具リスト";
-        static const char kDecorCatalogTent[] = u8"改造テントのかべ・ゆか";
 
         static const char kPcShow[]  = u8"複製を出す";
         static const char kPcHair[]  = u8"複製の髪型";

@@ -49,6 +49,7 @@ bool Done(const Anim &an);
 void Hold(Anim &an);                            // そのコマで止める（外すとペインは最後に当てた値のまま残るので、戻すときは 0 コマ目で止める）
 void Reverse(Anim &an);                         // 今のコマから 0 へ逆に再生する（UiAnim の +0x14 bit1。Done は 0 に着いたら真。F108）
 void SetFrame(Anim &an, float frame);           // 最後のコマへ飛ぶときはアニメのコマ数（生成した表の frame_size）を渡す
+void ApplyFrame(Anim &an);                     // 現在コマをペインへ適用する。時間を進めず、返す直前の静止形を確定
 
 // ---- ペイン ----
 void SetVisible(void *pane, bool on);           // +0xB7 bit0

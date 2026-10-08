@@ -45,6 +45,7 @@ const CtorFn         LayoutDtor     = reinterpret_cast<CtorFn>(0x005BEB4C);
 const LayoutBuildFn  LayoutBuild    = reinterpret_cast<LayoutBuildFn>(0x005685A4);
 const LayoutFn       LayoutFinalize = reinterpret_cast<LayoutFn>(0x00133A5C);
 const LayoutFn       LayoutCalc     = reinterpret_cast<LayoutFn>(0x00568030);
+void (*const LayoutAnimate)(void *, u32) = reinterpret_cast<void (*)(void *, u32)>(0x004B9718);
 const AddLayoutFn    AddLayout      = reinterpret_cast<AddLayoutFn>(0x0056928C);
 const FontSlotFn     FontName       = reinterpret_cast<FontSlotFn>(0x00747528);
 const FontSlotFn     FontGet        = reinterpret_cast<FontSlotFn>(0x0052D6A8);
@@ -276,6 +277,12 @@ void Reverse(Anim &an) {
 void SetFrame(Anim &an, float frame) {
     if (an.made)
         AnimSetFrame(an.obj, frame);
+}
+
+void ApplyFrame(Anim &an) {
+    // 0x568030の先頭と同じ評価だけ。UiAnim vt+8はSetFrame(s0)であって評価ではない。
+    if (an.made && an.bound && an.lay != nullptr && an.lay->built)
+        LayoutAnimate(an.lay->obj + 16, W(an.lay->obj, 252));
 }
 
 // ---- ペイン ----
