@@ -201,7 +201,7 @@ void Draw(Layout &l, u32 screen) {
         AddLayout(mgr, l.obj, screen);
 }
 
-void *Pane(Layout &l, const char *name) { return l.built ? FindPane(l.obj, name) : nullptr; }
+void *Pane(Layout &l, const char *name) { return l.built && name != nullptr ? FindPane(l.obj, name) : nullptr; }
 void *Group(Layout &l, const char *name) { return l.built ? FindGroup(l.obj, name, 1) : nullptr; }
 
 // ---- アニメ ----
