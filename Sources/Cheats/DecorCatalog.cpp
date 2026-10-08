@@ -11,8 +11,8 @@
 //   マスに触れると select + touch と名前の吹き出し、離して決定 → 家具は空きマスへ置く（DecorPlace の順で 0x6920CC を試し、置けたら 0x68FA84）、
 //   壁紙・床紙はゲーム自身の貼り替え。成功したら窓を閉じる（HHD の StateID_Ok_）。置けなければ無効音（HHD の EditError_ の代わり）。
 //   B / 戻るで閉じる（out）。
-//   出した家具のチップ（模様替え UI を開いたまま掴めるようにする）は IDA-gpt-6.1-sol-F002 の手順: 家具の完成（+0x66 bit1・状態 +0x5F8 == 2・破棄要求 +15 == 0）と
-//   記録の対応を 2 フレーム続けて確かめ、窓の資源を返してから未使用枠へ Chip_Setup → Chip_RestoreOwnRoot（ChipStep）。
+//   出した家具のチップは資源のFinalize（+0x66 bit1）と記録を確認し、層0/親なしのanchorを計算して未使用枠へSetup→自身root。
+//   利用者指定の差（IDA-gpt-6.1-sol-F???）: 配置演出（状態+0x5F8が0）の完了、2フレーム安定、窓の解放を待たない。
 //   Neutral の通常の親は各チップ自身の root。共有ペインへ全チップを付け直すと既存チップも更新対象木から外れる（IDA-gpt-6.1-sol-F006、fix3）。
 // スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
 
@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <cmath>
 
 namespace DecorCatalog {
 
@@ -47,6 +48,8 @@ namespace L = DecorLayout;
 namespace CL = DecorCatalogLayout;
 namespace CT = DecorCatalogTable;
 using Cheats::kDecorCatalog;
+using Cheats::kDecorCatalogTent;
+volatile bool s_allowTent;                       // 明示設定だけ。既定は本来の許可判定
 
 inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 inline bool IsHeapPointer(u32 v) { return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u; }
@@ -167,6 +170,49 @@ const SetBgFn      SetWall     = reinterpret_cast<SetBgFn>(0x002C5FA8);        /
 const SetBgFn      SetFloor    = reinterpret_cast<SetBgFn>(0x002C6CCC);        // HouseRoom_SetFlooring
 int (*const CanChangeBackground)(void) = reinterpret_cast<int (*)(void)>(0x005B39B4);   // F005。起動時・決定時とも本来の許可判定
 const PlaySoundFn  PlaySound   = reinterpret_cast<PlaySoundFn>(0x0058C7D4);    // Game_PlaySound
+
+bool BackgroundAbiReady(void) {
+    static const u32 checks[][2] = {
+        { 0x00300914, 0xE59F0004 }, { 0x002F75E4, 0xE35100A5 }, { 0x002FF92C, 0xE3500004 },
+        { 0x006F9728, 0xE92D4010 }, { 0x0030F88C, 0xE3510004 }, { 0x006F8F24, 0xE92D4070 },
+        { 0x002FCB64, 0xE92D4010 }, { 0x002D5728, 0xE2800C02 }, { 0x002D52D4, 0xE2800C02 },
+    };
+    for (const auto &c : checks)
+        if (R32(c[0]) != c[1])
+            return false;
+    return true;
+}
+
+// IDA-gpt-6.1-sol-F???: 通常許可の外観0だけを明示設定で例外化。所有者・室・通信条件は残す。
+u32 TentRoomData(void) {
+    if (!s_allowTent || !BackgroundAbiReady() || reinterpret_cast<int (*)(void)>(0x00300914)() != 0)
+        return 0;
+    // 0x300914だけでホストの通信状態を推測しない。F007の登録相手マスクも確認。
+    const u32 net = R32(0x0094D644);
+    if (!IsHeapPointer(net))
+        return 0;
+    const u32 own = *reinterpret_cast<const volatile u8 *>(net + 78440);
+    const u32 peers = *reinterpret_cast<const volatile u8 *>(net + 78444) & 0x0F;
+    if (peers != 0 && (own >= 4 || (peers & ~(1u << own)) != 0))
+        return 0;
+    const int room = *GridCursor::Game::kRoomId;
+    if (!reinterpret_cast<int (*)(u32, int)>(0x002F75E4)(0x80, room))
+        return 0;
+    const u32 player = reinterpret_cast<u32 (*)(u32)>(0x002FF92C)(4);
+    const u32 owner = reinterpret_cast<u32 (*)(int)>(0x006F9728)(room);
+    if (player >= 4 || owner != player)
+        return 0;
+    const u32 garden = R32(0x00955F8C);
+    if (!IsHeapPointer(garden))
+        return 0;
+    const u32 house = reinterpret_cast<u32 (*)(u32, u32)>(0x0030F88C)(garden + 0x5D900, owner);
+    if (!IsHeapPointer(house) || *reinterpret_cast<const volatile u8 *>(house + 4) != 0)
+        return 0;                                  // 種別8や他人の家へは例外を広げない
+    const u32 data = reinterpret_cast<u32 (*)(int)>(0x006F8F24)(room);
+    return IsHeapPointer(data) ? data : 0;
+}
+
+bool BackgroundAvailable(void) { return CanChangeBackground() != 0 || TentRoomData() != 0; }
 
 // ---- 音（HHD の音は ACNL に無いので代用。要件書 §7.4。実機で利用者に決めてもらう）----
 const u32 kSndCellTouch = 0x01000399;       // SE_SYS_BTN_ACTIVE_S
@@ -328,6 +374,7 @@ enum class Hit : u8 { None, TopTab, Tab, Kind, Back, Cell, Grid };
 volatile bool s_enabled;
 bool s_hooked, s_toldFail;
 int s_index = -1;
+int s_tentIndex = -1;
 Stage s_stage = Stage::Idle;
 u32 s_wait;
 bool s_leaving;
@@ -347,6 +394,13 @@ u32 s_tab;                                      // 窓の上段タブ（CT の�
 s32 s_ctTab;                                    // CT::kTabs の番号
 s32 s_kind = -1;                                // 今の小分類（CT のタブの中の何番目か）
 DecorSlider::Slider s_slider;
+struct WindowPosition { u32 tab; s32 kind; float pos; bool valid; };
+WindowPosition s_position[2];                   // 家具/壁床それぞれ。エディター退場で消す
+
+void SavePosition(void) {
+    if (s_cat != nullptr && s_ctTab >= 0)
+        s_position[s_main == 1 ? 0 : 1] = { s_tab, s_kind, s_slider.pos, true };
+}
 float s_pageOrigX[3], s_pageY[3];
 void *s_pageNode[3];
 void *s_cellNode[3][15], *s_cellIcon[3][15];   // 開くときに 1 回だけ引く（FindPane は全ペインをたどる）
@@ -530,7 +584,10 @@ void UpdateGrid(void) {
             void *icon = s_cellIcon[f][s];
             L::SetVisible(cell, it != nullptr);
             const u32 slot = f * 15 + s;
-            const u16 want = it != nullptr ? it->hhd : 0;
+            const CL::Rect &r = CL::kPages[f].cells[s].rect;
+            const float dx = s_slider.frameX[f] - s_pageOrigX[f];
+            const bool visible = r.r + dx > CL::kGridDrag.l && r.l + dx < CL::kGridDrag.r;
+            const u16 want = it != nullptr && visible ? it->hhd : 0; // 画面外のページ/マスをSDへ要求しない
             DecorIcons::Want(slot, want);
             if (want == 0) {
                 s_applied[f][s] = 0;
@@ -606,7 +663,7 @@ void SelectTab(u32 tab) {
             L::SetTextureByName(L::Pane(s_win, s_kindBtn[k].def->icon), s_arc, CL::kKinds[t.kindFirst + k].icon);
     }
     s_kind = -1;
-    DecorSlider::Setup(s_slider, 288.0f, (s32)TabPages(s_ctTab), 0);
+    DecorSlider::SetupFree(s_slider, 288.0f, (s32)TabPages(s_ctTab), 0.0f);
     for (u32 f = 0; f < 3; ++f)
         for (u32 s = 0; s < 15; ++s) {
             s_applied[f][s] = 0;
@@ -679,7 +736,13 @@ bool OpenWindow(void) {
     L::Bind(s_gridKind, s_grid, CL::kGridKind.group, 0.0f, CL::kGridKind.group2);
     L::Bind(s_nameOut, s_name, CL::kNameOut.group, LastFrame(CL::kNameOut), CL::kNameOut.group2);   // 吹き出しは閉じた形で始める
     s_tab = 0xFFFFFFFFu;
-    SelectTab(0);
+    const WindowPosition &saved = s_position[s_main == 1 ? 0 : 1];
+    SelectTab(saved.valid && saved.tab < s_tabCount ? saved.tab : 0);
+    if (saved.valid) {
+        DecorSlider::RestorePosition(s_slider, saved.pos);
+        ShowKindSelection();
+        SetPageText();
+    }
     s_heapWindowReady = L::HeapFreeBytes();
     if (s_heapWindowReady < kWindowHeapReserve) {
         s_openStep = 3;                             // 組めてもゲーム用の余白を食い切る窓は出さず、全て返す
@@ -792,9 +855,6 @@ void ChipStep(u32 indoor) {
     }
     if (!EditorNeutral(indoor, EditorCalc(indoor)))
         return;
-    // 窓を壊した後で追加する。窓の確保の途中へchipの小領域を挟まず、約1MiBの資源を返してから使う。
-    if (s_win_state != Win::Closed || s_arc.made || s_slotsToFree != 0 || Touch::IsDown())
-        return;
     if (R32(editor + 129100) != 0 || R32(editor + 128640) != 0 || R32(editor + 126796) != 0 || R32(editor + 129288) != 0)
         return;                                   // Neutralでも選択・まとめ・共通ボタン処理が残っていれば追加しない（F002）
     const u32 actor = s_pend.actor;
@@ -802,8 +862,7 @@ void ChipStep(u32 indoor) {
         s_pend.active = false;
         return;
     }
-    if ((*reinterpret_cast<const volatile u8 *>(actor + kActorCreateFlags) & 2u) == 0
-        || *reinterpret_cast<const volatile u8 *>(actor + kActorState) != 2) {
+    if ((*reinterpret_cast<const volatile u8 *>(actor + kActorCreateFlags) & 2u) == 0) {
         s_pend.stable = 0;
         return;
     }
@@ -827,7 +886,10 @@ void ChipStep(u32 indoor) {
         s_pend.stable = 0;
         return;
     }
-    if (++s_pend.stable < 2)                    // 2 フレーム続いた = 完成後の位置の更新（AcFtr_Update の vslot+208）を通った
+    // 資源のFinalize完了と配置演出（状態0）は別。層0だけなので純粋なanchor計算で初回座標を確定。
+    // actor状態2や窓のout完了を待たず、次の通常Submitからチップを描かせる。
+    if (*reinterpret_cast<const volatile u8 *>(actor + 1972) != 0
+        || *reinterpret_cast<const volatile s16 *>(actor + 1548) != -1)
         return;
     // 同じ記録番号を、片付け中の古いチップがまだ持っていたら待つ（F002）
     for (u32 i = 0; i < kChipCount; ++i) {
@@ -846,10 +908,14 @@ void ChipStep(u32 indoor) {
         return;
     }
     using namespace DecorCatalogCro;
-    if (R32(indoor + kIndoorChipSetup) != kIndoorChipSetupWord || R32(indoor + kIndoorChipRestoreOwnRoot) != kIndoorChipRestoreOwnRootWord) {
+    if (R32(indoor + kIndoorChipSetup) != kIndoorChipSetupWord || R32(indoor + kIndoorChipRestoreOwnRoot) != kIndoorChipRestoreOwnRootWord
+        || R32(0x00751220) != 0xE92D43F0) {
         s_pend.active = false;
         return;
     }
+    u16 yawDelta = 0;
+    reinterpret_cast<void (*)(void *, void *, const float *, u16 *, int)>(0x00751220)
+        (reinterpret_cast<void *>(actor), reinterpret_cast<void *>(actor + 1352), nullptr, &yawDelta, 0);
     reinterpret_cast<ChipSetupFn>(indoor + kIndoorChipSetup)(reinterpret_cast<void *>(chip), reinterpret_cast<void *>(editor + kEditorChipResource), recPtr);
     ++s_chipNext;
     reinterpret_cast<ChipRootFn>(indoor + kIndoorChipRestoreOwnRoot)(reinterpret_cast<void *>(chip));
@@ -859,10 +925,21 @@ void ChipStep(u32 indoor) {
 bool ApplyBackground(u16 acnl, u32 ctTab) {
     const Item item = { acnl, 0 };
     const bool floor = CT::kTabs[ctTab].tab == 1;   // 上段 4 のタブ 0 = 壁紙、1 = 床紙（HHD-F019）
-    return (floor ? SetFloor(&item, 1) : SetWall(&item, 1)) != 0;   // ゲーム自身の音が鳴る（F106）
+    if (CanChangeBackground() != 0)
+        return (floor ? SetFloor(&item, 1) : SetWall(&item, 1)) != 0;
+    const u32 data = TentRoomData();
+    if (data == 0 || reinterpret_cast<int (*)(const Item *)>(0x002FCB64)(&item) != (floor ? 4 : 3))
+        return false;
+    // HouseRoom setterの自宅枝と同じItem/variant書込み。オフライン限定なのでNet片は送らない。
+    reinterpret_cast<void (*)(void *, const Item *)>(floor ? 0x002D5728 : 0x002D52D4)(reinterpret_cast<void *>(data), &item);
+    *reinterpret_cast<volatile u8 *>(data + (floor ? 33 : 32)) = 0;
+    PlaySound(floor ? 0x0100094F : 0x0100094E);
+    return true;                                   // F106の毎フレーム読取り/Applyが画面へ反映
 }
 
-void BeginClose(void) {
+void BeginClose(bool immediate = false) {
+    SavePosition();
+    DecorSlider::RestorePosition(s_slider, s_slider.pos); // 慣性も止め、閉じた瞬間の位置を保持
     HideName();
     L::Bind(s_winOut, s_win, s_cat->out.group, 0.0f, s_cat->out.group2);
     s_winBound = &s_winOut;
@@ -870,6 +947,18 @@ void BeginClose(void) {
     s_win_state = Win::Closing;
     s_press = Hit::None;
     s_pressCell = -1;
+    if (immediate) {
+        // 家具決定時は次のSubmitからチップを見せて掴ませる。資源はGPU待ち後に返す。
+        L::SetFrame(s_winOut, LastFrame(s_cat->out));
+        L::SetFrame(s_gridOut, LastFrame(CL::kGridOut));
+        L::Hold(s_winOut);
+        L::Hold(s_gridOut);
+        s_win_state = Win::Closed;
+        for (u32 i = 0; i < 2; ++i) {
+            BtnRest(s_topBtn[i], s_topArc);
+            BtnPlay(s_topBtn[i], s_topArc, CL::kLoop, false);
+        }
+    }
 }
 
 void Decide(u32 frame, u32 slot) {
@@ -889,6 +978,8 @@ void Decide(u32 frame, u32 slot) {
             ok = actor != 0;
             if (ok)
                 s_pend = { actor, editor, 0, 0, true };
+            if (ok)
+                ChipStep(indoor);              // 同期Finalize済みなら、この配置のフレームから追加
         }
         if (ok)
             PlaySound(kSndCellDecide);
@@ -899,7 +990,7 @@ void Decide(u32 frame, u32 slot) {
         return;
     }
     BtnDecide(s_cellBtn[frame][slot], s_arc);
-    BeginClose();                                   // HHD の StateID_Ok_
+    BeginClose(s_main == 1);                        // 利用者指定: 家具決定では窓をすぐ隠して入力を返す
 }
 
 // ---- 入力（ゲームのスレッド。CTRPF の Touch / Controller は HID を直接読む）----
@@ -928,13 +1019,14 @@ Hit HitTest(float x, float y, u32 &idx) {
             return Hit::Kind;
         }
     if (InRect(CL::kGridDrag, x, y)) {
-        const u32 f = s_slider.center;
-        const float dx = s_slider.frameX[f] - s_pageOrigX[f];
-        for (u32 s = 0; s < 15; ++s)
-            if (InRect(CL::kPages[f].cells[s].rect, x, y, dx) && CellItem(f, s) != nullptr) {
-                idx = f * 15 + s;
-                return Hit::Cell;
-            }
+        for (u32 f = 0; f < 3; ++f) {
+            const float dx = s_slider.frameX[f] - s_pageOrigX[f];
+            for (u32 s = 0; s < 15; ++s)
+                if (InRect(CL::kPages[f].cells[s].rect, x, y, dx) && CellItem(f, s) != nullptr) {
+                    idx = f * 15 + s;
+                    return Hit::Cell;
+                }
+        }
         idx = 0;
         return Hit::Grid;
     }
@@ -955,7 +1047,7 @@ Btn *PressBtn(Hit h, u32 idx) {
 void OnDecide(Hit h, u32 idx) {
     switch (h) {
     case Hit::TopTab:
-        if ((CL::kTopMain[idx] == 4 && (!s_canChangeBackground || CanChangeBackground() == 0)) || s_pend.active) {
+        if (CL::kTopMain[idx] == 4 && !BackgroundAvailable()) {
             PlaySound(kSndInvalid);
             BtnUnselect(s_topBtn[idx], s_topArc, false, true);   // HHDの押した→戻す。不可では決定/窓を始めない
             return;
@@ -963,6 +1055,16 @@ void OnDecide(Hit h, u32 idx) {
         BtnDecide(s_topBtn[idx], s_topArc);
         PlaySound(kSndOpen);
         s_main = CL::kTopMain[idx];
+        // 同じ窓のout中/直後は資源を再利用。小さいチップ確保の後で大きい枠を再確保しない。
+        if (s_cat == &CL::kCatalogs[s_main == 1 ? 0 : 1] && s_arc.made) {
+            L::Unbind(s_winOut);
+            L::Unbind(s_gridOut);
+            L::Bind(s_winIn, s_win, s_cat->in.group, 0.0f, s_cat->in.group2);
+            L::Bind(s_gridIn, s_grid, CL::kGridIn.group, 0.0f, CL::kGridIn.group2);
+            s_winBound = &s_winIn;
+            s_win_state = Win::Opening;
+            return;
+        }
         s_catUploaded = false;
         s_wantCatFile = true;                       // メニューのスレッドが arc を読む
         s_win_state = Win::Loading;
@@ -976,7 +1078,7 @@ void OnDecide(Hit h, u32 idx) {
     case Hit::Kind: {
         PlaySound(kSndTabDecide);
         const s32 page = KindFirstPage((s32)idx);
-        DecorSlider::Setup(s_slider, 288.0f, (s32)TabPages(s_ctTab), page);
+        DecorSlider::SetupFree(s_slider, 288.0f, (s32)TabPages(s_ctTab), -288.0f * (float)page);
         for (u32 f = 0; f < 3; ++f)
             for (u32 s = 0; s < 15; ++s)
                 s_applied[f][s] = 0;
@@ -1002,7 +1104,7 @@ void OnDecide(Hit h, u32 idx) {
 u32 s_keysPrev;
 
 void InputStep(void) {
-    if (s_win_state != Win::Closed && s_win_state != Win::Open) {
+    if (s_win_state != Win::Closed && s_win_state != Win::Open && s_win_state != Win::Closing) {
         s_touchPrev = Touch::IsDown();              // 読み込み・出入りのアニメの間は受け付けない
         s_press = Hit::None;
         return;
@@ -1127,6 +1229,7 @@ void ReleaseAll(void) {
     s_chipEditor = s_chipNext = 0;                 // 同じ番地で開き直したエディターも新しい使用歴として数え直す
     s_pend.active = false;
     s_canChangeBackground = false;
+    std::memset(s_position, 0, sizeof(s_position));
 }
 
 u32 s_closedWait;
@@ -1258,15 +1361,16 @@ void FrameStep(void) {
         }
         if (!s_leaving)
             InputStep();
-        WindowStep();
         if (s_stage != Stage::Live)
             return;
         if (EditorNeutral(indoor, EditorCalc(indoor)))
             ChipTrackEditor(EditorPtr(indoor));     // 開いて最初の Neutral（ゲームの CreateChips の直後・ゴミ箱で Out する前）で未使用の枠を数える
         ChipStep(indoor);
+        WindowStep();                              // チップ確保を先に完了。窓の構築途中へ割り込ませない
         FreeIconSlots(false);
         if (s_win_state == Win::Open) {
-            if (DecorSlider::Step(s_slider)) {          // 滑りが終わってページが決まった
+            DecorSlider::Step(s_slider);
+            {                                          // 自由送り中も現在位置から小分類/ページを決める
                 const s32 before = s_kind;
                 ShowKindSelection();
                 if (before != s_kind)
@@ -1283,15 +1387,10 @@ void FrameStep(void) {
             return;
         }
         DrawAll();
-        // 閉じ終わった窓の資源を返す（描くのをやめてから数フレーム後）
-        if (s_win_state == Win::Closed && s_arc.made) {
-            if (++s_closedWait >= kTeardownWaitFrames) {
-                FreeWindow();
-                s_closedWait = 0;
-            }
-        } else {
+        // 同じ窓は模様替え中に再利用する。追加チップの小確保を跨いで大きい窓を取り直さない。
+        // main切替時はWindowStepのGPU待ち後、退場時はReleaseAllで返す。
+        if (s_win_state != Win::Loading)
             s_closedWait = 0;
-        }
         return;
     }
     case Stage::Teardown:
@@ -1353,17 +1452,22 @@ void ServiceFiles(void) {
 
 void Wire(void) {
     s_index = GuiMenu::FindItem(kDecorCatalog);
+    s_tentIndex = GuiMenu::FindItem(kDecorCatalogTent);
 }
 
 bool Tick(int index, unsigned short) {
+    if (index == s_tentIndex && index >= 0) {
+        s_allowTent = true;
+        return true;
+    }
     if (index != s_index || index < 0)
         return false;
-    if (s_stage == Stage::Live && s_win_state != Win::Closed) {
+    if (s_stage == Stage::Live && (s_win_state == Win::Loading || s_win_state == Win::Opening || s_win_state == Win::Open)) {
         GuiMenu::BlockGameAll();                    // 窓が出ている間はゲームへの入力を止める（HhdScreen と同じ。タッチは別に止める）
         GuiMenu::BlockGameTouch();
     }
     // ゲームのFrameStepより早く検出できた場合にも遮断する。外へずらしても指を離すまで保持。
-    if (s_stage == Stage::Live && !s_leaving && s_win_state == Win::Closed && Touch::IsDown()) {
+    if (s_stage == Stage::Live && !s_leaving && (s_win_state == Win::Closed || s_win_state == Win::Closing) && Touch::IsDown()) {
         const UIntVector p = Touch::GetPosition();
         if (s_topTouchCaptured || (!s_touchPrev && (InRect(CL::kTopTabs[0].rect, (float)p.x, (float)p.y)
                                                   || InRect(CL::kTopTabs[1].rect, (float)p.x, (float)p.y))))
@@ -1411,6 +1515,10 @@ bool Tick(int index, unsigned short) {
 }
 
 bool Disable(int index) {
+    if (index == s_tentIndex && index >= 0) {
+        s_allowTent = false;
+        return true;
+    }
     if (index != s_index || index < 0)
         return false;
     s_enabled = false;                              // ゲームのスレッドが退場させて片付ける

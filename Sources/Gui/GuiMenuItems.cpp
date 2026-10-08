@@ -263,6 +263,9 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kDecorCatalog,
                         u8"家の模様替えの上にハッピーホームデザイナーの家具リスト・壁紙/床紙リストのタブを出します。品を選ぶと家具は空いている所に置き、壁紙・床紙は貼り替えます。"
                         u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
+                AddItem(ITEM_CHECKBOX, kDecorCatalogTent,
+                        u8"リストで、自分の家の見た目をテントに改造している場合も、かべ・ゆかをはりかえます。ふつうのテントにも使える特別な設定です。"
+                        u8"初めは無効です。通信中は使えません。家の見た目は変更しません。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

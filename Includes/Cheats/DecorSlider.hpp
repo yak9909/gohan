@@ -29,9 +29,13 @@ struct Slider {
     // 指の記録（DragTracker）
     bool touching;
     float lastX, lastY, sumAbsDx, tSpeed, dirX;
+    bool freeScroll, coasting;                 // 利用者指定の差: ページへ吸着しない横送り
+    float velocity, touchStartX;
 };
 
 void Setup(Slider &s, float width, s32 pages, s32 page);       // page を中央にして Wait
+void SetupFree(Slider &s, float width, s32 pages, float position); // 自由送り。位置は全体の負の画素数
+void RestorePosition(Slider &s, float position);              // 範囲へ収め、3枠と中央ページも復元
 void TouchStart(Slider &s, float x, float y);                  // 触れた瞬間（DragArea_ResetTracker）
 // 触れている間の毎フレーム。ドラッグになったら真（Wait のときだけ始まる）。x, y = 下画面の画素
 bool TouchMove(Slider &s, float x, float y);
