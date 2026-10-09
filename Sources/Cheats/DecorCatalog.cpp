@@ -50,6 +50,7 @@ namespace L = DecorLayout;
 namespace CL = DecorCatalogLayout;
 namespace CT = DecorCatalogTable;
 using Cheats::kDecorCatalog;
+const char *const kNoticeTitle = u8"模様替えの品リスト"; // メニュー識別子は変えず、通知は既存字形だけで書く。
 
 inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 inline bool IsHeapPointer(u32 v) { return v >= 0x30000000u && v < 0x40000000u && (v & 3u) == 0u; }
@@ -232,24 +233,25 @@ const u32 kTeardownWaitFrames = 3;
 // コマンドの器（未実測。HhdScreen の地は 784 B 実測。大きめに取り、実機で測って詰める）
 const u32 kCmdTop = 0x2000, kCmdWindow = 0x8000, kCmdGrid = 0x18000, kCmdName = 0x2000;
 const u32 kMaxTopArc = 0x40000, kMaxCatalogArc = 0x100000;
-// IDA-gpt-6.1-sol-F???: 観測73→112チップの窓後モデル173,852 B。新チップは窓返却後に作る。
+// IDA-gpt-6.1-sol-F011: 観測73→112チップの窓後モデル173,852 B。新チップは窓返却後に作る。
 // 開窓中の家具/チップ費用は重ねて積まない。アイコン枠は余裕のあるgraphicHeapを優先する。
 const u32 kHeapTotalReserve = 0x20000;          // 総空き128 KiB。開窓中の遅延アニメは確保後にも再検査。
 const u32 kHeapContiguousReserve = 0x20000;     // 連続128 KiB。単品Setup実測全量とUIの小さな器より大きく取る。
 volatile u32 s_heapBaseline;                   // 初回の模様替え空き。診断のみ、基準の計算には使わない。
 volatile u32 s_heapReserve = kHeapTotalReserve;
 volatile u32 s_heapContiguousReserve = kHeapContiguousReserve;
-volatile u32 s_heapFailFree, s_heapFailMax, s_heapFailRequiredFree, s_heapFailRequiredMax, s_heapFailMask, s_heapFailChips;
+volatile u32 s_heapFailFree, s_heapFailMax, s_heapFailRequiredFree, s_heapFailRequiredMax, s_heapFailMask, s_heapFailChips, s_heapFailKind;
 u32 s_chipEditor, s_chipNext;                   // チップの確保履歴。Out後も保持するので使用中の数と区別する。
 u32 HeapReserve(void) { return s_heapReserve; }
 bool HeapRoom(void) { return L::HeapFreeBytes() >= HeapReserve() && L::HeapMaxAllocBytes(0x80) >= s_heapContiguousReserve; }
-void RecordHeapFailure(u32 freeBytes, u32 maxBytes, u32 requiredFree, u32 requiredMax) {
+void RecordHeapFailure(u32 freeBytes, u32 maxBytes, u32 requiredFree, u32 requiredMax, bool graphics = false) {
     s_heapFailFree = freeBytes;
     s_heapFailMax = maxBytes;
     s_heapFailRequiredFree = requiredFree;
     s_heapFailRequiredMax = requiredMax;
     s_heapFailMask = (freeBytes < requiredFree ? 1u : 0u) | (maxBytes < requiredMax ? 2u : 0u);
     s_heapFailChips = s_chipNext <= 112 ? s_chipNext : 112;
+    s_heapFailKind = graphics ? 1u : 0u;        // 0 読み込み / 1 描画命令用。通知も原因を分ける。
 }
 
 // アニメの最後のコマ。frames は ACNL の数え方（HHD の frameSize + 1。tools/hhd/clan_pack.py の ★）で、AnimStep 0x568964 は frames − 1 で止まる
@@ -268,7 +270,7 @@ volatile u32 s_frameSeq, s_frameCall, s_tickSeq; // 停止時の診断。ゲー�
 volatile u32 s_lastPlaceActor, s_placeReject;   // 拒否: 1 pending/状態、2 未使用chip、3 actor/配置、4 ヒープ余白
 volatile u32 s_heapChipLog[4];                 // Setupの前後: 合計空き/0x80整列最大空き
 volatile u32 s_heapPlaceLog[4];                // PlaceFurniture前後: 合計空き/最大空き。非同期生成のピークは含めない。
-struct HeapSample { u32 seq, frame, ticksLo, win, freeBytes, maxBytes, chipNext, call; };
+struct HeapSample { u32 seq, frame, ticksLo, win, freeBytes, maxBytes, chipNext, call, graphicHeap, graphicFree, graphicMax; };
 volatile HeapSample s_heapRing[16];
 volatile u32 s_heapRingSeq;
 u64 s_heapSampleTick;
@@ -285,6 +287,13 @@ void RequestCatalogFile(bool want) { __atomic_store_n(&s_wantCatFile, want, __AT
 //   [0] 組む前 [1] アイコン＋arc の後 [2] レイアウト 3 つの後 [3] アニメの後 [4] 失敗して返した後
 volatile u32 s_heapLog[5];
 volatile u32 s_heapMaxLog[5];                   // 同時点の0x80整列込み最大連続空き
+volatile u32 s_graphicHeapLog[5], s_graphicHeapFreeLog[5], s_graphicHeapMaxLog[5]; // 前/arc後/構築後/完成/返却後
+void RecordGraphicsHeap(u32 index) {
+    u32 freeBytes, maxBytes;
+    s_graphicHeapLog[index] = reinterpret_cast<u32>(L::GraphicsHeapStatus(freeBytes, maxBytes));
+    s_graphicHeapFreeLog[index] = freeBytes;
+    s_graphicHeapMaxLog[index] = maxBytes;
+}
 volatile u32 s_heapWindowReady;                // Bind / 最初のボタンを含めた起動完了時の残量
 bool s_canChangeBackground;                    // 模様替えを開いた時点のゲーム判定（家の外観から推測しない）
 volatile u8 s_openFail;                         // 窓を組めなかった: 1 レイアウト / 2 アイコンの枠 / 3 ゲーム用の残量
@@ -739,6 +748,7 @@ void FreeWindow(void) {
     s_reclaimWindow = false;
     s_press = Hit::None;
     s_pressCell = -1;
+    RecordGraphicsHeap(4);                     // アイコンは遅延返却前。返した時に同じ欄を更新する。
 }
 
 // 外した枠を返す（メニューのスレッドが読み込みの途中でなくなってから。ゲームのスレッド）
@@ -747,6 +757,9 @@ void FreeIconSlots(bool force) {
         L::HeapFreeFrom(s_slotsHeapToFree, reinterpret_cast<void *>(s_slotsToFree));
         s_slotsToFree = 0;
         s_slotsHeapToFree = nullptr;
+        s_heapLog[4] = L::HeapFreeBytes();
+        s_heapMaxLog[4] = L::HeapMaxAllocBytes(0x80);
+        RecordGraphicsHeap(4);
     }
 }
 
@@ -784,6 +797,8 @@ bool OpenWindow(void) {
     s_openStep = 2;
     s_heapLog[0] = L::HeapFreeBytes();
     s_heapMaxLog[0] = L::HeapMaxAllocBytes(0x80);
+    RecordGraphicsHeap(0);
+    s_heapFailChips = s_chipNext <= 112 ? s_chipNext : 112;
     s_heapWindowReady = 0;
     // 閉窓で返す大きな塊を末尾側へ集める。ゲーム側の小さな器の確保先は変えない。
     const u32 iconBytes = DecorIcons::kSlots * DecorIcons::kIconBytes;
@@ -816,11 +831,13 @@ bool OpenWindow(void) {
         return false;
     s_heapLog[1] = L::HeapFreeBytes();
     s_heapMaxLog[1] = L::HeapMaxAllocBytes(0x80);
+    RecordGraphicsHeap(1);
     if (!L::Build(s_win, s_arc, s_cat->layout, kCmdWindow, kPriWindow) || !L::Build(s_grid, s_arc, CL::kGridLayout, kCmdGrid, kPriWindow)
         || !L::Build(s_name, s_arc, CL::kNameLayout, kCmdName, kPriWindow))
         return false;
     s_heapLog[2] = L::HeapFreeBytes();
     s_heapMaxLog[2] = L::HeapMaxAllocBytes(0x80);
+    RecordGraphicsHeap(2);
     if (!LoadRef(s_winIn, s_arc, s_cat->in) || !LoadRef(s_winOut, s_arc, s_cat->out) || !LoadRef(s_winLoop, s_arc, s_cat->loop)
         || !LoadRef(s_winKind, s_arc, s_cat->kind) || !LoadRef(s_gridIn, s_arc, CL::kGridIn) || !LoadRef(s_gridOut, s_arc, CL::kGridOut)
         || !LoadRef(s_gridKind, s_arc, CL::kGridKind) || !LoadRef(s_nameIn, s_arc, CL::kNameIn) || !LoadRef(s_nameOut, s_arc, CL::kNameOut))
@@ -869,6 +886,12 @@ bool OpenWindow(void) {
     }
     s_heapWindowReady = L::HeapFreeBytes();
     const u32 readyMax = L::HeapMaxAllocBytes(0x80);
+    RecordGraphicsHeap(3);
+    if (s_iconHeap != L::HeapOwner() && !L::GraphicsHeapRoom(s_iconHeap)) {
+        s_openStep = 3;                         // 命令器を組んだ後に描画余白を割ったら窓を返す。
+        RecordHeapFailure(s_graphicHeapFreeLog[3], s_graphicHeapMaxLog[3], L::kGraphicsTotalReserve, L::kGraphicsContiguousReserve, true);
+        return false;
+    }
     if (s_heapWindowReady < HeapReserve() || readyMax < s_heapContiguousReserve) {
         s_openStep = 3;                             // 組めてもゲーム用の余白を食い切る窓は出さず、全て返す
         RecordHeapFailure(s_heapWindowReady, readyMax, HeapReserve(), s_heapContiguousReserve);
@@ -1562,6 +1585,10 @@ void SampleHeap(void) {
     sample.maxBytes = L::HeapMaxAllocBytes(0x80);
     sample.chipNext = s_chipNext;
     sample.call = s_frameCall;
+    u32 graphicFree, graphicMax;
+    sample.graphicHeap = reinterpret_cast<u32>(L::GraphicsHeapStatus(graphicFree, graphicMax));
+    sample.graphicFree = graphicFree;
+    sample.graphicMax = graphicMax;
     sample.seq = s_heapRingSeq + 1;
     ++s_heapRingSeq;
 }
@@ -1735,31 +1762,31 @@ bool Tick(int index, unsigned short) {
     ServiceFiles();
     if (const u8 why = s_catFailReason) {            // 窓が開かなかった理由を知らせる（2026-10-07 の実機で何も出ずに開かなかった）
         s_catFailReason = 0;
-        GuiNotification::NotifyRed(kDecorCatalog, why == 1 ? u8"SD の gohan/common/ に家具・壁床の arc がありません。"
-                                                            : u8"家具・壁床の arc を読めません（大きさ・メモリ）。");
+        GuiNotification::NotifyRed(kNoticeTitle, why == 1 ? u8"SD の gohan/common/ に品・かべ・ゆかの arc がありません。"
+                                                        : u8"品・かべ・ゆかの arc を読めません（大きさ・メモリ）。");
     }
     if (const u8 why = s_openFail) {
         s_openFail = 0;
         char msg[160];
         if (why == 2)
-            std::snprintf(msg, sizeof(msg), "ゲームのメモリが足りず窓を開けません（アイコン %lu B / 連続空き %lu B）。", (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes),
-                          (unsigned long)s_heapMaxLog[0]);
+            std::snprintf(msg, sizeof(msg), u8"品を出して不足\nチップ%lu\nB 残/要\n続%lu/%lu",
+                          (unsigned long)s_heapFailChips, (unsigned long)s_heapMaxLog[0], (unsigned long)(DecorIcons::kSlots * DecorIcons::kIconBytes));
         else if (why == 3)
-            // 通知の本文欄は96 B。チップ履歴112と32bit最大値4つでも94 B以内。
-            std::snprintf(msg, sizeof(msg), "家具で不足\nチップ%lu\nB:残り/必要\n計%lu/%lu\n続%lu/%lu",
-                          (unsigned long)s_heapFailChips,
+            // 本文欄は96 B。最大値でも両通知94 B。チップはOut済みを含む履歴。
+            std::snprintf(msg, sizeof(msg), u8"%s\nチップ%lu\nB 残/要\n計%lu/%lu\n続%lu/%lu",
+                          s_heapFailKind == 1 ? u8"描画の空き不足" : u8"品を出して不足", (unsigned long)s_heapFailChips,
                           (unsigned long)s_heapFailFree, (unsigned long)s_heapFailRequiredFree,
                           (unsigned long)s_heapFailMax, (unsigned long)s_heapFailRequiredMax);
         else
             std::snprintf(msg, sizeof(msg), "窓を組めません（空き %lu B）。", (unsigned long)s_heapLog[0]);
-        GuiNotification::NotifyRed(kDecorCatalog, msg);
+        GuiNotification::NotifyRed(kNoticeTitle, msg);
     }
     DecorIcons::Service(6);
     if (Enabled())
         return true;
     if (!LoadTop() || !DecorIcons::Open()) {
         if (!s_toldFail)
-            GuiNotification::NotifyRed(kDecorCatalog, u8"SD の gohan/common/ に hhd_catalog_top.arc・hhd_catalog.arc・hhd_catalog_wall.arc・hhd_icons.bin が要ります。");
+            GuiNotification::NotifyRed(kNoticeTitle, u8"SD の gohan/common/ に hhd_catalog_top.arc・hhd_catalog.arc・hhd_catalog_wall.arc・hhd_icons.bin が要ります。");
         s_toldFail = true;
         return true;
     }
@@ -1768,7 +1795,7 @@ bool Tick(int index, unsigned short) {
         s_hooked = GridCursor::InstallFrameHook() && GridCursor::AddExtraFrameStep(FrameStep);
     if (!s_hooked) {
         if (!s_toldFail)
-            GuiNotification::NotifyRed(kDecorCatalog, u8"フレームの相乗りを入れられません。");
+            GuiNotification::NotifyRed(kNoticeTitle, u8"フレームを共有できません。");
         s_toldFail = true;
         return true;
     }
