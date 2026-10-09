@@ -3,9 +3,11 @@
 #include "HhdRoomCamera.hpp"
 #include "HhdRoomCameraControl.hpp"
 #include "Cheats.hpp"
+#include "DecorCatalog.hpp"
 #include "GuiMenu.hpp"
 
 #include <cstring>
+#include <3ds.h>
 
 // CTRPF's existing MITM trampoline accessor. OriginalFunction<float> cannot
 // compile in this CTRPF version because its null fallback casts a pointer to
@@ -32,6 +34,7 @@ u32 s_camera, s_scene, s_seenEpoch;
 u8 s_room;
 bool s_live, s_applied, s_inputSeen;
 Control::State s_control;
+Control::PanState s_pan;
 
 u32 R32(u32 address) { return *reinterpret_cast<const volatile u32 *>(address); }
 u8 R8(u32 address) { return *reinterpret_cast<const volatile u8 *>(address); }
@@ -45,6 +48,7 @@ void StopVelocity(void) {
 }
 void Clear(void) {
     StopVelocity();
+    s_pan = {0.0f, 0.0f};
     s_live = s_applied = false;
 }
 bool InHouse(u32 camera) {
@@ -77,10 +81,7 @@ bool InputAllowed(u32 camera) {
     const float *params = reinterpret_cast<ParamsFn>(0x006E158C)(interpolation);
     return params[1] * 0.5f <= *reinterpret_cast<const float *>(camera + 340);
 }
-u32 Held(void) {
-    typedef bool (*BlockedFn)(void);
-    if (reinterpret_cast<BlockedFn>(0x005CDAE4)())
-        return 0;
+u32 ControllerPtr(void) {
     const u32 manager = R32(0x0096F2EC);
     if (!HeapPointer(manager) || !Process::CheckAddress(manager + 216, MEMPERM_READ)
         || R32(manager + 208) == 0)
@@ -90,7 +91,14 @@ u32 Held(void) {
         return 0;
     const u32 controller = R32(array);
     return HeapPointer(controller) && Process::CheckAddress(controller + 272, MEMPERM_READ)
-        ? R32(controller + 272) : 0;
+        ? controller : 0;
+}
+u32 Held(void) {
+    typedef bool (*BlockedFn)(void);
+    if (reinterpret_cast<BlockedFn>(0x005CDAE4)())
+        return 0;
+    const u32 controller = ControllerPtr();
+    return controller ? R32(controller + 272) : 0;
 }
 void EnsureContext(u32 camera, u32 request) {
     if (SameContext(camera) && s_seenEpoch == request)
@@ -100,6 +108,7 @@ void EnsureContext(u32 camera, u32 request) {
     s_scene = R32(0x00948E70);
     s_seenEpoch = request;
     s_control = {0.0f, 0.0f, 1.0f, *reinterpret_cast<const u16 *>(camera + 30)};
+    s_pan = {0.0f, 0.0f};
     s_live = true;
     s_applied = s_inputSeen = false;
 }
@@ -130,6 +139,19 @@ __attribute__((noinline)) u32 InputHook(u32 camera) {
     }
     EnsureContext(camera, request);
     Control::Step(s_control, Held());
+    // Only decoration uses the circle pad for camera movement. Ordinary room
+    // movement remains native; list/menu/native input gates also stop panning.
+    typedef bool (*BlockedFn)(void);
+    if (R8(camera + 242) == 25 && DecorCatalog::IsEditorOpen() && !DecorCatalog::IsListOpen()
+        && ControllerPtr() != 0
+        && !reinterpret_cast<BlockedFn>(0x005CDAE4)()) {
+        circlePosition pad = {0, 0};
+        hidCircleRead(&pad);
+        typedef float (*AngleFn)(u32);
+        const float sine = reinterpret_cast<AngleFn>(0x0047D2C4)(s_control.yaw);
+        const float cosine = reinterpret_cast<AngleFn>(0x0047D28C)(s_control.yaw);
+        Control::Pan(s_pan, pad.dx / 156.0f, pad.dy / 156.0f, sine, cosine);
+    }
     s_inputSeen = true;
     return 0;
 }
@@ -169,10 +191,15 @@ __attribute__((noinline)) float ApplyTargetHook(u32 camera, float incomingFracti
     typedef float (*OriginalApplyFn)(u32, float);
     const float fraction = reinterpret_cast<OriginalApplyFn>(__ctrpfHookCtx__GetCallerCode(&context))(camera, incomingFraction);
     if (apply) {
-        // Native base xyz at +4..+12 remains untouched. The continuous controller
-        // already smooths the profile; a second discrete transition would lag it.
+        // Native ApplyTarget reconstructs the base at +4..+12 each frame before
+        // adding the private decoration pan. The controller smooths the profile;
+        // a second discrete transition would lag it.
         std::memcpy(reinterpret_cast<void *>(camera + 16), reinterpret_cast<const void *>(camera + 288), 12);
         std::memcpy(reinterpret_cast<void *>(camera + 28), reinterpret_cast<const void *>(camera + 300), 8);
+        if (R8(camera + 242) == 25) {
+            *reinterpret_cast<float *>(camera + 4) += s_pan.x;
+            *reinterpret_cast<float *>(camera + 12) += s_pan.z;
+        }
     }
     return fraction;
 }
@@ -187,6 +214,7 @@ bool Install(void) {
         {kInput, kInputOriginal}, {kApplyTarget, kApplyOriginal},
         {0x001A3160, 0xE92D4070}, {0x001A4DB8, 0xE92D4070},
         {0x006E158C, 0xE59F1004}, {0x005CDAE4, 0xE59F0024},
+        {0x0047D2C4, 0xE20010FF}, {0x0047D28C, 0xE20010FF},
     };
     for (const auto &entry : expected)
         if (R32(entry.address) != entry.word)

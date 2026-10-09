@@ -1,3 +1,12 @@
+# 2026-10-10 リスト操作/フェード/音と模様替えカメラpan / IDA-gpt-6.1-sol-F015、T002
+
+- 基点15d7aeb1（hhd_room_camera1、3gx SHA fcd86402651b9fe2d7ed3f59d468591f4a3d6debdaab46bd27eabd6be512f4fd）は利用者実機で問題なし。追加はwork/catalog-camera-controlsへ分離、mainへ未反映。実機SHA再測定/個別操作一覧は未報告。
+- 最新要望: リスト中に開くタブ/InteriorEditorをフェード、Xで最後のリスト、B既存維持、家具/壁家具カテゴリ行だけBOOK_ICON_SELECTED。スライドパッドpanは追加回答により模様替えUI中だけ、yaw基準X/ZでY保持。通常のプレイヤー移動を保つ。
+- 実装: CatalogBackdropはnative draw入口MITMで対象treeのglobalAlpha+181だけを退避/乗算/復元、localAlpha/親/選択を保持。scene/editor owner変化は除外。panはmode25/EditorLive/controller/list/menu/native禁止を確認し原sin/cosのS0 ABIを使う。新SD資源なし。
+- ビルド前: 原ARM Eye対実C++pan63条件、F014の原HHD対C++493frame、原入口wordと必須しずえソース検査PASS。次: 指定make→linked全分岐/リテラル/ABI/領域/hashとnative fade/操作/pan確認→作業枝commit/push。新追加は実機未確認。静的根拠は解析側work/evidence/catalog_camera_controls。
+- 指定build終了0。linked原ARM Eye対pan63条件、入力遮断/通常mode復帰/OFF13条件、fade24条件でpane全184Bを復元（深さ65/容量4097のfallback含む）、X3種/長押し/menu/B/上段・カテゴリ音7条件PASS。既存HHD493frame/20条件、170関数の分岐/PC相対/境界/ABI/配置/hash、必須しずえ/new字形PASS。実FrameStepのfade6frame往復と実EditorLive/CRO8条件（catalog無効時も有効）PASS。InputStepはrelease inlineされるためFrameStepから実行、既知OS/render/resourceサービスのみ明示模擬。実機確認の代替としない。
+- 前回hhd_room_camera1の確認は利用者報告として記録済み。今回の追加のみ未確認なので作業枝work/catalog-camera-controlsへ保存し、mainへ反映しない。SDはdecor_catalog13資源を引き続き使用。
+
 # 2026-10-09 HHD式室内カメラ / IDA-gpt-6.1-sol-F014、T001
 
 - 最新依頼: ACNL家の十字キー段階操作をHHDの細かな回転/十字キーだけの奥行きへ置換。両作品の調査→設計保存→実装を実施。壁かけ家具の実機確認は利用者指定により実装後の同版で行う。

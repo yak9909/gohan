@@ -1,4 +1,5 @@
-// DecorCatalog — 家の模様替えに HHD の家具・壁かけ家具・壁紙/床紙リストを足す（T022。壁かけ追加は未実機）
+// DecorCatalog — 家の模様替えに HHD の家具・壁かけ家具・壁紙/床紙リストを足す（T022）。
+// hhd_room_camera1まで利用者実機PASS。F015の操作/フェード追加は未実機。
 //
 // 根拠（解析リポジトリ project_v2）:
 //   HHD の動き IDA-gpt-6.1-sol-HHD-F001（格子 Tum15・タブ・吹き出し・音）、HHD-F016 / F018 / F019（置く順・上段タブ・品の並び）。
@@ -18,6 +19,7 @@
 // スレッド: SD を読むのと入力を止めるのはメニューのスレッド（Tick）。ゲームの関数は FrameStep（ゲームのスレッド）だけ。
 
 #include "DecorCatalog.hpp"
+#include "CatalogBackdrop.hpp"
 #include "DecorCatalogLayout.h"
 #include "DecorCatalogTable.h"
 #include "DecorCatalogCro.h"
@@ -254,6 +256,7 @@ const u32 kSndCellTouch = 0x01000399;       // SE_SYS_BTN_ACTIVE_S
 const u32 kSndCellDecide = 0x0100038F;      // SE_SYS_DECIDE_L
 const u32 kSndTabTouch = 0x0100046B;        // SE_SYS_CTLG_TOP_BTN_ACTIVE
 const u32 kSndTabDecide = 0x0100046C;       // SE_SYS_CTLG_TOP_BTN_SELECTED
+const u32 kSndKindDecide = 0x01000413;      // SE_SYS_BOOK_ICON_SELECTED (GROUP_STATIC)
 const u32 kSndOpen = 0x010003C2;            // SE_SYS_WIN_SELECT_OPEN
 const u32 kSndPageInc = 0x0100039C, kSndPageDec = 0x0100039D;   // SE_SYS_PAGE_INC / DEC
 const u32 kSndSlide = 0x0100046A;           // SE_SYS_CTLG_PAGE_CHANGE（横スライド・小分類の境目）
@@ -497,6 +500,8 @@ u32 s_tabCount, s_kindSlots;
 
 Win s_win_state = Win::Closed;
 u32 s_main;                                     // 1 = 家具、2 = 壁にかける、4 = 壁紙・床紙
+u32 s_lastMain = 1;                             // Last successfully opened list; survives editor exit.
+u32 s_backdropFade = 6;                         // 0 hidden .. 6 fully visible.
 const CL::Catalog *s_cat;
 u32 s_tab;                                      // 窓の上段タブ（CT の通し番号の中の何番目か）
 s32 s_ctTab;                                    // CT::kTabs の番号
@@ -1296,6 +1301,8 @@ void DecisionStep(void) {
 // ---- 入力（ゲームのスレッド。CTRPF の Touch / Controller は HID を直接読む）----
 Hit HitTest(float x, float y, u32 &idx) {
     if (s_win_state != Win::Open) {
+        if (s_win_state != Win::Closed || s_backdropFade == 0)
+            return Hit::None;
         for (u32 i = 0; i < CL::kTopCount; ++i)
             if (InRect(CL::kTopTabs[i].rect, x, y)) {
                 idx = i;
@@ -1368,7 +1375,7 @@ void OnDecide(Hit h, u32 idx) {
         BtnDecide(s_tabBtn[idx], s_arc);
         return;
     case Hit::Kind: {
-        PlaySound(kSndTabDecide);
+        PlaySound(kSndKindDecide);
         const s32 page = KindFirstPage((s32)idx);
         DecorSlider::SetupFree(s_slider, 288.0f, (s32)TabPages(s_ctTab), -288.0f * (float)page);
         for (u32 f = 0; f < 3; ++f)
@@ -1396,6 +1403,21 @@ void OnDecide(Hit h, u32 idx) {
 u32 s_keysPrev;
 
 void InputStep(void) {
+    const u32 keys = Controller::GetKeysDown();
+    const u32 pressed = keys & ~s_keysPrev;
+    s_keysPrev = keys;
+    if (GuiMenu::IsVisible()) {
+        s_touchPrev = Touch::IsDown();
+        s_press = Hit::None;
+        return;
+    }
+    if (s_win_state == Win::Closed && (pressed & (u32)Key::X)) {
+        for (u32 i = 0; i < CL::kTopCount; ++i)
+            if (CL::kTopMain[i] == s_lastMain) {
+                OnDecide(Hit::TopTab, i);
+                break;
+            }
+    }
     if (s_win_state != Win::Closed && s_win_state != Win::Open && s_win_state != Win::Closing) {
         s_touchPrev = Touch::IsDown();              // 読み込み・出入りのアニメの間は受け付けない
         s_press = Hit::None;
@@ -1470,13 +1492,9 @@ void InputStep(void) {
     if (!down)
         s_topTouchCaptured = false;
     if (s_win_state != Win::Open) {
-        s_keysPrev = Controller::GetKeysDown();
         return;
     }
     // L / R / B（押されているかを 1 回読み、押した瞬間は自前で作る。IsKeyPressed は取りこぼし・二重が出る: GuiMenu F-321）
-    const u32 keys = Controller::GetKeysDown();
-    const u32 pressed = keys & ~s_keysPrev;
-    s_keysPrev = keys;
     if ((pressed & (u32)Key::L) && DecorSlider::RequestStep(s_slider, true))
         PlaySound(kSndPageDec);
     if ((pressed & (u32)Key::R) && DecorSlider::RequestStep(s_slider, false))
@@ -1515,6 +1533,8 @@ void FreeTop(void) {
 }
 
 void ReleaseAll(void) {
+    CatalogBackdrop::Reset();
+    s_backdropFade = 6;
     FreeWindow();
     FreeTop();
     s_win_state = Win::Closed;
@@ -1583,6 +1603,7 @@ void WindowStep(void) {
         RequestCatalogFile(false);
         __atomic_store_n(&s_catFileState, (u32)FileUploaded, __ATOMIC_RELEASE);
         s_win_state = Win::Opening;
+        s_lastMain = s_main;
         return;
     case Win::Opening:
         if (L::Done(s_winIn) && L::Done(s_gridIn))
@@ -1690,6 +1711,8 @@ void FrameStep(void) {
         s_leaving = false;
         s_touchPrev = Touch::IsDown();              // 開いた瞬間に押していた指は使わない
         s_topTouchCaptured = false;                 // 前のエディター表示の捕捉を次の指へ持ち越さない
+        s_keysPrev = Controller::GetKeysDown();
+        s_backdropFade = 6;
         s_stage = Stage::Live;
         [[fallthrough]];
     }
@@ -1723,7 +1746,7 @@ void FrameStep(void) {
                 const s32 before = s_kind;
                 ShowKindSelection();
                 if (before != s_kind)
-                    PlaySound(kSndSlide);
+                    PlaySound(s_main == 4 ? kSndSlide : kSndKindDecide);
                 SetPageText();
             }
         }
@@ -1734,6 +1757,19 @@ void FrameStep(void) {
             UpdateGrid();
         s_frameCall = 6;
         StepAnims();
+        if (s_leaving) {
+            CatalogBackdrop::Reset();
+            s_backdropFade = 6;
+        } else {
+            if (s_win_state != Win::Closed) {
+                if (s_backdropFade) --s_backdropFade;
+            } else if (s_backdropFade < 6) {
+                ++s_backdropFade;
+            }
+            CatalogBackdrop::Set(EditorPtr(indoor), reinterpret_cast<u32>(s_top.obj),
+                static_cast<u8>(s_backdropFade * 255u / 6u),
+                indoor ? R32(indoor + DecorTrashTable::kIndoorEditorPtrLiteral) : 0);
+        }
         if (s_leaving && L::Done(s_topOut) && (s_win_state == Win::Closed || s_win_state == Win::Loading)) {
             s_stage = Stage::Teardown;                  // このフレームから描かない。壊すのは数フレーム後
             s_wait = 0;
@@ -1827,7 +1863,8 @@ bool Tick(int index, unsigned short) {
     if (index != s_index || index < 0)
         return false;
     ++s_tickSeq;
-    if (s_stage == Stage::Live && (s_win_state == Win::Loading || s_win_state == Win::Opening || s_win_state == Win::Open)) {
+    if (s_stage == Stage::Live && (s_win_state != Win::Closed
+        || (!s_leaving && !GuiMenu::IsVisible() && (Controller::GetKeysDown() & (u32)Key::X)))) {
         GuiMenu::BlockGameAll();                    // 窓が出ている間はゲームへの入力を止める（HhdScreen と同じ。タッチは別に止める）
         GuiMenu::BlockGameTouch();
     }
@@ -1873,7 +1910,7 @@ bool Tick(int index, unsigned short) {
     }
     s_namesLoaded = ItemNames::LoadNormal();
     if (!s_hooked)
-        s_hooked = GridCursor::InstallFrameHook() && GridCursor::AddExtraFrameStep(FrameStep);
+        s_hooked = CatalogBackdrop::Install() && GridCursor::InstallFrameHook() && GridCursor::AddExtraFrameStep(FrameStep);
     if (!s_hooked) {
         if (!s_toldFail)
             GuiNotification::NotifyRed(kNoticeTitle, u8"フレームを共有できません。");
@@ -1891,5 +1928,8 @@ bool Disable(int index) {
     SetEnabled(false);                              // ゲームのスレッドが退場させて片付ける
     return true;
 }
+
+bool IsListOpen(void) { return s_stage == Stage::Live && s_win_state != Win::Closed; }
+bool IsEditorOpen(void) { const u32 indoor = IndoorBase(); return EditorLive(indoor, EditorCalc(indoor)); }
 
 }  // namespace DecorCatalog

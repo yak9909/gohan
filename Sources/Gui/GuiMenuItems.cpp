@@ -265,7 +265,7 @@ namespace CTRPluginFramework
                         u8"かべのかぐ・かべ・ゆかは部屋の中で使えるかで決まります。見た目がテントでも使える部屋なら使えます。通信中は特別なはりかえを使えません。"
                         u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
                 AddItem(ITEM_CHECKBOX, kHhdRoomCamera,
-                        u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中も使えます。");
+                        u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中はスライドパッドで向きに合わせてカメラを動かせます。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

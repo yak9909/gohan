@@ -1485,15 +1485,24 @@ devkitARM は `-mfloat-abi=hard` なので `float` と宣言すれば s0 に載�
 - **入れる前に空きを確かめる。** 置き場が全 0 でない、フック先が期待の NOP でない、のどちらでも
   **何も書かずに断る**（通知に理由を出す）。
 
-## HHD式室内カメラ（2026-10-09、実機未確認）
+## HHD式室内カメラ（2026-10-10、基本操作は利用者実機確認済み）
 
 解析ID `IDA-gpt-6.1-sol-F014`、作業枝 `work/hhd-room-camera`。日本語版無印ACNL＋更新が対象。`root/ゲーム/家のカメラをHHD式に`をONにすると、プレイヤー/NPCの家の通常操作と模様替え中に使う。
 
 - 十字左右を押している間、HHDと同じ加減速で連続回転する。
 - 十字上下を押している間、HHDの通常室内カメラの距離と角度を連続変更する。初期位置もHHDの通常位置。
+- 追加F015（新追加は実機未確認）: 模様替えUI中だけスライドパッドでカメラの水平X/Z位置を動かす。上は現在のカメラ方向へ、右はその方向に対する右へ。通常の室内ではプレイヤー移動を保持する。リスト/メニュー/演出中は移動を止め、OFF/部屋変更で移動量を初期化する。Yは変更しない。
 - 歩行時の追従位置・壁の透過・会話等のカメラ演出はゲームが処理する。メニュー中は操作を止め、部屋が変わったら状態を初期化する。家の外観番号を判定に使わない。
 - OFFは元の段階操作へ戻す。屋外の既存FieldCameraと共存し、新しい操作ボタン/SD資源は不要。
 
 実装 `HhdRoomCamera.cpp` / `HhdRoomCameraControl.hpp` / 自動生成 `HhdRoomCameraCurve.hpp`。入力0x1A386CとApplyTarget0x1A5124のMITM。元ApplyTargetが返すS0と、FieldCameraの早期復帰が残すincoming S0を保持する。係数は原HHD ARMの自然3次スプライン出力に基づく。
 
-解析/実装前設計/検査は解析リポジトリ `docs/topics/hhd_room_camera_design.md` と `work/evidence/hhd_room_camera/`。壁家具・壁紙床の実機能判定F013を同じ版に含め、利用者がカメラと一緒に実機確認する。未確認なのでmainへ入れない。
+### リスト操作の追加（2026-10-10、IDA-gpt-6.1-sol-F015、実機未確認）
+
+作業枝work/catalog-camera-controls。リストを開くと、開くタブとACNLのInteriorEditorを6フレームでフェード非表示にする。閉じると表示が戻る。描画時のglobalAlphaだけを一時的に掛け、native描画後に全byteを復元する。家具の状態/親子関係/アニメ用alphaは変更しない。
+
+Xは最後に成功して開いたリスト（家具/壁家具/壁紙床）を開く。初回は家具。既存の各リストのカテゴリ/スクロール記憶を使う。B/戻るは既存の閉じる操作を維持。家具/壁家具のカテゴリ行の決定とカテゴリ境界をSE_SYS_BOOK_ICON_SELECTEDへ変更し、上段タブの音は従来どおり。
+
+F013壁配置/壁紙床とF014基本カメラは前回提示版について利用者が実機動作に問題なしと確認。今回追加まで確認済みとは扱わない。新SD資源は不要。
+
+解析/実装前設計/検査は解析リポジトリ `docs/topics/hhd_room_camera_design.md` と `work/evidence/hhd_room_camera/`。F013/F014の前回版は2026-10-10利用者実機確認済み。追加F015の設計/検査は `docs/topics/catalog_camera_controls_design.md` / `work/evidence/catalog_camera_controls/`。新追加は未確認なので作業枝に保持する。

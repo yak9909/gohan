@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 #include "HhdRoomCameraCurve.hpp"
 
 // HHD's normal room controller; photo controls are a separate native path.
@@ -15,6 +16,21 @@ struct Profile {
     float x, y, z, distance;
     std::uint16_t pitch, yaw;
 };
+struct PanState { float x, z; };
+
+inline void Pan(PanState &pan, float right, float up, float sine, float cosine) {
+    const float length2 = right * right + up * up;
+    if (length2 < 0.0225f)                       // 15% radial dead zone.
+        return;
+    if (length2 > 1.0f) {
+        const float inverse = 1.0f / std::sqrt(length2);
+        right *= inverse;
+        up *= inverse;
+    }
+    // Eye is on (+sin(yaw), +cos(yaw)); forward points towards the target.
+    pan.x += 2.0f * (right * cosine - up * sine);
+    pan.z += 2.0f * (-right * sine - up * cosine);
+}
 static_assert(sizeof(Profile) == 20, "Native camera profile layout");
 
 inline float Approach(float value, float target, float step) {
