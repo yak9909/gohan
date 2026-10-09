@@ -1,3 +1,12 @@
+# 2026-10-09 室内の機能で家具リストを判定 / IDA-gpt-6.1-sol-F013
+
+- 目的: テントに見える普通の室内でも壁かけ家具・壁紙・床を使えるようにする。外観からテントを判定しない（利用者最新指示）。
+- 作業枝work/decor-room-capabilities、基点work/decor-catalog 3e9654f（decor_catalog13）。実機未確認なのでmainへ入れない。
+- DecorCatalog.cpp: 壁はTryPutの実マップ属性・向き・空き・footprintで判定。壁紙床は所有する保存部屋＋稼働中RoomViewの各実モデル/m_wall・m_carpet材質を確認。通常setterの拒否時は既存のオフライン下位setter経路を使い、外観番号を参照しない。通信中の例外適用は従来どおり未対応。
+- PC検査: 実C++31条件、リンク済みARM1176/native accessor19条件、しずえフックソース/成果物PASS。全134関連関数の分岐・PC相対・境界・領域重複・hashPASS。汎用移植検査は既存の欠字「乗具掴箱」でNG、Gui/Fontsは基点との差分なし。
+- 成果物ELF SHA8d5aa3d397f136cc37ff17f9a880e647772ac9c45e0d8cb5739b88e3c19b0bf9、3gx SHA8dce114e6f44fdab2b17b2b1836a1774b2ab64976a0f573ca3a524fe0c13748e。SD資源の更新不要。根拠project_v2/work/evidence/t022_room_capabilities。実機適用/Resumeなし。
+- 次: 利用者がテント外観の普通の部屋で壁かけ家具を1個、壁紙・床を各1回確認。成功後も通常の部屋/置けない壁で回帰確認する。
+
 # UnitCursor 屋外表示の実機確認（2026-09-18 開始・最新）
 利用者指示: 実機確認を行う。IDAで実機にアタッチ済み・Chokistream起動済み。3gxの方がやりやすければそちらでも可。**コードを設計・実装したら実機適用前に必ず逆アセンブルして検証する**。
 確認済みの現在状態（実機、読み取りのみ）: プロセスは停止中 state=-1 / PC=0x137064 / SP=0x946C70 / LR=0x137178 / BP 0件。

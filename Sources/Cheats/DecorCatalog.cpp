@@ -169,14 +169,15 @@ const FtrTableFn   FtrTable    = reinterpret_cast<FtrTableFn>(0x004E9314);     /
 const FtrFreeFn    FtrFree     = reinterpret_cast<FtrFreeFn>(0x007449D4);      // FtrObjectTable_CountFreeSlots（家の家具 48）
 const SetBgFn      SetWall     = reinterpret_cast<SetBgFn>(0x002C5FA8);        // HouseRoom_SetWallpaper
 const SetBgFn      SetFloor    = reinterpret_cast<SetBgFn>(0x002C6CCC);        // HouseRoom_SetFlooring
-int (*const CanChangeBackground)(void) = reinterpret_cast<int (*)(void)>(0x005B39B4);   // F005。起動時・決定時とも本来の許可判定
 const PlaySoundFn  PlaySound   = reinterpret_cast<PlaySoundFn>(0x0058C7D4);    // Game_PlaySound
 
 bool BackgroundAbiReady(void) {
     static const u32 checks[][2] = {
         { 0x00300914, 0xE59F0004 }, { 0x002F75E4, 0xE35100A5 }, { 0x002FF92C, 0xE3500004 },
-        { 0x006F9728, 0xE92D4010 }, { 0x0030F88C, 0xE3510004 }, { 0x006F8F24, 0xE92D4070 },
+        { 0x006F9728, 0xE92D4010 }, { 0x006F8F24, 0xE92D4070 }, { 0x005B3438, 0xE35000A5 },
         { 0x002FCB64, 0xE92D4010 }, { 0x002D5728, 0xE2800C02 }, { 0x002D52D4, 0xE2800C02 },
+        { 0x002C55B8, 0xE92D43F0 }, { 0x002C6350, 0xE59F100C },
+        { 0x004F05F4, 0xE92D4070 }, { 0x004A90FC, 0xE92D40F8 },
     };
     for (const auto &c : checks)
         if (R32(c[0]) != c[1])
@@ -184,36 +185,69 @@ bool BackgroundAbiReady(void) {
     return true;
 }
 
-// IDA-gpt-6.1-sol-F010: 家具リストの通常許可が偽のときだけ外観0を例外化。所有者・室・通信条件は残す。
-u32 TentRoomData(void) {
-    if (!BackgroundAbiReady() || reinterpret_cast<int (*)(void)>(0x00300914)() != 0)
-        return 0;
-    // 0x300914だけでホストの通信状態を推測しない。F007の登録相手マスクも確認。
-    const u32 net = R32(0x0094D644);
-    if (!IsHeapPointer(net))
-        return 0;
-    const u32 own = *reinterpret_cast<const volatile u8 *>(net + 78440);
-    const u32 peers = *reinterpret_cast<const volatile u8 *>(net + 78444) & 0x0F;
-    if (peers != 0 && (own >= 4 || (peers & ~(1u << own)) != 0))
+// IDA-gpt-6.1-sol-F013: 書込み先の部屋と所有権を確認。家の外観は参照しない。
+u32 EditableRoomData(void) {
+    if (!BackgroundAbiReady())
         return 0;
     const int room = *GridCursor::Game::kRoomId;
-    if (!reinterpret_cast<int (*)(u32, int)>(0x002F75E4)(0x80, room))
-        return 0;
     const u32 player = reinterpret_cast<u32 (*)(u32)>(0x002FF92C)(4);
-    const u32 owner = reinterpret_cast<u32 (*)(int)>(0x006F9728)(room);
-    if (player >= 4 || owner != player)
+    if (player >= 4)
         return 0;
-    const u32 garden = R32(0x00955F8C);
-    if (!IsHeapPointer(garden))
-        return 0;
-    const u32 house = reinterpret_cast<u32 (*)(u32, u32)>(0x0030F88C)(garden + 0x5D900, owner);
-    if (!IsHeapPointer(house) || *reinterpret_cast<const volatile u8 *>(house + 4) != 0)
-        return 0;                                  // 種別8や他人の家へは例外を広げない
+    if (reinterpret_cast<int (*)(u32, int)>(0x002F75E4)(0x80, room)) {
+        const u32 owner = reinterpret_cast<u32 (*)(int)>(0x006F9728)(room);
+        if (owner != player)
+            return 0;
+    } else if (!reinterpret_cast<int (*)(int)>(0x005B3438)(room)) {
+        return 0;                                   // ゲーム自身の別室の所有権判定（外観を読まない）
+    }
     const u32 data = reinterpret_cast<u32 (*)(int)>(0x006F8F24)(room);
     return IsHeapPointer(data) ? data : 0;
 }
 
-bool BackgroundAvailable(void) { return CanChangeBackground() != 0 || TentRoomData() != 0; }
+bool OfflineBackgroundEdit(void) {
+    if (reinterpret_cast<int (*)(void)>(0x00300914)() != 0)
+        return false;
+    // 0x300914だけでホストの通信状態を推測しない。F007の登録相手マスクも確認。
+    const u32 net = R32(0x0094D644);
+    if (!IsHeapPointer(net))
+        return false;
+    const u32 own = *reinterpret_cast<const volatile u8 *>(net + 78440);
+    const u32 peers = *reinterpret_cast<const volatile u8 *>(net + 78444) & 0x0F;
+    if (peers != 0 && (own >= 4 || (peers & ~(1u << own)) != 0))
+        return false;
+    return true;
+}
+
+bool BackgroundModelHasMaterial(u32 holder, const char *material) {
+    if (!Process::CheckAddress(holder + 4, MEMPERM_READ) || !IsHeapPointer(R32(holder + 4)))
+        return false;
+    // TransformNodeHolderのModel型を確認してから、資源の材質辞書を引く。どちらも読取りだけ。
+    const u32 model = reinterpret_cast<u32 (*)(u32)>(0x004F05F4)(holder);
+    if (!IsHeapPointer(model) || !Process::CheckAddress(model + 8, MEMPERM_READ))
+        return false;
+    const u32 resource = R32(model + 8);
+    if (!Process::CheckAddress(resource, MEMPERM_READ))
+        return false;
+    return reinterpret_cast<u32 (*)(const u32 *, const char *)>(0x004A90FC)(&resource, material) != 0;
+}
+
+bool BackgroundSurfaceReady(bool floor) {
+    const u32 view = R32(0x00948DEC);               // BsCharRoomViewMgrの稼働中インスタンス
+    if (!IsHeapPointer(view) || !Process::CheckAddress(view, MEMPERM_READ)
+        || R32(view) != 0x008EC71C)
+        return false;
+    // Init→Applyの両経路で照合した実モデル。室内種別や外観の番号から機能を推測しない。
+    if (floor)
+        return BackgroundModelHasMaterial(view + 0x3834, "m_carpet");
+    for (u32 side = 0; side < 4; ++side)
+        if (BackgroundModelHasMaterial(view + 0x3AE8 + 0x40 * side, "m_wall"))
+            return true;
+    return false;
+}
+
+bool BackgroundAvailable(void) {
+    return EditableRoomData() != 0 && (BackgroundSurfaceReady(false) || BackgroundSurfaceReady(true));
+}
 
 // ---- 音（HHD の音は ACNL に無いので代用。要件書 §7.4。実機で利用者に決めてもらう）----
 const u32 kSndCellTouch = 0x01000399;       // SE_SYS_BTN_ACTIVE_S
@@ -295,7 +329,6 @@ void RecordGraphicsHeap(u32 index) {
     s_graphicHeapMaxLog[index] = maxBytes;
 }
 volatile u32 s_heapWindowReady;                // Bind / 最初のボタンを含めた起動完了時の残量
-bool s_canChangeBackground;                    // 模様替えを開いた時点のゲーム判定（家の外観から推測しない）
 volatile u8 s_openFail;                         // 窓を組めなかった: 1 レイアウト / 2 アイコンの枠 / 3 ゲーム用の残量
 u8 s_openStep;                                  // OpenWindow がどこまで進んだか（ゲームのスレッドだけ）
 volatile u8 s_catFailReason;                    // 窓の arc が読めなかった理由（メニューのスレッドが知らせる）: 0 なし / 1 ファイルが無い / 2 読めない・大きすぎる・メモリ不足
@@ -980,12 +1013,8 @@ u32 PlaceFurniture(u16 acnl, bool wall) {
         return 0;
     PlaceCtx c;
     c.item = { acnl, 0 };
-    if (wall) {
-        // stock Room_SearchPutSpot 0x691B44..0x691B5Cの壁不可ゲートを維持（テント）。
-        if (R32(0x005B3AC4) != 0xE92D4070
-            || reinterpret_cast<int (*)(u32)>(0x005B3AC4)(*GridCursor::Game::kRoomId) != 0)
-            return 0;
-    }
+    // IDA-gpt-6.1-sol-F013: 壁配置の機能はTryWallCell→TryPutの実マップ属性で判定する。
+    // 0x5B3AC4の外観による事前拒否を使わず、壁・向き・空き・全footprintをゲームに確認する。
     // 探す起点と「プレイヤーが占有するマス」を分ける。0x6920CCは負値なら占有チェックを省く。
     // 模様替え中に実体が消えても、直前に実際に観測した位置からHHDの順で探せる。
     const bool playerPresent = GridCursor::Game::LocalPlayer() != nullptr;
@@ -1150,10 +1179,14 @@ void ChipStep(u32 indoor) {
 bool ApplyBackground(u16 acnl, u32 ctTab) {
     const Item item = { acnl, 0 };
     const bool floor = CT::kTabs[ctTab].tab == 1;   // 上段 4 のタブ 0 = 壁紙、1 = 床紙（HHD-F019）
-    if (CanChangeBackground() != 0)
-        return (floor ? SetFloor(&item, 1) : SetWall(&item, 1)) != 0;
-    const u32 data = TentRoomData();
-    if (data == 0 || reinterpret_cast<int (*)(const Item *)>(0x002FCB64)(&item) != (floor ? 4 : 3))
+    const u32 data = EditableRoomData();
+    if (data == 0 || !BackgroundSurfaceReady(floor)
+        || reinterpret_cast<int (*)(const Item *)>(0x002FCB64)(&item) != (floor ? 4 : 3))
+        return false;
+    // 通常setterの通信・音を先に使う。外観の制約で拒否されても、機能がある室内は下位setterへ。
+    if ((floor ? SetFloor(&item, 1) : SetWall(&item, 1)) != 0)
+        return true;
+    if (!OfflineBackgroundEdit())
         return false;
     // HouseRoom setterの自宅枝と同じItem/variant書込み。オフライン限定なのでNet片は送らない。
     reinterpret_cast<void (*)(void *, const Item *)>(floor ? 0x002D5728 : 0x002D52D4)(reinterpret_cast<void *>(data), &item);
@@ -1488,7 +1521,6 @@ void ReleaseAll(void) {
     s_chipEditor = s_chipNext = 0;                 // 同じ番地で開き直したエディターも新しい使用歴として数え直す
     s_pend.active = false;
     s_decision.active = false;
-    s_canChangeBackground = false;
     std::memset(s_position, 0, sizeof(s_position));
 }
 
@@ -1648,7 +1680,6 @@ void FrameStep(void) {
         const u32 indoor = IndoorBase();
         if (!EditorLive(indoor, EditorCalc(indoor)))
             return;
-        s_canChangeBackground = CanChangeBackground() != 0;
         if (!BuildTop()) {
             FreeTop();
             s_stage = Stage::Failed;
