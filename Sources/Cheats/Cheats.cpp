@@ -24,6 +24,7 @@
 #include "ChatIme.hpp"
 #include "DecorTrash.hpp"
 #include "DecorCatalog.hpp"
+#include "HhdRoomCamera.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -296,6 +297,7 @@ namespace CTRPluginFramework
             ChatIme::Wire();
             DecorTrash::Wire();
             DecorCatalog::Wire();
+            HhdRoomCamera::Wire();
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }

@@ -262,8 +262,10 @@ namespace CTRPluginFramework
                         u8"SD の gohan フォルダのリソース（hhd_decorate.arc）が必要です。");
                 AddItem(ITEM_CHECKBOX, kDecorCatalog,
                         u8"家の模様替えの上にハッピーホームデザイナーのかぐリスト・かべ/ゆかリストのタブを出します。品を選ぶとかぐは空いている所に置き、かべ・ゆかははりかえます。"
-                        u8"かべ・ゆかは、見た目がテントの自分の家でもはりかえます（家の見た目の番号 0）。通信中はこの特別なはりかえを使えません。"
+                        u8"かべのかぐ・かべ・ゆかは部屋の中で使えるかで決まります。見た目がテントでも使える部屋なら使えます。通信中は特別なはりかえを使えません。"
                         u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
+                AddItem(ITEM_CHECKBOX, kHhdRoomCamera,
+                        u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中も使えます。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

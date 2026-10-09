@@ -1,4 +1,14 @@
-# 2026-10-09 室内の機能で家具リストを判定 / IDA-gpt-6.1-sol-F013
+# 2026-10-09 HHD式室内カメラ / IDA-gpt-6.1-sol-F014、T001
+
+- 最新依頼: ACNL家の十字キー段階操作をHHDの細かな回転/十字キーだけの奥行きへ置換。両作品の調査→設計保存→実装を実施。壁かけ家具の実機確認は利用者指定により実装後の同版で行う。
+- 基点work/decor-room-capabilities be72724、作業枝work/hhd-room-camera。実機適用/Resumeなし、未確認なのでmainへ入れない。
+- HhdRoomCamera.cppでnative入力0x1A386C＋ApplyTarget0x1A5124のMITM。家のroom flagsで判定、外観番号なし。元のplayer状態ゲート/基準位置/eye/壁透過を保持。左右連続回転、上下の4点自然3次補間、停止/遷移/部屋変更/OFF復帰、ゲームスレッドだけでstate更新。原HHDと493 frame全bytes一致。
+- root/ゲーム/「家のカメラをHHD式に」は既存ToggleEffectへ登録。新文言の欠字0。壁家具のhelpもF013の実機能判定に訂正。Fonts/FieldCamera/しずえのソースは変更なし。
+- 指定MSYS2 login make終了0（解析側work/logs/hhd_room_camera_build4.log）、しずえソース/成果物検査PASS。CameraGrid関連158関数/9411命令/1742分岐/801PC相対/配置境界/領域/hashPASS。19操作条件と493 frameはPASS、FieldCameraの2語目POP共存の追加検査中。根拠解析側work/evidence/hhd_room_camera。
+- 最終検査: 493 frame＋20条件PASS、屋外FieldCameraの2語目POPも共存しincoming S0を保つ。エミュレーションでcode変更後に翻訳cacheを無効化しなかった初期の差は検査側の問題（修正済み）。実機確定ではない。3gx SHA fcd86402651b9fe2d7ed3f59d468591f4a3d6debdaab46bd27eabd6be512f4fd、ELF SHA f84194764da7714166b2decb2023e2fe63e7962a6549cd3b3e2ac17e5a1c0ce7。
+- 次: 作業枝commit/push→artifacts/plugins/hhd_room_camera1へ複合版保存。利用者が左右短押し/長押し・上下奥行き・歩行・通常/模様替え・会話/メニュー/入退室・OFF・改造外観の普通の部屋の壁家具/壁紙/床を同版で確認する。
+
+# （履歴）2026-10-09 室内の機能で家具リストを判定 / IDA-gpt-6.1-sol-F013
 
 - 目的: テントに見える普通の室内でも壁かけ家具・壁紙・床を使えるようにする。外観からテントを判定しない（利用者最新指示）。
 - 作業枝work/decor-room-capabilities、基点work/decor-catalog 3e9654f（decor_catalog13）。実機未確認なのでmainへ入れない。
