@@ -23,9 +23,11 @@ const char kArcName[] = "hhd_catalog.arc";          // 家具の窓・格子・�
 const char kTopArcName[] = "hhd_catalog_top.arc";   // 模様替え画面の上段タブ。模様替え UI を開いている間ずっと置く
 const char kTopLayout[] = "hhd_catalog_top.bclyt";
 const AnimRef kTopIn = { "hhd_catalog_top_in.bclan", "G_InOut", nullptr, 7, false }, kTopOut = { "hhd_catalog_top_out.bclan", "G_InOut", nullptr, 6, false };
-const u8 kTopMain[2] = { 1, 4 };
-const Button kTopTabs[2] = {
+const u8 kTopMain[3] = { 1, 2, 4 };
+const u32 kTopCount = 3;
+const Button kTopTabs[3] = {
     { "u01", "u01_P_Pct", "u01_B_Btn", { 52.0f, 0.0f, 106.0f, 27.0f }, { { "hhd_catalog_top_u01_touch.bclan", "u01_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u01_touch_ok.bclan", "u01_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u01_select.bclan", "u01_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u01_select_ok.bclan", "u01_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u01_loop.bclan", "u01_G_Loop", nullptr, 40, true } } },
+    { "u02", "u02_P_Pct", "u02_B_Btn", { 106.0f, 0.0f, 160.0f, 27.0f }, { { "hhd_catalog_top_u02_touch.bclan", "u02_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u02_touch_ok.bclan", "u02_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u02_select.bclan", "u02_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u02_select_ok.bclan", "u02_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u02_loop.bclan", "u02_G_Loop", nullptr, 40, true } } },
     { "u04", "u04_P_Pct", "u04_B_Btn", { 0.0f, 0.0f, 52.0f, 27.0f }, { { "hhd_catalog_top_u04_touch.bclan", "u04_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u04_touch_ok.bclan", "u04_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u04_select.bclan", "u04_G_Btn", nullptr, 2, false }, { "hhd_catalog_top_u04_select_ok.bclan", "u04_G_Btn", nullptr, 4, false }, { "hhd_catalog_top_u04_loop.bclan", "u04_G_Loop", nullptr, 40, true } } },
 };
 const Tab kTabs1[4] = {
@@ -46,11 +48,22 @@ const Button kKindSlots1[10] = {
     { "k08", "k08_P_Btn", "k08_B_Btn", { 278.0f, 29.0f, 310.0f, 61.0f }, { { "hhd_catalog_ftr_k08_touch.bclan", "k08_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k08_touch_ok.bclan", "k08_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k08_select.bclan", "k08_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k08_select_ok.bclan", "k08_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
     { "k09", "k09_P_Btn", "k09_B_Btn", { 312.0f, 29.0f, 320.0f, 61.0f }, { { "hhd_catalog_ftr_k09_touch.bclan", "k09_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k09_touch_ok.bclan", "k09_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k09_select.bclan", "k09_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_k09_select_ok.bclan", "k09_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
 };
-const Tab kTabs4[2] = {
-    { { "t00", "t00_P_Pct", "t00_B_Btn", { 0.0f, 1.0f, 41.0f, 29.0f }, { { "hhd_catalog_wall_t00_touch.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t00_touch_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t00_select.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t00_select_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t00_loop.bclan", "t00_G_Loop", nullptr, 40, true } } }, "my_pct_BWall.bclim", 26, 30, 0 },
-    { { "t01", "t01_P_Pct", "t01_B_Btn", { 42.0f, 1.0f, 84.0f, 29.0f }, { { "hhd_catalog_wall_t01_touch.bclan", "t01_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t01_touch_ok.bclan", "t01_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t01_select.bclan", "t01_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t01_select_ok.bclan", "t01_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t01_loop.bclan", "t01_G_Loop", nullptr, 40, true } } }, "my_pct_BFloor.bclim", 29, 30, 0 },
+const Tab kTabs2[1] = {
+    { { "t00", "t00_P_Pct", "t00_B_Btn", { 0.0f, 1.0f, 120.0f, 29.0f }, { { "hhd_catalog_hang_t00_touch.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_t00_touch_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_hang_t00_select.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_t00_select_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_hang_t00_loop.bclan", "t00_G_Loop", nullptr, 40, true } } }, "my_pct_AWall.bclim", -1, 30, 6 },
 };
-const Kind kKinds[30] = {
+const Button kKindSlots2[6] = {
+    { "k00", "k00_P_Btn", "k00_B_Btn", { 6.0f, 29.0f, 38.0f, 61.0f }, { { "hhd_catalog_hang_k00_touch.bclan", "k00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k00_touch_ok.bclan", "k00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k00_select.bclan", "k00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k00_select_ok.bclan", "k00_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+    { "k01", "k01_P_Btn", "k01_B_Btn", { 40.0f, 29.0f, 72.0f, 61.0f }, { { "hhd_catalog_hang_k01_touch.bclan", "k01_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k01_touch_ok.bclan", "k01_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k01_select.bclan", "k01_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k01_select_ok.bclan", "k01_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+    { "k02", "k02_P_Btn", "k02_B_Btn", { 74.0f, 29.0f, 106.0f, 61.0f }, { { "hhd_catalog_hang_k02_touch.bclan", "k02_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k02_touch_ok.bclan", "k02_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k02_select.bclan", "k02_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k02_select_ok.bclan", "k02_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+    { "k03", "k03_P_Btn", "k03_B_Btn", { 108.0f, 29.0f, 140.0f, 61.0f }, { { "hhd_catalog_hang_k03_touch.bclan", "k03_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k03_touch_ok.bclan", "k03_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k03_select.bclan", "k03_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k03_select_ok.bclan", "k03_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+    { "k04", "k04_P_Btn", "k04_B_Btn", { 142.0f, 29.0f, 174.0f, 61.0f }, { { "hhd_catalog_hang_k04_touch.bclan", "k04_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k04_touch_ok.bclan", "k04_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k04_select.bclan", "k04_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k04_select_ok.bclan", "k04_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+    { "k05", "k05_P_Btn", "k05_B_Btn", { 176.0f, 29.0f, 208.0f, 61.0f }, { { "hhd_catalog_hang_k05_touch.bclan", "k05_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k05_touch_ok.bclan", "k05_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k05_select.bclan", "k05_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_k05_select_ok.bclan", "k05_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } },
+};
+const Tab kTabs4[2] = {
+    { { "t00", "t00_P_Pct", "t00_B_Btn", { 0.0f, 1.0f, 41.0f, 29.0f }, { { "hhd_catalog_wall_t00_touch.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t00_touch_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t00_select.bclan", "t00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t00_select_ok.bclan", "t00_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t00_loop.bclan", "t00_G_Loop", nullptr, 40, true } } }, "my_pct_BWall.bclim", 26, 36, 0 },
+    { { "t01", "t01_P_Pct", "t01_B_Btn", { 42.0f, 1.0f, 84.0f, 29.0f }, { { "hhd_catalog_wall_t01_touch.bclan", "t01_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t01_touch_ok.bclan", "t01_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t01_select.bclan", "t01_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_t01_select_ok.bclan", "t01_G_Btn", nullptr, 4, false }, { "hhd_catalog_wall_t01_loop.bclan", "t01_G_Loop", nullptr, 40, true } } }, "my_pct_BFloor.bclim", 29, 36, 0 },
+};
+const Kind kKinds[36] = {
     { "my_pct_CBed.bclim", 1 },
     { "my_pct_CTable.bclim", 0 },
     { "my_pct_CChair.bclim", 2 },
@@ -81,9 +94,17 @@ const Kind kKinds[30] = {
     { "my_pct_CSox.bclim", 33 },
     { "my_pct_CShoes.bclim", 14 },
     { "my_pct_CUmbrella.bclim", 7 },
+    { "my_pct_AWall.bclim", 23 },
+    { "my_pct_CClock.bclim", 55 },
+    { "my_pct_CMusic.bclim", 36 },
+    { "my_pct_CPainting.bclim", 54 },
+    { "my_pct_CTops.bclim", 49 },
+    { "my_pct_COnepiece.bclim", 60 },
 };
-const Catalog kCatalogs[2] = {
+const u32 kCatalogCount = 3;
+const Catalog kCatalogs[3] = {
     { 1, "hhd_catalog.arc", "hhd_catalog_ftr.bclyt", { "hhd_catalog_ftr_in.bclan", "G_InOut", nullptr, 7, false }, { "hhd_catalog_ftr_out.bclan", "G_InOut", nullptr, 6, false }, { "hhd_catalog_ftr_loop.bclan", "G_Loop", nullptr, 110, true }, { "hhd_catalog_ftr_kind.bclan", "G_Kind", nullptr, 3, false }, { "bk00", nullptr, "bk00_B_Btn", { 256.0f, 2.0f, 320.0f, 30.0f }, { { "hhd_catalog_ftr_bk00_touch.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_bk00_touch_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_bk00_select.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_ftr_bk00_select_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } }, kTabs1, 4, kKindSlots1, 10, nullptr, nullptr, nullptr },
+    { 2, "hhd_catalog_hang.arc", "hhd_catalog_hang.bclyt", { "hhd_catalog_hang_in.bclan", "G_InOut", nullptr, 7, false }, { "hhd_catalog_hang_out.bclan", "G_InOut", nullptr, 6, false }, { "hhd_catalog_hang_loop.bclan", "G_Loop", nullptr, 110, true }, { "hhd_catalog_hang_kind.bclan", "G_Kind", nullptr, 3, false }, { "bk00", nullptr, "bk00_B_Btn", { 256.0f, 2.0f, 320.0f, 30.0f }, { { "hhd_catalog_hang_bk00_touch.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_bk00_touch_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_bk00_select.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_hang_bk00_select_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } }, kTabs2, 1, kKindSlots2, 6, nullptr, nullptr, nullptr },
     { 4, "hhd_catalog_wall.arc", "hhd_catalog_wall.bclyt", { "hhd_catalog_wall_in.bclan", "G_InOut", "G_Page_00", 7, false }, { "hhd_catalog_wall_out.bclan", "G_InOut", "G_Page_00", 6, false }, { "hhd_catalog_wall_loop.bclan", "G_Loop", nullptr, 110, true }, { nullptr, nullptr, nullptr, 0, false }, { "bk00", nullptr, "bk00_B_Btn", { 257.0f, 2.0f, 320.0f, 30.0f }, { { "hhd_catalog_wall_bk00_touch.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_bk00_touch_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_bk00_select.bclan", "bk00_G_Btn", nullptr, 2, false }, { "hhd_catalog_wall_bk00_select_ok.bclan", "bk00_G_Btn", nullptr, 2, false }, { nullptr, nullptr, nullptr, 0, false } } }, kTabs4, 2, nullptr, 0, "N_Page_00", "T_Page_01", "T_Page_00" },
 };
 const char kGridLayout[] = "hhd_catalog_grid.bclyt";

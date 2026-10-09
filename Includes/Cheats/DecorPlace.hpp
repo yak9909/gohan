@@ -19,4 +19,11 @@ typedef bool (*TryFn)(void *ctx, s32 x, s32 z);   // 置けたら真
 // 置けたマスをoutX/outZに返す。不正な範囲・部屋の4辺を全部越えた・半径32を越えた場合は偽。
 bool Search(s32 startX, s32 startZ, const Bounds &b, u32 quadrant, TryFn tryFn, void *ctx, s32 &outX, s32 &outZ);
 
+// HHD 0x4D23E4の壁探索。preferredWallsのbitは家具の向き0..3。
+// 8候補を壁へ進め、壁沿いの両方向を交互に試す。優先壁が尽きたら残りを有効にする。
+// 座標はACNLの床内側bから1マス外へ。可否/足跡はtryFnのゲーム本来の判定へ委ねる。
+typedef bool (*WallTryFn)(void *ctx, s32 x, s32 z, u32 rotation);
+bool SearchWall(s32 startX, s32 startZ, const Bounds &b, u32 preferredWalls, WallTryFn tryFn, void *ctx,
+                s32 &outX, s32 &outZ, u32 &outRotation);
+
 }  // namespace DecorPlace
