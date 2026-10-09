@@ -6,6 +6,7 @@
 - ビルド前: 原ARM Eye対実C++pan63条件、F014の原HHD対C++493frame、原入口wordと必須しずえソース検査PASS。次: 指定make→linked全分岐/リテラル/ABI/領域/hashとnative fade/操作/pan確認→作業枝commit/push。新追加は実機未確認。静的根拠は解析側work/evidence/catalog_camera_controls。
 - 指定build終了0。linked原ARM Eye対pan63条件、入力遮断/通常mode復帰/OFF13条件、fade24条件でpane全184Bを復元（深さ65/容量4097のfallback含む）、X3種/長押し/menu/B/上段・カテゴリ音7条件PASS。既存HHD493frame/20条件、170関数の分岐/PC相対/境界/ABI/配置/hash、必須しずえ/new字形PASS。実FrameStepのfade6frame往復と実EditorLive/CRO8条件（catalog無効時も有効）PASS。InputStepはrelease inlineされるためFrameStepから実行、既知OS/render/resourceサービスのみ明示模擬。実機確認の代替としない。
 - 前回hhd_room_camera1の確認は利用者報告として記録済み。今回の追加のみ未確認なので作業枝work/catalog-camera-controlsへ保存し、mainへ反映しない。SDはdecor_catalog13資源を引き続き使用。
+- コードcommit9792469cbca7d1fde4e74e6f0ad1d51b829a112aをpush済み、remote一致。解析側catalog_camera_controls1の3gx SHA e87dbe26bc32066fa917a3913a72512557c8aa36bb8518718b705ab1cd4764d5 / ELF SHA3ba84f144820d91f7f181b4c0cc0b8893097436e1a83b36d32d477098bbc9839、manifestと全bytes照合PASS。FrameStep6frame fade往復/actualEditor-CRO8条件/現行GardenSound音IDもPASS。両DB/最新XML/型/全hashは解析側へ保存、実機操作なし。今回のメモ追補で製品コードは変更しない。次は利用者による新追加の実機確認。
 
 # 2026-10-09 HHD式室内カメラ / IDA-gpt-6.1-sol-F014、T001
 

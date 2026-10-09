@@ -2,7 +2,8 @@
 
 - IDA-gpt-6.1-sol-F015 / T002、work/catalog-camera-controls、基点15d7aeb1。前回カメラ/壁判定版は利用者実機PASS。新追加は未確認、mainへ未反映。
 - リスト背後の開くタブ/InteriorEditorを6フレームfade、Xで最後のリスト（初回家具）、B既存保持、家具/壁家具のカテゴリ音BOOK_ICON_SELECTED。HHDカメラON＋実模様替えUI中だけスライドパッドで向きに沿ったX/Z移動。通常のプレイヤー操作/Yを保持、list/menu中停止。
-- 原ARM Eye対C++/linked pan63条件、旧HHD493frame/20条件、fade24条件（全pane bytes復元）、X/B/音7条件、170関数の分岐/リテラル/ABI/領域/hash、必須しずえ、新説明文の欠字0 PASS。指定build終了0。次: 作業枝push/配布。根拠は解析側work/evidence/catalog_camera_controls、設計docs/topics/catalog_camera_controls_design.md。実機への適用/Resumeなし。
+- 原ARM Eye対C++/linked pan63条件、旧HHD493frame/20条件、fade24条件、X/B/音7条件、FrameStep fade往復/actualEditor8条件、170関数の分岐/リテラル/ABI/領域/hash、必須しずえ/新字形 PASS。指定build終了0。
+- コードcommit9792469cbca7d1fde4e74e6f0ad1d51b829a112aは作業枝へpush済み。配布は解析側artifacts/plugins/catalog_camera_controls1、3gx SHA e87dbe26bc32066fa917a3913a72512557c8aa36bb8518718b705ab1cd4764d5。メモ追補はコードを変更しない。次: 利用者が今回の追加分を実機確認。根拠は解析側work/evidence/catalog_camera_controls、設計docs/topics/catalog_camera_controls_design.md。実機への適用/Resumeなし。
 
 ## 前回 — HHD式室内カメラ（利用者実機PASS）
 
