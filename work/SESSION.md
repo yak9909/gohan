@@ -1,5 +1,7 @@
 # 2026-10-10 内装保存と模様替えUI修正 / IDA-gpt-6.1-sol-F016、T003
 
+- 配布保存: source code9d606ddb05c41d3da2b22384925db9335d466163をwork/interior-presetsへpush成功、remote SHA一致。解析側artifacts/plugins/interior_presets1に最終build3を保存し、配布全bytes/保存DB/XML名・型・T/hash/source remote読戻しPASS（verify_interior_presets_saved.py）。以下の追補はメモだけ、コード/仕様を変更しない。新変更は実機未確認、mainへ未反映、次は利用者が本体fade/listカメラ/長押し/内装load・swap・サイズ取消/clipを確認。
+
 - 長押し/共有窓を含むlinked10条件・ABI PASS。複製のcatalog ON/Live制限を最終reviewで検出し、OFF/素材なしでも常設frameからチップ追加を進める設計に補正。修正→最終ビルド/linked検査→仕様/commit/work枝push/配布を続行。build2はStorage抽出前の暫定版、実機操作なし。
 - 最終build3/linked全検査PASS。内装/長押し窓にcatalog OFF/素材なしの実DuplicateItem→ChipStep/リスト解放の保持を加え11条件とABI PASS（第5引数stackと新record IDのfixtureを訂正、製品の追加修正なし）。HHD493/20、pan63/gate13/fade24/音7/nativecache、225関数/12742命令/2467分岐/1055PC相対、しずえ/字形欠字0、Storage21失敗/確認3条件PASS。source/specをwork/interior-presetsへcommit/push、解析側interior_presets1へ配布を次に実施。3gx SHAbf0fc36378c78ce6e2fa04c7cf7e5d5bf6e56abc537503d710ef185610348222、ELF SHA648b70d9d9023c6f431d320866cba4612a887e328caa0cdd25e685298ec87094。実機未確認/main未反映。
 

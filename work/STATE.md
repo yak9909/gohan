@@ -2,7 +2,7 @@
 
 - IDA-gpt-6.1-sol-F016/T003、work/interior-presets（基点48b734a）。利用者のF015実機結果はチップだけ隠れ本体UIが残るため訂正。list中カメラ/3倍速度/長押し複製/内装保存・読込・保存枠との交換を追加中。新F016は未実機、mainへ入れない。
 - UI dirty再記録、native選択窓、8枠保存/読み込み/交換、サイズ違い確認/clip、frame即反映/復元、SD取引を実装。build3/仕様更新、配置file/カメラ/native cache/内装と窓/backend11条件/Storage21失敗/GUI確認3条件PASS。catalog OFFでも複製を使える共有backendの実linked検査PASS。新字形663/全53source欠字0、225関数の全分岐/リテラル/ABI/領域/hash/しずえPASS。
-- 次: 最終backend結果→小commit/work枝push/配布。3gx SHAbf0fc36378c78ce6e2fa04c7cf7e5d5bf6e56abc537503d710ef185610348222、根拠project_v2/work/evidence/interior_presets。新SD素材なし、実機操作なし・未確認/main未反映。
+- 保存/配布: code9d606ddb05c41d3da2b22384925db9335d466163をorigin work/interior-presetsへpush済み、remote独立照合一致。解析側artifacts/plugins/interior_presets1、3gx SHAbf0fc36378c78ce6e2fa04c7cf7e5d5bf6e56abc537503d710ef185610348222、ELF SHA648b70d9d9023c6f431d320866cba4612a887e328caa0cdd25e685298ec87094。配布/hash/保存DB/XML読戻しPASS。新SD素材なし、実機操作なし・未確認/main未反映。次: 利用者実機確認。根拠project_v2/work/evidence/interior_presets/report.md。
 
 ## 前回F015の履歴
 
