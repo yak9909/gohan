@@ -1,0 +1,36 @@
+{
+  "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+  "conversion_model": "gpt-6",
+  "status": "NATIVE_PARTIAL",
+  "functions": 107,
+  "attempts": 109,
+  "source_candidates": 152,
+  "native_groups": 1226,
+  "functions_with_local_type_aliases": 47,
+  "pending_native_groups": 1119,
+  "compile_failures": [
+    {
+      "group": "GROUP_02958",
+      "id": "CPP_6572876fbf80a44d",
+      "exit_code": 1,
+      "log": "work/logs/cheat_collection_native_CPP_6572876fbf80a44d.log"
+    },
+    {
+      "group": "GROUP_03122",
+      "id": "CPP_b1f8aee4f38dbc37",
+      "exit_code": 1,
+      "log": "work/logs/cheat_collection_native_CPP_b1f8aee4f38dbc37.log"
+    }
+  ],
+  "no_file_global_state": true,
+  "original_body_tokens_preserved": true,
+  "ARM_combined": {
+    "exit_code": 0,
+    "log": "work/logs/cheat_collection_native_combined.log"
+  },
+  "runtime_verified": false,
+  "source_files": {
+    "Sources/NativeReview.cpp": "4cc9a8e5624b5288f8bee53284bc2adef8d002739b49a9b4fce1c2a0e6e900bb",
+    "Sources/NativeReview.hpp": "2f76c59265ef7186966d882374da6cc62380c06eb2fb9a6c092f05cb4c0e2157"
+  }
+}

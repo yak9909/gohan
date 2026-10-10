@@ -1,0 +1,4029 @@
+[
+  {
+    "group": "GROUP_02424",
+    "members": [
+      "CPP_e4bd82af1097acf7"
+    ],
+    "function": "NativeReview::InfiniteItem_03b96242a59b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "InfiniteItem",
+    "aliases": [
+      "アイテム置いても消えない",
+      "花散らない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "75b7ce0612b0902da4ee2b5a51c5e56935604961e705effe1820330eeda74047",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_e4bd82af1097acf7.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_681a1d3e72afb923",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_e4bd82af1097acf7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Sources/Cheats/Players/InfiniteItem.cpp",
+        "line": 5,
+        "file_sha256": "1a95e564bb4eb71850aa3ac7074b5615f1768685f46e8d752aa3351111685d59"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02427",
+    "members": [
+      "CPP_e452e90ae3290bc1"
+    ],
+    "function": "NativeReview::menuspeed_04cb4377cc9f",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "menuspeed",
+    "aliases": [
+      "menuspeed"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "156bbb3efc9cc77858d94dadabedccba63497f2ce78bd9337cb9d38fe0faa99a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_e452e90ae3290bc1.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_e452e90ae3290bc1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 1168,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02435",
+    "members": [
+      "CPP_58d1453ec33cb8bc"
+    ],
+    "function": "NativeReview::onlineplayermod_064d56acba8b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "onlineplayermod",
+    "aliases": [
+      "onlineplayermod"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "032c6c8f9997ee6de6328a5c4f3c22a045794463cee70d5651ebb5657491783a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_58d1453ec33cb8bc.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_58d1453ec33cb8bc",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 1714,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02437",
+    "members": [
+      "CPP_8571fa3b4743c1f3"
+    ],
+    "function": "NativeReview::tpccode_065c7735f082",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "tpccode",
+    "aliases": [
+      "tpccode"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "21df4d64cb8dd0972cf2f9be7ddb55a04610f5ab89a1bafc967068505b941fd9",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8571fa3b4743c1f3.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      },
+      {
+        "id": "DECL_7b95ec037187a347",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 23,
+        "text": "typedef uint16_t u16;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_8571fa3b4743c1f3",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 945,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02442",
+    "members": [
+      "CPP_328c0ba562026851"
+    ],
+    "function": "NativeReview::extender_06edbc16185f",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "extender",
+    "aliases": [
+      "extender"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "10a0bb18a987ce6234792527c931729fa19056a8f64cc49e7b296b106fda5f85",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_328c0ba562026851.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_328c0ba562026851",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 539,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02443",
+    "members": [
+      "CPP_99eb7ddff5fc2423"
+    ],
+    "function": "NativeReview::asmpresses_07080a289aaa",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "asmpresses",
+    "aliases": [
+      "asmpresses"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "f04ca801e38e7ad5a5da34d3587d8c50d65761e4864f78ef222305ca415d2dae",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_99eb7ddff5fc2423.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_99eb7ddff5fc2423",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4109,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02446",
+    "members": [
+      "CPP_918600873d4c8e46"
+    ],
+    "function": "NativeReview::InfinityItemDrop_0748cdf5d105",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "InfinityItemDrop",
+    "aliases": [
+      "アイテム保存",
+      "置いてもなくならない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "32459f5e34bda1f82e3fcba5e300cb6018c2f92d18b36b8cc48ea08a481d03e7",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_918600873d4c8e46.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_918600873d4c8e46",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 485,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02447",
+    "members": [
+      "CPP_7d916239d03f48a6",
+      "CPP_9b3a2c590d8d57fb"
+    ],
+    "function": "NativeReview::InfinityItem_0748cdf5d105",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "InfinityItem",
+    "aliases": [
+      "InfinityItem"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "32459f5e34bda1f82e3fcba5e300cb6018c2f92d18b36b8cc48ea08a481d03e7",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_7d916239d03f48a6.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_7d916239d03f48a6",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/インベントリ.cpp",
+        "line": 29,
+        "file_sha256": "e3f77f067093d75f55207a7bca7e3366aac47c4ffd047c32b5917cf644ee8a49"
+      },
+      {
+        "id": "CPP_9b3a2c590d8d57fb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Inventory.cpp",
+        "line": 29,
+        "file_sha256": "ff928b68daf310a0d4359ea8b0fa18e40eda3fe5fd49594bed4208daa8bbce85"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02466",
+    "members": [
+      "CPP_996240e7726bfa4f"
+    ],
+    "function": "NativeReview::walletfix_0b42a4a52779",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "walletfix",
+    "aliases": [
+      "walletfix"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "aee5090ded6ddd09020e597241034fc6bf3bb5955948f71f32b1fa2157da7419",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_996240e7726bfa4f.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_996240e7726bfa4f",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4436,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02497",
+    "members": [
+      "CPP_c62dad79d33066e8"
+    ],
+    "function": "NativeReview::TranslateFRA_10eebb5aa644",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "TranslateFRA",
+    "aliases": [
+      "TranslateFRA"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "26b5d658e273d042e5ca69716072191e98b228af0b5e8bcfda909fdd35b3ba35",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_c62dad79d33066e8.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_c62dad79d33066e8",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 780,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02504",
+    "members": [
+      "CPP_811a81a2406b3d35",
+      "CPP_a79111fca627b0b2"
+    ],
+    "function": "NativeReview::mujintou_Tool4_123521cca480",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Tool4",
+    "aliases": [
+      "mujintou_Tool4"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "e9eb22b7e388a63d287fb42099f2a1214d8f3bd7ed1a8076ff20019273c17e26",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_a79111fca627b0b2.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_811a81a2406b3d35",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 346,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_a79111fca627b0b2",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 348,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02511",
+    "members": [
+      "CPP_a5f08ab9d3b2d13b",
+      "CPP_ff76115573910b73"
+    ],
+    "function": "NativeReview::FastGameSpeed_13beaf1e0359",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "FastGameSpeed",
+    "aliases": [
+      "FastGameSpeed",
+      "ゲーム速度高速",
+      "セーブメニュー出さない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "6fa6a995a44a497109c27de4cc4cfc1fa999f73bb9188efca856f2147bf4a1cc",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_a5f08ab9d3b2d13b.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_a5f08ab9d3b2d13b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/その他.cpp",
+        "line": 50,
+        "file_sha256": "5652c2fcd13fcafc3190ee5abcd2f6cd16e9650c74d095ee92bf21f4428ccd5a"
+      },
+      {
+        "id": "CPP_ff76115573910b73",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 822,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02523",
+    "members": [
+      "CPP_def2f565053dd618"
+    ],
+    "function": "NativeReview::ChangeIslandServer_160a045d81ae",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeIslandServer",
+    "aliases": [
+      "ChangeIslandServer"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "cf9290227e05578cf4e925ba5ccbc1d2fcec8a8f9b6187c060ff0fd3a6a6224c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_def2f565053dd618.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_def2f565053dd618",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/OnlineIsland.cpp",
+        "line": 8,
+        "file_sha256": "5ea015217a085ff6e0343d03f7ec112ef895379093d0dc74e6d644ba358e5b36"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02528",
+    "members": [
+      "CPP_9e7f73a0a8ca1933"
+    ],
+    "function": "NativeReview::roomSeeder_17bb948b48b7",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "roomSeeder",
+    "aliases": [
+      "roomSeeder"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "09b8f29b8f8899dd3479ac937fb24ab0a1e586a30cd9fb24dcd671b3ae416dab",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_9e7f73a0a8ca1933.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_9e7f73a0a8ca1933",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3924,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02549",
+    "members": [
+      "CPP_30cb602153cf5933",
+      "CPP_da27fc066581c695"
+    ],
+    "function": "NativeReview::mujintou_GTool1_1c0898bbd555",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_GTool1",
+    "aliases": [
+      "mujintou_GTool1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "8ce255a6a7f3502c14e1a74b1c1325b224e9fd2bfbc877ea6e2e292647dfe2fb",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_30cb602153cf5933.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_30cb602153cf5933",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 383,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_da27fc066581c695",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 381,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02567",
+    "members": [
+      "CPP_35465b19a554f7c3"
+    ],
+    "function": "NativeReview::fixMenu_1efcf47156a6",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "fixMenu",
+    "aliases": [
+      "fixMenu"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a172c95016e6bdfed4340c7d4b43107331d34ff81117c407b364894e79019052",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_35465b19a554f7c3.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_35465b19a554f7c3",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 314,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02577",
+    "members": [
+      "CPP_e849efa6802ed194"
+    ],
+    "function": "NativeReview::TranslateGER_20eb932271ef",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "TranslateGER",
+    "aliases": [
+      "TranslateGER"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "b318a7de8d51f332d66c85989fcfa827dbdf46abd882395c5c1c75b0a99d2b7b",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_e849efa6802ed194.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_e849efa6802ed194",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 738,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02578",
+    "members": [
+      "CPP_d411e306addf6684",
+      "CPP_d8903cd4ec6b82b5"
+    ],
+    "function": "NativeReview::mujintou_Item2_21056f77286c",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item2",
+    "aliases": [
+      "mujintou_Item2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "8d56c7748c881c5647d34f1c3a37d8558fb0f48fc0981b4662949958d05814c6",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d411e306addf6684.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_d411e306addf6684",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 167,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_d8903cd4ec6b82b5",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 165,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02617",
+    "members": [
+      "CPP_abe36668e0772627"
+    ],
+    "function": "NativeReview::ChangeSeibetu_2abe9b960f6c",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeSeibetu",
+    "aliases": [
+      "性別変更",
+      "村名変更"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "d76f8b68af8c2284620a0a61673828864f49d9481c231ade1a48184b90938c5c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_abe36668e0772627.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_abe36668e0772627",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 217,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02618",
+    "members": [
+      "CPP_067fd994f3127df7"
+    ],
+    "function": "NativeReview::ChangeDenger_2abe9b960f6c",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeDenger",
+    "aliases": [
+      "ChangeDenger"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "d76f8b68af8c2284620a0a61673828864f49d9481c231ade1a48184b90938c5c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_067fd994f3127df7.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_067fd994f3127df7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/プレイヤー.cpp",
+        "line": 214,
+        "file_sha256": "923eed1f1c02b898bd7b1f4052d8e0effa40b7348370aa5baece40871cce9e1c"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02619",
+    "members": [
+      "CPP_960d5dd6d0b51ce7"
+    ],
+    "function": "NativeReview::Pose2_2af358ff2210",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "Pose2",
+    "aliases": [
+      "Pose2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "6fc0886301619ba60aa92a41572d4ee316228b8acad74c721870e4886fe1ba11",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_960d5dd6d0b51ce7.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_960d5dd6d0b51ce7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 261,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02620",
+    "members": [
+      "CPP_54c688c5c197495e"
+    ],
+    "function": "NativeReview::frag_change_2b072254ea69",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "frag_change",
+    "aliases": [
+      "frag_change"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "31f828594336b8496e0a800466fcd4b5228027e2c88d22823406bfc36ef5b05e",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_54c688c5c197495e.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_54c688c5c197495e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Shop.cpp",
+        "line": 794,
+        "file_sha256": "710027c998f2b1bbbcfa1fb11ebfc36b9d7414fa6ca244bb39b1c8094df7ae90"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02626",
+    "members": [
+      "CPP_09a9eeb22628e54b"
+    ],
+    "function": "NativeReview::trampleSeeder_2bfb49a0719c",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "trampleSeeder",
+    "aliases": [
+      "trampleSeeder"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "0c3d390c0172021afded8402de77a8b22c21488625876bc246fb05f39757521d",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_09a9eeb22628e54b.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_09a9eeb22628e54b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3469,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02659",
+    "members": [
+      "CPP_8b0ee9a8f26ff978"
+    ],
+    "function": "NativeReview::DeceiveFlower_32a7dfda8086",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DeceiveFlower",
+    "aliases": [
+      "花散らない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "b7d18c4df34d1dfd3577d3f83a99322aa5bde60478c9ff38b353c4a60687ab59",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8b0ee9a8f26ff978.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_681a1d3e72afb923",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_8b0ee9a8f26ff978",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Sources/Cheats/Players/DeceiveFlower.cpp",
+        "line": 5,
+        "file_sha256": "56e781c28bcf96050c5ab3be47486c0394587c2e7f652d3f0d97b4ebd22d5a7b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02663",
+    "members": [
+      "CPP_3cc1fa9a6a1f5678",
+      "CPP_4b05f84bea089ae7"
+    ],
+    "function": "NativeReview::mujintou_STool1_3358406275df",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_STool1",
+    "aliases": [
+      "mujintou_STool1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "9709208de469cdc8de4912bfb81d8be5b40cad44d6e2ebf18afb9fc3fe864b8a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_3cc1fa9a6a1f5678.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_3cc1fa9a6a1f5678",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 355,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_4b05f84bea089ae7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 353,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02678",
+    "members": [
+      "CPP_d44b9d9005a0580c"
+    ],
+    "function": "NativeReview::ChangeWeather_35e622f24f33",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeWeather",
+    "aliases": [
+      "ChangeWeather"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "44f906da2b0ce1dc42fac3815467a0e65bd9daaa260c4ccf5f90bfd80b02c315",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d44b9d9005a0580c.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_d44b9d9005a0580c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/その他.cpp",
+        "line": 71,
+        "file_sha256": "5652c2fcd13fcafc3190ee5abcd2f6cd16e9650c74d095ee92bf21f4428ccd5a"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02687",
+    "members": [
+      "CPP_bf580e58ae931b13"
+    ],
+    "function": "NativeReview::KeyboardExtender_384d078c796c",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "KeyboardExtender",
+    "aliases": [
+      "KeyboardExtender"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "00a4081d1bffe5b0c9f6a2647ba52f8be565b6586c10ce7f1d4b597997747a4f",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_bf580e58ae931b13.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_bf580e58ae931b13",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 195,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02690",
+    "members": [
+      "CPP_45ee137cffa7f1c1",
+      "CPP_f9b07e34786661ec"
+    ],
+    "function": "NativeReview::mujintou_STool3_39c5848ea935",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_STool3",
+    "aliases": [
+      "mujintou_STool3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "ecb4e8a57c4995ccc04575a8a03eaaadccb184a84aab47ccb3815250e387e8ae",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_f9b07e34786661ec.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_45ee137cffa7f1c1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 367,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_f9b07e34786661ec",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 369,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02693",
+    "members": [
+      "CPP_d9f212a7b276d2d1"
+    ],
+    "function": "NativeReview::ChangeFlowerTreeSize_39d9d780e45a",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeFlowerTreeSize",
+    "aliases": [
+      "ChangeFlowerTreeSize"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "f0d33b95fd03b54bbcc7f50af5303d18675c915bef5bdb8c7960f89366d4b019",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d9f212a7b276d2d1.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_d9f212a7b276d2d1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 126,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02697",
+    "members": [
+      "CPP_bde76b1f30d77497"
+    ],
+    "function": "NativeReview::SpeedHack_3abacfa64115",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "SpeedHack",
+    "aliases": [
+      "SpeedHack"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "9663f7ade8828323bc55b775e5b5c8ef11061f5c420dbbb3582b843c693fbbab",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_bde76b1f30d77497.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8f7c81b04adb9ff7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_bde76b1f30d77497",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 212,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02718",
+    "members": [
+      "CPP_6fcae0664cc9fce2"
+    ],
+    "function": "NativeReview::FarCamera_3ff82ab5a8ef",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "FarCamera",
+    "aliases": [
+      "FarCamera"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "224a8b333f8170ad004d803b0fb40585ba4af4ec4a49071fb5883003988db4f8",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_6fcae0664cc9fce2.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_6fcae0664cc9fce2",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 115,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02719",
+    "members": [
+      "CPP_2cad63155213ba21",
+      "CPP_cdbeb146acc98d74"
+    ],
+    "function": "NativeReview::mujintou_syokuryou3_401f91a195b5",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_syokuryou3",
+    "aliases": [
+      "mujintou_syokuryou3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "efb5d530aec8b1cf5e7a3d3199c6165a9c0743347569e87737c29f45bd658574",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_cdbeb146acc98d74.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_2cad63155213ba21",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 476,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_cdbeb146acc98d74",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 478,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02737",
+    "members": [
+      "CPP_fe463ec3748ff495"
+    ],
+    "function": "NativeReview::WalkRemover_43547bc4333b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "WalkRemover",
+    "aliases": [
+      "歩いたとこのアイテム消える"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "b7d28e7d13a482a6c5c3a55243e5ede884d13084298c1873e45c8f6d89d8eca1",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_fe463ec3748ff495.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_a801eff24b14c5a7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_fe463ec3748ff495",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 650,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02739",
+    "members": [
+      "CPP_247c0937ebdffef1"
+    ],
+    "function": "NativeReview::numbers_43baf77e4edf",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "numbers",
+    "aliases": [
+      "numbers"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "e10fc473bbf283a768b629a649704a78e9bc314b75f2127d1c307ce483a39b36",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_247c0937ebdffef1.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_247c0937ebdffef1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4227,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02741",
+    "members": [
+      "CPP_a0e71d1e8cbc72bb",
+      "CPP_fced6bfcea57eb3a"
+    ],
+    "function": "NativeReview::mujintou_Tool1_4408b68b463a",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Tool1",
+    "aliases": [
+      "mujintou_Tool1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "712bb09900585f0127b287d5cf0af1a2de26159a5466787b8693923c0c2cbcd2",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_fced6bfcea57eb3a.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_a0e71d1e8cbc72bb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 325,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_fced6bfcea57eb3a",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 327,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02743",
+    "members": [
+      "CPP_2b7730abab3e65c4"
+    ],
+    "function": "NativeReview::FastClothChange_4443421280ea",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "FastClothChange",
+    "aliases": [
+      "FastClothChange"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "8afe472a97f654df371ee34097756cb5cea06ab784c51ee6f1e1424c81460e34",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_2b7730abab3e65c4.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_2b7730abab3e65c4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 286,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02765",
+    "members": [
+      "CPP_885dc204473eaccf",
+      "CPP_e6721141596bdc1b"
+    ],
+    "function": "NativeReview::mujintou_STool2_491c0182dab4",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_STool2",
+    "aliases": [
+      "mujintou_STool2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "80ccad85906f449e2d1ed2e3b29c8d71850cc03c3fba9c0032aca017e541742d",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_e6721141596bdc1b.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_885dc204473eaccf",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 360,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_e6721141596bdc1b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 362,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02781",
+    "members": [
+      "CPP_fe2d51d77a94d423"
+    ],
+    "function": "NativeReview::TranslateKOR_4d3876d2e513",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "TranslateKOR",
+    "aliases": [
+      "TranslateKOR"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "38993d719f76ff4e57f0bc2cfb84d1ee7b200c2ca2a1b12111080a5a376ebc88",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_fe2d51d77a94d423.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_fe2d51d77a94d423",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 696,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02784",
+    "members": [
+      "CPP_412f464740f9bd11",
+      "CPP_ca3e0fc879405a37"
+    ],
+    "function": "NativeReview::mujintou_Item5_4d94ada284b3",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item5",
+    "aliases": [
+      "mujintou_Item5"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "4635483547822b6c96b819fa27b238d13773b9abbcc090914fb69bb6535493d5",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_412f464740f9bd11.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_412f464740f9bd11",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 215,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_ca3e0fc879405a37",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 213,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02793",
+    "members": [
+      "CPP_240a31822dc0cd6e"
+    ],
+    "function": "NativeReview::ChangeWeather_4fc9e60d759e",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeWeather",
+    "aliases": [
+      "ChangeWeather"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "530d82fdceeb2f29f419c318f91bba8f7052e71a886c7827aa10cdc06d9e871c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_240a31822dc0cd6e.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_240a31822dc0cd6e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 171,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02803",
+    "members": [
+      "CPP_186e8918ed75ef9c"
+    ],
+    "function": "NativeReview::DisableSaveMenu_51d3ab2cab95",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DisableSaveMenu",
+    "aliases": [
+      "セーブメニュー無効化",
+      "花散らない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "40c91db912a9684535bc6aceab5a447d21c45f946723388f60d0fb55985ed941",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_186e8918ed75ef9c.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_681a1d3e72afb923",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_186e8918ed75ef9c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Sources/Cheats/Players/DisableSaveMenu.cpp",
+        "line": 5,
+        "file_sha256": "9c6d7df0b2d8bf8b0c3a5744823f29fc2882f20ddaa65da240ec6336815a7f2a"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02812",
+    "members": [
+      "CPP_7763f406d2d8707d",
+      "CPP_afe8f7c7c71e09e1"
+    ],
+    "function": "NativeReview::DisableSaveMenu_5338fe878265",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DisableSaveMenu",
+    "aliases": [
+      "DisableSaveMenu",
+      "セーブメニュー出さない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "7897c492e8404983c1e70cabeb1ffd927bda470c28afeb3a1bc3b406af429b2a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_7763f406d2d8707d.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_7763f406d2d8707d",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/その他.cpp",
+        "line": 10,
+        "file_sha256": "5652c2fcd13fcafc3190ee5abcd2f6cd16e9650c74d095ee92bf21f4428ccd5a"
+      },
+      {
+        "id": "CPP_afe8f7c7c71e09e1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 788,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02836",
+    "members": [
+      "CPP_924aff70716108cd",
+      "CPP_df54545254299ed9"
+    ],
+    "function": "NativeReview::mujintou_Tool3_57a43ec91815",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Tool3",
+    "aliases": [
+      "mujintou_Tool3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "758e5006f43c233964f8708b6d269259ce3b38b61a1fba40e84ab8ede73dc35e",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_df54545254299ed9.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_924aff70716108cd",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 339,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_df54545254299ed9",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 341,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02870",
+    "members": [
+      "CPP_237cd45bd8a5cdd4",
+      "CPP_dde34fdd46ad571c"
+    ],
+    "function": "NativeReview::mujintou_hoof3_608d9519ca08",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hoof3",
+    "aliases": [
+      "mujintou_hoof3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a08a04992b81344115db4a5213b2fe1c97e36606610fffefd69f7247e30fc635",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_dde34fdd46ad571c.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_237cd45bd8a5cdd4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 293,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_dde34fdd46ad571c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 295,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02900",
+    "members": [
+      "CPP_7a0322c85acf556a"
+    ],
+    "function": "NativeReview::AllDelete_6664a683da4f",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "AllDelete",
+    "aliases": [
+      "すべて削除",
+      "アイテム保存"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "b89ad6809aa5981b8b353ad325dea65b24012561a9caad0fa20bec951d6111cd",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_7a0322c85acf556a.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_a801eff24b14c5a7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_7a0322c85acf556a",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 593,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02922",
+    "members": [
+      "CPP_cd6333f70063d840"
+    ],
+    "function": "NativeReview::Change_Recycle1_6be18efbedb2",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "Change_Recycle1",
+    "aliases": [
+      "Change_Recycle1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "9dc619acfef188fabbe585a11ceb66dd4415505a142672c48777599c115fe612",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_cd6333f70063d840.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_c0ed724792a3e991",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Includes/types.h",
+        "line": 59,
+        "text": "typedef uint16_t u16;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_cd6333f70063d840",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Shop.cpp",
+        "line": 806,
+        "file_sha256": "710027c998f2b1bbbcfa1fb11ebfc36b9d7414fa6ca244bb39b1c8094df7ae90"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02937",
+    "members": [
+      "CPP_b41fc667ae2b947d"
+    ],
+    "function": "NativeReview::alltour_6f589ddbacae",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "alltour",
+    "aliases": [
+      "alltour"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "ec0e4bad1fcfa597915b82e023fb32b2da566d8c89ffb53f96f6564ccb610445",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b41fc667ae2b947d.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_b41fc667ae2b947d",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2875,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02938",
+    "members": [
+      "CPP_df472391d5130509",
+      "CPP_e6333c0d744db7d4"
+    ],
+    "function": "NativeReview::mujintou_Item4_6f76ffa8a0bb",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item4",
+    "aliases": [
+      "mujintou_Item4"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "87df0dd7989d0a28b45a48dd70e910b487e9c17d5d9ac8874f4ea467ef72bf14",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_df472391d5130509.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_df472391d5130509",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 199,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_e6333c0d744db7d4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 197,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02943",
+    "members": [
+      "CPP_5610c44a16d0c7ea",
+      "CPP_5c68e89c1a382e58"
+    ],
+    "function": "NativeReview::mujintou_syokuryou1_70aa51da9f30",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_syokuryou1",
+    "aliases": [
+      "mujintou_syokuryou1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "0c525318f240eec3a31747ea9a61ec1553236c46bad9f7a4066dee7ab80a6846",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_5c68e89c1a382e58.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_5610c44a16d0c7ea",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 444,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_5c68e89c1a382e58",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 446,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02950",
+    "members": [
+      "CPP_b95a2d66e3179e97",
+      "CPP_fde57ecc05da2346"
+    ],
+    "function": "NativeReview::mujintou_Item7_71dcc5038413",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item7",
+    "aliases": [
+      "mujintou_Item7"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "73d629a986bace2dba8c6dc5e5e8a8ff802612065c79a226e33a7ff6b7775f1f",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b95a2d66e3179e97.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_b95a2d66e3179e97",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 247,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_fde57ecc05da2346",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 245,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02951",
+    "members": [
+      "CPP_6e0e6c33f290a985",
+      "CPP_bd2cd5c590cc7bcd"
+    ],
+    "function": "NativeReview::mujintou_Item1_71e333db0d56",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item1",
+    "aliases": [
+      "mujintou_Item1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "ab650100cb81507be7bf2ef10d13315ccbd7ef3f518155971b708c92f1f90a4d",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_6e0e6c33f290a985.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_6e0e6c33f290a985",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 151,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_bd2cd5c590cc7bcd",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 149,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02972",
+    "members": [
+      "CPP_36e8ee1d076bcbfa"
+    ],
+    "function": "NativeReview::wtw_773f094bd338",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "wtw",
+    "aliases": [
+      "wtw"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "5f12070e21f9efaab588d7a77fbf884dafe0d38e8a099ad0b50bb2135fcceeb4",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_36e8ee1d076bcbfa.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_36e8ee1d076bcbfa",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2513,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02989",
+    "members": [
+      "CPP_be7f6d025d501016"
+    ],
+    "function": "NativeReview::slmoanms_7bd73a5c3dcf",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "slmoanms",
+    "aliases": [
+      "slmoanms"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "4e098daa5d6dd036da2cb8048a6175b910bfe223379ef2260ee8e1ed1e2be1ad",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_be7f6d025d501016.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_be7f6d025d501016",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2608,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_02993",
+    "members": [
+      "CPP_18c3a8af0c91c9e8"
+    ],
+    "function": "NativeReview::DD_Spam_7c5fa365cc17",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DD_Spam",
+    "aliases": [
+      "アイテムランダマイザ"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "63bef8239072fe8ac9836d4e75e1e8c5f00fdd74fc13df5fb281986a141bd845",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_18c3a8af0c91c9e8.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8f7c81b04adb9ff7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_18c3a8af0c91c9e8",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Drop.cpp",
+        "line": 58,
+        "file_sha256": "dd6329cbe16e967593e647e01cba001f6678a1149494a07cc1928e60bc3292db"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03002",
+    "members": [
+      "CPP_d63d98aaac2cd5dd"
+    ],
+    "function": "NativeReview::tourend_7ed4a5731f01",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "tourend",
+    "aliases": [
+      "tourend"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "4d4ccb8bf7c8754a19416965401646462d90bb3956868d0a415c6d735a294110",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d63d98aaac2cd5dd.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_d63d98aaac2cd5dd",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4232,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03010",
+    "members": [
+      "CPP_0a983c4eead9f402",
+      "CPP_0f1c8ef50850cea1"
+    ],
+    "function": "NativeReview::mujintou_GTool2_7fe51ee4d608",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_GTool2",
+    "aliases": [
+      "mujintou_GTool2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "762201c9863a19ca83af5c7a9e796a4828b80df9a506cd7349bde6037ac1395a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_0f1c8ef50850cea1.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_0a983c4eead9f402",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 388,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_0f1c8ef50850cea1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 390,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03031",
+    "members": [
+      "CPP_d1381a319d237a76"
+    ],
+    "function": "NativeReview::bgmchange_85ea6b6ffd95",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "bgmchange",
+    "aliases": [
+      "bgmchange"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "998c81acd888f1f0aeaa1364750310916bb9c895f94bb296ec6cfaab8512a832",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d1381a319d237a76.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_d1381a319d237a76",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4574,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03034",
+    "members": [
+      "CPP_35cfa5f0d5db7c2e"
+    ],
+    "function": "NativeReview::MovementChanger_8725920e55cf",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "MovementChanger",
+    "aliases": [
+      "MovementChanger"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "d33c8df9c1e0bc20f8a9313e3790f625581a97eec8f2443da22ec89fbacd3c97",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_35cfa5f0d5db7c2e.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_35cfa5f0d5db7c2e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3053,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03058",
+    "members": [
+      "CPP_f8197ab022c3d9d7"
+    ],
+    "function": "NativeReview::NoBreakFlower_8c04d8394071",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "NoBreakFlower",
+    "aliases": [
+      "歩いたとこのアイテム消える",
+      "走っても花散らない"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "d7632f322b9715182ab8ff9d236eab9435e9720bc7e00fd3ee1f3d4dd53ab7c3",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_f8197ab022c3d9d7.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_f8197ab022c3d9d7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 676,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03070",
+    "members": [
+      "CPP_773f7323013bcf6a"
+    ],
+    "function": "NativeReview::tourCorrupter_8f937388c493",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "tourCorrupter",
+    "aliases": [
+      "tourCorrupter"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "72dac901b5e984da429cd26203c58716273902ca137f31480dc6c2c4cab9d2e3",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_773f7323013bcf6a.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      },
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_773f7323013bcf6a",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4392,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03090",
+    "members": [
+      "CPP_c199dd0016b32092"
+    ],
+    "function": "NativeReview::forcelag_926b2da0bee5",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "forcelag",
+    "aliases": [
+      "forcelag"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "dcb958b9214f6504bd6188282709c08bba772c81c71af05c934c1cd6a0f8e437",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_c199dd0016b32092.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      },
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_c199dd0016b32092",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2205,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03092",
+    "members": [
+      "CPP_5708532157c5ec6e",
+      "CPP_8300e7f30a0206b2"
+    ],
+    "function": "NativeReview::mujintou_Tool2_9327b83f46aa",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Tool2",
+    "aliases": [
+      "mujintou_Tool2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "5b8097d09bad96d757c6ed524c2257cb9f530eb93c815da3947a6b4f17009a9a",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8300e7f30a0206b2.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_5708532157c5ec6e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 332,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_8300e7f30a0206b2",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 334,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03095",
+    "members": [
+      "CPP_8f4c9bc4a27b67ec"
+    ],
+    "function": "NativeReview::DropStopper_93d54bb14cd8",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DropStopper",
+    "aliases": [
+      "アイテムランダマイザ"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "bd45a120ef62c9ace57a209149325d65174960825c0043e851b5de5bc39af4ee",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8f4c9bc4a27b67ec.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_8f4c9bc4a27b67ec",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Drop.cpp",
+        "line": 49,
+        "file_sha256": "dd6329cbe16e967593e647e01cba001f6678a1149494a07cc1928e60bc3292db"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03141",
+    "members": [
+      "CPP_8f8a46efd036c485"
+    ],
+    "function": "NativeReview::ViewTokushuItem_9c848528cd58",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ViewTokushuItem",
+    "aliases": [
+      "アイテム保存",
+      "特殊アイテム表示"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "6f413f444f4fe6cf05d375309d4cd8a87209818b87a0e56d09284338ccb76c28",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8f8a46efd036c485.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_8f8a46efd036c485",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 470,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03142",
+    "members": [
+      "CPP_97bb839802a1819b",
+      "CPP_9e7737466dbd7ac8"
+    ],
+    "function": "NativeReview::DisableItemLocks_9c848528cd58",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DisableItemLocks",
+    "aliases": [
+      "DisableItemLocks"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "6f413f444f4fe6cf05d375309d4cd8a87209818b87a0e56d09284338ccb76c28",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_9e7737466dbd7ac8.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_97bb839802a1819b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Inventory.cpp",
+        "line": 10,
+        "file_sha256": "ff928b68daf310a0d4359ea8b0fa18e40eda3fe5fd49594bed4208daa8bbce85"
+      },
+      {
+        "id": "CPP_9e7737466dbd7ac8",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/インベントリ.cpp",
+        "line": 8,
+        "file_sha256": "e3f77f067093d75f55207a7bca7e3366aac47c4ffd047c32b5917cf644ee8a49"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03146",
+    "members": [
+      "CPP_8b22000e93846af4",
+      "CPP_b9fa0689bcc981a7"
+    ],
+    "function": "NativeReview::mujintou_GTool3_9e2632fe0798",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_GTool3",
+    "aliases": [
+      "mujintou_GTool3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "e0e8cc76c724e9598df635a89b17c6d27154983a68274da8af026eda0088b898",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b9fa0689bcc981a7.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_8b22000e93846af4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 395,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_b9fa0689bcc981a7",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 397,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03149",
+    "members": [
+      "CPP_b9e6ec3f474e9242"
+    ],
+    "function": "NativeReview::akarusa_change_9eb5f17c58eb",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "akarusa_change",
+    "aliases": [
+      "akarusa_change"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "007d1f7d2f1975f5bae8ebd203b46004b6e8c746002b1881938343de9c11ad0c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b9e6ec3f474e9242.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_b9e6ec3f474e9242",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 15,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03157",
+    "members": [
+      "CPP_999cd0c6e227fd9b"
+    ],
+    "function": "NativeReview::Pose1_a0ad78590ce1",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "Pose1",
+    "aliases": [
+      "Pose1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "5e788e733d596d58e6f5fb7c49d5927e489055c4084f705fc2a436e180a932ca",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_999cd0c6e227fd9b.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_999cd0c6e227fd9b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 235,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03176",
+    "members": [
+      "CPP_978946fe8e6456eb"
+    ],
+    "function": "NativeReview::EncChat_a3fc7d89a415",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "EncChat",
+    "aliases": [
+      "EncChat"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "39970090bfd29a46652eaa79e4a26fa0d23b6fd398713a8c107aef937264ca1e",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_978946fe8e6456eb.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_978946fe8e6456eb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3632,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03182",
+    "members": [
+      "CPP_079c06427c269d66",
+      "CPP_5ff7e6c3768c2462"
+    ],
+    "function": "NativeReview::mujintou_syokuryou2_a5cd64148cea",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_syokuryou2",
+    "aliases": [
+      "mujintou_syokuryou2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "05812c9c0f5d29a22a7050934cabab26ec8ea3b84c3c3edc70cd17963100a235",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_079c06427c269d66.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_079c06427c269d66",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 462,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_5ff7e6c3768c2462",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 460,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03193",
+    "members": [
+      "CPP_02340365b527f9ed",
+      "CPP_7ab729beb431e7db"
+    ],
+    "function": "NativeReview::mujintou_Item6_a802b21a4ba7",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item6",
+    "aliases": [
+      "mujintou_Item6"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "9935f0db1929f1e3f52b6c41cc47f0398e7b0a3099691530f8bb95120c21a07d",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_02340365b527f9ed.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_02340365b527f9ed",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 231,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_7ab729beb431e7db",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 229,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03203",
+    "members": [
+      "CPP_aa7c90be3902960e"
+    ],
+    "function": "NativeReview::infRock_ab4e300694ea",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "infRock",
+    "aliases": [
+      "infRock"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "79de2613b44a46b0de5f39583c7599d9a6534eb227b84dc2281403a71aac9a07",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_aa7c90be3902960e.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_aa7c90be3902960e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3561,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03283",
+    "members": [
+      "CPP_1f6ebe9dc450aee5"
+    ],
+    "function": "NativeReview::maxturbo_ba18cd7549e5",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "maxturbo",
+    "aliases": [
+      "maxturbo"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "c143101e413b8be5a5d9816049655828a9337d240f5d66c4b00aee930e2f2130",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_1f6ebe9dc450aee5.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_1f6ebe9dc450aee5",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2251,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03287",
+    "members": [
+      "CPP_93800d32f39536b2",
+      "CPP_a7a84df95ba93dd4"
+    ],
+    "function": "NativeReview::mujintou_hoof4_baa508d3e033",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hoof4",
+    "aliases": [
+      "mujintou_hoof4"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "cc3e355c6fa92111f63061dc57f1648aacc27c3b8668891a379b07acba9b0d3b",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_93800d32f39536b2.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_93800d32f39536b2",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 311,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_a7a84df95ba93dd4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 309,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03299",
+    "members": [
+      "CPP_0461e36752987ecb",
+      "CPP_df2757b6d279d08c"
+    ],
+    "function": "NativeReview::OtherPlayersCantPushYou_bda25ace4179",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "OtherPlayersCantPushYou",
+    "aliases": [
+      "OtherPlayersCantPushYou",
+      "セーブメニュー出さない",
+      "他人の当たり判定無効"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "e1366668a210b28ec7ff866b70fa4ef340e0097413f595b5ee1d8593a48f6308",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_df2757b6d279d08c.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_0461e36752987ecb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 807,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      },
+      {
+        "id": "CPP_df2757b6d279d08c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/その他.cpp",
+        "line": 32,
+        "file_sha256": "5652c2fcd13fcafc3190ee5abcd2f6cd16e9650c74d095ee92bf21f4428ccd5a"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03310",
+    "members": [
+      "CPP_931ddad5360b6771"
+    ],
+    "function": "NativeReview::Moguru_black_bf445b5dbe8e",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "Moguru_black",
+    "aliases": [
+      "Moguru_black"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "d3f1885140624332a94a4ca871e2f9a63a2cf6366cebad25e4f7cdfde1fbfa39",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_931ddad5360b6771.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_931ddad5360b6771",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 365,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03314",
+    "members": [
+      "CPP_b4f4ab6e1ea6b9e5"
+    ],
+    "function": "NativeReview::itemontreemod_bfc0dcb18f40",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "itemontreemod",
+    "aliases": [
+      "itemontreemod"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a60a970cd9d4b015720c1a24ae03de174051db31f177e0d47244c433e01a36e1",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b4f4ab6e1ea6b9e5.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_b4f4ab6e1ea6b9e5",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3522,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03339",
+    "members": [
+      "CPP_9499c028ed7fc9bc"
+    ],
+    "function": "NativeReview::patternedit_c487a7aaf0a4",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "patternedit",
+    "aliases": [
+      "patternedit"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "72516a49febd3df7250113eb6aa6276b26fe857b4dca0690f2dfd677568faa46",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_9499c028ed7fc9bc.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_9499c028ed7fc9bc",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4450,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03356",
+    "members": [
+      "CPP_96de75c524d017a0"
+    ],
+    "function": "NativeReview::PickupMode_c803e70e553e",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "PickupMode",
+    "aliases": [
+      "PickupMode"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "54a6965e813ef0e3fbb2725abef06691906b0acd21f64a274171b1674c2bf2bc",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_96de75c524d017a0.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_96de75c524d017a0",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 105,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03366",
+    "members": [
+      "CPP_b307bf6385714437"
+    ],
+    "function": "NativeReview::noshot_c9e78a4ee529",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "noshot",
+    "aliases": [
+      "noshot"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a87e788188e7d0cc087636815a13c91a5481d0a078065f5f10c0c96601b8856d",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b307bf6385714437.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_b307bf6385714437",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2460,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03378",
+    "members": [
+      "CPP_bb6a528e24100c25"
+    ],
+    "function": "NativeReview::itemrandom_cbcf1ea4a00b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "itemrandom",
+    "aliases": [
+      "itemrandom"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "cd6c527c1056fb3be81e7571e5df85f5d47d23a7b2f68173beffe107896bc605",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_bb6a528e24100c25.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      },
+      {
+        "id": "DECL_7b95ec037187a347",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 23,
+        "text": "typedef uint16_t u16;"
+      },
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_bb6a528e24100c25",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2771,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03389",
+    "members": [
+      "CPP_548b6da5440dc153",
+      "CPP_e4ec3f8cad8062b1"
+    ],
+    "function": "NativeReview::mujintou_hoof1_cdf9b1812baa",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hoof1",
+    "aliases": [
+      "mujintou_hoof1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "0e7a06c1872954895eae68536510b9035bea53d050603465cbba6c5f7ea2fc24",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_e4ec3f8cad8062b1.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_548b6da5440dc153",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 261,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_e4ec3f8cad8062b1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 263,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03414",
+    "members": [
+      "CPP_660a38d45dc0a28a",
+      "CPP_7761e7d300ec06df",
+      "CPP_d8b852812643fc58"
+    ],
+    "function": "NativeReview::menuTouchDrop_d42c9dac8683",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "menuTouchDrop",
+    "aliases": [
+      "menuTouchDrop",
+      "プレイヤー名変更",
+      "村名変更"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "698c970bde6fed8c24e072e19538e5957c4749b814c712d41fc118eb44de423c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_660a38d45dc0a28a.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_660a38d45dc0a28a",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4513,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      },
+      {
+        "id": "CPP_7761e7d300ec06df",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 146,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      },
+      {
+        "id": "CPP_d8b852812643fc58",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION/Sources/cheats.cpp",
+        "line": 140,
+        "file_sha256": "81addc4f36ee14e0da7c65211f5148a3ab1238d89bfcf3878c8ae295870d3a46"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03415",
+    "members": [
+      "CPP_44b40fa2ee47fa3d",
+      "CPP_48b4d758baabfb8a",
+      "CPP_5504db8f56438f22",
+      "CPP_6cf4649254b94f9e",
+      "CPP_7cdc492c466f5640",
+      "CPP_934a0450df708db4",
+      "CPP_9d83b2a1615c7f31",
+      "CPP_d0abd58091e92cff",
+      "CPP_d5d3d5636ab8bf81",
+      "CPP_dec288bf68865f00"
+    ],
+    "function": "NativeReview::DeleteInvItems_d42c9dac8683",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "DeleteInvItems",
+    "aliases": [
+      "Copy",
+      "DeleteInvItems",
+      "Motion1",
+      "Motion2",
+      "Motion3",
+      "Motion4",
+      "Motion5",
+      "Motion6",
+      "Motion7",
+      "ViewSlotItems"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "698c970bde6fed8c24e072e19538e5957c4749b814c712d41fc118eb44de423c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_dec288bf68865f00.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_44b40fa2ee47fa3d",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 9,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_48b4d758baabfb8a",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Inventory.cpp",
+        "line": 95,
+        "file_sha256": "ff928b68daf310a0d4359ea8b0fa18e40eda3fe5fd49594bed4208daa8bbce85"
+      },
+      {
+        "id": "CPP_5504db8f56438f22",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 25,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_6cf4649254b94f9e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 5,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_7cdc492c466f5640",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Inventory.cpp",
+        "line": 120,
+        "file_sha256": "ff928b68daf310a0d4359ea8b0fa18e40eda3fe5fd49594bed4208daa8bbce85"
+      },
+      {
+        "id": "CPP_934a0450df708db4",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 17,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_9d83b2a1615c7f31",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 29,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_d0abd58091e92cff",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 21,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_d5d3d5636ab8bf81",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Motion.cpp",
+        "line": 13,
+        "file_sha256": "e8055f2c0198585bf319ef9313088ad1d5b659fb4f0352be0d631875df7912d2"
+      },
+      {
+        "id": "CPP_dec288bf68865f00",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Inventory.cpp",
+        "line": 50,
+        "file_sha256": "ff928b68daf310a0d4359ea8b0fa18e40eda3fe5fd49594bed4208daa8bbce85"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03416",
+    "members": [
+      "CPP_6d786d4fb8097064"
+    ],
+    "function": "NativeReview::moonjump_d45cc0c908e1",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "moonjump",
+    "aliases": [
+      "moonjump"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "fbcb3ab3a0be2d3f8c35c6031114b9fd1f643df05fe1d51602a9f9cdf9a5b5a9",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_6d786d4fb8097064.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_6d786d4fb8097064",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2546,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03438",
+    "members": [
+      "CPP_8a4eaa2db4f3582c",
+      "CPP_b6c10bfc7e8e32af"
+    ],
+    "function": "NativeReview::mujintou_Item3_d91848344529",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_Item3",
+    "aliases": [
+      "mujintou_Item3"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "242a04ad61e87de2f924e18bf7d281af7782a09655535e4be05e458eff00af02",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_8a4eaa2db4f3582c.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_435621ce2b05901a",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 58,
+        "text": "typedef uint8_t u8;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_8a4eaa2db4f3582c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 183,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_b6c10bfc7e8e32af",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 181,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03439",
+    "members": [
+      "CPP_d884b43f3450f9ed"
+    ],
+    "function": "NativeReview::autoPickup_d976f4c3d755",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "autoPickup",
+    "aliases": [
+      "autoPickup"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "8cb8fe1ea7068d0f40b23b2b80b63e07149e13ab1c3e146d5391d12c3257d1bc",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d884b43f3450f9ed.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_d884b43f3450f9ed",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2895,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03458",
+    "members": [
+      "CPP_eaef3ef8e509c484"
+    ],
+    "function": "NativeReview::inf_expression_dd8290494b8b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "inf_expression",
+    "aliases": [
+      "inf_expression"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "00491d5518aebd5af436ada594fe8c590e39e0b094b36d9823fde146fec71643",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_eaef3ef8e509c484.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_eaef3ef8e509c484",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2294,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03470",
+    "members": [
+      "CPP_dcc5c4058aabe669"
+    ],
+    "function": "NativeReview::ChangeDenger_e02e1f2efe4d",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangeDenger",
+    "aliases": [
+      "ChangeDenger"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "1360dc09b4934ea161b57be1dc6b129b86cb0c2c50a84c4f9b68c966ef317843",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_dcc5c4058aabe669.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_dcc5c4058aabe669",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/General.cpp",
+        "line": 213,
+        "file_sha256": "1c353863b6d4abc8f5b51e614653e820751b9fa3c17902c73bd57a8f7eff51ce"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03496",
+    "members": [
+      "CPP_a400fb9b74d42c80"
+    ],
+    "function": "NativeReview::allseeding_e6516ad3d714",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "allseeding",
+    "aliases": [
+      "allseeding"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "cae753ef0e5aafd3ec15adfcd95ec0f1cc2476f987555ce4d1df3c7b5b1ee390",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_a400fb9b74d42c80.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_7b95ec037187a347",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 23,
+        "text": "typedef uint16_t u16;"
+      },
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_a400fb9b74d42c80",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 490,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03497",
+    "members": [
+      "CPP_042d250edf01958b"
+    ],
+    "function": "NativeReview::instantchop_e65863e069af",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "instantchop",
+    "aliases": [
+      "instantchop"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "12f43abb2042fb663ac22b7bd0be9ad67ac4139e48da02e875c78662811346c8",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_042d250edf01958b.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_042d250edf01958b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3181,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03503",
+    "members": [
+      "CPP_ceb0bebd4fc15875"
+    ],
+    "function": "NativeReview::CrazyScreen_e72678034dbf",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "CrazyScreen",
+    "aliases": [
+      "CrazyScreen"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a0691bb44939562fb2abdfad061b975bce1da33ae68a65a4c612b467ccaa2c0c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_ceb0bebd4fc15875.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_ceb0bebd4fc15875",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 136,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03519",
+    "members": [
+      "CPP_2ecc5ba67d8450eb"
+    ],
+    "function": "NativeReview::hatz_ea53dba3a488",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "hatz",
+    "aliases": [
+      "hatz"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "2eaa6c1fa4ae40173013e03ab614340f7b57bc81a4fc6c4af2c613c451b866c3",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_2ecc5ba67d8450eb.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_2ecc5ba67d8450eb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 3805,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03524",
+    "members": [
+      "CPP_74056a2eb2cedd1c"
+    ],
+    "function": "NativeReview::FastGameSpeed_eb0fc92cc531",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "FastGameSpeed",
+    "aliases": [
+      "FastGameSpeed"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "1cb90852e0587635caecc4e1168eca745fd8d1387e04561367e281fce5f95d5c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_74056a2eb2cedd1c.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_74056a2eb2cedd1c",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Misc.cpp",
+        "line": 26,
+        "file_sha256": "fe0b92828c7aa33fe1b562bd56d1950171147ee7292cef3fa49df8c01296ab4b"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03527",
+    "members": [
+      "CPP_f60f3dfd2251bf6b"
+    ],
+    "function": "NativeReview::WalkOver_ec2284e68051",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "WalkOver",
+    "aliases": [
+      "WalkOver"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "f888ba7a21b363ed976469b86f1fba6cbcd4cffdc65bb35ae578a352e8b78cdf",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_f60f3dfd2251bf6b.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_f60f3dfd2251bf6b",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/Movement.cpp",
+        "line": 177,
+        "file_sha256": "ee217285b187e5d04c3ca4287f45acacfa897cfd4aa3b508c5f47f72c7e68fac"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03547",
+    "members": [
+      "CPP_c6d6d210436d69a6"
+    ],
+    "function": "NativeReview::digany_f0190acad4d3",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "digany",
+    "aliases": [
+      "digany"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "4b30c5904ad9c7b332fb0a3d27a1fe916bc1e481b4f8cfdeeef4f490cf347276",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_c6d6d210436d69a6.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_c6d6d210436d69a6",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 4098,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03552",
+    "members": [
+      "CPP_27e3e0214be518aa",
+      "CPP_3629662069755e6e"
+    ],
+    "function": "NativeReview::mujintou_GTool4_f0eeb2bd2e29",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_GTool4",
+    "aliases": [
+      "mujintou_GTool4"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "532fffc8e6e2907df70b78824cf45da302aee495a574bb00476442c46dd2b754",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_3629662069755e6e.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_27e3e0214be518aa",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 402,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_3629662069755e6e",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 404,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03560",
+    "members": [
+      "CPP_d00ffdb304c26bf9",
+      "CPP_d5b4d23ffeff8338"
+    ],
+    "function": "NativeReview::ChangePlayer_f1b7e08a483b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "ChangePlayer",
+    "aliases": [
+      "ChangePlayer"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "9bff379c0180038964d4d25b624f82d58a0e33fd5da29ccc58c3e0fa59a52d7b",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d00ffdb304c26bf9.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_d00ffdb304c26bf9",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/プレイヤー.cpp",
+        "line": 11,
+        "file_sha256": "923eed1f1c02b898bd7b1f4052d8e0effa40b7348370aa5baece40871cce9e1c"
+      },
+      {
+        "id": "CPP_d5b4d23ffeff8338",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/General.cpp",
+        "line": 10,
+        "file_sha256": "1c353863b6d4abc8f5b51e614653e820751b9fa3c17902c73bd57a8f7eff51ce"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03564",
+    "members": [
+      "CPP_6350311ac1993567"
+    ],
+    "function": "NativeReview::slattzylove_f1ec25b71730",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "slattzylove",
+    "aliases": [
+      "slattzylove"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "99e9000856aa96fee5effbed0edf4dd7371bce3379c11f986cec0123805c703c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_6350311ac1993567.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_6350311ac1993567",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2867,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03565",
+    "members": [
+      "CPP_792ae01849ab60e1"
+    ],
+    "function": "NativeReview::animmod_f225e5732502",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "animmod",
+    "aliases": [
+      "animmod"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "32188f700abe7bd0b903acb71f56c123aa98b60cd01f31df8112af424ce73b66",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_792ae01849ab60e1.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_27a0b2e0dd26a56d",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 22,
+        "text": "typedef uint8_t u8;"
+      },
+      {
+        "id": "DECL_7b95ec037187a347",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 23,
+        "text": "typedef uint16_t u16;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_792ae01849ab60e1",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 2061,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03570",
+    "members": [
+      "CPP_421e00149644542d",
+      "CPP_f0fe588b6fef3f97"
+    ],
+    "function": "NativeReview::mujintou_hoof2_f2b4dfc19e26",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hoof2",
+    "aliases": [
+      "mujintou_hoof2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "28c72d2727f124c7a05547a88c951bef914d3720745645e30f5ab0bec49b7355",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_421e00149644542d.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_421e00149644542d",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 279,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_f0fe588b6fef3f97",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 277,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03586",
+    "members": [
+      "CPP_10871ee8a54d0da6",
+      "CPP_ef8a3bd3aa95bc55"
+    ],
+    "function": "NativeReview::mujintou_hizuke2_f61ee691e34d",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hizuke2",
+    "aliases": [
+      "mujintou_hizuke2"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "a0fd569501a2a8d2364f5bf59fe9be712ff5c94892e663ed71cf23fb46527290",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_10871ee8a54d0da6.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_10871ee8a54d0da6",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 430,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      },
+      {
+        "id": "CPP_ef8a3bd3aa95bc55",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 428,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03594",
+    "members": [
+      "CPP_3645be023d64dfcb"
+    ],
+    "function": "NativeReview::TranslateJAP_f76c3aad047b",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "TranslateJAP",
+    "aliases": [
+      "TranslateJAP"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "28290be242da05ba4d5a5980321a1d57ad86c432125f35f31d0bb349de87537c",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_3645be023d64dfcb.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_3645be023d64dfcb",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 642,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03599",
+    "members": [
+      "CPP_ec174678001ca2da"
+    ],
+    "function": "NativeReview::customSymbols_f8b1a6e93c39",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "customSymbols",
+    "aliases": [
+      "customSymbols"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "e53c9e1fa69344b4e1fcfecfbb1d616b8b3360c695a6c87464944c1e8a858f29",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_ec174678001ca2da.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_f775aed0b25af1c7",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_ec174678001ca2da",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY/Sources/cheats.cpp",
+        "line": 822,
+        "file_sha256": "e33386fc8c5ebf676d388fac1bdff6e2d64f63a8353d0598c54e73c040b265a7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03606",
+    "members": [
+      "CPP_18f18d2dc83a7186",
+      "CPP_d62552b22b1574e3"
+    ],
+    "function": "NativeReview::mujintou_hizuke1_fa2999b8969d",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_hizuke1",
+    "aliases": [
+      "mujintou_hizuke1"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "384f086792eb5f92bd634ef2f16b1a0b3bd5828cc9eba45747fb612986cf5e9b",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_d62552b22b1574e3.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_8af691687c6f959b",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Includes/types.h",
+        "line": 60,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_18f18d2dc83a7186",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 412,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_d62552b22b1574e3",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 414,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03621",
+    "members": [
+      "CPP_5b233b35dd844184"
+    ],
+    "function": "NativeReview::BoostMenuSpeed_fd2c096e4800",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "BoostMenuSpeed",
+    "aliases": [
+      "スピードハックメニュー ",
+      "メニュースピード高速化"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "8b0a0f8e5e4dddb7d0fbc8aee7a0db555e6598d41e0999bf2c688b1c88458d49",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_5b233b35dd844184.log"
+    },
+    "local_aliases": [
+      {
+        "id": "DECL_681a1d3e72afb923",
+        "source": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Includes/types.h",
+        "line": 24,
+        "text": "typedef uint32_t u32;"
+      }
+    ],
+    "sources": [
+      {
+        "id": "CPP_5b233b35dd844184",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/Sources/Cheats/SpeedHacks/MenuSpeed.cpp",
+        "line": 5,
+        "file_sha256": "7f19e34f5bbec99c15eb90de752af3593f072b027b6a13ce21207910a2b7b9b7"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  },
+  {
+    "group": "GROUP_03624",
+    "members": [
+      "CPP_55bba8c69c40453f",
+      "CPP_b07fb537fae382fd"
+    ],
+    "function": "NativeReview::mujintou_STool4_fd8b3cfaa3cd",
+    "source_file": "Sources/NativeReview.cpp",
+    "status": "review_CPP_closed",
+    "original_name": "mujintou_STool4",
+    "aliases": [
+      "mujintou_STool4"
+    ],
+    "origin_analysis_id": "IDA-gpt-6.1-sol-F018",
+    "conversion_model": "gpt-6",
+    "body_token_sha256": "1ca1a7d04c89db47c232b9f3c7193724428ac8805336ff7d37d80fed868da1f9",
+    "ARM_syntax": {
+      "exit_code": 0,
+      "log": "work/logs/cheat_collection_native_CPP_b07fb537fae382fd.log"
+    },
+    "local_aliases": [],
+    "sources": [
+      {
+        "id": "CPP_55bba8c69c40453f",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER/Sources/cheats/IslandGame.cpp",
+        "line": 374,
+        "file_sha256": "7ab95975ff6e2f46b920aedb8ee4edf99dc8b54089c149760ad7983df17573b5"
+      },
+      {
+        "id": "CPP_b07fb537fae382fd",
+        "path": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios/Sources/Cheats/無人島ゲーム.cpp",
+        "line": 376,
+        "file_sha256": "317cb98688493bf2c736710b021fc1bc8bb055c854e64be6a25cb717b90ed54e"
+      }
+    ],
+    "confidence": "LOW",
+    "runtime_verified": false
+  }
+]

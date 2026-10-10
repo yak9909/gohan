@@ -2,7 +2,8 @@
 *.3gx
 *.elf
 __pycache__/
-/reference/
+/reference/*
+!/reference/cheat_collection/
 /_v1_retired/
 /.github/templates/
 # 同梱 libctrpf / libcwav のビルド生成物（ソースだけを Git に入れる）

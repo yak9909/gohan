@@ -1,0 +1,41 @@
+[
+  {
+    "project": "Adios",
+    "source_root": "reference/old_project/REFERENCES/CTRPF PROJECTS/Adios",
+    "license_files": [],
+    "license_sha256": {},
+    "license_status": "no project-root license located; do not infer terms"
+  },
+  {
+    "project": "AnimalBytesv0.7.4",
+    "source_root": "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4",
+    "license_files": [
+      "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/LICENSE"
+    ],
+    "license_sha256": {
+      "reference/old_project/REFERENCES/CTRPF PROJECTS/AnimalBytesv0.7.4/LICENSE": "0ff96294ba231f999304f8d87c84d4d8004f10c93878282e4b820b79f8b1a142"
+    },
+    "license_status": "original license retained"
+  },
+  {
+    "project": "FOXXY",
+    "source_root": "reference/old_project/REFERENCES/CTRPF PROJECTS/FOXXY",
+    "license_files": [],
+    "license_sha256": {},
+    "license_status": "no project-root license located; do not infer terms"
+  },
+  {
+    "project": "JOKER",
+    "source_root": "reference/old_project/REFERENCES/CTRPF PROJECTS/JOKER",
+    "license_files": [],
+    "license_sha256": {},
+    "license_status": "no project-root license located; do not infer terms"
+  },
+  {
+    "project": "ROTATION",
+    "source_root": "reference/old_project/REFERENCES/CTRPF PROJECTS/ROTATION",
+    "license_files": [],
+    "license_sha256": {},
+    "license_status": "no project-root license located; do not infer terms"
+  }
+]

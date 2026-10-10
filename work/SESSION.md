@@ -1,3 +1,10 @@
+# 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
+
+- 全CHEATS/CTRPF PROJECTSを.hpp/.cppへ、カテゴリ大分類、main/ビルド統合なし、関数内で状態/補助処理完結、全重複整理後に採用/レビュー判断、という依頼を継続。`work/reference-cheat-collection`、基点a517f19。reference/cheat_collectionだけignore例外にする。
+- AR2367関数/3033原候補、native107関数/152原候補を収録。nativeは閉じたcallbackまたは固定幅整数typedefだけに依存するもの、typedefを同関数へ移設、原処理token一致とARM個別/結合構文を確認。109試行中2件は未解決Player型/Hotkeys名前空間で保留（依存抽出のみで完結を断定しない）。全2474関数/3185原候補、1125groupは未処理、status=IN_PROGRESS。全件完了/実機動作は未証明。
+- 原登録と別名/出典/hashはコメント/provenance、未処理理由はpending_native_and_templates.json。第三者への攻撃専用31groupは非実行名称/出典記録のみ。型/地域が複雑なC++は関数内移設を継続。既存プラグイン/Makefile/3gx/SD資源/実機は変更していない。
+- 解析側tools/cheat_collection/verify_collection.pyで実際の原bytes/token/全2474定義/ヘッダ一致/外部状態なし/全候補partition/hashをPASS_PARTIAL。AR7.cppのARM構文とnative109個別/結合構文ログは解析側workへ。保存のcheckpoint commit/pushをこの作業枝へ行い、次は未処理依存の局所化を継続する。
+
 # 2026-10-10 チップ長押し修正 / IDA-gpt-6.1-sol-F017、T004
 
 - 保存/配布完了: code a006467b15b59ff8857939accef1b2f0de9b4f49をorigin work/chip-longpress-fixへpush、remote独立一致。解析側artifacts/plugins/chip_longpress_fix1のbuild全bytes/両最新XML・保存DB・S0型/hash/配布remote読戻しPASS。以下は履歴、この追補はworkメモのみ。次は同3gxで長押し窓/縞アニメ/複製/B取消/短tap/dragの利用者実機確認。新修正版は実機未確認/main未反映、実機操作なし、DB所有者0。

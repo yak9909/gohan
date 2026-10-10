@@ -1,4 +1,9 @@
-# 現在地 — チップ長押し窓とアニメ修正（2026-10-10）
+# 現在地 — 参照チートソース集を作成中（2026-10-10）
+
+- `work/reference-cheat-collection`。解析側IDA-gpt-6.1-sol-F018/T005の全件台帳/重複整理からAR2367関数、追加変換担当gpt-6によりC++107関数（型別名も関数内へ）を`reference/cheat_collection/Sources`へ収録。全2474関数で3185原候補に対応、1125groupは依存/版/雛形等の変換未完了。第三者への攻撃専用は名称/出典だけ記録。全件完了ではない。
+- ARM C++11のAR7.cppとnative個別/結合、実出力の原bytes/token・hash/関数外状態なし/ヘッダ定義/全候補partitionはPASS_PARTIAL。実機未確認、主プラグインへ統合しない。次は未処理C++の型/補助処理/状態の関数内移設を継続。生成器と根拠はproject_v2/tools/cheat_collectionとwork/evidence/cheat_collection。
+
+## チップ長押し修正の履歴
 
 - IDA-gpt-6.1-sol-F017/T004、work/chip-longpress-fix（基点21172d6）。F016実機で長押し窓が出ず縞アニメが震えるため修正。CRO static recordをheap判定からread permission判定へ、Select counterはゼロ再開始から上限5へ変更。原ARM付き旧版再現/新版7条件/ABI/SP/VFP/build/225関数/しずえ/両XML・保存DB PASS。code a006467を作業枝へpush、解析側chip_longpress_fix1の配布/remote/hash読戻しPASS。次は利用者実機確認、新版は未実機/main未反映。詳細SESSION/解析側chip_longpress_fix証拠。
 

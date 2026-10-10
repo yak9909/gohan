@@ -1,0 +1,544 @@
+[
+  {
+    "group": "GROUP_00097",
+    "names": [
+      "クラッシュ(青)",
+      "動作乗っ取りP1"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9184,
+        "id": "AR_1d1fff81c56a811f"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 696,
+        "id": "AR_aeb45e86af551d07"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00132",
+    "names": [
+      "3P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12539,
+        "id": "AR_2ccb5ec8f0cde4da"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00311",
+    "names": [
+      "チャット乗っ取り3P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9082,
+        "id": "AR_643c98836db0c0c6"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00335",
+    "names": [
+      "他人のマイデザを書き換える"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 8302,
+        "id": "AR_114c11daac45be76"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00400",
+    "names": [
+      "乗っ取り 3P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 11720,
+        "id": "AR_debf6999c83ee5c2"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00417",
+    "names": [
+      "2P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12529,
+        "id": "AR_525f9c0159c039aa"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00420",
+    "names": [
+      "チャット乗っ取り1P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9070,
+        "id": "AR_9fef8bf49d285a26"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00528",
+    "names": [
+      "4P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12685,
+        "id": "AR_9db4312538728ccc"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00710",
+    "names": [
+      "クラッシュ(赤)",
+      "動作乗っ取りP2"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9189,
+        "id": "AR_24f87319af67b179"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 701,
+        "id": "AR_9052cc71a465b342"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00777",
+    "names": [
+      "クラッシュ(青)",
+      "動作乗っ取りP1"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 672,
+        "id": "AR_5da8bc52dc186607"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9208,
+        "id": "AR_d251879d52dc6b5b"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00913",
+    "names": [
+      "チャット乗っ取り4P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9088,
+        "id": "AR_4d1992e1daef52f2"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_00936",
+    "names": [
+      "クラッシュ(緑)",
+      "動作乗っ取りP3"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9218,
+        "id": "AR_2df9913e25cb0e9e"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 682,
+        "id": "AR_a214213ecc2c0cbd"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01118",
+    "names": [
+      "島から村に",
+      "島から村に強制",
+      "島から村強制全員",
+      "通信中島から村へ全員ワープ"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 6639,
+        "id": "AR_07961a1be507d7ac"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/もこう.txt",
+        "line": 743,
+        "id": "AR_81e009027b9d681e"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 2440,
+        "id": "AR_923873a264bce27c"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 34,
+        "id": "AR_c712c24a67f21964"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01170",
+    "names": [
+      "1P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12655,
+        "id": "AR_073316f417d84c41"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01237",
+    "names": [
+      "クラッシュ(緑)",
+      "動作乗っ取りP3"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 706,
+        "id": "AR_670e3a1c8cee7b4f"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9194,
+        "id": "AR_cc52f6c6e94f8c92"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01371",
+    "names": [
+      "1P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12519,
+        "id": "AR_8213aaa484103876"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01381",
+    "names": [
+      "帰らす乗っ取り"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/長め.txt",
+        "line": 29,
+        "id": "AR_cb3e0d4de1bed5a9"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01387",
+    "names": [
+      "3P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12675,
+        "id": "AR_fe086887bde65428"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01516",
+    "names": [
+      "クラッシュ(黄)",
+      "動作乗っ取りP4"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 687,
+        "id": "AR_265e011c7529e382"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9223,
+        "id": "AR_a6d3904f0495f2eb"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01526",
+    "names": [
+      "乗っ取り 4P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 11726,
+        "id": "AR_03a01e14b38652d2"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01725",
+    "names": [
+      "2P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12665,
+        "id": "AR_4a25ff12c7794917"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01735",
+    "names": [
+      "チャット乗っ取り2P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9076,
+        "id": "AR_d2dd9f3266564287"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01766",
+    "names": [
+      "クラッシュ外",
+      "クラッシュ室内",
+      "動作ID用動作乗っ取り(外中対応)",
+      "髪型乗っ取り(外中対応)"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 24,
+        "id": "AR_1f7d5daa9b02d347"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 13,
+        "id": "AR_2264ca3bf76b2f4d"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 2,
+        "id": "AR_2b5c7edbf19321ef"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 19,
+        "id": "AR_8017b808ab9266c2"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01767",
+    "names": [
+      "乗っ取り 1P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 11708,
+        "id": "AR_95050d1eba99da81"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01837",
+    "names": [
+      "乗っ取り 2P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 11714,
+        "id": "AR_4e374d7c4821d074"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01868",
+    "names": [
+      "p",
+      "村から島にワープ",
+      "村から島に強制",
+      "村から島強制全員",
+      "通信中村から島へ全員ワープ"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 2435,
+        "id": "AR_04328e0fa0661e64"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/スネーク.txt",
+        "line": 29,
+        "id": "AR_3500d0c079d5d1e5"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/もこう.txt",
+        "line": 738,
+        "id": "AR_680b3d326277b35d"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/もこう.txt",
+        "line": 847,
+        "id": "AR_b941eb9ba1b13728"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 6633,
+        "id": "AR_bec3a176bdbf5b65"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01914",
+    "names": [
+      "他人を自分の所へ移動させる"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 6645,
+        "id": "AR_a2e86d66100f0626"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_01981",
+    "names": [
+      "4P"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 12549,
+        "id": "AR_8212b4a9e3ac8e80"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_02208",
+    "names": [
+      "クラッシュ(黄)",
+      "動作乗っ取りP4"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 711,
+        "id": "AR_3a9840113d158acf"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9199,
+        "id": "AR_ddaed93cc565bbf8"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_02223",
+    "names": [
+      "クラッシュ(赤)",
+      "動作乗っ取りP2"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_yuuma.txt",
+        "line": 9213,
+        "id": "AR_2ffd02bcec6ddf32"
+      },
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/by_mame.txt",
+        "line": 677,
+        "id": "AR_480375581c4d8b0e"
+      }
+    ]
+  },
+  {
+    "group": "GROUP_02346",
+    "names": [
+      "相手を動かす"
+    ],
+    "reason": "相手端末のクラッシュ・操作強制・データ改変・チャットなりすまし専用項目。非実行の名称/出典記録のみ。",
+    "sources": [
+      {
+        "source": "reference/old_project/REFERENCES/CHEATS/ACNL_ALPC/動作・乗っ取り系/乗っ取り系/テレポート・ムーンジャンプ.txt",
+        "line": 112,
+        "id": "AR_aa09300860348a2c"
+      }
+    ]
+  }
+]

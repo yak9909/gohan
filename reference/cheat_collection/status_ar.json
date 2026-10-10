@@ -1,0 +1,37 @@
+{
+  "id": "IDA-gpt-6.1-sol-F018",
+  "model": "gpt-6.1-sol",
+  "status": "AR_GENERATED_NATIVE_PENDING",
+  "functions": 2367,
+  "AR_source_candidates": 3033,
+  "categories": {
+    "Sources/Review.cpp": 956,
+    "Sources/System.cpp": 856,
+    "Sources/WorldTown.cpp": 196,
+    "Sources/ItemsInventory.cpp": 193,
+    "Sources/InteriorCamera.cpp": 45,
+    "Sources/InterfaceCommunication.cpp": 17,
+    "Sources/PlayerMovement.cpp": 104
+  },
+  "pending_groups": 1232,
+  "restricted_metadata_groups": 31,
+  "plugin_integration": false,
+  "main_cpp": false,
+  "runtime_verified": false,
+  "source_files": {
+    "Sources/InterfaceCommunication.cpp": "2e095114ba7a7aff7dc05d443665b7b6650bd57eafe1c32fe75e7fc98f391e44",
+    "Sources/InterfaceCommunication.hpp": "2df1cedb8557d6983e90fe0fca7f613167efccf9dcba2d2a85b7cb5565d0a817",
+    "Sources/InteriorCamera.cpp": "2707a26fb5a84676707bb2b6321d740830ca0a000e4a9777194d26c98fcefc88",
+    "Sources/InteriorCamera.hpp": "70d1b513f3048e7350f110c5fd999271e35c2b1e99e4b9bd1aaf2dae4849eb2d",
+    "Sources/ItemsInventory.cpp": "f921b98f842f9f08bc11aed53f928376d6f872ed510d0306253a0e47e601f08c",
+    "Sources/ItemsInventory.hpp": "c26040a8480705f9241400a1ad312d4e158440242f0c394761863489ac9f955d",
+    "Sources/PlayerMovement.cpp": "4d59a3ebb0b856ea3b1a573131e89ba38e32cfc5668e001fa92df1a89eee1f56",
+    "Sources/PlayerMovement.hpp": "89906f398048b017271ef6e44c56bb44f7fd81222d1d01fd27c38ca746aa356c",
+    "Sources/Review.cpp": "8c6df02a4282127fd0960ff058119231f24b24439d7c27f016c8123c3db6b3d6",
+    "Sources/Review.hpp": "367f72304d4e979ec61e3a86ce53a9da8db9d404c77d05871605f6570d089386",
+    "Sources/System.cpp": "e4b829fd75f388cbfb4b9691f364efef12f0929c6fa3240803945b4fbd321357",
+    "Sources/System.hpp": "9a5e5cedbd53f027f0605f6c8010bf8be94f2599565e4d878e5a9f7f115a7e93",
+    "Sources/WorldTown.cpp": "bf846d65a1cc3dbc27276e9b390bdfb171a383e1e4bab56e34d1650276836b05",
+    "Sources/WorldTown.hpp": "fad144ddac53d5753cd5e6891dc7aceda0df110a28ccf2c067108c8e1c5aa33c"
+  }
+}
