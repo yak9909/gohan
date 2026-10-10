@@ -1,6 +1,6 @@
 # 現在地 — チップ長押し窓とアニメ修正（2026-10-10）
 
-- IDA-gpt-6.1-sol-F017/T004、work/chip-longpress-fix（基点21172d6）。F016実機で長押し窓が出ず縞アニメが震えるため修正。CRO static recordをheap判定からread permission判定へ、Select counterはゼロ再開始から上限5へ変更。原ARM付き旧版再現/新版7条件/ABI/SP/VFP/build PASS。新版は未実機、mainへ未反映。詳細と次の保存/配布はSESSION/解析側chip_longpress_fix証拠。
+- IDA-gpt-6.1-sol-F017/T004、work/chip-longpress-fix（基点21172d6）。F016実機で長押し窓が出ず縞アニメが震えるため修正。CRO static recordをheap判定からread permission判定へ、Select counterはゼロ再開始から上限5へ変更。原ARM付き旧版再現/新版7条件/ABI/SP/VFP/build/225関数/しずえ/両XML・保存DB PASS。code a006467を作業枝へpush、解析側chip_longpress_fix1の配布/remote/hash読戻しPASS。次は利用者実機確認、新版は未実機/main未反映。詳細SESSION/解析側chip_longpress_fix証拠。
 
 ## F016の履歴
 

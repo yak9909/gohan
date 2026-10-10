@@ -1,5 +1,7 @@
 # 2026-10-10 チップ長押し修正 / IDA-gpt-6.1-sol-F017、T004
 
+- 保存/配布完了: code a006467b15b59ff8857939accef1b2f0de9b4f49をorigin work/chip-longpress-fixへpush、remote独立一致。解析側artifacts/plugins/chip_longpress_fix1のbuild全bytes/両最新XML・保存DB・S0型/hash/配布remote読戻しPASS。以下は履歴、この追補はworkメモのみ。次は同3gxで長押し窓/縞アニメ/複製/B取消/短tap/dragの利用者実機確認。新修正版は実機未確認/main未反映、実機操作なし、DB所有者0。
+
 - interior_presets1で窓が出ず縞アニメが震えるとの利用者実機結果。work/chip-longpress-fix、基点21172d6。recordはCRO static表でHeap検査が拒否、Select counter0でアニメ開始を繰り返す。設計は解析側docs/topics/chip_longpress_fix_design.md。handle[0,112)/read permission検査、counter>5だけ5へ制限する。native取消/窓/複製の経路を維持し原ARM付きで検査する。実機操作なし、新版は未実機/main未反映。次は最小修正とbuild/linked検査。
 - 最終検査: 原Select/取消/StateObj/親整理＋旧ELFで18frame reset10回/窓未開を再現、新ELFで開始2回＋正規取消2回のみ・窓/A複製/B取消/PMF復帰/短tap/24移動/無効handleの7条件PASS。112 static handle/ROM-IDB-ELF6地点、225関連関数の分岐/リテラル/ABI/領域/hash、しずえartifact、HHD493/20と既存UIカメラ全gate、DB保存/両XML/S0型読戻しPASS。MSYS2 make -j8終了0、3gx SHA943e79c9342b1a11160f69fae9c22b3a99695eab3700e642092ccc95fea4d206、ELF SHAa46de75c0d62113203e765492e6cd0e67ecf51659bbcefa0891189fe5ac16a04。次はこのcode/specをcommit/pushして解析側chip_longpress_fix1へ保存、実機確認待ち。
 
