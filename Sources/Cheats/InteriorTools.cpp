@@ -356,7 +356,9 @@ void LongPress(void) {
     const float dz=*reinterpret_cast<const float *>(chip+1088)-*reinterpret_cast<const float *>(chip+1072);
     if (!(dx*dx+dz*dz<576.0f)) { s_holdChip=s_holdFrames=0; return; }
     if (s_holdChip!=chip) { s_holdChip=chip; s_holdFrames=0; }
-    W32(chip+1092,0);                           // Native short-tap path is unchanged on release.
+    // F017: zero restarts Select's animation gate. Preserve its first run,
+    // then stay below the native 6-frame drag threshold until the hold ends.
+    if (R32(chip+1092)>5) W32(chip+1092,5);
     if (++s_holdFrames<18) return;
     s_holdChip=s_holdFrames=0;
     const u32 slot=R32(DecorTrashTable::kFtrSlot);
@@ -364,8 +366,10 @@ void LongPress(void) {
     const u32 ftr=slot-DecorTrashTable::kFtrSlotOffset;
     if (R32(ftr+DecorTrashTable::kFtrRecGet)!=DecorTrashTable::kFtrRecGetWord) return;
     const s16 recordId=*reinterpret_cast<const s16 *>(chip+1032);
+    if (recordId<0 || recordId>=112) return;     // Native invalid handles alias record zero.
     const u32 rec=reinterpret_cast<u32 (*)(const s16 *)>(ftr+DecorTrashTable::kFtrRecGet)(&recordId);
-    if (!Heap(rec)) return;
+    // ModuleFtr owns these records in CRO .bss, outside the actor heap.
+    if (!rec || (rec&3) || !Process::CheckAddress(rec+4,MEMPERM_READ)) return;
     u32 actorIndex=R32(rec+4);
     const u32 actor=reinterpret_cast<u32 (*)(u32 *)>(0x004E8650)(&actorIndex);
     if (!ActorReady(actor)) return;

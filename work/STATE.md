@@ -1,4 +1,8 @@
-# 現在地 — 内装保存と模様替えUI修正（2026-10-10）
+# 現在地 — チップ長押し窓とアニメ修正（2026-10-10）
+
+- IDA-gpt-6.1-sol-F017/T004、work/chip-longpress-fix（基点21172d6）。F016実機で長押し窓が出ず縞アニメが震えるため修正。CRO static recordをheap判定からread permission判定へ、Select counterはゼロ再開始から上限5へ変更。原ARM付き旧版再現/新版7条件/ABI/SP/VFP/build PASS。新版は未実機、mainへ未反映。詳細と次の保存/配布はSESSION/解析側chip_longpress_fix証拠。
+
+## F016の履歴
 
 - IDA-gpt-6.1-sol-F016/T003、work/interior-presets（基点48b734a）。利用者のF015実機結果はチップだけ隠れ本体UIが残るため訂正。list中カメラ/3倍速度/長押し複製/内装保存・読込・保存枠との交換を追加中。新F016は未実機、mainへ入れない。
 - UI dirty再記録、native選択窓、8枠保存/読み込み/交換、サイズ違い確認/clip、frame即反映/復元、SD取引を実装。build3/仕様更新、配置file/カメラ/native cache/内装と窓/backend11条件/Storage21失敗/GUI確認3条件PASS。catalog OFFでも複製を使える共有backendの実linked検査PASS。新字形663/全53source欠字0、225関数の全分岐/リテラル/ABI/領域/hash/しずえPASS。

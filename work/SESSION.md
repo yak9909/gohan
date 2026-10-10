@@ -1,3 +1,8 @@
+# 2026-10-10 チップ長押し修正 / IDA-gpt-6.1-sol-F017、T004
+
+- interior_presets1で窓が出ず縞アニメが震えるとの利用者実機結果。work/chip-longpress-fix、基点21172d6。recordはCRO static表でHeap検査が拒否、Select counter0でアニメ開始を繰り返す。設計は解析側docs/topics/chip_longpress_fix_design.md。handle[0,112)/read permission検査、counter>5だけ5へ制限する。native取消/窓/複製の経路を維持し原ARM付きで検査する。実機操作なし、新版は未実機/main未反映。次は最小修正とbuild/linked検査。
+- 最終検査: 原Select/取消/StateObj/親整理＋旧ELFで18frame reset10回/窓未開を再現、新ELFで開始2回＋正規取消2回のみ・窓/A複製/B取消/PMF復帰/短tap/24移動/無効handleの7条件PASS。112 static handle/ROM-IDB-ELF6地点、225関連関数の分岐/リテラル/ABI/領域/hash、しずえartifact、HHD493/20と既存UIカメラ全gate、DB保存/両XML/S0型読戻しPASS。MSYS2 make -j8終了0、3gx SHA943e79c9342b1a11160f69fae9c22b3a99695eab3700e642092ccc95fea4d206、ELF SHAa46de75c0d62113203e765492e6cd0e67ecf51659bbcefa0891189fe5ac16a04。次はこのcode/specをcommit/pushして解析側chip_longpress_fix1へ保存、実機確認待ち。
+
 # 2026-10-10 内装保存と模様替えUI修正 / IDA-gpt-6.1-sol-F016、T003
 
 - 配布保存: source code9d606ddb05c41d3da2b22384925db9335d466163をwork/interior-presetsへpush成功、remote SHA一致。解析側artifacts/plugins/interior_presets1に最終build3を保存し、配布全bytes/保存DB/XML名・型・T/hash/source remote読戻しPASS（verify_interior_presets_saved.py）。以下の追補はメモだけ、コード/仕様を変更しない。新変更は実機未確認、mainへ未反映、次は利用者が本体fade/listカメラ/長押し/内装load・swap・サイズ取消/clipを確認。
