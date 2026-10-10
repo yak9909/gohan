@@ -28,8 +28,8 @@ inline void Pan(PanState &pan, float right, float up, float sine, float cosine) 
         up *= inverse;
     }
     // Eye is on (+sin(yaw), +cos(yaw)); forward points towards the target.
-    pan.x += 2.0f * (right * cosine - up * sine);
-    pan.z += 2.0f * (-right * sine - up * cosine);
+    pan.x += 6.0f * (right * cosine - up * sine);
+    pan.z += 6.0f * (-right * sine - up * cosine);
 }
 static_assert(sizeof(Profile) == 20, "Native camera profile layout");
 

@@ -5,6 +5,7 @@
 #include "Cheats.hpp"
 #include "DecorCatalog.hpp"
 #include "GuiMenu.hpp"
+#include "InteriorTools.hpp"
 
 #include <cstring>
 #include <3ds.h>
@@ -70,7 +71,7 @@ bool RoomMode(u32 camera) {
     return (mode == 0 || mode == 25) && mode == R8(camera + 243);
 }
 bool InputAllowed(u32 camera) {
-    if (!RoomMode(camera) || R8(camera + 442) || GuiMenu::IsVisible())
+    if (!RoomMode(camera) || R8(camera + 442) || GuiMenu::IsVisible() || InteriorTools::InputBusy())
         return false;
     const s8 interpolation = *reinterpret_cast<const s8 *>(camera + 309);
     if (interpolation == -1)
@@ -94,6 +95,15 @@ u32 ControllerPtr(void) {
         ? controller : 0;
 }
 u32 Held(void) {
+    // Catalog keeps native editor/player input blocked. Read only camera keys
+    // from CTRPF while it has focus, translating to the native camera mask.
+    if (DecorCatalog::IsListOpen()) {
+        const u32 keys = Controller::GetKeysDown();
+        return ((keys & (u32)Key::DPadUp) ? 0x10000u : 0u)
+             | ((keys & (u32)Key::DPadDown) ? 0x20000u : 0u)
+             | ((keys & (u32)Key::DPadLeft) ? 0x40000u : 0u)
+             | ((keys & (u32)Key::DPadRight) ? 0x80000u : 0u);
+    }
     typedef bool (*BlockedFn)(void);
     if (reinterpret_cast<BlockedFn>(0x005CDAE4)())
         return 0;
@@ -140,11 +150,11 @@ __attribute__((noinline)) u32 InputHook(u32 camera) {
     EnsureContext(camera, request);
     Control::Step(s_control, Held());
     // Only decoration uses the circle pad for camera movement. Ordinary room
-    // movement remains native; list/menu/native input gates also stop panning.
+    // movement remains native. Catalog focus permits camera input (F016).
     typedef bool (*BlockedFn)(void);
-    if (R8(camera + 242) == 25 && DecorCatalog::IsEditorOpen() && !DecorCatalog::IsListOpen()
+    if (R8(camera + 242) == 25 && DecorCatalog::IsEditorOpen()
         && ControllerPtr() != 0
-        && !reinterpret_cast<BlockedFn>(0x005CDAE4)()) {
+        && (DecorCatalog::IsListOpen() || !reinterpret_cast<BlockedFn>(0x005CDAE4)())) {
         circlePosition pad = {0, 0};
         hidCircleRead(&pad);
         typedef float (*AngleFn)(u32);

@@ -80,6 +80,10 @@ namespace CTRPluginFramework
         static const char kDecorTrash[] = u8"模様替えにゴミ箱";
         static const char kDecorCatalog[] = u8"模様替えに家具リスト";
         static const char kHhdRoomCamera[] = u8"家のカメラをHHD式に";
+        static const char kInteriorSlot[] = u8"内装の保存枠";
+        static const char kInteriorSave[] = u8"内装を保存";
+        static const char kInteriorLoad[] = u8"内装を読み込み";
+        static const char kInteriorSwap[] = u8"内装を入れ替え";
 
         static const char kPcShow[]  = u8"複製を出す";
         static const char kPcHair[]  = u8"複製の髪型";

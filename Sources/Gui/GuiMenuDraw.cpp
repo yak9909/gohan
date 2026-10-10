@@ -522,10 +522,16 @@ namespace CTRPluginFramework
 
                     const int   bx = x + (kMsgW - kMsgBtnW) / 2;
                     const int   by = y + h - 10 - kMsgBtnH;
-                    const int   tw = GuiRenderer::MeasureText("OK");
-
-                    Frame1px(TOP, bx, by, kMsgBtnW, kMsgBtnH, Fade(kColDirty, amount), Fade(kColDlgSel, amount));
-                    GuiRenderer::DrawText(TOP, bx + (kMsgBtnW - tw) / 2, by + 5, "OK", Fade(kColWhite, amount));
+                    const int rows = g_message.confirm ? 2 : 1;
+                    for (int i = 0; i < rows; ++i) {
+                        const char *label = g_message.confirm ? (i == 0 ? u8"はい" : u8"やめる") : "OK";
+                        const int left = g_message.confirm ? bx - kMsgBtnW / 2 - 5 + i * (kMsgBtnW + 10) : bx;
+                        const bool selected = !g_message.confirm || g_message.selection == i;
+                        const int tw = GuiRenderer::MeasureText(label);
+                        Frame1px(TOP, left, by, kMsgBtnW, kMsgBtnH, Fade(selected ? kColDirty : kColText, amount),
+                            Fade(selected ? kColDlgSel : kColDlgBg, amount));
+                        GuiRenderer::DrawText(TOP, left + (kMsgBtnW - tw) / 2, by + 5, label, Fade(kColWhite, amount));
+                    }
                 }
 
                 // drawListbox の写し。上下共用。

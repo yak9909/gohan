@@ -2144,6 +2144,9 @@ namespace CTRPluginFramework
                 std::snprintf(g_message.title, sizeof(g_message.title), "%s", title != nullptr ? title : "");
                 std::snprintf(g_message.body, sizeof(g_message.body), "%s", body != nullptr ? body : "");
                 g_message.error = error;
+                g_message.confirm = g_message.accepted = false;
+                g_message.selection = 1;
+                g_message.result = nullptr;
                 g_message.active = true;
                 AnimOpen(g_message.anim, now, kMessageMs);
             }
@@ -2154,12 +2157,21 @@ namespace CTRPluginFramework
                 const u16   pressed = (u16)(in.held & ~g_prevHeld);
                 const bool  close = (pressed & ((1u << HB_A) | (1u << HB_B))) != 0;
 
-                if (close)
+                if (g_message.confirm && !g_message.anim.closing
+                    && (pressed & ((1u << HB_LEFT) | (1u << HB_RIGHT) | (1u << HB_UP) | (1u << HB_DOWN))))
+                    g_message.selection ^= 1;
+                if (close && !g_message.anim.closing) {
+                    g_message.accepted = g_message.confirm && g_message.selection == 0
+                        && (pressed & (1u << HB_A)) && !(pressed & (1u << HB_B));
                     AnimClose(g_message.anim, now, kMessageMs);
+                }
                 if (g_message.anim.closing && AnimExitComplete(g_message.anim, now))
                 {
                     g_message.active = false;
                     g_needFinal = true;     // 閉じ切ったら 1 回だけ空で描く
+                    void (*result)(bool) = g_message.result;
+                    g_message.result = nullptr;
+                    if (result) result(g_message.accepted);
                 }
             }
 

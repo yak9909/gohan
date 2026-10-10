@@ -266,6 +266,11 @@ namespace CTRPluginFramework
                         u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
                 AddItem(ITEM_CHECKBOX, kHhdRoomCamera,
                         u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中はスライドパッドで向きに合わせてカメラを動かせます。");
+                i = AddItem(ITEM_LINKED_VALUE, kInteriorSlot, u8"内装を保存する枠です。1から8まで使えます。");
+                SetValue(i, FMT_DEC, 1, 1, 8, 1);
+                AddItem(ITEM_ACTION, kInteriorSave, u8"自分の部屋の家具・位置・向き・壁紙・床を、選んだ保存枠へ保存します。");
+                AddItem(ITEM_ACTION, kInteriorLoad, u8"保存枠の内装を今の部屋へ読み込み、すぐに反映します。サイズが違う時は、範囲外の家具を削るか確認します。");
+                AddItem(ITEM_ACTION, kInteriorSwap, u8"保存枠の内装と今の部屋の内装を交換します。反映が終わると、変更前の内装を保存枠へ戻します。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));

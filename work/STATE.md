@@ -1,4 +1,10 @@
-# 現在地 — リスト操作と模様替えカメラ移動（2026-10-10）
+# 現在地 — 内装保存と模様替えUI修正（2026-10-10）
+
+- IDA-gpt-6.1-sol-F016/T003、work/interior-presets（基点48b734a）。利用者のF015実機結果はチップだけ隠れ本体UIが残るため訂正。list中カメラ/3倍速度/長押し複製/内装保存・読込・保存枠との交換を追加中。新F016は未実機、mainへ入れない。
+- UI dirty再記録、native選択窓、8枠保存/読み込み/交換、サイズ違い確認/clip、frame即反映/復元、SD取引を実装。build3/仕様更新、配置file/カメラ/native cache/内装と窓/backend11条件/Storage21失敗/GUI確認3条件PASS。catalog OFFでも複製を使える共有backendの実linked検査PASS。新字形663/全53source欠字0、225関数の全分岐/リテラル/ABI/領域/hash/しずえPASS。
+- 次: 最終backend結果→小commit/work枝push/配布。3gx SHAbf0fc36378c78ce6e2fa04c7cf7e5d5bf6e56abc537503d710ef185610348222、根拠project_v2/work/evidence/interior_presets。新SD素材なし、実機操作なし・未確認/main未反映。
+
+## 前回F015の履歴
 
 - IDA-gpt-6.1-sol-F015 / T002、work/catalog-camera-controls、基点15d7aeb1。前回カメラ/壁判定版は利用者実機PASS。新追加は未確認、mainへ未反映。
 - リスト背後の開くタブ/InteriorEditorを6フレームfade、Xで最後のリスト（初回家具）、B既存保持、家具/壁家具のカテゴリ音BOOK_ICON_SELECTED。HHDカメラON＋実模様替えUI中だけスライドパッドで向きに沿ったX/Z移動。通常のプレイヤー操作/Yを保持、list/menu中停止。

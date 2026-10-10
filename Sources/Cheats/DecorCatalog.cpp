@@ -20,6 +20,7 @@
 
 #include "DecorCatalog.hpp"
 #include "CatalogBackdrop.hpp"
+#include "InteriorTools.hpp"
 #include "DecorCatalogLayout.h"
 #include "DecorCatalogTable.h"
 #include "DecorCatalogCro.h"
@@ -95,7 +96,8 @@ u32 EditorCalc(u32 indoor) {
 
 bool EditorLive(u32 indoor, u32 calc) {
     using namespace DecorTrashTable;
-    return indoor != 0 && (calc == indoor + kIndoorEditorInCalc || calc == indoor + kIndoorEditorCmnBtnInCalc
+    return indoor != 0 && (InteriorTools::IsFrozenEditorCalc(calc)
+                           || calc == indoor + kIndoorEditorInCalc || calc == indoor + kIndoorEditorCmnBtnInCalc
                            || calc == indoor + kIndoorEditorNeutralCalc || calc == indoor + kIndoorEditorCmnBtnOutCalc);
 }
 
@@ -951,7 +953,7 @@ bool OpenWindow(void) {
 }
 
 // ---- 置く ----
-struct PlaceCtx { Item item; int px, pz, prot; u8 record[12]; };
+struct PlaceCtx { Item item; int px, pz, prot, rotation; u8 record[12]; };
 
 struct PlaceOrigin { u32 scene; u8 room; int x, z, rot; bool valid; };
 PlaceOrigin s_origin;
@@ -983,7 +985,7 @@ bool TryCell(void *ctx, s32 x, s32 z) {
     if (x < 0 || z < 0)
         return false;
     std::memset(c.record, 0, sizeof(c.record));
-    return TryPut(c.record, x, z, 0, &c.item, 0, c.px, c.pz, c.prot, 0) == 0;   // 向き 0（HHD の品の既定）・床の層 0・パターン 0（試験 3 と同じ）
+    return TryPut(c.record, x, z, c.rotation, &c.item, 0, c.px, c.pz, c.prot, 0) == 0;
 }
 
 // HHD 0x4F3850→0x15330CとACNL 0x765620→0x1A1910は同じ向き別の壁alphaを読む。
@@ -1018,6 +1020,7 @@ u32 PlaceFurniture(u16 acnl, bool wall) {
         return 0;
     PlaceCtx c;
     c.item = { acnl, 0 };
+    c.rotation = 0;                             // HHD catalog default.
     // IDA-gpt-6.1-sol-F013: 壁配置の機能はTryWallCell→TryPutの実マップ属性で判定する。
     // 0x5B3AC4の外観による事前拒否を使わず、壁・向き・空き・全footprintをゲームに確認する。
     // 探す起点と「プレイヤーが占有するマス」を分ける。0x6920CCは負値なら占有チェックを省く。
@@ -1056,6 +1059,7 @@ const u32 kPendTimeout = 600;                   // 20 秒（30 fps）待って�
 
 struct Pending { u32 actor, editor, frames, stable; bool active; };
 Pending s_pend;
+bool s_duplicatePending;
 u16 s_chipItem;
 struct Decision { u16 item; u32 main, ctTab, editor, frames; bool active; };
 Decision s_decision;
@@ -1403,6 +1407,8 @@ void OnDecide(Hit h, u32 idx) {
 u32 s_keysPrev;
 
 void InputStep(void) {
+    if (InteriorTools::InputBusy())
+        return;
     const u32 keys = Controller::GetKeysDown();
     const u32 pressed = keys & ~s_keysPrev;
     s_keysPrev = keys;
@@ -1539,7 +1545,8 @@ void ReleaseAll(void) {
     FreeTop();
     s_win_state = Win::Closed;
     s_chipEditor = s_chipNext = 0;                 // 同じ番地で開き直したエディターも新しい使用歴として数え直す
-    s_pend.active = false;
+    if (!s_duplicatePending)
+        s_pend.active = false;
     s_decision.active = false;
     std::memset(s_position, 0, sizeof(s_position));
 }
@@ -1931,5 +1938,54 @@ bool Disable(int index) {
 
 bool IsListOpen(void) { return s_stage == Stage::Live && s_win_state != Win::Closed; }
 bool IsEditorOpen(void) { const u32 indoor = IndoorBase(); return EditorLive(indoor, EditorCalc(indoor)); }
+
+bool EditorContext(u32 &indoor, u32 &editor) {
+    indoor = IndoorBase(); editor = EditorPtr(indoor);
+    return editor && EditorLive(indoor, EditorCalc(indoor));
+}
+u32 RoomDataForInterior(void) { return OfflineBackgroundEdit() ? EditableRoomData() : 0; }
+bool InteriorBackgroundReady(void) { return BackgroundSurfaceReady(false) && BackgroundSurfaceReady(true); }
+bool PlacementBusy(void) { return s_pend.active || s_decision.active || IsListOpen(); }
+bool DuplicateReady(void) { return !PlacementBusy(); }
+void StepDuplicate(void) {
+    if (!s_duplicatePending)
+        return;
+    if (s_stage != Stage::Live)
+        ChipStep(IndoorBase());
+    if (!s_pend.active)
+        s_duplicatePending = false;
+}
+void RefreshChipTracking(void) { s_chipEditor = 0; ChipTrackEditor(EditorPtr(IndoorBase())); }
+
+bool TryDuplicateWall(void *ctx, s32 x, s32 z, u32 rotation) {
+    const PlaceCtx &c = *reinterpret_cast<PlaceCtx *>(ctx);
+    return rotation == static_cast<u32>(c.rotation) && TryWallCell(ctx, x, z, rotation);
+}
+bool DuplicateItem(u16 id, u16 flags, int rotation, int x, int z) {
+    const u32 indoor = IndoorBase(), editor = EditorPtr(indoor);
+    void *table = FtrTable();
+    if (PlacementBusy() || !editor
+        || rotation < 0 || rotation > 3 || !table
+        || !EditorNeutral(indoor, EditorCalc(indoor)) || FtrFree(table) <= 0 || !HeapRoom())
+        return false;
+    PlaceCtx c = {{id, static_cast<u16>(flags & 0x3FFFu)}, -1, -1, 0, rotation, {}};
+    int minX, minZ, maxX, maxZ;
+    CellBounds(&minX, &minZ, &maxX, &maxZ);
+    const DecorPlace::Bounds bounds = {minX, minZ, maxX, maxZ};
+    const u32 param = reinterpret_cast<u32 (*)(const Item *)>(0x00535188)(&c.item);
+    if (!param) return false;
+    const bool wall = reinterpret_cast<int (*)(u32)>(0x0074798C)(param) != 0;
+    s32 outX = 0, outZ = 0; u32 outRot = 0;
+    const bool found = wall
+        ? DecorPlace::SearchWall(x, z, bounds, 1u << rotation, TryDuplicateWall, &c, outX, outZ, outRot)
+        : DecorPlace::Search(x, z, bounds, 2, TryCell, &c, outX, outZ);
+    if (!found) return false;
+    const u32 actor = Spawn(c.record);
+    if (!actor) return false;
+    s_chipItem = id;
+    s_pend = {actor, editor, 0, 0, true};
+    s_duplicatePending = true;
+    return true;
+}
 
 }  // namespace DecorCatalog

@@ -15,5 +15,8 @@ namespace GuiDialog
     // title は 1 行（長ければ "..." で切る）。message は幅で折り返す（最大 kMaxLines 行）。error: 縁と題を赤くする
     const u32   kMaxLines = 7;
     void        ShowMessage(const char *title, const char *message, bool error = true);
+    // A accepts the selected row, B cancels. Callback runs after the exit fade,
+    // on the menu thread; false return means the request was not queued.
+    bool        ShowConfirm(const char *title, const char *message, void (*result)(bool));
     bool        IsOpen(void);           // 出ている（出入りのアニメ中も含む）か、待っている物がある
 }

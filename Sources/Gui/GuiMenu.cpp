@@ -49,7 +49,7 @@ namespace CTRPluginFramework
             volatile bool g_pendHave = false;
 
             // ★GuiDialog の依頼（どのスレッドからでも）。輪に写して、メニューのスレッドが 1 つずつ出す。
-            struct PendingMessage { char title[64]; char body[512]; bool error; };
+            struct PendingMessage { char title[64]; char body[512]; bool error; void (*result)(bool); };
             PendingMessage  g_msgQueue[GuiDialog::kQueue];
             volatile u32    g_msgHead = 0, g_msgTail = 0;     // 書く側 = head、出す側 = tail
             LightLock       g_msgLock;
@@ -180,6 +180,9 @@ namespace CTRPluginFramework
                                 const PendingMessage &m = g_msgQueue[g_msgTail % GuiDialog::kQueue];
 
                                 OpenMessage(m.title, m.body, m.error, now);
+                                g_message.confirm = m.result != nullptr;
+                                g_message.result = m.result;
+                                g_message.selection = 1;     // Destructive confirmation starts at cancel.
                                 g_msgTail = g_msgTail + 1;
                             }
                             LightLock_Unlock(&g_msgLock);
@@ -484,11 +487,15 @@ namespace CTRPluginFramework
             }
             LightLock_Lock(&g_msgLock);
             if (g_msgHead - g_msgTail >= GuiDialog::kQueue)
-                g_msgTail = g_msgTail + 1;          // あふれたら古い物を捨てる
+            {
+                LightLock_Unlock(&g_msgLock);       // Preserve queued confirmation callbacks.
+                return;
+            }
             PendingMessage &m = g_msgQueue[g_msgHead % GuiDialog::kQueue];
             std::snprintf(m.title, sizeof(m.title), "%s", title != nullptr ? title : "");
             std::snprintf(m.body, sizeof(m.body), "%s", body != nullptr ? body : "");
             m.error = error;
+            m.result = nullptr;
             g_msgHead = g_msgHead + 1;
             LightLock_Unlock(&g_msgLock);
         }
@@ -496,6 +503,25 @@ namespace CTRPluginFramework
         bool    MessageOpen(void)
         {
             return g_message.active || g_msgHead != g_msgTail;
+        }
+
+        bool    QueueConfirm(const char *title, const char *body, void (*result)(bool))
+        {
+            if (!result) return false;
+            if (!g_msgLockReady) { LightLock_Init(&g_msgLock); g_msgLockReady = true; }
+            LightLock_Lock(&g_msgLock);
+            if (g_msgHead - g_msgTail >= GuiDialog::kQueue) {
+                LightLock_Unlock(&g_msgLock);
+                return false;
+            }
+            PendingMessage &m = g_msgQueue[g_msgHead % GuiDialog::kQueue];
+            std::snprintf(m.title, sizeof(m.title), "%s", title ? title : "");
+            std::snprintf(m.body, sizeof(m.body), "%s", body ? body : "");
+            m.error = false;
+            m.result = result;
+            g_msgHead = g_msgHead + 1;
+            LightLock_Unlock(&g_msgLock);
+            return true;
         }
 
         void    SetToggleHandlers(const ToggleHandlers *handlers)
@@ -552,6 +578,10 @@ namespace CTRPluginFramework
 // ---- GuiDialog（Includes/Gui/GuiDialog.hpp）----
 namespace GuiDialog
 {
+    bool    ShowConfirm(const char *title, const char *message, void (*result)(bool))
+    {
+        return CTRPluginFramework::GuiMenu::QueueConfirm(title, message, result);
+    }
     void    ShowMessage(const char *title, const char *message, bool error)
     {
         CTRPluginFramework::GuiMenu::QueueMessage(title, message, error);

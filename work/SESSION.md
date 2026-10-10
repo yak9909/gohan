@@ -1,3 +1,13 @@
+# 2026-10-10 内装保存と模様替えUI修正 / IDA-gpt-6.1-sol-F016、T003
+
+- 長押し/共有窓を含むlinked10条件・ABI PASS。複製のcatalog ON/Live制限を最終reviewで検出し、OFF/素材なしでも常設frameからチップ追加を進める設計に補正。修正→最終ビルド/linked検査→仕様/commit/work枝push/配布を続行。build2はStorage抽出前の暫定版、実機操作なし。
+- 最終build3/linked全検査PASS。内装/長押し窓にcatalog OFF/素材なしの実DuplicateItem→ChipStep/リスト解放の保持を加え11条件とABI PASS（第5引数stackと新record IDのfixtureを訂正、製品の追加修正なし）。HHD493/20、pan63/gate13/fade24/音7/nativecache、225関数/12742命令/2467分岐/1055PC相対、しずえ/字形欠字0、Storage21失敗/確認3条件PASS。source/specをwork/interior-presetsへcommit/push、解析側interior_presets1へ配布を次に実施。3gx SHAbf0fc36378c78ce6e2fa04c7cf7e5d5bf6e56abc537503d710ef185610348222、ELF SHA648b70d9d9023c6f431d320866cba4612a887e328caa0cdd25e685298ec87094。実機未確認/main未反映。
+
+- 最新: Editor全UIフェード（チップのみだった実機不具合）、list中十字/パッドカメラ・3倍速度、chip長押し→nativeマップ範囲と同じ「複製/やめる」窓、内装保存と即反映・サイズ違いclip確認。利用者回答「保存枠との交換も必要」受領、loadとswapを別操作にする。work/interior-presets、未実機/main未反映、実機操作なし。
+- Layout+285 dirty0でGPU列を再利用するためdirty更新とResetを追加、原nativeで旧不具合再現→新fade復帰PASS。mode25実Editor中のみpan2→6、list raw入力。18frame長押しは短tap/24移動のnative経路を保ち、native取消→共有窓、EditorのPMF待機/復帰でtouch競合を避ける。
+- 保存624B(version/checksum/48家具)は現在FieldMap2層anchor・rotation・remake flags・wall/floor/variants、8枠。全footprint/親を検査し、サイズ違い確認、SDへ旧内装退避成功後にnative actor破棄→table空/GPU待ち→spawn→chip112再初期化→背景反映。swap成功後だけ旧内装を枠へ、失敗時旧部屋へ復元。SDはmenu-thread、nativeはgame-frame、scene/owner/offline固定。
+- build2/必須しずえ/字形663/原HHD493/pan63/gate13/fade24/音7/cache、plan2000/破損4992bit、内装6/Storage21失敗/GUI確認3条件PASS。追加LongPress/窓のlinked試験中、Storage後未再ビルド。残り: 最終検査/仕様/EOL/commit/work枝push/配布。復元は解析側catalog_camera_controls1。根拠project_v2/work/evidence/interior_presets、次はverify_interior_state_linked.py結果。
+
 # 2026-10-10 リスト操作/フェード/音と模様替えカメラpan / IDA-gpt-6.1-sol-F015、T002
 
 - 基点15d7aeb1（hhd_room_camera1、3gx SHA fcd86402651b9fe2d7ed3f59d468591f4a3d6debdaab46bd27eabd6be512f4fd）は利用者実機で問題なし。追加はwork/catalog-camera-controlsへ分離、mainへ未反映。実機SHA再測定/個別操作一覧は未報告。

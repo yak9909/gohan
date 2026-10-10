@@ -25,6 +25,7 @@
 #include "DecorTrash.hpp"
 #include "DecorCatalog.hpp"
 #include "HhdRoomCamera.hpp"
+#include "InteriorTools.hpp"
 #include "GuiMenu.hpp"
 
 namespace CTRPluginFramework
@@ -260,6 +261,10 @@ namespace CTRPluginFramework
             }
 
             const GuiMenu::ToggleHandlers kDispatch = { nullptr, DispatchTick, DispatchDisable };
+            void FrameTick(u16) {
+                HhdScreen::Tick(GuiMenu::IsVisible());
+                InteriorTools::Tick();
+            }
         }
 
         void    Wire(void)
@@ -298,6 +303,8 @@ namespace CTRPluginFramework
             DecorTrash::Wire();
             DecorCatalog::Wire();
             HhdRoomCamera::Wire();
+            InteriorTools::Wire();
+            GuiMenu::SetFrameTick(FrameTick);
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
         }

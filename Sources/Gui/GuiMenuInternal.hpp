@@ -300,6 +300,9 @@ namespace CTRPluginFramework
             {
                 bool    active;
                 bool    error;
+                bool    confirm, accepted;
+                int     selection;
+                void    (*result)(bool);
                 char    title[64];
                 char    body[512];
                 Anim    anim;
