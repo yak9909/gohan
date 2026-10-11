@@ -32,7 +32,8 @@ namespace GameList
     bool        Wanted(void);           // 利用者の意思（Show 中か）
     bool        Present(void);          // 下画面に出ている（アニメ中も含む）
     void        Select(s32 index);      // 選択の見た目を動かす（決定にはしない）
-    s32         TakeDecided(void);      // 選ばれた行（タッチ・十字）。無ければ -1。取ったら消える
+    s32         TakeDecided(void);      // 決まった行。chat上はタッチ/A、通常は十字のpreview通知も含む
+    void        Confirm(void);          // chat上で現在のfocusをA決定。次のゲームframeで処理
     // 十字キーの押し下げ（CTRPF の Key の DPad ビット）を毎ティック渡す。上下で 1 行、左右で 8 行、押し続けで連続。
     // 一覧自身の関数（選択の見た目 vt[16]・スクロール）で動かす。ゲームの入力には触らない。スライドパッドは使わない。
     void        FeedDpad(u32 heldKeys);
@@ -46,7 +47,7 @@ namespace GameList
     // ★依頼は持ち主ごと（2026-10-06）。以前は旗 1 本を共用していて、マップエディターが毎フレーム自分の依頼を返すと
     //   HHD式スタイル変更の依頼まで消え、HHD が「下画面 UI の退場待ち」のまま入力だけ止めていた（利用者報告）。
     //   誰か 1 人でも持っていれば退場させておく。
-    enum HoldOwner : u32 { kHoldMapEditor = 1u, kHoldHhd = 2u };
+    enum HoldOwner : u32 { kHoldMapEditor = 1u, kHoldHhd = 2u, kHoldChatTime = 4u };
     bool        HoldField(bool on, u32 owner);
     bool        FieldHidden(void);      // 元の UI が隠れきっていて、リストも組んでいない（ほかの部品が下画面を使ってよい）
     bool        FieldShown(void);       // 元の UI が戻りきっている

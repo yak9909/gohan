@@ -2,6 +2,9 @@
 
 ## 2026-10-11 最新: MapEditor入力停止・ChatCommands hotkey修正 / GPT-6
 
+- T004完了/2026-10-12: DPad focus/Aかtouch決定、same-row native決定検出、list/退場中入力遮断とraw touch限定差込み、検索ID左prefix、時刻owner4で退場待ち/request一度/終了後field復帰（窓中OFFでも監視）を実装。最終23anchor/13CPP/4330parser・元BAC/WaitCalc含む20case・linked/ABI/しずえ/hash/DB公式XML PASS、root所有0。3gx解析側gohan_chat_lists_fix1 SHA29e3d382374a83eaf57b8198567ded9336ff83f9d6676db38cb3c8196b64f03f。source範囲4製品file＋STATE/SESSIONだけ最後一括work枝保存、旧reference dirty未stage。最終commit/hashは解析側manifest/publication参照。実機/main未変更、次は新版の利用者実機確認。native graphics/OS/arc破棄はfixtureであり見た目とtimingは未確認。
+- 2026-10-12追加訂正/IDA-gpt-6-T004: chat list背後のnativeボタンへ入力漏れ。DPad focus/Aかtouch決定、背景touch遮断、time menu閉鎖後field復帰、検索ID左小文字prefix。公共事業のDPad即previewは保持。root work/evidence/gohan_chat_lists_fixに根拠、acnl_v2単独所有/新DB編集なし。製品編集前、Gitは新scope完了後一括、main/実機/旧整理操作なし。
+- 追加依頼: chat list十字移動だけで決定/閉じるボタンで退場せず下画面操作不能/time set終了後の下画面復帰を修正、検索IDは左小文字prefixにする。T003のec1e8d1はpush済み、次のGit保存は追加修正完了後一括。解析側rootは29file stage済みで未commit。実機/main/旧整理未操作、次はGameList/nativeメニューの調査。
 - 最終保存: コードadf66697369f2b49f32ea627251d8131e8e99706をwork/gohan-chat-and-portsへcommit、製品scope clean/31source hashとGit HEAD一致を再確認。原正常ELF/旧配布版/DB-XML不変。今回workメモの結果追補も同じ最終batchで保存・pushし、独立ls-remote照合を行う。旧reference dirtyは未stage。次は利用者の修正実機確認、mainへ入れない。push結果は解析側work/logs/gohan_editor_chat_fix_source_push.logとpublication.jsonで確認する。
 - 最終EOL/31source SHA/正常ELF/旧3gx/DB-XML一致PASS。source diff-check/statは9file/82insert/24deleteで全行差分なし。今回の7製品file＋2memoだけをwork/gohan-chat-and-portsへ最後一括保存する。旧reference dirtyは中断維持で未stage。成果物/build/PCは完了、実機/main未操作、Git結果取得まで同commit/pushを再送しない。
 - 2026-10-12再開/IDA-gpt-6-T003: build/link終了0、新実Tickのfield保持中移動/touch/game遮断全true、native Wait hotkey→weather実行/保持/部分release/全release再押下/rebind/menu/OFF PASS。旧ELFは同条件で全false。元native ABI/IME/通常送信/両editor遷移とlinked567関数/35219命令/6548分岐/3294PC参照/しずえもPASS。

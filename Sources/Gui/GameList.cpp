@@ -3,6 +3,8 @@
 #include "GameLabel.hpp"
 #include "GridCursor.hpp"
 #include "ChatKanji.hpp"
+#include "GuiMenu.hpp"
+#include <CTRPluginFramework.hpp>
 
 #include <3ds.h>
 #include <cstdio>
@@ -273,6 +275,9 @@ Dir s_listDir = Dir::None;
 bool s_hookReady;
 u32 s_waitFrames;
 s32 s_lastSelected = -1;
+u32 s_confirm;
+alignas(4) u8 s_chatTouch[40];             // Touch_UpdateStateと同じ。native list updateの間だけ渡す
+bool s_chatTouchBlocked;
 volatile bool s_fieldHiddenNow;             // 直近の FrameStep で元の UI が隠れきっていた
 
 // 元の下画面 UI の段の移り変わりの記録（IDA-opus-5.5-F067。FrameTrace の輪は FrameMark で 30 秒ほどで流れるので別に持つ）。
@@ -291,11 +296,56 @@ inline u32 &W(void *p, u32 off) { return *reinterpret_cast<u32 *>(P(p, off)); }
 inline s32 &S(void *p, u32 off) { return *reinterpret_cast<s32 *>(P(p, off)); }
 inline float &F(void *p, u32 off) { return *reinterpret_cast<float *>(P(p, off)); }
 inline u8 &B(void *p, u32 off) { return *P(p, off); }
+inline s16 &H(void *p, u32 off) { return *reinterpret_cast<s16 *>(P(p, off)); }
 inline u8 R8(u32 a) { return *reinterpret_cast<const volatile u8 *>(a); }
 inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 // ---- 自前の仮想関数（ゲームが BLX で呼ぶ）-----------------------------------------------------
+void ListWaitCalc(void *list) {
+    // native待機は決定旗を消す。同じfocusの行をtouchで決めた場合も、消費前に拾う。
+    const bool decided = reinterpret_cast<int (*)(void *)>(0x00722C34)(P(list,2560)) != 0;
+    reinterpret_cast<ListFn>(0x001B0698)(list);
+    const s32 selected = S(list, kListSelected);
+    if (decided && selected >= 0 && (u32)selected < s_count)
+        s_decided = selected;
+}
+
+void ResetChatTouch(void) {
+    std::memset(s_chatTouch, 0, sizeof(s_chatTouch));
+    H(s_chatTouch, 2) = H(s_chatTouch, 4) = -1;
+    B(s_chatTouch, 15) = B(s_chatTouch, 25) = 200;
+}
+
+void UpdateChatList(void) {
+    const bool down = CTRPluginFramework::Touch::IsDown();
+    const bool locked = B(s_list, kListInputLock) != 0 || CTRPluginFramework::GuiMenu::IsVisible();
+    if (locked) s_chatTouchBlocked = down;
+    else if (!down) s_chatTouchBlocked = false;
+    const bool held = down && !locked && !s_chatTouchBlocked;
+    u8 *t = s_chatTouch;
+    // MapModeListと同じnative40Bの押下/離上履歴。スクロールもこの入力を見る。
+    H(t,16)=H(t,6);H(t,18)=H(t,8);H(t,20)=H(t,10);H(t,22)=H(t,12);
+    t[24]=t[14];t[25]=t[15];t[26]=t[0];t[27]=t[1];H(t,28)=H(t,4);
+    t[1]=t[0] ^ (held?1u:0u);t[0]=held?1u:0u;
+    if (held) {
+        const CTRPluginFramework::UIntVector pos = CTRPluginFramework::Touch::GetPosition();
+        H(t,2)=(s16)pos.x;H(t,4)=(s16)pos.y;
+        if (!t[26]) {H(t,6)=H(t,2);H(t,8)=H(t,4);t[14]=0;}
+        if (t[14]<200) ++t[14];
+        H(t,10)=H(t,2);H(t,12)=H(t,4);
+    } else if (t[26]) t[15]=1;
+    else if (t[15]<200) ++t[15];
+    F(t,32)=(float)H(t,10)-160.0f;F(t,36)=120.0f-(float)H(t,12);
+    u8 saved[sizeof(s_chatTouch)];
+    void *game = reinterpret_cast<void *>(0x00ACF6E0);
+    std::memcpy(saved,game,sizeof(saved));
+    std::memcpy(game,t,sizeof(saved));
+    const u32 *vt = *reinterpret_cast<u32 **>(s_list);
+    reinterpret_cast<ListFn>(vt[4])(s_list);
+    std::memcpy(game,saved,sizeof(saved));  // keyboardなど、背後のUIにはraw入力を渡さない
+}
+
 // vt[13]: 一覧を作る。件数を +2500 に置いて 1 を返す（0 だと組み立てが次の段へ進まない）。
 int ListBuildItems(u8 *self) {
     S(self, kListCount) = (s32)s_count;
@@ -863,10 +913,15 @@ bool BuildStep(void) {
         for (u32 i = 0; i < kVtblWords; ++i)
             s_vtbl[i] = base[i];
         s_vtbl[13] = reinterpret_cast<u32>(&ListBuildItems);
+        s_vtbl[24] = reinterpret_cast<u32>(&ListWaitCalc);
         s_vtbl[25] = reinterpret_cast<u32>(&ListWordAt);
         W(s_list, 0) = reinterpret_cast<u32>(s_vtbl);
         W(s_list, kListTextCap) = kMaxChars;
         s_idReady = false;
+        s_decided = -1;
+        __atomic_store_n(&s_confirm, 0u, __ATOMIC_RELEASE);
+        ResetChatTouch();
+        s_chatTouchBlocked = CTRPluginFramework::Touch::IsDown();
         if (s_hasPrefix && !PrebuildListLayout()) {
             s_error = "ID 付きの一覧を組み立てられない";
             s_hasPrefix = false;            // 素の組み立てに任せる（Layout+32 が 0 のまま）
@@ -932,7 +987,7 @@ void MoveSelect(s32 index) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
     s_lastSelected = S(s_list, kListSelected);
-    s_decided = index;
+    if (!s_overChat) s_decided = index;    // 公共事業の十字previewを維持。chatはfocusだけ
 }
 
 void StepDpad(void) {
@@ -1109,7 +1164,10 @@ void Hide(void) {
     s_want = false;
 }
 
-void SetOverChat(bool on) { s_overChat = on; }
+void SetOverChat(bool on) {
+    __atomic_store_n(&s_confirm, 0u, __ATOMIC_RELEASE);
+    s_overChat = on;
+}
 
 bool Wanted(void) {
     return s_want;
@@ -1133,11 +1191,10 @@ void Select(s32 index) {
 }
 
 s32 TakeDecided(void) {
-    const s32 v = s_decided;
-    if (v >= 0)
-        s_decided = -1;
-    return v;
+    return __atomic_exchange_n(&s_decided, -1, __ATOMIC_ACQ_REL);
 }
+
+void Confirm(void) { __atomic_store_n(&s_confirm, 1u, __ATOMIC_RELEASE); }
 
 const char *LastError(void) {
     return s_error;
@@ -1223,8 +1280,18 @@ void FrameStep(void) {
     // 入力はアニメ中は止める。中身の状態機械は vt[4] が進める（入場・退場・待機）。
     B(s_list, kListInputLock) = (s_frameDir != Dir::None || B(s_list, kListAnimating) != 0 || !show) ? 1 : 0;
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
-    reinterpret_cast<ListFn>(vt[4])(s_list);            // SelectBase_Update
+    if (chat) UpdateChatList();
+    else reinterpret_cast<ListFn>(vt[4])(s_list);       // SelectBase_Update
     StepDpad();
+    if (__atomic_exchange_n(&s_confirm, 0u, __ATOMIC_ACQ_REL) && chat && B(s_list,kListInputLock)==0) {
+        const s32 selected = S(s_list,kListSelected), row = selected - S(s_list,kListTop);
+        if (selected >= 0 && (u32)selected < s_count && row >= 0 && (u32)row < kListRows) {
+            void *node = P(reinterpret_cast<void *>(W(s_list,2556)), (u32)row * 224u);
+            const u32 *nodeVt = *reinterpret_cast<u32 **>(node);
+            reinterpret_cast<ListFn>(nodeVt[14])(node); // native行の決定音
+            s_decided = selected;
+        }
+    }
     StepIdRows();                                       // ID の欄（行の前置き）を名前の欄に合わせる
     if (s_listDir != Dir::None && B(s_list, kListAnimating) == 0)
         s_listDir = Dir::None;
@@ -1234,7 +1301,7 @@ void FrameStep(void) {
     const s32 sel = S(s_list, kListSelected);
     if (sel != s_lastSelected) {
         s_lastSelected = sel;
-        if (sel >= 0 && (u32)sel < s_count)
+        if (!chat && sel >= 0 && (u32)sel < s_count)
             s_decided = sel;
     }
 

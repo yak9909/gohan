@@ -25,7 +25,7 @@ const u32 kTm = 0x958114, kNumbers = 0xAD0158;
 const NativePortGuard::Word kHooks[] = {
     {0x522D40,0xE59F2018}, {0x57D720,0xE92D41F0}, {0x522638,0xE92D41F0},
     {0x2FB3A4,0xE59F0000}, {0x56C5BC,0xE92D4010}, {0x56A9C4,0xE92D4010}, {0x6D1330,0xE92D4010},
-    {0x300914,0xE59F0004}, {0x2F6E40,0xE92D4070}, {0x2F75E4,0xE35100A5}
+    {0x300914,0xE59F0004}, {0x2F6E40,0xE92D4070}, {0x2F75E4,0xE35100A5}, {0x6D1074,0xE59F0024}
 };
 Hook s_sendHook, s_returnHook;
 bool s_installed;
@@ -47,12 +47,16 @@ u32 s_op;
 Command s_time;
 u16 s_replace[33];
 u32 s_opResult;
+enum TimeMenuPhase : u32 { TimeOff, TimeWaitField, TimeRequested };
+u32 s_timeMenuPhase, s_timeMenuRoom, s_timeMenuFrames;
 bool s_list, s_retiring, s_commandList;
 u32 s_lastKeys;
 Kind s_afterClose = Kind::None;
 u32 s_waitFrames;
 char s_rows[GameList::kMaxItems][160];
 const char *s_rowPointers[GameList::kMaxItems];
+char s_idText[GameList::kMaxItems][7];
+const char *s_idPointers[GameList::kMaxItems];
 u16 s_ids[GameList::kMaxItems];
 u32 s_count;
 std::vector<u16> s_matches;
@@ -129,7 +133,32 @@ bool NormalClockRoom() {
     const int room=*reinterpret_cast<const u16 *>(0x95133A);
     return !reinterpret_cast<int (*)(u32,int)>(0x2F75E4)(0x180000u,room);
 }
+void FinishTimeMenu(u32 result) {
+    GameList::HoldField(false,GameList::kHoldChatTime);
+    __atomic_store_n(&s_timeMenuPhase,(u32)TimeOff,__ATOMIC_RELEASE);
+    if (result) __atomic_store_n(&s_opResult,result,__ATOMIC_RELEASE);
+}
+void StepTimeMenu() {
+    const u32 phase=__atomic_load_n(&s_timeMenuPhase,__ATOMIC_ACQUIRE);
+    if (phase==TimeOff) return;
+    if (*reinterpret_cast<const u16 *>(0x95133A)!=s_timeMenuRoom) {
+        FinishTimeMenu(0);return; // 場面が変わった下画面はGameListが再観測する
+    }
+    if (phase==TimeWaitField) {
+        if (!__atomic_load_n(&s_enabled,__ATOMIC_ACQUIRE) || !Offline() || !NormalClockRoom() || ++s_timeMenuFrames>180u) {
+            FinishTimeMenu(2);return;
+        }
+        if (!GameList::FieldHidden()) return;
+        // MENU_FLAGS bit4が立ってから要求する。受理済み要求を再送しない。
+        if (!reinterpret_cast<int (*)(int,int)>(0x6D1330)(0x2E,0)) {FinishTimeMenu(2);return;}
+        __atomic_store_n(&s_timeMenuPhase,(u32)TimeRequested,__ATOMIC_RELEASE);
+    } else if (reinterpret_cast<bool (*)()>(0x6D1074)()) {
+        // OFFになってもnative窓の終了を監視し、own ownerだけ返して地図/タブを復帰させる。
+        FinishTimeMenu(0);
+    }
+}
 void FrameStep() {
+    StepTimeMenu();
     const Op op=static_cast<Op>(__atomic_load_n(&s_op,__ATOMIC_ACQUIRE));
     if (op==NoOp) return;
     u32 result=1;
@@ -139,7 +168,12 @@ void FrameStep() {
     } else if (op==CloseChat) {
         if (ChatKanji::NormalChatOpen()) OriginalStatus(1,1);
     } else if (op==OpenTimeMenu) {
-        if (!Offline() || !NormalClockRoom() || !reinterpret_cast<int (*)(int,int)>(0x6D1330)(0x2E,0)) result=2;
+        if (!Offline() || !NormalClockRoom() || __atomic_load_n(&s_timeMenuPhase,__ATOMIC_ACQUIRE)!=TimeOff
+            || !GameList::HoldField(true,GameList::kHoldChatTime)) result=2;
+        else {
+            s_timeMenuRoom=*reinterpret_cast<const u16 *>(0x95133A);s_timeMenuFrames=0;
+            __atomic_store_n(&s_timeMenuPhase,(u32)TimeWaitField,__ATOMIC_RELEASE);
+        }
     } else if (op==ChangeTime) {
         Date target;
         const Date *current=reinterpret_cast<const Date *(*)()>(0x2FB3A4)();
@@ -153,7 +187,8 @@ void FrameStep() {
     __atomic_store_n(&s_op,static_cast<u32>(NoOp),__ATOMIC_RELEASE);
 }
 bool Post(Op op) {
-    if (__atomic_load_n(&s_op,__ATOMIC_ACQUIRE)!=NoOp) {Error(u8"前のコマンドを処理中です。");return false;}
+    if (__atomic_load_n(&s_op,__ATOMIC_ACQUIRE)!=NoOp
+        || __atomic_load_n(&s_timeMenuPhase,__ATOMIC_ACQUIRE)!=TimeOff) {Error(u8"前のコマンドを処理中です。");return false;}
     __atomic_store_n(&s_opResult,0u,__ATOMIC_RELEASE);
     __atomic_store_n(&s_op,static_cast<u32>(op),__ATOMIC_RELEASE);
     return true;
@@ -170,13 +205,15 @@ void AddItem(u16 id) {
 }
 void FillPage() {
     s_count=0;s_previousRow=kNoRow;s_nextRow=kNoRow;
+    for (u32 i=0;i<GameList::kMaxItems;++i) {s_idText[i][0]=0;s_idPointers[i]=s_idText[i];}
     if(s_page) {s_previousRow=s_count;s_rowPointers[s_count++]=u8"前の候補";}
     const u32 first=s_page*kPageItems;
     for(u32 i=first;i<s_matches.size() && i<first+kPageItems;++i) {
         const u16 id=s_matches[i];char name[128];
         if(!ItemNames::NameUtf8(id,name,sizeof(name)))continue;
         s_ids[s_count]=id;
-        std::snprintf(s_rows[s_count],sizeof(s_rows[s_count]),"%04X %s",static_cast<unsigned>(id),name);
+        std::snprintf(s_rows[s_count],sizeof(s_rows[s_count]),"%s",name);
+        std::snprintf(s_idText[s_count],sizeof(s_idText[s_count]),"0x%04X",static_cast<unsigned>(id));
         s_rowPointers[s_count]=s_rows[s_count];++s_count;
     }
     if(first+kPageItems<s_matches.size()) {s_nextRow=s_count;s_rowPointers[s_count++]=u8"次の候補";}
@@ -207,11 +244,13 @@ void OpenList(bool commandList,const char *query=nullptr) {
     }
     ChatIme::DismissForCommand();
     if(!GameList::SetItems(s_rowPointers,s_count)){Error(GameList::LastError());return;}
+    if (!commandList) GameList::SetItemPrefixes(s_idPointers,s_count);
     GameList::SetOverChat(true);
     s_commandList=commandList;s_list=true;s_retiring=false;
     __atomic_store_n(&s_pause,1u,__ATOMIC_RELEASE);
     s_lastKeys=Controller::GetKeysDown(true);
     GameList::Show(0);
+    GuiMenu::CaptureGameTouchUntilRelease();
 }
 void CloseList() {
     GameList::Hide();s_list=false;s_retiring=true;
@@ -282,6 +321,9 @@ void Tick(u16) {
     if(result==3)Error(u8"日時が範囲外か、通信中のため変更できません。日付は2012年から2050年です。");
     if(__atomic_exchange_n(&s_busyError,0u,__ATOMIC_ACQ_REL))Error(u8"前のコマンドを処理中です。");
     if(__atomic_exchange_n(&s_badCommand,0u,__ATOMIC_ACQ_REL))Error(u8"コマンドの書式が違います。listで一覧を開けます。");
+    if (s_list || s_retiring) {
+        GuiMenu::BlockGameAll();GuiMenu::BlockGameTouch();
+    }
     if(!IsActive(0)) {
         if(__atomic_load_n(&s_incoming,__ATOMIC_ACQUIRE)==1)__atomic_store_n(&s_incoming,0u,__ATOMIC_RELEASE);
         return;
@@ -301,12 +343,14 @@ void Tick(u16) {
         GameList::FeedDpad(keys & (static_cast<u32>(Key::DPadUp)|static_cast<u32>(Key::DPadDown)
             |static_cast<u32>(Key::DPadLeft)|static_cast<u32>(Key::DPadRight)));
         GuiMenu::BlockGameDpad();
+        if (pressed & static_cast<u32>(Key::A)) GameList::Confirm();
         const s32 selected=GameList::TakeDecided();
         if(pressed & static_cast<u32>(Key::B))CloseList();
         else if(selected>=0 && static_cast<u32>(selected)<s_count) {
             if(!s_commandList && (static_cast<u32>(selected)==s_previousRow || static_cast<u32>(selected)==s_nextRow)) {
                 if(static_cast<u32>(selected)==s_previousRow)--s_page;else ++s_page;
-                FillPage();GameList::SetItems(s_rowPointers,s_count);GameList::Select(0);
+                FillPage();GameList::SetItems(s_rowPointers,s_count);
+                GameList::SetItemPrefixes(s_idPointers,s_count);GameList::Select(0);
                 return;
             }
             CloseList();

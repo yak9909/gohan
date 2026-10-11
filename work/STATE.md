@@ -1,5 +1,10 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: chat一覧・time menu復帰・検索ID / GPT-6
+
+- IDA-gpt-6-T004: chat listのDPadはfocus、A/touchで決定、Bで終了。native updateの間だけraw40Bを渡して戻し、背後keyboard入力を遮断。検索IDは公共事業と同じ左小欄、時刻窓専用HoldField ownerで終了後field復帰/OFF時も見届ける。新artifact解析側gohan_chat_lists_fix1、3gxSHA29e3d382374a83eaf57b8198567ded9336ff83f9d6676db38cb3c8196b64f03f。
+- 23anchor/13CPP/4330条件、元BAC same-row touch等20case、最終linked/ABI/しずえ、31source hash/正常ELF・旧成果物不変/13frame owner<=16、保存DB20concept/公式XML PASS。ソースと仕様/メモをwork/gohan-chat-and-portsへ最後一括保存する。このcommitの実機確認は未実施/mainへ入れない。旧整理中断・既存dirty保持、実機操作なし。次は利用者の実機確認（B復帰・背後入力漏れ・ID欄・time窓取消/確定/OFF復帰）。
+
 ## 実装・PC検証完了: MapEditor入力停止・ChatCommands hotkey / GPT-6
 
 - IDA-gpt-6-T003: コードadf66697369f2b49f32ea627251d8131e8e99706をwork/gohan-chat-and-portsへ保存、31source SHAとGit HEAD一致/全PC gate PASS。自身のfield保持で継続Tickを止めない。checkboxで有効化、hotkeyで現在command実行/chord全releaseまで取消抑止。新artifact解析側gohan_editor_chat_fix1、3gxSHA9a6d32897b28d8c0cb896244d60083fe5e864c1710ed9771976093292d6eeb8d。修正実機未確認/main不変、旧整理中断/正常artifact保持。保存用メモも同じ最終batchでpushし、次は利用者の実機確認。
