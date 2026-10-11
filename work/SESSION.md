@@ -2,6 +2,9 @@
 
 ## 2026-10-12 IDA-gpt-6-T005 / GPT-6
 
+- 保存結果: 6file/60insert9deleteのcode db000f1dbb84ae956fe340025720a51ec7d5a3f1をwork枝へ最後一括push/独立remote一致。finish --savedは32製品source hash/Git一致、新ELF/3gxと全runtime/linked/hash/最新DB公式XML・旧3artifact/正常ELF不変PASS。解析checkpoint bf32ad0141d8b8aecf1868ac54c33b1438154bc4はLFS2object237MB/push終了0・独立remote一致。詳細は解析側gohan_chat_scroll_fix/final_checks.json/publication.jsonとlogs。
+- 製品作業・PC検証は完了、実機未確認/main未変更、旧整理中断/dirty保持。保存結果の2memo追補も同最終batchでcommit/pushする。次は利用者の新版実機確認（scroll/背景遮断、style open/B終了/再open、検索fgobj先頭/ID順/ページ）。継続/成否不明の製品操作なし。
+
 - 完了PC gate: 元native scroll更新/edge/drag/track/逆向き/端/Controller全284B・Touch40B復元、前回20case/Map/hotkey、arc予約pool（newlib大領域不足条件）/取消/失敗/ゲームheapcopy後Attach失敗解放、検索262unique/fgobj先頭/ID順/ページ、旧版3症状再現PASS。23anchor/13CPP/4330parser/linkedABI/しずえ/32source SHA・正常ELF/旧3artifact不変PASS。native概念DB反映/公式XML保存検証も解析側で完了、所有0。
 - 新artifactは解析側gohan_chat_scroll_fix1、ELF55fdfe96/3gxと最終source commit全SHAはmanifest/publication参照。実機未確認/main不変。Sources3file＋gohan.md＋STATE/SESSIONだけ最後一括保存/pushする。旧reference整理dirty保持、実機/SD操作なし。継続/成否不明操作なし、次は最終保存と利用者実機確認。
 

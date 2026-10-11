@@ -1,6 +1,8 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
-## 作業中: リストscroll・HHD style arc・検索ID順 / GPT-6
+## 実装・PC検証・作業枝保存完了: リストscroll・HHD style arc・検索ID順 / GPT-6
+
+- code db000f1dbb84ae956fe340025720a51ec7d5a3f1をwork/gohan-chat-and-portsへ最後一括保存/pushし独立remote一致。32製品source SHA/Git一致、全PC gate/別artifact/最新DB公式XML保存済み（解析checkpoint bf32ad0141d8b8aecf1868ac54c33b1438154bc4もpush一致）。新3gxSHA82dc4be4cc47fa88b578d6d63b6e53261cf71ca83c19fc352e9e121582c0d516。実機未確認/main不変、旧整理dirty未stage。保存結果メモを同最終batchで追補し、次は利用者の実機確認のみ。
 
 - 修正・隔離build・最終PC gate PASS。元native scroll/input全bytes復元・前回20case/Map/hotkey、arc取消/形式/フック/pool不足/copy後失敗解放、fgobj含む262unique/ID順/ページ/旧版3症状再現。解析側32source hash/正常ELF・旧3artifact不変/DB公式XML PASS。新gohan_chat_scroll_fix1の全SHAはmanifest参照、実機未確認/main未変更。次は今回6fileのみ最後一括work枝保存/push。
 
