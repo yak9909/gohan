@@ -2,6 +2,7 @@
 #include "FrameTrace.hpp"
 #include "GameLabel.hpp"
 #include "GridCursor.hpp"
+#include "ChatKanji.hpp"
 
 #include <3ds.h>
 #include <cstdio>
@@ -239,6 +240,7 @@ s16 s_pendMsg[kMaxItems];                   // 行ごとの番号（負 = 使わ
 volatile u32 s_itemsSeq;                    // SetItems のたびに増える
 u32 s_builtSeq;
 volatile bool s_want;
+volatile bool s_overChat;
 volatile u32 s_holdField;                   // ほかの部品が下画面を使う（持ち主のビット。HoldOwner）: リストは出さず元の UI だけ退場させておく
 volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
@@ -1107,6 +1109,8 @@ void Hide(void) {
     s_want = false;
 }
 
+void SetOverChat(bool on) { s_overChat = on; }
+
 bool Wanted(void) {
     return s_want;
 }
@@ -1150,13 +1154,15 @@ void Shutdown(void) {
 
 // ---- ゲームのスレッド -------------------------------------------------------------------------
 void FrameStep(void) {
-    const bool want = s_want && !s_shutdown && !MenuOpen() && s_pendCount > 0;
+    const bool chat = s_overChat;
+    const bool interrupted = chat ? !CTRPluginFramework::ChatKanji::NormalChatOpen() : MenuOpen();
+    const bool want = s_want && !s_shutdown && !interrupted && s_pendCount > 0;
     void *mgr = *reinterpret_cast<void *const *>(kLayoutMgrPtr);
     // 元の下画面 UI: 出したいあいだ、またはリストが描かれているあいだは退場させておく。リストが消えてから戻す。
     //   ★メニューが開いていても「出したい」は変えない（StepField がメニューを閉じさせる）
     const bool wantRaw = s_want && !s_shutdown && s_pendCount > 0 && s_error[0] == 0;
-    const bool fieldHidden = StepField(wantRaw || s_stage == Stage::Live || (s_holdField != 0u && !s_shutdown));
-    s_fieldHiddenNow = fieldHidden;
+    const bool fieldHidden = chat || StepField(wantRaw || s_stage == Stage::Live || (s_holdField != 0u && !s_shutdown));
+    s_fieldHiddenNow = !chat && fieldHidden;
 
     switch (s_stage) {
     case Stage::Off:
@@ -1196,7 +1202,7 @@ void FrameStep(void) {
 
     // ---- Live ----
     // メニューが開いた・終了: アニメを待たずに描くのをやめ、数フレーム後に壊す
-    if (s_shutdown || MenuOpen()) {
+    if (s_shutdown || interrupted) {
         s_stage = Stage::Waiting;
         s_waitFrames = 0;
         return;
@@ -1241,6 +1247,10 @@ void FrameStep(void) {
 
     // 描画登録（リストは RenderBottom のあと毎フレーム空になる）。枠 → 中身（どちらも優先度 2、入れた順）
     if (mgr != nullptr) {
+        if (chat) {
+            B(s_frame, 0x0C) = 0xFF;
+            B(s_list, kListLayout + 0x0C) = 0xFF;
+        }
         AddLayout(mgr, s_frame, 1);
         reinterpret_cast<ListFn>(vt[5])(s_list);        // SelectBase_Draw: 計算 + AddLayout(+44, 1)
     }

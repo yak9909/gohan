@@ -19,7 +19,7 @@
 //   タッチ   … アイテムのマスなら名前を出す（建物は無視）
 //   L / R    … 配置 → 削除 → 範囲選択
 //   範囲選択 … スライド = 範囲を引く／タップ = そのマスを選ぶ（範囲の中なら一覧: 複製・削除・埋める・やめる）／
-//              範囲の中の長押し = 持ち上げて移動（行き先は上書き）／B = 一覧・持ち上げ・選択を 1 段ずつ解く
+//              範囲の中の長押し = 持ち上げて移動（行き先は上書き）／B = エディターを閉じる
 // 段階 1〜2 は実機確認済み（2026-09-27）、段階 3（範囲選択）は実機未確認。
 namespace MapEditor
 {
@@ -31,6 +31,7 @@ namespace MapEditor
     void            Tick(u32 keys);             // 項目が有効な間、毎ティック。keys は Controller::GetKeysDown(true)（メニュー表示中は 0）
     void            Stop(void);
     bool            Running(void);
+    bool            Closing(void);              // 退場/資源の片付け待ち
     void            Reset(void);                // 失敗の記憶を消す（項目を外したとき）
     // スポイトの長押しの進み（下画面のメニュー描画が進捗バーを描く）。出さないときは偽。x, y = 長押しを始めた画素
     bool            PickProgress(float &progress, int &x, int &y);
@@ -46,6 +47,7 @@ namespace CTRPluginFramework
     namespace Cheats
     {
         void    WireMapEditor(void);
+        void    StopMapEditor(void);
         bool    MapEditorTick(int index, u16 held);
         bool    MapEditorDisable(int index);
     }

@@ -128,10 +128,10 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_CHECKBOX, kWalkThroughWalls,
                             u8"どこでも歩けるようになります。あなたの歩みを阻むものは何一つとして存在しません。");
                 SetHotkey(i, Bit(HB_L) | Bit(HB_UP));
-                i = AddItem(ITEM_CHECKBOX, u8"アクション解除（未設計）",
+                i = AddItem(ITEM_CHECKBOX, kIdle,
                             u8"強制的に立ち状態に変更します。身動きが取れなくなった時用です。");
                 SetHotkey(i, Bit(HB_L) | Bit(HB_DOWN));
-                AddItem(ITEM_TOGGLE_ACTION, u8"気絶（未設計）", u8"気絶します。身動きが取れなくなった時用です。");
+                AddItem(ITEM_TOGGLE_ACTION, kFaint, u8"気絶します。身動きが取れなくなった時用です。");
                 AddItem(ITEM_CHECKBOX, kNoBreakFlower,
                         u8"もう友達の村の移動に気を遣う必要はなくなりました。花の上を走っても散らなくなります。");
                 AddItem(ITEM_CHECKBOX, kNoTrap, u8"穴にハマらなくなります。残念でしたね。");
@@ -148,10 +148,14 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_FOLDER, u8"お遊び", u8"遊び向けのチートです。");
                 SetFolder(i, funFirst, funCount);
                 AddItem(ITEM_CHECKBOX, u8"アイテムセレクター（未設計）", kUndecided);
-                i = AddItem(ITEM_VALUE, kDropItem, u8"ドロップ系チートが参照するアイテムIDを指定します。");
-                SetValue(i, FMT_HEX, 0, 0, 0xFFFF, 1);
+                AddItem(ITEM_ACTION, kMeOn,
+                        u8"模様替えの画面で村のアイテムを見渡します。十字キーかスライドパッドで範囲を動かし、アイテムをタッチすると名前を出します。"
+                        u8"プレイヤーは動けません。B または再実行で閉じます。");
+                i = AddItem(ITEM_LINKED_VALUE, kDropItem,
+                            u8"マップエディターとドロップ系チートが参照するアイテムIDです。長押しのスポイトでも変わります。FFFF は未設定です。");
+                SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
                 i = AddItem(ITEM_CHECKBOX, kTrampler, u8"あなたが歩いてきた場所に何かが残る事は決してありません。");
-                SetHotkey(i, Bit(HB_R) | Bit(HB_UP));
+                SetHotkey(i, Bit(HB_R) | Bit(HB_A));
                 AddItem(ITEM_CHECKBOX, kDigAnywhere,
                         u8"木/岩やアイテムから、川/崖越し/建造物まで、ありとあらゆる状況で掘れるようになります。");
                 const int dropCount = g_itemCount - dropFirst;
@@ -180,53 +184,17 @@ namespace CTRPluginFramework
                         u8"もうわざわざタイトル画面へ戻る必要はありません。地図上で選択したプレイヤーのデータへ切り替えます。");
                 const int mapCount = g_itemCount - mapFirst;
 
-                // ---- root/村/公共事業エディターの設定（§9）----
-                const int editorSetFirst = g_itemCount;
-                i = AddItem(ITEM_VALUE, kHlTint, u8"移動で選んだ建物に重ねる青の濃さです。0 で元の色、255 で青一色。削除の赤も同じ濃さです。");
-                SetValue(i, FMT_DEC, 176, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlAlpha, u8"選んだ建物の、揺れの中心の不透明度です。255 で不透明。");
-                SetValue(i, FMT_DEC, 208, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlWave, u8"選んだ建物の不透明度が sin 波で上下する幅です。0 で揺れません。");
-                SetValue(i, FMT_DEC, 64, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kHlSpeed, u8"選んだ建物の揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
-                SetValue(i, FMT_DEC, 11, 1, 100, 1);
-                i = AddItem(ITEM_VALUE, kBpAlpha, u8"設置プレビューの、揺れの中心の不透明度です。");
-                SetValue(i, FMT_DEC, 160, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kBpWave, u8"設置プレビューの不透明度が sin 波で上下する幅です。");
-                SetValue(i, FMT_DEC, 64, 0, 255, 8);
-                i = AddItem(ITEM_VALUE, kBpSpeed, u8"設置プレビューの揺れの速さです。1 フレームに周期の 1/1000 ずつ進みます。");
-                SetValue(i, FMT_DEC, 11, 1, 100, 1);
-                const int editorSetCount = g_itemCount - editorSetFirst;
-
                 // ---- root/村（§9）----
                 const int townFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"マップ", u8"地図で選んだものに対する操作です。");
                 SetFolder(i, mapFirst, mapCount);
-                i = AddItem(ITEM_FOLDER, u8"公共事業エディターの設定", u8"公共事業エディターの選択と設置プレビューの見た目です。");
-                SetFolder(i, editorSetFirst, editorSetCount);
-                AddItem(ITEM_CHECKBOX, u8"アイテムが消えない（未設計）", u8"無効な位置にあるアイテムが翌日に消えないようにします。");
+                AddItem(ITEM_CHECKBOX, kKeepItems, u8"無効な位置にあるアイテムが翌日に消えないようにします。");
                 i = AddItem(ITEM_LINKED_LIST, kWeather, u8"天気を変更します。");
                 SetOptions(i, kWeatherOptions, kWeatherOptionCount);
-                AddItem(ITEM_CHECKBOX, kBeOn,
+                AddItem(ITEM_ACTION, kBeOn,
                         u8"好きな場所に建造物を建てましょう。カメラだけを動かして置く・動かす・消すができ、プレイヤーは動けません。"
                         u8"スライドパッドでカーソル、L/R でモード、十字左右で建物、X でカーソルの建物をコピー、"
-                        u8"A で実行、移動の選択は B で解除。");
-                // Issue #16（段階 1: 表示・カメラ・名前）。MapEditor.hpp
-                AddItem(ITEM_CHECKBOX, kMeOn,
-                        u8"模様替えの画面で村のアイテムを見渡します。十字キーかスライドパッドで範囲を動かし、アイテムをタッチすると名前を出します。"
-                        u8"プレイヤーは動けません。");
-                // 連動型（エディターの値。スポイトでも変わる）。FFFF = 未設定
-                i = AddItem(ITEM_LINKED_VALUE, kMePlaceItem,
-                            u8"マップエディターの配置モードで置くアイテムの ID です。アイテムを押し続けるスポイトでも変わります。"
-                            u8"FFFF は未設定です。");
-                SetValue(i, FMT_HEX, 0xFFFF, 0, 0xFFFF, 1);
-                // 連動型（GridCursor の薄い体の Constant4 のアルファ。利用者の決定 2026-09-29: 実行範囲 90、マイデザインの上 50）
-                i = AddItem(ITEM_LINKED_VALUE, kMeDimRange,
-                            u8"マップエディターの実行範囲のうち、真ん中以外に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
-                SetValue(i, FMT_DEC, 90, 0, 255, 1);
-                i = AddItem(ITEM_LINKED_VALUE, kMeDimDesign,
-                            u8"マップエディターでマイデザインの上に出す UnitCursor の濃さです（0〜255、255 = 普通と同じ）。");
-                SetValue(i, FMT_DEC, 50, 0, 255, 1);
+                        u8"A で実行、B または再実行で閉じます。");
                 AddItem(ITEM_CHECKBOX, kNoLookUp, u8"あなたは勝手に空を見上げて呆けることはありません。");
                 const int townCount = g_itemCount - townFirst;
 
@@ -248,29 +216,38 @@ namespace CTRPluginFramework
                 SetValue(i, FMT_DEC, 0, 0, 99999, 1);
                 const int shopCount = g_itemCount - shopFirst;
 
+                // ---- root/ゲーム/室内/内装の保存 ----
+                const int interiorSaveFirst = g_itemCount;
+                i = AddItem(ITEM_LINKED_VALUE, kInteriorSlot, u8"内装を保存する枠です。1から8まで使えます。");
+                SetValue(i, FMT_DEC, 1, 1, 8, 1);
+                AddItem(ITEM_ACTION, kInteriorSave, u8"自分の部屋の家具・位置・向き・壁紙・床を、選んだ保存枠へ保存します。");
+                AddItem(ITEM_ACTION, kInteriorLoad, u8"保存枠の内装を今の部屋へ読み込み、すぐに反映します。サイズが違う時は、範囲外の家具を削るか確認します。");
+                AddItem(ITEM_ACTION, kInteriorSwap, u8"保存枠の内装と今の部屋の内装を交換します。反映が終わると、変更前の内装を保存枠へ戻します。");
+                const int interiorSaveCount = g_itemCount - interiorSaveFirst;
+
+                // ---- root/ゲーム/室内 ----
+                const int indoorFirst = g_itemCount;
+                i = AddItem(ITEM_FOLDER, u8"内装の保存", u8"部屋の内装を保存・読み込み・交換します。");
+                SetFolder(i, interiorSaveFirst, interiorSaveCount);
+                AddItem(ITEM_CHECKBOX, kDecorCatalog,
+                        u8"家の模様替えの上にハッピーホームデザイナーのかぐリスト・かべ/ゆかリストのタブを出します。品を選ぶとかぐは空いている所に置き、かべ・ゆかははりかえます。"
+                        u8"かべのかぐ・かべ・ゆかは部屋の中で使えるかで決まります。見た目がテントでも使える部屋なら使えます。通信中は特別なはりかえを使えません。"
+                        u8"左下には家具を消せるゴミ箱も出します。SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin・hhd_decorate.arc）が必要です。");
+                AddItem(ITEM_CHECKBOX, kHhdRoomCamera,
+                        u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中はスライドパッドで向きに合わせてカメラを動かせます。");
+                const int indoorCount = g_itemCount - indoorFirst;
+
                 // ---- root/ゲーム（§11）----
                 const int gameFirst = g_itemCount;
                 i = AddItem(ITEM_FOLDER, u8"キーボード", u8"キーボードとチャットに関するチートです。");
                 SetFolder(i, keyboardFirst, keyboardCount);
                 i = AddItem(ITEM_FOLDER, u8"店", u8"お店に関するチートです。");
                 SetFolder(i, shopFirst, shopCount);
+                i = AddItem(ITEM_FOLDER, u8"室内", u8"模様替えと室内カメラに関するチートです。");
+                SetFolder(i, indoorFirst, indoorCount);
                 AddItem(ITEM_CHECKBOX, kInstantText,
                         u8"メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。");
                 AddItem(ITEM_CHECKBOX, kShizueSkip, u8"タイトル遷移後のしずえの会話をスキップします。ドパガキなあなたへ。");
-                AddItem(ITEM_CHECKBOX, kDecorTrash,
-                        u8"家の模様替えの左下にハッピーホームデザイナーのゴミ箱を出します。家具を掴んでゴミ箱に重ねて離すと、その家具を消します。"
-                        u8"SD の gohan フォルダのリソース（hhd_decorate.arc）が必要です。");
-                AddItem(ITEM_CHECKBOX, kDecorCatalog,
-                        u8"家の模様替えの上にハッピーホームデザイナーのかぐリスト・かべ/ゆかリストのタブを出します。品を選ぶとかぐは空いている所に置き、かべ・ゆかははりかえます。"
-                        u8"かべのかぐ・かべ・ゆかは部屋の中で使えるかで決まります。見た目がテントでも使える部屋なら使えます。通信中は特別なはりかえを使えません。"
-                        u8"SD の gohan フォルダのリソース（hhd_catalog_top.arc・hhd_catalog.arc・hhd_icons.bin）が必要です。");
-                AddItem(ITEM_CHECKBOX, kHhdRoomCamera,
-                        u8"家の中で十字キーを押し続けると、左右でカメラを回し、上下で奥行きを変えます。模様替え中はスライドパッドで向きに合わせてカメラを動かせます。");
-                i = AddItem(ITEM_LINKED_VALUE, kInteriorSlot, u8"内装を保存する枠です。1から8まで使えます。");
-                SetValue(i, FMT_DEC, 1, 1, 8, 1);
-                AddItem(ITEM_ACTION, kInteriorSave, u8"自分の部屋の家具・位置・向き・壁紙・床を、選んだ保存枠へ保存します。");
-                AddItem(ITEM_ACTION, kInteriorLoad, u8"保存枠の内装を今の部屋へ読み込み、すぐに反映します。サイズが違う時は、範囲外の家具を削るか確認します。");
-                AddItem(ITEM_ACTION, kInteriorSwap, u8"保存枠の内装と今の部屋の内装を交換します。反映が終わると、変更前の内装を保存枠へ戻します。");
                 i = AddItem(ITEM_CHECKBOX, kUnlockFps,
                             u8"フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。");
                 SetHotkey(i, Bit(HB_B) | Bit(HB_UP));
@@ -406,7 +383,7 @@ namespace CTRPluginFramework
                 SetFolder(i, gameFirst, gameCount);
                 i = AddItem(ITEM_FOLDER, u8"テスト", u8"解析の試験用です。確かめ終わったら本来の場所へ移します。");
                 SetFolder(i, testFirst, testCount);
-                i = AddItem(ITEM_CHECKBOX, u8"チャットコマンド（未設計）",
+                i = AddItem(ITEM_CHECKBOX, kChatCommands,
                             u8"チャットにコマンドを打つ事で様々なチートを素早く実行できます。コマンドリストは list で確認できます。");
                 SetHotkey(i, Bit(HB_R) | Bit(HB_B));
                 g_rootCount = g_itemCount - g_rootFirst;

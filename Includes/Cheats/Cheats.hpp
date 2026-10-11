@@ -1,5 +1,6 @@
 #ifndef CHEATS_HPP
 #define CHEATS_HPP
+#include <3ds/types.h>
 
 // gohan.md のチート本体。メニューの木（GuiMenuItems.cpp）と同じ項目名で結び付ける。
 // 項目名はここだけに書き、木と登録の両方がこれを使う（片方だけ直して食い違わないように）。
@@ -24,6 +25,8 @@ namespace CTRPluginFramework
         // ---- root/プレイヤー ----
         static const char kTouchWarp[]      = u8"タッチワープ";
         static const char kWalkThroughWalls[] = u8"壁抜け";
+        static const char kIdle[]           = u8"アクション解除";
+        static const char kFaint[]          = u8"気絶";
         static const char kNoBreakFlower[]  = u8"花散らせない";
         static const char kNoTrap[]         = u8"穴に落下しない";
         // ---- root/プレイヤー/スタイル ----
@@ -41,6 +44,8 @@ namespace CTRPluginFramework
         static const char kDig3x3[]         = u8"スコップ3x3マス掘り";
         // ---- root/村 ----
         static const char kWeather[]        = u8"天気";
+        static const char kKeepItems[]      = u8"アイテムが消えない";
+        static const char kChatCommands[]   = u8"チャットコマンド";
         static const char kNoLookUp[]       = u8"空を見上げない";
         // ---- root/ゲーム/店 ----
         static const char kShopsOpen[]      = u8"店24時間オープン";
@@ -79,7 +84,7 @@ namespace CTRPluginFramework
         // ---- root/ゲーム/模様替え（T022。解析リポジトリ docs/topics/t022_decorate_port_requirements.md）----
         static const char kDecorTrash[] = u8"模様替えにゴミ箱";
         static const char kDecorCatalog[] = u8"模様替えに家具リスト";
-        static const char kHhdRoomCamera[] = u8"家のカメラをHHD式に";
+        static const char kHhdRoomCamera[] = u8"HHD式室内カメラ操作";
         static const char kInteriorSlot[] = u8"内装の保存枠";
         static const char kInteriorSave[] = u8"内装を保存";
         static const char kInteriorLoad[] = u8"内装を読み込み";
@@ -113,18 +118,8 @@ namespace CTRPluginFramework
         static const char kPwMove[]    = u8"選んだ公共事業を足元へ";
         static const char kPwRebuild[] = u8"当たり判定を作り直す";
         static const char kHlOn[]      = u8"選んだ建物を光らせる";
-        static const char kHlTint[]    = u8"選択の色の濃さ";
-        static const char kHlAlpha[]   = u8"選択の不透明度";
-        static const char kHlWave[]    = u8"選択の揺れ幅";
-        static const char kHlSpeed[]   = u8"選択の揺れの速さ";
         static const char kBeOn[]      = u8"公共事業エディター";
         static const char kMeOn[]      = u8"マップエディター";
-        static const char kMePlaceItem[] = u8"配置するアイテム";
-        static const char kMeDimRange[] = u8"薄いカーソルの濃さ（実行範囲）";
-        static const char kMeDimDesign[] = u8"薄いカーソルの濃さ（マイデザインの上）";
-        static const char kBpAlpha[]   = u8"プレビューの不透明度";
-        static const char kBpWave[]    = u8"プレビューの揺れ幅";
-        static const char kBpSpeed[]   = u8"プレビューの揺れの速さ";
         // 実際の名前は WirePublicWorks がゲームの表から入れる。ITEM_LIST は空を許さない。
         static const char *const kPwEmptyOptions[] = { u8"（読み込み中）" };
 
@@ -149,6 +144,8 @@ namespace CTRPluginFramework
 
         // メニューの木を組んだ直後に 1 回呼ぶ。項目名で引いて振る舞いを登録する。
         void    Wire(void);
+        void    ActivateEditor(int index);
+        bool    SetWeather(int option);
 
         // PlayerMove.cpp（座標移動・タッチワープ）。Wire から呼ぶ。
         void    WirePlayerMove(void);

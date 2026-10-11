@@ -14,7 +14,7 @@
 //   高さは全部そろえて設置プレビューと同じ。
 //   色: 配置 = そのまま、移動 = 青、削除 = 赤。
 // どの建物の上か: 衝突判定のマスがカーソルに重なる建物のうち、基点が一番近いもの（無ければ占有マップ）。
-// 画面遷移で村の屋外を離れたら止まり、戻ったら自動で再開する。項目はホットキーで入れ切りできる。
+// 画面遷移で村の屋外を離れたら止まり、戻ったら自動で再開する。アクション再実行かBで閉じる。
 //
 // 操作（メニューを閉じている間）
 //   スライドパッド … カーソルを 1 マスずつ（押し続けで連続）
@@ -29,11 +29,11 @@ namespace BuildingEditor
     enum class Mode : u8 { Place, Move, Remove, Count };
 
     // ---- メニュースレッド ----
-    // チェック項目が有効な間、毎ティック。keys は Controller::GetKeysDown(true)（メニュー表示中は 0）。
+    // 起動中、毎ティック。keys は Controller::GetKeysDown(true)（メニュー表示中は 0）。
     void            Tick(u32 keys);
-    void            Stop(void);                 // チェック項目が外れたとき
+    void            Stop(void);
     bool            Running(void);
-    void            Reset(void);                // 失敗の記憶を消す（チェックを外したとき）
+    void            Reset(void);                // 閉じたあと、失敗の記憶を消す
 
     // 建物の衝突判定のマス（基点からのずれ）。上の「形」と同じ規則。count を返す（max を超えた分は捨てる）。
     // メニュースレッド（romfs を読む・名前の無い家はゲームのスレッドに足元を写してもらう）。マップエディターが使う。
@@ -48,6 +48,7 @@ namespace CTRPluginFramework
     namespace Cheats
     {
         void    WireBuildingEditor(void);
+        void    StopBuildingEditor(void);
         bool    BuildingEditorTick(int index, u16 held);
         bool    BuildingEditorDisable(int index);
     }

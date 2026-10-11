@@ -35,6 +35,7 @@ const u16 *NormalName(u16 id, u32 &length);         // UTF-16（制御タグ 0x0
 // 表を SD から読む（起動時に 1 回。フックを入れる前に）。読めた件数（無ければ 0）。2 回目以降は何もしない
 u32 LoadHidden(void);
 u32 HiddenCount(void);
+const HiddenItemTable::Entry *HiddenAt(u32 index);
 const HiddenItemTable::Entry *FindHidden(u16 id);    // 無ければ nullptr
 
 // どちらでも: UTF-8 で書く（没アイテムは kana が真ならかな名）。名前が無ければ false（out は空）

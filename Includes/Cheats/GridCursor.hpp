@@ -97,7 +97,7 @@ namespace GridCursor
     // （建物は基点の地面、橋はどこでも一定の橋の高さ）。
     // dims（省略可）: マスごとの薄さの種類（0 = 普通、1〜kDimKinds = 薄い体 dims−1）。どのマスを薄くするかは呼ぶ側が決める
     //   （利用者指示 2026-09-29: マイデザインの上を薄くするのはマップエディターだけ。公共事業エディターは薄くしない）
-    static const u32 kDimKinds = 2;
+    static const u32 kDimKinds = 3;
     void            SetTiles(const u8* xs, const u8* ys, u32 count, s32 heightId, u8 anchorX, u8 anchorY, const u8* dims = nullptr);
     // 薄い体 kind（0..kDimKinds−1）のアルファ（0〜255。IDA-opus-5.5-F068: UnitCursor の TEV の段 4 = 前段のアルファ × Constant4 のアルファ）
     void            SetDimAlpha(u32 kind, u8 alpha);

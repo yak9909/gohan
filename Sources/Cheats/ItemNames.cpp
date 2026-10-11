@@ -296,6 +296,10 @@ u32 HiddenCount(void) {
     return s_hiddenCount;
 }
 
+const HiddenItemTable::Entry *HiddenAt(u32 index) {
+    return index < s_hiddenCount ? &s_hidden[index] : nullptr;
+}
+
 const HiddenItemTable::Entry *FindHidden(u16 id) {
     u32 lo = 0, hi = s_hiddenCount;
     while (lo < hi) {

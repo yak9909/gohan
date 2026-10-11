@@ -27,6 +27,9 @@
 #include "HhdRoomCamera.hpp"
 #include "InteriorTools.hpp"
 #include "GuiMenu.hpp"
+#include "PlayerActions.hpp"
+#include "KeepItems.hpp"
+#include "ChatCommands.hpp"
 
 namespace CTRPluginFramework
 {
@@ -34,6 +37,7 @@ namespace CTRPluginFramework
     {
         namespace
         {
+            int g_buildAction = -1, g_mapAction = -1;
             typedef GuiMenu::TogglePatch Patch;
 
             #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -228,40 +232,41 @@ namespace CTRPluginFramework
             // 自分の項目でなければ偽を返す取り決めなので、並び順は結果に影響しない。
             void    DispatchTick(int index, u16 held)
             {
+                if (PlayerActions::Tick(index, held)) return;
                 if (PlayerMoveTick(index, held))
-                    return;
-                if (BuildingEditorTick(index, held))
-                    return;
-                if (MapEditorTick(index, held))
                     return;
                 if (ChatIme::Tick(index, held))
                     return;
-                if (DecorTrash::Tick(index, held))
-                    return;
                 if (DecorCatalog::Tick(index, held))
+                {
+                    if (DecorCatalog::Active()) DecorTrash::Tick(index, held);
+                    else DecorTrash::Disable(index);
                     return;
+                }
                 GridCursorTick(index, held);
             }
 
             void    DispatchDisable(int index)
             {
+                if (PlayerActions::Disable(index)) return;
                 if (PlayerMoveDisable(index))
-                    return;
-                if (BuildingEditorDisable(index))
-                    return;
-                if (MapEditorDisable(index))
                     return;
                 if (ChatIme::Disable(index))
                     return;
-                if (DecorTrash::Disable(index))
-                    return;
                 if (DecorCatalog::Disable(index))
+                {
+                    DecorTrash::Disable(index);
                     return;
+                }
                 GridCursorDisable(index);
             }
 
             const GuiMenu::ToggleHandlers kDispatch = { nullptr, DispatchTick, DispatchDisable };
-            void FrameTick(u16) {
+            void FrameTick(u16 held) {
+                PlayerActions::Service();
+                BuildingEditorTick(g_buildAction,held);
+                MapEditorTick(g_mapAction,held);
+                ChatCommands::Tick(held);
                 HhdScreen::Tick(GuiMenu::IsVisible());
                 InteriorTools::Tick();
             }
@@ -298,7 +303,12 @@ namespace CTRPluginFramework
             WirePublicWorks();
             WireBuildingEditor();
             WireMapEditor();
+            g_buildAction = GuiMenu::FindItem(kBeOn);
+            g_mapAction = GuiMenu::FindItem(kMeOn);
             WirePocketItem();
+            PlayerActions::Wire();
+            KeepItems::Wire();
+            ChatCommands::Wire();
             ChatIme::Wire();
             DecorTrash::Wire();
             DecorCatalog::Wire();
@@ -307,6 +317,23 @@ namespace CTRPluginFramework
             GuiMenu::SetFrameTick(FrameTick);
             // ★ResetState が ToggleHandlers を消すので、登録は全部の Wire のあと 1 回だけ。
             GuiMenu::SetToggleHandlers(&kDispatch);
+        }
+
+        void ActivateEditor(int index)
+        {
+            if (GuiMenu::FindItem(kBeOn) != index) StopBuildingEditor();
+            if (GuiMenu::FindItem(kMeOn) != index) StopMapEditor();
+        }
+
+        bool SetWeather(int option)
+        {
+            const int index = GuiMenu::FindItem(kWeather);
+            s32 old;
+            if (index < 0 || option < 0 || option >= kWeatherOptionCount || !WeatherRead(index, &old))
+                return false;
+            WeatherWrite(index, option);
+            GuiMenu::SetItemApplied(index, option);
+            return true;
         }
     }
 }

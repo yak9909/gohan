@@ -1141,24 +1141,7 @@ namespace CTRPluginFramework
                     GuiNotification::NotifyRed(title, PublicWorks::ResultName(result));
             }
 
-            int         g_hlOn = -1, g_hlTint = -1, g_hlAlpha = -1, g_hlWave = -1, g_hlSpeed = -1;
-
-            int     Value(int index, int fallback)
-            {
-                return index >= 0 ? GuiMenu::ItemApplied(index) : fallback;
-            }
-
-            void    HighlightParamsApplied(int index, s32 value)
-            {
-                (void)index;
-                (void)value;
-                BuildingHighlight::Params p = BuildingHighlight::GetParams();
-                p.tint = (u8)Value(g_hlTint, p.tint);
-                p.alpha = (u8)Value(g_hlAlpha, p.alpha);
-                p.wave = (u8)Value(g_hlWave, p.wave);
-                p.speed = (u8)Value(g_hlSpeed, p.speed);
-                BuildingHighlight::SetParams(p);
-            }
+            int         g_hlOn = -1;
 
             // チェックボックスの効果（gohan-menu.md §4.3）。ON のあいだ「選ぶ」たびに光らせる。
             bool        g_hlActive;
@@ -1290,17 +1273,8 @@ namespace CTRPluginFramework
                 GuiMenu::RegisterExecute(rebuild, RebuildExecute);
 
             g_hlOn = GuiMenu::FindItem(kHlOn);
-            g_hlTint = GuiMenu::FindItem(kHlTint);
-            g_hlAlpha = GuiMenu::FindItem(kHlAlpha);
-            g_hlWave = GuiMenu::FindItem(kHlWave);
-            g_hlSpeed = GuiMenu::FindItem(kHlSpeed);
             if (g_hlOn >= 0)
                 GuiMenu::RegisterToggleEffect(g_hlOn, &kHighlightFuncs);
-            const int params[] = { g_hlTint, g_hlAlpha, g_hlWave, g_hlSpeed };
-            for (u32 k = 0; k < 4; ++k)
-                if (params[k] >= 0)
-                    GuiMenu::RegisterApply(params[k], HighlightParamsApplied);
-            HighlightParamsApplied(-1, 0);
         }
     }
 }

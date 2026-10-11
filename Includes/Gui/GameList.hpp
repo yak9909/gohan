@@ -27,6 +27,7 @@ namespace GameList
     // 名前とは別の TextBox（T_id_XX）に描く。一覧と同じ切り抜き・選択中の色になる。SetItems の後に呼ぶ。次に組み立てるときに使う。
     void        SetItemPrefixes(const char *const *prefixes, u32 count);
     void        Show(s32 selected);     // 登場（退場中なら今の位置から逆向きに）
+    void        SetOverChat(bool on);   // 普通チャットを閉じず、キーボードの前に一覧を重ねる
     void        Hide(void);             // 退場（登場中なら今の位置から逆向きに）。終われば資源を返す
     bool        Wanted(void);           // 利用者の意思（Show 中か）
     bool        Present(void);          // 下画面に出ている（アニメ中も含む）

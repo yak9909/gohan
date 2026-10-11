@@ -1936,6 +1936,7 @@ bool Disable(int index) {
     return true;
 }
 
+bool Active(void) { return Enabled(); }
 bool IsListOpen(void) { return s_stage == Stage::Live && s_win_state != Win::Closed; }
 bool IsEditorOpen(void) { const u32 indoor = IndoorBase(); return EditorLive(indoor, EditorCalc(indoor)); }
 

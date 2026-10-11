@@ -25,6 +25,8 @@
 #include "ChatKanji.hpp"
 #include "ChatIme.hpp"
 #include "MapEditor.hpp"
+#include "BuildingEditor.hpp"
+#include "ChatCommands.hpp"
 #include "csvc.h"   // svcInvalidateEntireInstructionCache
 
 namespace CTRPluginFramework
@@ -144,7 +146,7 @@ namespace CTRPluginFramework
             {
                 bool wasVisible = g_visible;
 
-                while (g_run)
+                while (__atomic_load_n(&g_run, __ATOMIC_ACQUIRE))
                 {
                     if (GuiRenderer::IsReady())
                     {
@@ -206,6 +208,9 @@ namespace CTRPluginFramework
                     }
                     svcSleepThread(16000000LL);     // 約 16ms
                 }
+                Cheats::StopBuildingEditor();
+                Cheats::StopMapEditor();
+                ChatCommands::Shutdown();
             }
 
             // ★スレッドの有無では判定しない。各チートの登録（WireBehaviors）はスレッドを作る前に走るので、
@@ -241,8 +246,6 @@ namespace CTRPluginFramework
 
         bool    Initialize(void)
         {
-            const u32 now = NowMs();
-
             if (g_thread != nullptr)
                 return true;
             if (!g_msgLockReady)
@@ -263,10 +266,9 @@ namespace CTRPluginFramework
             g_reqOpen = false;
             g_reqClose = false;
             g_pendHave = false;
-            OpenMenu(now);
-            g_run = true;
+            __atomic_store_n(&g_run, true, __ATOMIC_RELEASE);
             Redraw();
-            g_thread = threadCreate(ThreadMain, nullptr, 0x2000, 0x30, -2, true);
+            g_thread = threadCreate(ThreadMain, nullptr, 0x2000, 0x30, -2, false);
             return g_thread != nullptr;
         }
 
@@ -274,8 +276,9 @@ namespace CTRPluginFramework
         {
             if (g_thread == nullptr)
                 return;
-            g_run = false;
-            svcSleepThread(50000000LL);
+            __atomic_store_n(&g_run, false, __ATOMIC_RELEASE);
+            threadJoin(g_thread, U64_MAX);
+            threadFree(g_thread);
             g_thread = nullptr;
             SaveIfChanged();
             ChatKanji::Dismiss();

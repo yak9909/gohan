@@ -609,7 +609,7 @@ bool Load(void) {
 }  // namespace
 
 void Wire(void) {
-    s_index = GuiMenu::FindItem(kDecorTrash);
+    s_index = GuiMenu::FindItem(Cheats::kDecorCatalog);
 }
 
 bool Tick(int index, unsigned short) {

@@ -28,6 +28,7 @@
 #include "Cheats.hpp"
 #include "GuiMenu.hpp"
 #include "GuiRenderer.hpp"
+#include "ChatCommands.hpp"
 
 namespace CTRPluginFramework
 {
@@ -784,6 +785,8 @@ namespace CTRPluginFramework
                 HookContext &ctx = HookContext::GetCurrent();
                 const u32   ret = (u32)__builtin_return_address(0);
 
+                if (ChatCommands::KeyboardPaused()) return 0;
+
                 g_threadInput = ThreadTag();
                 if (!g_convOn || g_broken || !TmSane(tm))
                     return ctx.OriginalFunction<int>(tm, ch, romaji, combine);
@@ -859,6 +862,7 @@ namespace CTRPluginFramework
 
             __attribute__((noinline)) int ChatImeBackspace(u32 tm, u32 silent)
             {
+                if (ChatCommands::KeyboardPaused()) return 0;
                 HookContext &ctx = HookContext::GetCurrent();
 
                 if (g_convOn && !g_broken && g_state != S_IDLE && Consistent(tm))
@@ -880,6 +884,19 @@ namespace CTRPluginFramework
             __attribute__((noinline)) int ChatImeWaitCalc(u32 self)
             {
                 HookContext &ctx = HookContext::GetCurrent();
+
+                if (ChatCommands::KeyboardPaused()) {
+                    // 重ねたリストへのtouchで背後の送信/取消ボタンを予約させない。
+                    const u32 offsets[] = {1416,1420,1424};
+                    for (u32 offset : offsets) {
+                        const u32 button = R32(self + offset);
+                        if (!button) continue;
+                        const u32 control = button + 920;
+                        reinterpret_cast<void (*)(u32)>(0x2F6E40)(control);
+                        reinterpret_cast<void (*)(u32)>(R32(R32(control)+12))(control);
+                    }
+                    return 0;
+                }
 
                 g_threadWait = ThreadTag();
                 if (g_threadInput != 0 && g_threadInput != g_threadWait)
@@ -1716,6 +1733,9 @@ namespace CTRPluginFramework
             m_compIndex = GuiMenu::FindItem(kComposition);
         }
 
+        bool InstallCommandSupport(void) { return InstallHooks(); }
+        void DismissForCommand(void) { Post(R_ABORT,0); Reset(); }
+
         bool    Tick(int index, uint16_t held)
         {
             if (index == m_compIndex && index >= 0)
@@ -1724,6 +1744,7 @@ namespace CTRPluginFramework
                 return false;
             if (!InstallHooks())
                 return true;
+            if (ChatCommands::KeyboardPaused()) return true;
             g_compOn = m_compIndex >= 0 && GuiMenu::ItemApplied(m_compIndex) != 0;
             g_chatOpen = ChatKanji::NormalChatOpen();
             g_convOn = true;
@@ -1794,6 +1815,7 @@ namespace CTRPluginFramework
 
         bool    BarVisible(void)
         {
+            if (ChatCommands::KeyboardPaused()) return false;
             return g_convOn && g_chatOpen && m_hooked && !g_broken;
         }
 

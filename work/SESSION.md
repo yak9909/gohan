@@ -1,5 +1,33 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-11 現行: gohan機能移植 / IDA-gpt-6-F002、T001
+
+- 完了PC: font込み最終build/linked/nativeABI・送信/日時/state・両editor操作/排他/退場待ち・しずえ、4330条件/22anchor/13CPP・欠字0 PASS。3gx SHAe816c7f47189a007773d3d1a0e373a8520e837b21b9619ae6173d61a51c3b415（解析側artifacts/plugins/gohan_chat_ports1）。IDB/XMLsave/型/ABI読戻し/全bytes検査PASS、DB所有者0、実行中/成否不明なし。今回変更のcommit/pushを最後一括で行い、旧参照整理dirtyは除く。実機未確認/main変更なし。
+- 旧収録/意味調査は中断維持。作業枝work/gohan-chat-and-ports、HEAD83c050c/既存dirty保持。FOXXY idle、気絶、Vapecord消失抑制、§14チャット、メニュー再編/ゴミ箱統合を実装。最新指示: 数字1つは分、カーソル90/120/60固定、両エディターはaction/B/再実行/排他、公共事業設定folder/全項目削除、自前GUI ON時自動open解除。
+- PC prebuild4330条件/22anchor/12CPP PASS。専用BuildChatPorts/解析側artifacts/plugins/gohan_chat_ports1へ再ビルド・リンク検証中。正常3gx/実機/main不変、commit/pushは完了後一括。仕様はgohan.md/gohan-menu.md、根拠は解析側docs/topics/gohan_chat_ports_design.md・work/evidence/gohan_chat_ports。
+- 未完了: 最新build/link/runtime gate、IDB最終save/XML、成果物hash/文書同期、最後のwork枝commit/push。実機未確認。実行中/成否不明操作なし（build開始前）。
+
+## 以前の中断タスク
+
+- 中断文書化完了: source側STATE/SESSION/README/SEMANTIC_REVIEWと公開1360のsemantic台帳を同期。解析側の最新XML/全bytes/hashと7関数/4型読戻しもPASS、IDB所有者0、継続中・成否不明操作なし。HEAD83c050cと作業枝不変、commit/push保留。通常plugin/実機/SD/3gx不変。次の作業は利用者の再開指示後にのみ実施する。
+- 2026-10-11最新: 利用者が整理・意味調査を一旦中断し文書化を指示。TreeSitter-gpt-6-F003/T003の個別意味台帳/Sources1360・残り1340、全件未完了。publisher61211終了0で全source非comment token/完全逆復元PASS、原refactor検証/API/2700関数/3417原候補/新規収録pending899を保持。最新店舗商品20・施設/高額買取9・C4音引数9は原全body/table・ARM実配置・consumer・音源表で照合、固定heapはLOW。島地形/建物32候補は予備証拠とDB概念反映のみで個別comment未採用。reference/cheat_collection/SEMANTIC_REVIEW.mdへ次回手順を保存。再開指示待ち、JOKER/他CTRPF新規収録・共有統合は再開しない。Git一括最後を維持、working tree上へ保存しcommit/pushしない。主plugin/実機/SD/3gx不変。原解析者の帰属は保持。
+
+- 2026-10-11リファクタリング完了 / TreeSitter-gpt-6-F002/T002: publish93191・whole12406・CHEATS53450・finalize全終了0。2700関数へ処理メモ2970、AR不要state/label/scope/直接再帰12/static payload28、table const参照36/reserve44を反映。20cpp ARM/host466548/元資料・逆差分完全復元と再変換/現hash・旧stage hash/全partition/ヘッダ/関数外状態PASS。status_refactor=VERIFIED_SOURCE_REFACTOR、REFACTOR.md/validationへ結果。ARM -Os object40のtext15228B減/rodata319B増/入口stack最大72B減、全40入口stack減少/増加0。実機/現build適合は未確認。新規整理899pendingを中断・共有family撤回保持、通常plugin/実機/DB/3gx/Git不変。全操作終了、commit/pushは全体終了後一括の指示で保留し、次は結果報告。下記の未publish/結果待ちは旧経過。
+
+- 最新作業（2026-10-11）: JOKERを含む新規整理を中断、共有設定familyをまとめない。既存2700関数のリファクタリング・最適化と非自明な箇所の短い推測コメントだけ。refactor_design.md/TreeSitter-gpt-6-F002/T002に設計、逆差分/sourcehashで変更前の元処理を保持。全20cppのARM、AR2367＋table48＋synthetic25のhost466548比較PASS、ARM object40でtext15228B減/rodata319B増/入口stack最大72B減。最終整形のstage30799終了0、関数内メモ2970。final host31547/measurement24468の結果回収→publish→全source/provenance/partition/逆差分照合が次。既存plugin/実機/DB/3gx不変、Git一括は全体中断中として保留、新候補/共有familyなし。
+
+- 2026-10-11 JOKERのみ再開: 利用者の明示指示によりCTRPF PROJECTS/JOKERを再開し、他CTRPF中断・CHEATS完了・全体未完了を保持。開始2652/3369原候補/947pending、HEAD83c050cとbranchを読戻し済み。まずJOKER原source/台帳/依存/共有stateと採用済み閉包を確認し、JOKER専用の変更に限定する。TreeSitter/GNU C++、GPT-6、原記録の解析者帰属は保持。実機/IDB/SD/3gx/plugin統合は行わない、最後一括commit/pushのみ。次は専用scope inventoryと旧source hash照合。
+
+- CHEATS整理の区切り: message(5).cppの施設状態変更8callbackをCheatsNativeReviewへ追加。原CHARS_U8_MAP/items欠落は局所補完とReview明記、drop.cpp内iの偽依存を原range-forで除外。原file対2型仮定host320/8個別・結合ARM/全body/table/hash/一意partition PASS。55原file/3097候補=2381関数（AR2367/template6/native8、3047原候補）＋metadata50、CHEATS pending0。CHEATS.md/status_cheats_scope.json/inputs_CHEATS.json/candidate_decisions_CHEATS.json、root cheats_scope_gate.json。全体2652/native279/3369原候補/947pending、残りCTRPFは利用者明示再開まで中断、20旧生成file hash不変。全体完了/実機/アドレスbuild/原型復元/AR runtime完全一致は主張しない。root/source scoped diff --check PASS、HEAD83c050cと実機/DB/主plugin/3gx/Git不変、継続中操作無し。最終メモ読戻し→CHEATS結果報告、Git最後一括は全体中断中につき保留。
+- 最新指示: CTRPF PROJECTS由来は中断し、再開は利用者の明示指示で行う。CHEATS由来だけを進める。途中source保持、commit/push最後一括。中断位置: rootのLanguage/startup kernelは原3CPP/header対host246＋ARM C++17、LF整形と初回一度の呼出しも比較PASS。Lifecycle31試行は旧API/型不足で0採用、初回両NPCFunctionはstatic CurrAddress selectorを別4callbackが使うため撤回。status_lifecycle.source_proven_withdrawalsに原宣言/writer/consumer/body hash、全verifier16346が原本から再構成してpending所属もPASS_PARTIAL。全2644/3361/955不変、実機/DB/主plugin/SD/3gx/Git不変。次はCHEATS55file/3097候補だけを確認（AR3033/template6収録、metadata50、message(5).cppの施設文章変更8callback未処理）。
+- 2026-10-11今回: rootのlanguage_source_contract.pyは実Language field/inline/default/CPP5methodとstatic nullable pointerの型/lvalueを保持する局所class kernel。実原CPP/header対host384・ARM C++17 PASS、Fileは自byte配列mock、実機/SD未検証。Languageは原mainのConfig::SetupLanguage(false)でloadされるためkernel単独をcallback採用へ加えず、全2644/3361/955未処理不変。依存287候補/52消費側待ち、原Config/path/341・331versionをqueueへ記録。次はstartup false専用specializationとConfigを合成して独立検査→新LifecycleReview。current SDKはtrue窓経路のUpdateLocalizedEntries APIなし、stub/未load/言語固定を採用しない。bootstrapのHomeMenu/File作用を孤立setterのgameplay effectと数えない。根拠root language_class_contract_gate/language_lifecycle_queue.json。全操作終了、DB/実機/主plugin/SD/3gx/Git不変、最後に一括commit/push。
+- 2026-10-11最新区切り: TemplateAddressReview10関数、全2644関数/AR2373/native271/3361原候補/955group未処理/metadata32、個別/結合ARM C++17＋全原bytes/hash/helper型・変換expression/全再構成/partition PASS_PARTIAL。Call/Writeは原Address.hppの実C++17に従うlocal generic lambdaでreceiver先行一度評価・型変換・constexpr分岐を保持。qualified namespaceは実header/定義の祖先で識別し、型forwardと親の通常/匿名helperを局所Contextへ保持。原template定義対host208、実Game/GameKeyboard/Inventory helper対host624条件一致、SDK/Addressはmock、実機未確認。旧各stage/主plugin/3gx/SD不変、枝work/reference-cheat-collection、HEAD83c050c以後未commit/push、最後に一括の指示維持。全exec終了、DB/実機操作なし。次はLanguage等のstateful singletonの原startup/load/設定消費側を追跡して私有化する設計（単にコピーすると未loadになるため保留）。根拠はrootの各contract_gate/collection_gate.jsonとtools/cheat_collection。
+- 2026-10-11最新現物: 全2634関数/AR2373/native261/3351原候補/965group未処理/metadata32、全実出力gate PASS_PARTIAL。ScopedReview17、ScopedLegacyReview1、ScopedAddressReview4を追加。namespace参照を区別し、pointer宣言/macro内部依存/原include設定を拾い、通常のstateless static API classを原method body/署名のまま局所化。原Game.cpp/header対局所classのhost256条件で値とstatic関数pointer型一致（mock、実機/ARM実行未確認）。Address全地域表/private cacheは既存検証済み処理を同関数で他依存と合成。次はnamespace API/設定の消費側、Address.Call/Write templateの設計。全exec終了、実機/DB/主plugin/SD不変、全完了後一括commit/pushを維持、途中保存操作なし。
+
+- 2026-10-11現物: 全2612関数/AR2373/native239/原候補3329/987group未処理/metadata32。DeclarationReview63、LegacyReview23を収録済み、原FOXXY SDK依存は出典/header SHAを記録。原helper対local helperのhost18条件と個別/結合ARM/全実出力gate PASS_PARTIAL、実機未検証。次は名前空間参照/参照引数のscoped依存sidecarと新規callbackの局所化。全件未完了、途中commit/push保留、main/既存plugin/3gx/SD資源変更なし。下の経過は履歴であり、この現物より古い。
+
+- 最新の利用者指示: commit/pushは全件の整理・検証完了後に一括にする。途中commit/pushの一般規則より優先する。既存checkpoint83c050cは送信済み、その後の変更は完了までworking treeで保持して作業を継続する。解析側の新Address59案/ARM local-class原型はまだsourceへ収録していない。全2474関数/1125group未処理を維持し、次はprivate cache/table/classの関数内移設。
+
 - 全CHEATS/CTRPF PROJECTSを.hpp/.cppへ、カテゴリ大分類、main/ビルド統合なし、関数内で状態/補助処理完結、全重複整理後に採用/レビュー判断、という依頼を継続。`work/reference-cheat-collection`、基点a517f19。reference/cheat_collectionだけignore例外にする。
 - AR2367関数/3033原候補、native107関数/152原候補を収録。nativeは閉じたcallbackまたは固定幅整数typedefだけに依存するもの、typedefを同関数へ移設、原処理token一致とARM個別/結合構文を確認。109試行中2件は未解決Player型/Hotkeys名前空間で保留（依存抽出のみで完結を断定しない）。全2474関数/3185原候補、1125groupは未処理、status=IN_PROGRESS。全件完了/実機動作は未証明。
 - 原登録と別名/出典/hashはコメント/provenance、未処理理由はpending_native_and_templates.json。第三者への攻撃専用31groupは非実行名称/出典記録のみ。型/地域が複雑なC++は関数内移設を継続。既存プラグイン/Makefile/3gx/SD資源/実機は変更していない。
@@ -593,3 +621,22 @@ gohan-gui-simulatorをpull（済: 4083d70→0cabaed）。simulatorとgohan-menu.
   前回の事故（heap=0 を渡してゲーム死亡）とは対照的で、設計の狙いどおりに働いた。
   現在: 実機は健全、借用は全て解放済み。
 
+# 2026-10-10 Address callback局所化の実装開始 / gpt-6
+
+- 結果: AddressReview46callbackを追加、59試行の13は他依存不足で保留。全2520関数/native153/3231原候補/1079group未処理、個別/結合ARM・原処理/出典hash/locality/全partitionはPASS_PARTIAL。元Address.cpp対private helperをhost模擬メモリ20実行と繰返しcacheで照合PASS、実機未確認。3.4.1とmasterの異なる直接read/失敗処理/初期regionも原本から保持。Gitは完了後一括のまま、追加commit/pushなし。
+
+- 隔離reference/cheat_collectionのみ。原11method/全地域tableを関数内のAddress class/cacheへ移し、原callback tokenを保持する生成器をroot toolsへ追加。queue59件を個別/結合ARM構文と原本/hash/localityで検査予定。実機/3gx/main/Makefile不変。commit/pushは利用者の最新指示により全件完了後に一括、ここでは実行しない。
+# 2026-10-11 参照チートscope訂正/雛形収録 / gpt-6
+
+- ID表Power.txtに実ACNL templateがあり旧抽出漏れを修正、原4418候補/旧groupID保持の独立audit PASS。TemplateReviewにXX6templateをuint8配列引数付きで収録し、元行/値/hash/ARM/全partition PASS_PARTIAL。DeclarationReviewは22（通常helper追加1）、全2548/native175/AR2373/3265原候補/1051group未処理。通信相手に権限回避を適用するdrop断片はmetadataのみで計32。全範囲継続、実機/3gx/Makefile不変、追加Git処理なし。
+# 2026-10-11 整理済みチートのリファクタリング / TreeSitter・GNU C++ / gpt-6
+
+- 最新指示でJOKER整理を中断、共有設定を1関数＋操作引数へまとめる案を撤回。既存2700関数の挙動を保つリファクタリング・最適化と、関数内の非自明な処理に短い推測コメントを追加する。新候補/メニュー/plugin/実機/IDB/3gxは範囲外。commit/pushは終了後一括。前JOKER48生成99496終了0/ARM PASS、scopeゲートは候補対helper集合assert失敗のため未完了のまま。次は既存emitter・検証契約確認→変換計画・検証対象/復元根拠を記録→実装。
+# 2026-10-11 新機能開発 / GPT-6
+
+- FOXXY IDLE・気絶・Vapecordアイテム消失抑制、利用者指定メニュー移動/統合、ドロップID共有、Trampler R+A、§14チャットコマンド（かな名検索/HHD式style呼出し）、自前GUI ON時自動表示解除の調査を開始。参照チート整理/意味レビューは中断維持。元コード丸写しは必須でなくgohanへ最適化する。
+- 開始枝work/reference-cheat-collection/HEAD83c050c、既存dirty保持。新変更は実機未確認、mainへ反映しない。Gitは終了後一括、実機操作なし。新実装未着手/継続中操作なし。次: §14と既存API/原本を照合し設計を保存。
+# 2026-10-11 最新訂正と実装初稿 / GPT-6
+
+- 枝work/gohan-chat-and-ports、HEAD83c050c、Gitは完了後一括/main禁止。time数字単独は分（「時」回答を撤回）、MapEditoralpha90/120/60固定・設定削除、公共事業/MapEditor相互停止（未hotkeyなら項目OFF）。メニュー移動/共有dropID/統合Trash/自動open解除と新PlayerActions/KeepItems/ChatCommandsの初稿を実装。設計・原命令は親docs/topics/gohan_chat_ports_design.md/work/evidence/gohan_chat_ports/static_initial.json。
+- SDK MITMのPC相対LDRはそのまま移設できないためCALLCHATをnaked原先頭trampoline経由で戻す。全日時更新/actor/文字列はゲームthread、Pocket/ファイル/検索はmenu thread。まだビルド/新PCテスト前。実機操作なし、中断済み参照レビューは再開しない。

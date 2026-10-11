@@ -60,7 +60,7 @@ static float s_drawMatrices[kMaxCursors][12] GC_ALIGNED;    // 描く順に詰�
 static InstancedDraw::Batch s_batches[1 + kDimKinds];
 static u8 s_tileDim[kMaxCursors];
 // 種類ごとの濃さ（利用者の決定 2026-09-29: 0 = 実行範囲の真ん中以外 90、1 = マイデザインの上 50）
-static volatile u8 s_dimAlpha[kDimKinds] = { 90, 50 };
+static volatile u8 s_dimAlpha[kDimKinds] = { 90, 120, 60 };
 // マスの色（EnableMarks / SetMarks）
 static u8 s_markHolder[kMarkKinds][kNodeHolderBytes] GC_ALIGNED;
 static float s_markMatrices[kMaxMarks][12] GC_ALIGNED;  // 種類の順に詰める（白 → 赤 → 黄）
@@ -184,7 +184,7 @@ static bool s_tintPremultiplied;
 
 static bool s_hookInstalled;
 // スタブから毎フレーム呼ぶ相乗り先。フックを 2 つは置けないのでここで配る。
-static const u32 kMaxExtraSteps = 12;  // 相乗り: ModelViewer / PlayerClone / PublicWorks / GameList / HhdScreen / 切り抜き層ほか（2026-10-06 に 8 -> 12）
+static const u32 kMaxExtraSteps = 16;  // 既存描画系にPlayerActions/ChatCommandsのゲームスレッド予約を追加
 static void (*volatile s_extraSteps[kMaxExtraSteps])(void);
 static bool s_wantShown;   // 利用者が「出す」と言っている間だけ真。組み直しの可否はこれで決める
 static bool s_sceneOk;

@@ -61,7 +61,7 @@ u32 PackAnchor(u32 x, u32 y) { return 0x10000u | x | (y << 8); }
 
 // ---- メニュースレッドだけ ------------------------------------------------------------------------
 bool s_running;
-bool s_failed;                  // 失敗したらチェックを外すまで再開しない
+bool s_failed;                  // 失敗後はアクションを閉じてから再起動する
 Mode s_mode;
 u8 s_kinds[256];
 u32 s_kindCount;
@@ -797,10 +797,6 @@ void Tick(u32 keys) {
 
     if (pressed & (u32)Key::A)
         Execute();
-    // 移動: B で選択を外す（利用者指示）
-    if ((pressed & (u32)Key::B) && s_mode == Mode::Move && s_selected >= 0) {
-        Select(-1);
-    }
     if ((pressed & (u32)Key::X) && s_mode == Mode::Place)
         CopyKind();
 }
@@ -814,29 +810,12 @@ namespace CTRPluginFramework
         namespace
         {
             int     g_editorIndex = -1;
-            int     g_bpAlpha = -1, g_bpWave = -1, g_bpSpeed = -1;
-            bool    g_editorActive;                 // チェック項目の効果（ホットキーで入れ切りする）
-
-            void    PreviewWaveApplied(int index, s32 value)
-            {
-                (void)index;
-                (void)value;
-                BuildingPreview::Wave w = BuildingPreview::GetWave();
-                if (g_bpAlpha >= 0) w.alpha = (u8)GuiMenu::ItemApplied(g_bpAlpha);
-                if (g_bpWave >= 0) w.wave = (u8)GuiMenu::ItemApplied(g_bpWave);
-                if (g_bpSpeed >= 0) w.speed = (u8)GuiMenu::ItemApplied(g_bpSpeed);
-                BuildingPreview::SetWave(w);
-            }
-
-            bool    EditorIsActive(int index)
-            {
-                (void)index;
-                return g_editorActive;
-            }
+            bool    g_editorActive;
+            u32     g_editorKeys, g_editorBlocked;
 
             void    EditorSetActive(int index, bool active)
             {
-                (void)index;
+                if (active) ActivateEditor(index);
                 g_editorActive = active;
                 if (!active)
                 {
@@ -845,7 +824,14 @@ namespace CTRPluginFramework
                 }
             }
 
-            const GuiMenu::ToggleEffectFuncs kEditorFuncs = { EditorIsActive, EditorSetActive };
+            void EditorExecute(int index) {
+                if (!g_editorActive) {
+                    g_editorKeys = 0xFFFFFFFFu;
+                    g_editorBlocked = Controller::GetKeysDown(true);
+                    EditorSetActive(index,true);
+                    GuiMenu::Close();
+                } else EditorSetActive(index,false);
+            }
         }
 
         bool    BuildingEditorTick(int index, u16 held)
@@ -853,11 +839,17 @@ namespace CTRPluginFramework
             (void)held;
             if (g_editorIndex < 0 || index != g_editorIndex)
                 return false;
-            if (!g_editorActive)                    // ホットキーで切られている（項目は ON のまま）
+            if (!g_editorActive)
                 return true;
             // ★held は HotkeyBit の並びでスライドパッドを含まないので、水準を直接読む。
             //   メニュー・入力 UI の表示中は 0 にする（held と同じ取り決め）。
-            const u32 keys = GuiMenu::IsVisible() ? 0u : Controller::GetKeysDown(true);
+            const u32 raw = Controller::GetKeysDown(true);
+            g_editorBlocked &= raw;
+            const u32 keys = GuiMenu::IsVisible() ? 0u : raw & ~g_editorBlocked;
+            const bool close = (keys & ~g_editorKeys & static_cast<u32>(Key::B)) != 0;
+            g_editorKeys = keys;
+            if (close) { EditorSetActive(index,false); return true; }
+            if (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted())) return true;
             BuildingEditor::Tick(keys);
             return true;
         }
@@ -876,15 +868,10 @@ namespace CTRPluginFramework
         {
             g_editorIndex = GuiMenu::FindItem(kBeOn);
             if (g_editorIndex >= 0)
-                GuiMenu::RegisterToggleEffect(g_editorIndex, &kEditorFuncs);
-            g_bpAlpha = GuiMenu::FindItem(kBpAlpha);
-            g_bpWave = GuiMenu::FindItem(kBpWave);
-            g_bpSpeed = GuiMenu::FindItem(kBpSpeed);
-            const int items[] = { g_bpAlpha, g_bpWave, g_bpSpeed };
-            for (u32 k = 0; k < 3; ++k)
-                if (items[k] >= 0)
-                    GuiMenu::RegisterApply(items[k], PreviewWaveApplied);
-            PreviewWaveApplied(-1, 0);
+                GuiMenu::RegisterExecute(g_editorIndex, EditorExecute);
+        }
+        void StopBuildingEditor(void) {
+            if (g_editorActive) EditorSetActive(g_editorIndex,false);
         }
     }
 }

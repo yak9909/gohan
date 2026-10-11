@@ -15,6 +15,8 @@ namespace CTRPluginFramework
     namespace ChatIme
     {
         void    Wire(void);                         // 項目番号を引く（Cheats::Wire から）
+        bool    InstallCommandSupport(void);
+        void    DismissForCommand(void);
         bool    Tick(int index, uint16_t held);     // 自分の項目なら真（メニュースレッド・毎 16ms）
         bool    Disable(int index);                 // 自分の項目なら真
         bool    BarVisible(void);                   // 候補欄を描くか（普通のチャットが開いていて漢字変換が ON）

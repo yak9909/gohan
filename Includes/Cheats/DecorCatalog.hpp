@@ -13,6 +13,7 @@ void Wire(void);
 // GuiMenu のチェックの項目（Cheats.cpp の DispatchTick / DispatchDisable から）。自分の項目なら真
 bool Tick(int index, unsigned short held);
 bool Disable(int index);
+bool Active(void);
 // Game thread only: loading/in/out included; camera may use raw input during a list.
 bool IsListOpen(void);
 bool IsEditorOpen(void);

@@ -197,7 +197,7 @@ const u32 kPlaceLabelSlot = 0;
 // 実行範囲の一辺の上限（利用者指示 2026-09-28: 奇数 x 奇数、最大 7x7）
 const s32 kMaxRange = 7;
 // カーソルの薄さの種類（GridCursor::SetTiles の dims = 薄い体 + 1）と、マイデザインのアイテム（Item_IsMyDesign 0x7683E4）
-const u8 kDimRange = 1, kDimDesign = 2;
+const u8 kDimRange = 1, kDimDesign = 2, kDimDesignRange = 3;
 const u16 kMyDesignItem = 0x9D;
 const u32 kLiftFrames = 6;                  // 範囲の中の長押し（ゲームのチップ Select 状態と同じ 6 フレーム）
 const float kGroupPad = 10.0f;              // 枠の大きさ = |差| + 10（CollectChip sub_B0ABF8 の flt_B8E240）
@@ -1952,11 +1952,11 @@ void PublishCursor(s32 vx, s32 vy) {
                 ++n;
             }
     }
-    // マイデザインの上のカーソルはもっと薄く（利用者指示 2026-09-29。GridCursor の薄い体 1 = 50、実行範囲の真ん中以外は体 0 = 90）
+    // マイデザインを見せつつ中央を識別する。実行範囲の外周は中央より薄くする。
     for (u32 i = 0; i < n; ++i) {
         const u32 *item = ItemAtTile(s_cursorX[i], s_cursorY[i]);
         if (item != nullptr && (*item & 0x7FFFu) == kMyDesignItem)
-            s_cursorDim[i] = kDimDesign;
+            s_cursorDim[i] = s_cursorDim[i] == kDimRange ? kDimDesignRange : kDimDesign;
     }
     if (n != s_cursorCount || n != 0) {
         s_cursorCount = n;
@@ -2713,6 +2713,8 @@ void Reset(void) {
     s_failed = false;
 }
 
+bool Closing(void) { return !s_running && s_stage != Stage::Off; }
+
 void Stop(void) {
     if (!s_running)
         return;
@@ -2791,8 +2793,6 @@ void Tick(u32 keys) {
         const u32 now = (u32)s_mode;
         s_mode = (Mode)((pressed & (u32)Key::DPadDown) ? (now + 1) % count : (now + count - 1) % count);
     }
-    if ((pressed & (u32)Key::B) && s_mode == Mode::Select && !s_listActive)
-        s_cancelSeq = s_cancelSeq + 1;      // 持ち上げ・範囲を 1 段ずつ解く（一覧の B は一覧が受ける）
     if ((pressed & (u32)Key::Y) && !s_listActive)
         s_spoitCenterSeq = s_spoitCenterSeq + 1;    // 真ん中のマスをスポイト（描画スレッドが拾う）
     ApplyModeLook();
@@ -2827,7 +2827,7 @@ namespace CTRPluginFramework
             int     g_mapEditorIndex = -1;
             int     g_placeItemIndex = -1;
 
-            // 配置するアイテム（連動型: エディターの値を読み書きする。スポイトで変わる）。0xFFFF = 未設定
+            // ドロップと配置が同じIDを使う。スポイトの結果もこの値へ戻す。0xFFFF = 未設定。
             bool    PlaceItemRead(int index, s32 *value)
             {
                 (void)index;
@@ -2841,43 +2841,12 @@ namespace CTRPluginFramework
                 (void)index;
                 MapEditor::SetPlaceItem(value < 0 || value > 0x7FFF ? 0xFFFFFFFFu : (u32)value);
             }
-            // 濃さの項目（0〜255）: 項目の番号 → どの値か（ハイライトの濃さは固定にした。2026-09-29）
-            int     g_shadeIndex[2] = { -1, -1 };   // 実行範囲 / マイデザイン
-            int     ShadeSlot(int index)
-            {
-                for (int k = 0; k < 2; ++k)
-                    if (g_shadeIndex[k] == index)
-                        return k;
-                return -1;
-            }
-
-            bool    ShadeRead(int index, s32 *value)
-            {
-                const int k = ShadeSlot(index);
-                if (k < 0)
-                    return false;
-                *value = (s32)GridCursor::DimAlpha((u32)k);
-                return true;
-            }
-
-            void    ShadeWrite(int index, s32 value)
-            {
-                const int k = ShadeSlot(index);
-                const u8 v = (u8)(value < 0 ? 0 : (value > 255 ? 255 : value));
-                if (k >= 0)
-                    GridCursor::SetDimAlpha((u32)k, v);
-            }
-            bool    g_mapEditorActive;              // チェック項目の効果（ホットキーで入れ切りする）
-
-            bool    MapEditorIsActive(int index)
-            {
-                (void)index;
-                return g_mapEditorActive;
-            }
+            bool    g_mapEditorActive;
+            u32     g_mapEditorKeys, g_mapEditorBlocked;
 
             void    MapEditorSetActive(int index, bool active)
             {
-                (void)index;
+                if (active) ActivateEditor(index);
                 g_mapEditorActive = active;
                 if (!active)
                 {
@@ -2886,7 +2855,14 @@ namespace CTRPluginFramework
                 }
             }
 
-            const GuiMenu::ToggleEffectFuncs kMapEditorFuncs = { MapEditorIsActive, MapEditorSetActive };
+            void MapEditorExecute(int index) {
+                if (!g_mapEditorActive) {
+                    g_mapEditorKeys = 0xFFFFFFFFu;
+                    g_mapEditorBlocked = Controller::GetKeysDown(true);
+                    MapEditorSetActive(index,true);
+                    GuiMenu::Close();
+                } else MapEditorSetActive(index,false);
+            }
         }
 
         bool    MapEditorTick(int index, u16 held)
@@ -2894,9 +2870,16 @@ namespace CTRPluginFramework
             (void)held;
             if (g_mapEditorIndex < 0 || index != g_mapEditorIndex)
                 return false;
-            if (!g_mapEditorActive)                 // ホットキーで切られている（項目は ON のまま）
+            if (!g_mapEditorActive)
                 return true;
-            const u32 keys = GuiMenu::IsVisible() ? 0u : Controller::GetKeysDown(true);
+            const u32 raw = Controller::GetKeysDown(true);
+            g_mapEditorBlocked &= raw;
+            const u32 keys = GuiMenu::IsVisible() ? 0u : raw & ~g_mapEditorBlocked;
+            const bool close = (keys & ~g_mapEditorKeys & static_cast<u32>(Key::B)) != 0;
+            g_mapEditorKeys = keys;
+            if (close) { MapEditorSetActive(index,false); return true; }
+            // 旧盤面や一覧が同じ下画面/カーソル資源を返すまで、新しいUIを組まない。
+            if (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted())) return true;
             MapEditor::Tick(keys);
             return true;
         }
@@ -2915,16 +2898,13 @@ namespace CTRPluginFramework
         {
             g_mapEditorIndex = GuiMenu::FindItem(kMeOn);
             if (g_mapEditorIndex >= 0)
-                GuiMenu::RegisterToggleEffect(g_mapEditorIndex, &kMapEditorFuncs);
-            g_placeItemIndex = GuiMenu::FindItem(kMePlaceItem);
+                GuiMenu::RegisterExecute(g_mapEditorIndex, MapEditorExecute);
+            g_placeItemIndex = GuiMenu::FindItem(kDropItem);
             if (g_placeItemIndex >= 0)
                 GuiMenu::RegisterLinked(g_placeItemIndex, PlaceItemRead, PlaceItemWrite);
-            static const char *const kShadeItems[2] = { kMeDimRange, kMeDimDesign };
-            for (int k = 0; k < 2; ++k) {
-                g_shadeIndex[k] = GuiMenu::FindItem(kShadeItems[k]);
-                if (g_shadeIndex[k] >= 0)
-                    GuiMenu::RegisterLinked(g_shadeIndex[k], ShadeRead, ShadeWrite);
-            }
+        }
+        void StopMapEditor(void) {
+            if (g_mapEditorActive) MapEditorSetActive(g_mapEditorIndex,false);
         }
     }
 }
