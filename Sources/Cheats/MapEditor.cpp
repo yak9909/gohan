@@ -2878,8 +2878,9 @@ namespace CTRPluginFramework
             const bool close = (keys & ~g_mapEditorKeys & static_cast<u32>(Key::B)) != 0;
             g_mapEditorKeys = keys;
             if (close) { MapEditorSetActive(index,false); return true; }
-            // 旧盤面や一覧が同じ下画面/カーソル資源を返すまで、新しいUIを組まない。
-            if (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted())) return true;
+            // 起動後のPresentは自分のHoldFieldも含む。終了待ちは起動前だけ行う。
+            if (!MapEditor::Running()
+                && (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted()))) return true;
             MapEditor::Tick(keys);
             return true;
         }

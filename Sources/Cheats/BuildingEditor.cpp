@@ -849,7 +849,8 @@ namespace CTRPluginFramework
             const bool close = (keys & ~g_editorKeys & static_cast<u32>(Key::B)) != 0;
             g_editorKeys = keys;
             if (close) { EditorSetActive(index,false); return true; }
-            if (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted())) return true;
+            if (!BuildingEditor::Running()
+                && (MapEditor::Closing() || (GameList::Present() && !GameList::Wanted()))) return true;
             BuildingEditor::Tick(keys);
             return true;
         }

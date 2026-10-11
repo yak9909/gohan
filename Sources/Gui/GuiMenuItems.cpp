@@ -384,7 +384,7 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_FOLDER, u8"テスト", u8"解析の試験用です。確かめ終わったら本来の場所へ移します。");
                 SetFolder(i, testFirst, testCount);
                 i = AddItem(ITEM_CHECKBOX, kChatCommands,
-                            u8"チャットにコマンドを打つ事で様々なチートを素早く実行できます。コマンドリストは list で確認できます。");
+                            u8"有効中はホットキーで入力したコマンドを実行します。list で一覧を確認できます。");
                 SetHotkey(i, Bit(HB_R) | Bit(HB_B));
                 g_rootCount = g_itemCount - g_rootFirst;
             }

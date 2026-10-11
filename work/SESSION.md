@@ -1,5 +1,15 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-11 最新: MapEditor入力停止・ChatCommands hotkey修正 / GPT-6
+
+- 最終EOL/31source SHA/正常ELF/旧3gx/DB-XML一致PASS。source diff-check/statは9file/82insert/24deleteで全行差分なし。今回の7製品file＋2memoだけをwork/gohan-chat-and-portsへ最後一括保存する。旧reference dirtyは中断維持で未stage。成果物/build/PCは完了、実機/main未操作、Git結果取得まで同commit/pushを再送しない。
+- 2026-10-12再開/IDA-gpt-6-T003: build/link終了0、新実Tickのfield保持中移動/touch/game遮断全true、native Wait hotkey→weather実行/保持/部分release/全release再押下/rebind/menu/OFF PASS。旧ELFは同条件で全false。元native ABI/IME/通常送信/両editor遷移とlinked567関数/35219命令/6548分岐/3294PC参照/しずえもPASS。
+- 新3gxは解析側artifacts/plugins/gohan_editor_chat_fix1、SHA9a6d32897b28d8c0cb896244d60083fe5e864c1710ed9771976093292d6eeb8d、ELF78496796c7077f27e31da65337e4418505603b98d2d61f325d27cb17865cf0f9。修正実機未確認/DB変更なし/正常artifact保持。次はEOL/hash/文書同期→最後一括work/gohan-chat-and-ports保存、mainへ入れない。
+- 原因はMapEditor自身のHoldFieldをGameList::Present&&!Wantedで退場待ちと誤認。Running前だけgateする。ChatCommandsはcheckbox値で有効化し、hotkeyはnative WaitCalc前に原文capture、R+B全releaseまで取消抑止。prebuild4330/22anchor/13CPP/欠字0/しずえsource PASS。
+- 次のbuildは専用BuildEditorChatFix、解析側artifacts/plugins/gohan_editor_chat_fix1/gohanへ出力。通常artifactと旧配布版保持。実MapTickによるfield保持時入力/block/touchとchat hotkey/native取消を検査する。まだ実機/DB/Git mutationなし、完了後一括保存。
+- 利用者実機報告: MapEditorだけcamera固定/player移動/下画面無反応。ChatCommands hotkeyは有効無効ではなく現在入力コマンドを実行すること。2件を原因調査・修正・PC検証・別成果物化する。
+- 現物work/gohan-chat-and-ports / HEAD9285ebae、製品scope clean。旧収録/意味レビュー中断とdirty保持、実機/main/正常artifact操作なし、完了後一括commit/push。次はMapEditor/GameList lifecycleとGuiMenu/ChatCommands hotkey経路。操作継続/成否不明なし。
+
 ## 2026-10-11 現行: gohan機能移植 / IDA-gpt-6-F002、T001
 
 - 最後一括保存: コードcommit8137d2e452cdb9bec09d2ffe4c72a0a892712b3eをorigin/work/gohan-chat-and-portsへpush、ls-remoteと独立照合一致。今回Sources/Includes/specと最新memoのみ、旧referenceの14tracked dirty/未trackedレビューは中断維持で未stage。製品scopeに未commit差分なし。実機未確認/main不変、次は利用者の実機確認。今の2メモは保存結果の追補のみで実行sourceを変更しない。

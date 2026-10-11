@@ -885,8 +885,9 @@ namespace CTRPluginFramework
             {
                 HookContext &ctx = HookContext::GetCurrent();
 
-                if (ChatCommands::KeyboardPaused()) {
-                    // 重ねたリストへのtouchで背後の送信/取消ボタンを予約させない。
+                const bool commandHotkey = ChatCommands::HandleKeyboardHotkey();
+                if (commandHotkey || ChatCommands::KeyboardPaused()) {
+                    // コマンドのR+Bや重ねたリストのtouchを、背後の送信/取消へ渡さない。
                     const u32 offsets[] = {1416,1420,1424};
                     for (u32 offset : offsets) {
                         const u32 button = R32(self + offset);

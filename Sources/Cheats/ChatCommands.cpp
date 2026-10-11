@@ -30,6 +30,16 @@ const NativePortGuard::Word kHooks[] = {
 Hook s_sendHook, s_returnHook;
 bool s_installed;
 u32 s_enabled, s_pause, s_incoming;
+int s_index = -1;
+bool s_wanted;
+u32 s_hotkeyKeys, s_hotkeyPause, s_badCommand;
+u32 s_hotkeyBlocked;
+bool s_hotkeyHeld;
+const u32 kHotkeyKeys[] = {
+    (u32)Key::ZL, (u32)Key::L, (u32)Key::R, (u32)Key::ZR,
+    (u32)Key::DPadUp, (u32)Key::DPadDown, (u32)Key::DPadLeft, (u32)Key::DPadRight,
+    (u32)Key::A, (u32)Key::B, (u32)Key::X, (u32)Key::Y, (u32)Key::Select, (u32)Key::Start
+};
 char s_text[100];
 u32 s_busyError;
 enum Op : u32 { NoOp, Replace, CloseChat, ChangeTime, OpenTimeMenu };
@@ -80,18 +90,20 @@ void SetText(const u16 *text) {
 __attribute__((naked)) u32 OriginalStatus(u32,int) {
     asm volatile("ldr r2, =0x009580E0\n\tldr pc, =0x00522D44");
 }
+bool CaptureCommand() {
+    char text[100];
+    if (!Text(text) || Parse(text).kind==Kind::None) return false;
+    u32 expected=0;
+    if (__atomic_compare_exchange_n(&s_incoming,&expected,2u,false,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED)) {
+        std::memcpy(s_text,text,std::strlen(text)+1);
+        __atomic_store_n(&s_incoming,1u,__ATOMIC_RELEASE);
+        SetText(nullptr);
+    } else __atomic_store_n(&s_busyError,1u,__ATOMIC_RELEASE);
+    return true;
+}
 __attribute__((noinline)) u32 SendStatus(u32 ready,int result) {
-    if (__atomic_load_n(&s_enabled,__ATOMIC_ACQUIRE) && ready==1 && result==2) {
-        char text[100];
-        if (Text(text) && Parse(text).kind!=Kind::None) {
-            u32 expected=0;
-            if (__atomic_compare_exchange_n(&s_incoming,&expected,2u,false,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED)) {
-                std::memcpy(s_text,text,std::strlen(text)+1);
-                __atomic_store_n(&s_incoming,1u,__ATOMIC_RELEASE);
-                SetText(nullptr);
-            } else __atomic_store_n(&s_busyError,1u,__ATOMIC_RELEASE);
-            return ready; // result-readyを立てず、nativeキーボードのwaitへ戻す
-        }
+    if (__atomic_load_n(&s_enabled,__ATOMIC_ACQUIRE) && ready==1 && result==2 && CaptureCommand()) {
+        return ready; // result-readyを立てず、nativeキーボードのwaitへ戻す
     }
     return OriginalStatus(ready,result);
 }
@@ -221,19 +233,46 @@ void SetActive(int,bool on) {
     }
     __atomic_store_n(&s_enabled,on?1u:0u,__ATOMIC_RELEASE);
     if(!on) {
+        __atomic_store_n(&s_hotkeyPause,0u,__ATOMIC_RELEASE);
         if(s_list)CloseList();
         s_afterClose=Kind::None;
     }
 }
-const GuiMenu::ToggleEffectFuncs kFuncs={IsActive,SetActive};
 }
-bool KeyboardPaused() {return __atomic_load_n(&s_pause,__ATOMIC_ACQUIRE)!=0;}
+bool KeyboardPaused() {
+    return __atomic_load_n(&s_pause,__ATOMIC_ACQUIRE)!=0 || __atomic_load_n(&s_hotkeyPause,__ATOMIC_ACQUIRE)!=0;
+}
+bool HandleKeyboardHotkey() {
+    if (!IsActive(0) || GuiMenu::IsVisible() || !ChatKanji::NormalChatOpen()) {
+        s_hotkeyHeld=false;s_hotkeyBlocked=0;
+        __atomic_store_n(&s_hotkeyPause,0u,__ATOMIC_RELEASE);
+        return false;
+    }
+    const u32 keys=Controller::GetKeysDown(true), hotkey=__atomic_load_n(&s_hotkeyKeys,__ATOMIC_ACQUIRE);
+    u32 buttons=0;
+    for (u32 key : kHotkeyKeys) buttons |= keys & key;
+    const bool held=hotkey!=0 && buttons==hotkey;
+    s_hotkeyBlocked &= keys;
+    if (held && !s_hotkeyHeld && s_hotkeyBlocked==0 && !__atomic_load_n(&s_pause,__ATOMIC_ACQUIRE)) {
+        s_hotkeyBlocked |= hotkey;
+        if (!CaptureCommand()) __atomic_store_n(&s_badCommand,1u,__ATOMIC_RELEASE);
+    }
+    s_hotkeyHeld=held;
+    // Rを先に離しても、残ったBを取消として処理させない。
+    __atomic_store_n(&s_hotkeyPause,s_hotkeyBlocked?1u:0u,__ATOMIC_RELEASE);
+    return s_hotkeyBlocked!=0;
+}
 void Wire() {
-    const int index=GuiMenu::FindItem(Cheats::kChatCommands);
-    if(index>=0)GuiMenu::RegisterToggleEffect(index,&kFuncs);
+    s_index=GuiMenu::FindItem(Cheats::kChatCommands);
 }
-void Shutdown() { SetActive(-1,false); }
+void Shutdown() { s_wanted=false;SetActive(-1,false); }
 void Tick(u16) {
+    const bool wanted=s_index>=0 && GuiMenu::ItemApplied(s_index)!=0;
+    if (wanted!=s_wanted) {s_wanted=wanted;SetActive(s_index,wanted);}
+    const u16 mask=s_index>=0?GuiMenu::ItemAppliedHotkey(s_index):0;
+    u32 hotkey=0;
+    for (u32 i=0;i<GuiMenu::HB_COUNT;++i) if (mask & (1u<<i)) hotkey |= kHotkeyKeys[i];
+    __atomic_store_n(&s_hotkeyKeys,hotkey,__ATOMIC_RELEASE);
     if(s_retiring && !GameList::Present()) {
         s_retiring=false;GameList::SetOverChat(false);
         __atomic_store_n(&s_pause,0u,__ATOMIC_RELEASE);
@@ -242,6 +281,7 @@ void Tick(u16) {
     if(result==2)Error(u8"画面が変わったか、操作できない状態です。");
     if(result==3)Error(u8"日時が範囲外か、通信中のため変更できません。日付は2012年から2050年です。");
     if(__atomic_exchange_n(&s_busyError,0u,__ATOMIC_ACQ_REL))Error(u8"前のコマンドを処理中です。");
+    if(__atomic_exchange_n(&s_badCommand,0u,__ATOMIC_ACQ_REL))Error(u8"コマンドの書式が違います。listで一覧を開けます。");
     if(!IsActive(0)) {
         if(__atomic_load_n(&s_incoming,__ATOMIC_ACQUIRE)==1)__atomic_store_n(&s_incoming,0u,__ATOMIC_RELEASE);
         return;

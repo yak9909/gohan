@@ -1,4 +1,9 @@
-# 現在地 — gohan移植版の実機確認待ち（2026-10-11）
+# 現在地 — gohan入力修正版の保存（2026-10-12）
+
+## 作業中: MapEditor入力停止・ChatCommands hotkey / GPT-6
+
+- IDA-gpt-6-T003: 修正/build/PC gate PASS。自分のfield保持で継続Tickを止めない。checkboxで有効化、hotkeyで現在command実行/chord全releaseまで取消抑止。新artifact解析側gohan_editor_chat_fix1、3gxSHA9a6d32897b28d8c0cb896244d60083fe5e864c1710ed9771976093292d6eeb8d。修正実機未確認/main不変、旧整理中断/正常artifact保持。次は最後一括work枝保存。
+- 利用者が移植版でMapEditorだけ入力不能を実機報告。ChatCommands hotkeyもON/OFFから現在コマンド実行へ修正する。source work/gohan-chat-and-ports / HEAD9285ebae、旧参照整理中断維持、新成果物は解析側の別directoryへ。実機/main操作なし、最後一括commit/push。次はlifecycle/hotkey調査。詳細SESSION。
 
 ## 現行: gohan機能移植・チャット / GPT-6
 
