@@ -10,9 +10,9 @@
 #include "GohanFiles.hpp"
 
 #include <CTRPluginFramework.hpp>
+#include <CTRPluginFrameworkImpl/System/Heap.hpp>
 #include <cstdio>
 #include <cstring>
-#include <new>
 
 // 根拠（解析リポジトリ project_v2、主 IDB acnl_jpn_v15_annotated.i64）:
 //   メモリ上の DARC を渡す手順（IDA-opus-5.5-F073、実機で地を出せた）:
@@ -241,7 +241,7 @@ struct Panes {
 alignas(8) u8 s_holder[584];                // GameLabel と同じ大きさ
 Lay s_lay[kLayouts];
 Panes s_p;
-u8 *s_file;                                 // SD から読んだ arc（プラグインのメモリ。メニューのスレッドが作り、Build がゲームのヒープへ写したら返す）
+u8 *s_file;                                 // SDから読む一時arc。CTRPF予約poolから借り、ゲームheapへ写したら返す。
 u32 s_fileSize;
 void *s_heap, *s_arc;                       // ゲームのヒープに写した arc
 bool s_holderMade, s_hookReady;
@@ -1091,7 +1091,15 @@ u32 RecordedBytes(void *layout) {
     return 0xFFFFFFFFu;
 }
 
+void ReleaseFile(void) {
+    if (s_file != nullptr)
+        Heap::Free(s_file);
+    s_file = nullptr;
+    s_fileSize = 0;
+}
+
 void Release(void) {
+    ReleaseFile();
     s_press = PressSlot();
     s_pressTarget = -1;
     for (u32 i = 0; i < kLayouts; ++i) {
@@ -1144,10 +1152,8 @@ void Build(void) {
     s_arc = arc;
     std::memcpy(arc, s_file, s_fileSize);
     FlushRange(arc, s_fileSize);
-    // プラグインのヒープの写しはここで返す（ゲームのヒープへ写したあとは誰も読まない。次に開くときは Show が SD から読み直す）。
-    //   持ったままだと約 400 KB がヒープの途中に残り、漢字変換の 5 MiB（1 塊）が取れなくなる（ERROR 2 / STAGE 1。利用者 2026-10-06）
-    delete[] s_file;
-    s_file = nullptr;
+    // 漢字変換の常駐arenaと同じnewlib heapから大きな連続領域を取らず、既存CTRPF poolを一時利用する。
+    ReleaseFile();
 
     ArcCtor(s_holder);
     s_holderMade = true;
@@ -1354,7 +1360,7 @@ bool Show(void) {
             s_error = "arc の大きさがおかしい";
             return false;
         }
-        u8 *buf = new (std::nothrow) u8[(u32)size];
+        u8 *buf = static_cast<u8 *>(Heap::Alloc((u32)size));
         if (buf == nullptr) {
             f.Close();
             s_error = "arc を読む領域が取れない";
@@ -1362,7 +1368,7 @@ bool Show(void) {
         }
         if (f.Read(buf, (u32)size) != File::SUCCESS || std::memcmp(buf, "darc", 4) != 0) {
             f.Close();
-            delete[] buf;
+            Heap::Free(buf);
             s_error = "arc を読めない";
             return false;
         }
@@ -1372,6 +1378,7 @@ bool Show(void) {
     }
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {
+            ReleaseFile();
             s_error = "フレームフックを入れられない";
             return false;
         }
@@ -1380,6 +1387,7 @@ bool Show(void) {
     // 元の下画面 UI（地図・タブ）をゲーム自身の命令で退場させておく（建物エディターと同じ GameList の手順）。
     //   隠れきってから組む（地図の arc が返ってから、こちらの arc を同じヒープに取る）
     if (!GameList::HoldField(true, GameList::kHoldHhd)) {
+        ReleaseFile();
         s_error = "フレームフックを入れられない";
         return false;
     }
@@ -1621,6 +1629,7 @@ void FrameStep(void) {
         return;
     case Stage::Copy:
         if (!s_want) {
+            ReleaseFile();
             PlayerClone::Hide();
             GameList::HoldField(false, GameList::kHoldHhd);
             s_stage = Stage::Idle;

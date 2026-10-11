@@ -1,5 +1,13 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-T005 / GPT-6
+
+- 完了PC gate: 元native scroll更新/edge/drag/track/逆向き/端/Controller全284B・Touch40B復元、前回20case/Map/hotkey、arc予約pool（newlib大領域不足条件）/取消/失敗/ゲームheapcopy後Attach失敗解放、検索262unique/fgobj先頭/ID順/ページ、旧版3症状再現PASS。23anchor/13CPP/4330parser/linkedABI/しずえ/32source SHA・正常ELF/旧3artifact不変PASS。native概念DB反映/公式XML保存検証も解析側で完了、所有0。
+- 新artifactは解析側gohan_chat_scroll_fix1、ELF55fdfe96/3gxと最終source commit全SHAはmanifest/publication参照。実機未確認/main不変。Sources3file＋gohan.md＋STATE/SESSIONだけ最後一括保存/pushする。旧reference整理dirty保持、実機/SD操作なし。継続/成否不明操作なし、次は最終保存と利用者実機確認。
+
+- 利用者追加: リストscroll不動、HHD style arc配置済みでも取得不可通知、検索fgobjを含めたID昇順。背景への入力遮断と前回focus/決定/退場/time復帰修正は保持する。
+- source c1cde55/work/gohan-chat-and-portsから調査開始。旧整理中断/dirty・正常artifact保持、実機/main操作なし、commit/pushは全修正・PC検証後一括。次は原scroll入力・style arc取得・ItemNames索引照合、隔離buildとnative回帰試験。
+
 ## 2026-10-11 最新: MapEditor入力停止・ChatCommands hotkey修正 / GPT-6
 
 - T004完了/2026-10-12: DPad focus/Aかtouch決定、same-row native決定検出、list/退場中入力遮断とraw touch限定差込み、検索ID左prefix、時刻owner4で退場待ち/request一度/終了後field復帰（窓中OFFでも監視）を実装。最終23anchor/13CPP/4330parser・元BAC/WaitCalc含む20case・linked/ABI/しずえ/hash/DB公式XML PASS、root所有0。3gx解析側gohan_chat_lists_fix1 SHA29e3d382374a83eaf57b8198567ded9336ff83f9d6676db38cb3c8196b64f03f。source範囲4製品file＋STATE/SESSIONだけ最後一括work枝保存、旧reference dirty未stage。最終commit/hashは解析側manifest/publication参照。実機/main未変更、次は新版の利用者実機確認。native graphics/OS/arc破棄はfixtureであり見た目とtimingは未確認。

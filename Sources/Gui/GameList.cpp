@@ -324,7 +324,7 @@ void UpdateChatList(void) {
     else if (!down) s_chatTouchBlocked = false;
     const bool held = down && !locked && !s_chatTouchBlocked;
     u8 *t = s_chatTouch;
-    // MapModeListと同じnative40Bの押下/離上履歴。スクロールもこの入力を見る。
+    // 行のボタンはTouch state、scrollはControllerの押下/離上とfloat座標を別々に読む。
     H(t,16)=H(t,6);H(t,18)=H(t,8);H(t,20)=H(t,10);H(t,22)=H(t,12);
     t[24]=t[14];t[25]=t[15];t[26]=t[0];t[27]=t[1];H(t,28)=H(t,4);
     t[1]=t[0] ^ (held?1u:0u);t[0]=held?1u:0u;
@@ -341,8 +341,28 @@ void UpdateChatList(void) {
     void *game = reinterpret_cast<void *>(0x00ACF6E0);
     std::memcpy(saved,game,sizeof(saved));
     std::memcpy(game,t,sizeof(saved));
+    const u32 system = *reinterpret_cast<const volatile u32 *>(0x0096F2EC);
+    const u32 table = system ? W(reinterpret_cast<void *>(system),216) : 0;
+    void *controller = system && W(reinterpret_cast<void *>(system),208) && table
+        ? *reinterpret_cast<void **>(table) : nullptr;
+    const u32 offsets[] = {0,4,8,16,272,276,280};
+    u32 savedController[sizeof(offsets)/sizeof(offsets[0])];
+    if (controller) {
+        for (u32 i=0;i<sizeof(offsets)/sizeof(offsets[0]);++i)
+            savedController[i]=W(controller,offsets[i]);
+        const u32 touchMask = 0x8000;
+        W(controller,0)=(W(controller,0)&~touchMask)|(held?touchMask:0u);
+        W(controller,4)=(W(controller,4)&~touchMask)|(held&&!t[26]?touchMask:0u);
+        W(controller,8)=(W(controller,8)&~touchMask)|(!held&&t[26]?touchMask:0u);
+        W(controller,16)=(W(controller,16)&~1u)|(held?1u:0u);
+        W(controller,272)=(W(controller,272)&~touchMask)|(held?touchMask:0u);
+        F(controller,276)=F(t,32);F(controller,280)=F(t,36);
+    }
     const u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<ListFn>(vt[4])(s_list);
+    if (controller)
+        for (u32 i=0;i<sizeof(offsets)/sizeof(offsets[0]);++i)
+            W(controller,offsets[i])=savedController[i];
     std::memcpy(game,saved,sizeof(saved));  // keyboardなど、背後のUIにはraw入力を渡さない
 }
 

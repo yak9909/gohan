@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <algorithm>
 using namespace CTRPluginFramework;
 
 namespace ChatCommands {
@@ -240,6 +241,9 @@ void OpenList(bool commandList,const char *query=nullptr) {
             s_matches.push_back(static_cast<u16>(id));
         }
         if (s_matches.empty()) {Error(u8"一致するアイテムがありません。");return;}
+        // fgobjを含む補完名は別表。通常名との境界をページ順へ持ち込まない。
+        std::sort(s_matches.begin(),s_matches.end());
+        s_matches.erase(std::unique(s_matches.begin(),s_matches.end()),s_matches.end());
         s_page=0;FillPage();
     }
     ChatIme::DismissForCommand();

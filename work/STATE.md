@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 作業中: リストscroll・HHD style arc・検索ID順 / GPT-6
+
+- 修正・隔離build・最終PC gate PASS。元native scroll/input全bytes復元・前回20case/Map/hotkey、arc取消/形式/フック/pool不足/copy後失敗解放、fgobj含む262unique/ID順/ページ/旧版3症状再現。解析側32source hash/正常ELF・旧3artifact不変/DB公式XML PASS。新gohan_chat_scroll_fix1の全SHAはmanifest参照、実機未確認/main未変更。次は今回6fileのみ最後一括work枝保存/push。
+
+- IDA-gpt-6-T005: 背景touch遮断を保ったscroll修復、配置済みstyle arcの取得不可、fgobj含む検索全ID順。開始c1cde55/work/gohan-chat-and-ports。旧artifact/正常ELF/整理dirty保持、実機/main操作なし、Gitは完了後一括。根拠/別buildは解析側へ。次は原入力・arc読込・名前索引の照合。
+
 ## 実装・PC検証完了: chat一覧・time menu復帰・検索ID / GPT-6
 
 - IDA-gpt-6-T004: chat listのDPadはfocus、A/touchで決定、Bで終了。native updateの間だけraw40Bを渡して戻し、背後keyboard入力を遮断。検索IDは公共事業と同じ左小欄、時刻窓専用HoldField ownerで終了後field復帰/OFF時も見届ける。新artifact解析側gohan_chat_lists_fix1、3gxSHA29e3d382374a83eaf57b8198567ded9336ff83f9d6676db38cb3c8196b64f03f。
