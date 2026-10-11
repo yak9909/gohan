@@ -357,8 +357,8 @@ void Tick(u16) {
                 GameList::SetItemPrefixes(s_idPointers,s_count);GameList::Select(0);
                 return;
             }
-            CloseList();
             if(s_commandList) {
+                CloseList();
                 const char *text=kInsert[selected];
                 std::memset(s_replace,0,sizeof(s_replace));
                 for(size_t i=0;text[i]&&i<32;++i)s_replace[i]=static_cast<u16>(text[i]);

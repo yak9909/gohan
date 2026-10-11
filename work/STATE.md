@@ -1,5 +1,9 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: アイテム名検索の連続取得 / GPT-6
+
+- IDA-gpt-6-T006: ITEMNAME検索は決定後維持/B終了、command listの決定終了/挿入を保持。別BuildChatSearchRepeat/連続A・同じ行native touch・満杯/再取得・ページ/B優先/退場復帰など12case＋既存一覧20case/scroll/arc/ID順/Map/hotkey/linked/ABI/hash PASS。解析側gohan_chat_search_repeat1/3gxSHAf7f47013b0b29ea309a803aa57e114f3a58e10f11599b4b5e17fa4234af467e6、32source SHA/正常・全旧artifact/最新DB公式XML不変。今回4fileだけ最後一括work枝へ保存し、保存結果は解析側manifest/publication参照。実機未確認/main未変更/旧整理中断、次は利用者の新版実機確認。
+
 ## 実装・PC検証・作業枝保存完了: リストscroll・HHD style arc・検索ID順 / GPT-6
 
 - code db000f1dbb84ae956fe340025720a51ec7d5a3f1をwork/gohan-chat-and-portsへ最後一括保存/pushし独立remote一致。32製品source SHA/Git一致、全PC gate/別artifact/最新DB公式XML保存済み（解析checkpoint bf32ad0141d8b8aecf1868ac54c33b1438154bc4もpush一致）。新3gxSHA82dc4be4cc47fa88b578d6d63b6e53261cf71ca83c19fc352e9e121582c0d516。実機未確認/main不変、旧整理dirty未stage。保存結果メモを同最終batchで追補し、次は利用者の実機確認のみ。

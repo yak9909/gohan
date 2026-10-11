@@ -1,5 +1,14 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-T006 / GPT-6
+
+- 実装/PC完了: TickのCloseListをcommandList側へ移す最小差分。専用build41390終了0/連続検索12case（連続A・同一行native touch・満杯/再取得・ページ・B優先/退場/復帰・command list・画面消失）＋前回20case/native scroll/arc解放/fgobj全ID順/Map/hotkey/linked570関数/ABI/SP/VFP/しずえ/hash PASS。取得・通知/ダイアログ/描画等はfixture endpointで実機未確認。
+- 解析側manifest/final_checks: 32source SHA・正常/全4旧配布artifact・保存DB/最新公式XML不変/13frame owner対16 PASS。新3gxSHAf7f47013b0b29ea309a803aa57e114f3a58e10f11599b4b5e17fa4234af467e6、ELF含む全hash/保存結果はgohan_chat_search_repeat1/manifestとgohan_chat_search_repeat/publication参照。今回source/spec/STATE/SESSIONの4fileだけ最後一括work枝へcommit/push、main/実機/旧整理dirtyへ操作なし。次は新版の利用者実機確認。
+
+- 利用者追加: アイテム名検索の決定後も一覧を維持し、連続取得を可能にする。通常終了はBのみ。command list決定終了/挿入、画面消失・OFF時の資源解放、背景入力遮断とnativeスクロール/決定は保持。
+- source20d342e/root2e22f6eの前回最終pushは成功/remote一致、今回製品scope clean/index空から開始。Tickの無条件CloseListをcommandList側へ移す。専用BuildChatSearchRepeat/解析側gohan_chat_search_repeat1を用い、連続A/同じ行touch/取得失敗/ページ/B優先/command listをlinked ARMで確認する。
+- 実機/SD/main操作なし、旧整理中断/dirtyと正常/旧配布artifact保持。新commit/pushは追加作業完了後一括、次は実装・検証。今回native解析/DB変更の予定なし。
+
 ## 2026-10-12 IDA-gpt-6-T005 / GPT-6
 
 - 保存結果: 6file/60insert9deleteのcode db000f1dbb84ae956fe340025720a51ec7d5a3f1をwork枝へ最後一括push/独立remote一致。finish --savedは32製品source hash/Git一致、新ELF/3gxと全runtime/linked/hash/最新DB公式XML・旧3artifact/正常ELF不変PASS。解析checkpoint bf32ad0141d8b8aecf1868ac54c33b1438154bc4はLFS2object237MB/push終了0・独立remote一致。詳細は解析側gohan_chat_scroll_fix/final_checks.json/publication.jsonとlogs。
