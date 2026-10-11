@@ -2,6 +2,7 @@
 
 ## 2026-10-11 最新: MapEditor入力停止・ChatCommands hotkey修正 / GPT-6
 
+- 最終保存: コードadf66697369f2b49f32ea627251d8131e8e99706をwork/gohan-chat-and-portsへcommit、製品scope clean/31source hashとGit HEAD一致を再確認。原正常ELF/旧配布版/DB-XML不変。今回workメモの結果追補も同じ最終batchで保存・pushし、独立ls-remote照合を行う。旧reference dirtyは未stage。次は利用者の修正実機確認、mainへ入れない。push結果は解析側work/logs/gohan_editor_chat_fix_source_push.logとpublication.jsonで確認する。
 - 最終EOL/31source SHA/正常ELF/旧3gx/DB-XML一致PASS。source diff-check/statは9file/82insert/24deleteで全行差分なし。今回の7製品file＋2memoだけをwork/gohan-chat-and-portsへ最後一括保存する。旧reference dirtyは中断維持で未stage。成果物/build/PCは完了、実機/main未操作、Git結果取得まで同commit/pushを再送しない。
 - 2026-10-12再開/IDA-gpt-6-T003: build/link終了0、新実Tickのfield保持中移動/touch/game遮断全true、native Wait hotkey→weather実行/保持/部分release/全release再押下/rebind/menu/OFF PASS。旧ELFは同条件で全false。元native ABI/IME/通常送信/両editor遷移とlinked567関数/35219命令/6548分岐/3294PC参照/しずえもPASS。
 - 新3gxは解析側artifacts/plugins/gohan_editor_chat_fix1、SHA9a6d32897b28d8c0cb896244d60083fe5e864c1710ed9771976093292d6eeb8d、ELF78496796c7077f27e31da65337e4418505603b98d2d61f325d27cb17865cf0f9。修正実機未確認/DB変更なし/正常artifact保持。次はEOL/hash/文書同期→最後一括work/gohan-chat-and-ports保存、mainへ入れない。
