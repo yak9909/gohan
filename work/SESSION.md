@@ -2,6 +2,7 @@
 
 ## 2026-10-11 現行: gohan機能移植 / IDA-gpt-6-F002、T001
 
+- 最後一括保存: コードcommit8137d2e452cdb9bec09d2ffe4c72a0a892712b3eをorigin/work/gohan-chat-and-portsへpush、ls-remoteと独立照合一致。今回Sources/Includes/specと最新memoのみ、旧referenceの14tracked dirty/未trackedレビューは中断維持で未stage。製品scopeに未commit差分なし。実機未確認/main不変、次は利用者の実機確認。今の2メモは保存結果の追補のみで実行sourceを変更しない。
 - 完了PC: font込み最終build/linked/nativeABI・送信/日時/state・両editor操作/排他/退場待ち・しずえ、4330条件/22anchor/13CPP・欠字0 PASS。3gx SHAe816c7f47189a007773d3d1a0e373a8520e837b21b9619ae6173d61a51c3b415（解析側artifacts/plugins/gohan_chat_ports1）。IDB/XMLsave/型/ABI読戻し/全bytes検査PASS、DB所有者0、実行中/成否不明なし。今回変更のcommit/pushを最後一括で行い、旧参照整理dirtyは除く。実機未確認/main変更なし。
 - 旧収録/意味調査は中断維持。作業枝work/gohan-chat-and-ports、HEAD83c050c/既存dirty保持。FOXXY idle、気絶、Vapecord消失抑制、§14チャット、メニュー再編/ゴミ箱統合を実装。最新指示: 数字1つは分、カーソル90/120/60固定、両エディターはaction/B/再実行/排他、公共事業設定folder/全項目削除、自前GUI ON時自動open解除。
 - PC prebuild4330条件/22anchor/12CPP PASS。専用BuildChatPorts/解析側artifacts/plugins/gohan_chat_ports1へ再ビルド・リンク検証中。正常3gx/実機/main不変、commit/pushは完了後一括。仕様はgohan.md/gohan-menu.md、根拠は解析側docs/topics/gohan_chat_ports_design.md・work/evidence/gohan_chat_ports。

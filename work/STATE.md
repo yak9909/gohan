@@ -1,9 +1,9 @@
-# 現在地 — 整理済みチートのリファクタリング（2026-10-11）
+# 現在地 — gohan移植版の実機確認待ち（2026-10-11）
 
 ## 現行: gohan機能移植・チャット / GPT-6
 
-- FOXXY idle/気絶/Vapecord消失抑制と§14チャット、メニュー再編/ゴミ箱統合を実装中。最新: 時間単独数字=分、MapCursor90/120/60固定、両エディターaction/B/再実行/排他、公共事業設定全削除、自前GUI自動openなし。work/gohan-chat-and-ports、未commit、実機未確認/main未統合。
-- 実装/PC検証完了。4330条件/22anchor/13CPP、最終linked/nativeABI/日時/state/chat・両editor B/再実行/排他/退場待ち・しずえ・フォント欠字0 PASS。artifactは解析側artifacts/plugins/gohan_chat_ports1、3gx SHA e816c7f47189a007773d3d1a0e373a8520e837b21b9619ae6173d61a51c3b415。DB/XML保存/照合済み。次は今回scopeだけ最後一括commit/push、実機確認待ち。旧参照収録/意味調査は中断、既存dirty保持。実機/正常artifact操作なし。詳細SESSION。
+- FOXXY idle/気絶/Vapecord消失抑制と§14チャット、メニュー再編/ゴミ箱統合を実装。最新: 時間単独数字=分、MapCursor90/120/60固定、両エディターaction/B/再実行/排他、公共事業設定全削除、自前GUI自動openなし。コード8137d2eをwork/gohan-chat-and-portsへpushし独立remote SHA一致。実機未確認/main未統合。
+- 実装/PC検証完了。4330条件/22anchor/13CPP、最終linked/nativeABI/日時/state/chat・両editor B/再実行/排他/退場待ち・しずえ・フォント欠字0 PASS。artifactは解析側artifacts/plugins/gohan_chat_ports1、3gx SHA e816c7f47189a007773d3d1a0e373a8520e837b21b9619ae6173d61a51c3b415。DB/XML保存/照合済み。次は利用者の実機確認。旧参照収録/意味調査は中断、既存dirty保持。実機/正常artifact操作なし。詳細SESSION。
 
 ## 最新: 意味調査を利用者指示で中断
 
