@@ -251,6 +251,8 @@ volatile Phase s_phase = Phase::Entering;
 u32 s_fadeFrame;                            // 入場の背景のフェードの経過フレーム（ゲームのスレッドだけ）
 const char *volatile s_error = "";
 u32 s_wait;
+u32 s_copyFrames;
+u32 s_errorPending;
 volatile State s_state;                     // 欲しい状態
 volatile s8 s_pageReq;                      // メニューのスレッドからのページ送りの頼み（-1 / +1、0 = なし）
 // 複製（メニューのスレッドが書く）と、Scene 1 にしたか（ゲームのスレッドだけ）
@@ -292,6 +294,7 @@ bool IsHeapPointer(const void *p) {
 
 void Fail(const char *why) {
     s_error = why;
+    __atomic_store_n(&s_errorPending,1u,__ATOMIC_RELEASE);
     s_stage = Stage::Failed;
 }
 
@@ -1410,6 +1413,7 @@ bool Show(void) {
     PlayerClone::SetAlpha(0);
     PlayerClone::Show();                    // 吹き出しの複製（作れなければ出ないだけ）
     s_want = true;
+    s_copyFrames = 0;
     s_stage = Stage::Copy;
     return true;
 }
@@ -1473,12 +1477,23 @@ void Measure(char *out, u32 size) {
 }
 
 void Tick(bool menuVisible) {
+    if (__atomic_exchange_n(&s_errorPending,0u,__ATOMIC_ACQ_REL))
+        GuiNotification::NotifyRed(Cheats::kHhdStyle,s_error);
     if (!s_want && s_stage == Stage::Idle)
         return;
     // 開いている間はゲームへの入力を全部止める。BlockGameAll はボタンとスライドパッドだけで、タッチは BlockGameTouch が別に止める
     //   （GuiMenu.cpp SyncInputLock。2026-10-05 実機: BlockGameAll だけでは下の地図・タブが反応した）
     GuiMenu::BlockGameAll();
     GuiMenu::BlockGameTouch();
+    const u32 keys = Controller::GetKeysDown(true);
+    const u32 pressed = keys & ~s_keysPrev;
+    s_keysPrev = keys;
+    if (!menuVisible && s_want && (pressed & (u32)Key::B)) {
+        if (s_stage == Stage::Draw)
+            QueueSound(kSndCancel);
+        s_want = false;
+        return;
+    }
     if (!s_want || s_stage != Stage::Draw || s_phase != Phase::Live) {
         s_touchPrev = false;
         s_touchStart = -1;
@@ -1493,14 +1508,6 @@ void Tick(bool menuVisible) {
             s_scroller.Release(svcGetSystemTick());
         s_onPage = false;
         s_pressTarget = -1;
-        return;
-    }
-    const u32 keys = Controller::GetKeysDown(true);
-    const u32 pressed = keys & ~s_keysPrev;
-    s_keysPrev = keys;
-    if (pressed & (u32)Key::B) {
-        QueueSound(kSndCancel);
-        s_want = false;                     // B: 閉じる
         return;
     }
     if (s_state.mode == 1 && (pressed & ((u32)Key::L | (u32)Key::R))) {
@@ -1635,8 +1642,12 @@ void FrameStep(void) {
             s_stage = Stage::Idle;
             return;
         }
-        if (!GameList::FieldHidden())
-            return;                         // 元の下画面 UI が退場し終わるのを待つ
+        if (!GameList::FieldHidden()) {
+            // 退場が成立しない画面で、入力を止めたまま待ち続けない。
+            if (++s_copyFrames > 180u)
+                Fail(u8"下画面を切り替えられませんでした。");
+            return;
+        }
         Build();
         if (s_stage != Stage::Draw)
             return;

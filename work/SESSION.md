@@ -1,5 +1,17 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-T007 / GPT-6
+
+- 最終PC/XML/EOL/hash gate PASS、正常ELF・全旧配布版/旧整理dirty保持。今回3CPP/§14/STATE/SESSIONの6fileのみ最後一括work/gohan-chat-and-portsへ保存・pushし、独立remote照合する。最終source commitは解析側fix2/manifestとgohan_chat_scroll_style_followup/publication参照。実機未確認/main未変更、次は両scrollbar/hair/style/eyes表示・B終了/再起動/失敗復帰の利用者確認。
+
+- 新版別buildとPC試験完了: 3gx SHAe2afb75ae0d8c3ce9a95e82a36a2cd865c063cc739ea771c264533f90c5adf2e、元viewport/matrix/hit-testのscroll操作/Controller vtable変更0・全入力復元、一覧20case/連続取得12case/Map/hotkey/arc/ID順/linked ABI PASS。旧版で二重座標変換・vtable書換/部分退場時style起動/Copy無限待機を再現。新版はparentchat/kbd退場後の実Show、Copy中B/timeout/通知一度/field復帰PASS。14CPP/4330parser/23anchor。実HHD GPU表示/実機原因全体は未確認、任意質問に回答なし。解析DB保存/close/XML出力済み、次はXML読戻し/文書/hash→最後一括work枝保存。全exec結果取得済み、実機/main/旧整理不変。
+
+- 追加hairなどの未表示/操作不能もT007へ統合。source編集: Controller+276/+280をpixelへ（旧viewport identity mockを撤回、元変換/Matrix/HitTestでe07版top0再現）、ChatBound解除後もparentchat/keyboard消滅を待つ、HHD Copy中もB取消/180frame退避/非同期失敗通知。styleの実機原因全体は未断定、元poolのTLS/lockは調査のみで変更なし。
+- 解析側old92435終了0/前回20case＋REPRODUCED_OLD_SCROLL_COORDINATES/検索262unique。元getter注記訂正/確定概念DB反映は次、acnl_v2単独所有。次は新旧style遷移/待機退出/field復帰試験→14CPP prebuild/EOL/専用build/linked・全回帰。まだbuild/Git mutationなし、実機/main/旧整理不変、メニュー直接HHD可否は任意回答待ち。
+
+- 利用者実機訂正: ITEMNAME検索とcommand listのscrollが無反応。T005/T006のfixture PASSでは実入力/幾何成立は未証明。背景遮断と検索連続取得/B終了・command list挿入/time復帰/arc/ID順を保持して調べ直す。
+- 開始e07f24b/root ff8e933、製品scope/index空/旧整理dirty保持。UpdateChatListのscope限定40B/Controller差込みとGUI入力フック/実getter条件/native hit-testを照合し、旧版で原因再現→最小修正/別build→linked/ABI/回帰を行う。Gitは完了後一括、実機/SD/main操作なし/正常と全旧配布artifact保持。次は入力経路の照合。
+
 ## 2026-10-12 IDA-gpt-6-T006 / GPT-6
 
 - 実装/PC完了: TickのCloseListをcommandList側へ移す最小差分。専用build41390終了0/連続検索12case（連続A・同一行native touch・満杯/再取得・ページ・B優先/退場/復帰・command list・画面消失）＋前回20case/native scroll/arc解放/fgobj全ID順/Map/hotkey/linked570関数/ABI/SP/VFP/しずえ/hash PASS。取得・通知/ダイアログ/描画等はfixture endpointで実機未確認。

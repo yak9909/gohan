@@ -130,6 +130,12 @@ bool Offline() {
     const u32 own=*reinterpret_cast<const u8 *>(net+78440), peers=*reinterpret_cast<const u8 *>(net+78444)&0x0F;
     return peers==0 || (own<4 && (peers & ~(1u<<own))==0);
 }
+bool ChatRetired() {
+    const u32 manager=NativePortGuard::Read(0x949D4C);
+    // 入力欄の紐付けは退場途中で外れる。親のchat窓とkeyboardが消えるまで次のUIを組まない。
+    return NativePortGuard::Heap(manager) && NativePortGuard::Read(manager+0x1EC)==0
+        && NativePortGuard::Read(0x94A654)==0;
+}
 bool NormalClockRoom() {
     const int room=*reinterpret_cast<const u16 *>(0x95133A);
     return !reinterpret_cast<int (*)(u32,int)>(0x2F75E4)(0x180000u,room);
@@ -334,7 +340,7 @@ void Tick(u16) {
     }
     if(s_afterClose!=Kind::None) {
         if(++s_waitFrames>180){s_afterClose=Kind::None;Error(u8"画面を切り替えられませんでした。");}
-        else if(!ChatKanji::NormalChatOpen() && GameList::FieldShown() && !GuiMenu::IsVisible()
+        else if(!ChatKanji::NormalChatOpen() && ChatRetired() && GameList::FieldShown() && !GuiMenu::IsVisible()
             && __atomic_load_n(&s_op,__ATOMIC_ACQUIRE)==NoOp) {
             const Kind next=s_afterClose;s_afterClose=Kind::None;
             if(next==Kind::Style) {if(!HhdScreen::Shown()&&!HhdScreen::Show())Error(HhdScreen::LastError());}

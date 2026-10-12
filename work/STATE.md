@@ -1,5 +1,9 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: チャット一覧scrollとhair遷移の再修正 / GPT-6
+
+- IDA-gpt-6-T007: Controller画素座標/vtableを訂正、parentchat/kbd退場後のstyle起動・HHD待機中B/180frame退避/失敗通知を実装。旧版の元幾何scroll top0/vtable書換4・style早期起動/Copy無限待機、新版top8/書換0・B/timeout/field復帰をPC再現。4330parser/23anchor/14CPP・一覧20case/連続取得12case/Map/hotkey/arc/ID順/linked ABI PASS。解析側fix2/3gx e2afb75a...、DB公式XML読戻し/32source hash/正常・全旧成果物保持PASS。今回6fileだけ最後一括work枝保存、最終commit/送信結果は解析側manifest/publication参照。実機原因全体/成功HHD GPU表示未確定、main/旧整理不変。次は利用者の新版実機確認。
+
 ## 実装・PC検証完了: アイテム名検索の連続取得 / GPT-6
 
 - IDA-gpt-6-T006: ITEMNAME検索は決定後維持/B終了、command listの決定終了/挿入を保持。別BuildChatSearchRepeat/連続A・同じ行native touch・満杯/再取得・ページ/B優先/退場復帰など12case＋既存一覧20case/scroll/arc/ID順/Map/hotkey/linked/ABI/hash PASS。解析側gohan_chat_search_repeat1/3gxSHAf7f47013b0b29ea309a803aa57e114f3a58e10f11599b4b5e17fa4234af467e6、32source SHA/正常・全旧artifact/最新DB公式XML不変。今回4fileだけ最後一括work枝へ保存し、保存結果は解析側manifest/publication参照。実機未確認/main未変更/旧整理中断、次は利用者の新版実機確認。

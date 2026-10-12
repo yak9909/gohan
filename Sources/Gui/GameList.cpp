@@ -345,18 +345,18 @@ void UpdateChatList(void) {
     const u32 table = system ? W(reinterpret_cast<void *>(system),216) : 0;
     void *controller = system && W(reinterpret_cast<void *>(system),208) && table
         ? *reinterpret_cast<void **>(table) : nullptr;
-    const u32 offsets[] = {0,4,8,16,272,276,280};
+    const u32 offsets[] = {4,8,16,272,276,280};
     u32 savedController[sizeof(offsets)/sizeof(offsets[0])];
     if (controller) {
         for (u32 i=0;i<sizeof(offsets)/sizeof(offsets[0]);++i)
             savedController[i]=W(controller,offsets[i]);
         const u32 touchMask = 0x8000;
-        W(controller,0)=(W(controller,0)&~touchMask)|(held?touchMask:0u);
         W(controller,4)=(W(controller,4)&~touchMask)|(held&&!t[26]?touchMask:0u);
         W(controller,8)=(W(controller,8)&~touchMask)|(!held&&t[26]?touchMask:0u);
         W(controller,16)=(W(controller,16)&~1u)|(held?1u:0u);
         W(controller,272)=(W(controller,272)&~touchMask)|(held?touchMask:0u);
-        F(controller,276)=F(t,32);F(controller,280)=F(t,36);
+        // nativeの座標変換が中央移動/Y反転を行う。Controllerには変換前の画素位置を渡す。
+        F(controller,276)=(float)H(t,10);F(controller,280)=(float)H(t,12);
     }
     const u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<ListFn>(vt[4])(s_list);
