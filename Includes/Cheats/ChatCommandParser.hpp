@@ -81,10 +81,12 @@ inline Command Parse(const char *text) {
     const char c=text[0];
     if ((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')) {
         out.kind=Kind::Error;
-        size_t n=std::strlen(text); if(n>4) return out;
+        const char *digits=text;
+        if(text[0]=='0' && (text[1]=='x'||text[1]=='X'))digits+=2;
+        size_t n=std::strlen(digits); if(!n || n>4) return out;
         uint32_t id=0;
         for(size_t i=0;i<n;++i) {
-            const char x=text[i];
+            const char x=digits[i];
             int d=x>='0'&&x<='9'?x-'0':x>='a'&&x<='f'?x-'a'+10:x>='A'&&x<='F'?x-'A'+10:-1;
             if(d<0)return out;
             id=id*16+static_cast<unsigned>(d);

@@ -7,6 +7,7 @@
 #include "NativePortGuard.hpp"
 #include "GridCursor.hpp"
 #include "GameList.hpp"
+#include "ClosetMenu.hpp"
 #include "GuiMenu.hpp"
 #include "GuiDialog.hpp"
 #include "ItemNames.hpp"
@@ -32,6 +33,7 @@ Hook s_sendHook, s_returnHook;
 bool s_installed;
 u32 s_enabled, s_pause, s_incoming;
 int s_index = -1;
+int s_viewIndex = -1;
 bool s_wanted;
 u32 s_hotkeyKeys, s_hotkeyPause, s_badCommand;
 u32 s_hotkeyBlocked;
@@ -225,6 +227,47 @@ void FillPage() {
     }
     if(first+kPageItems<s_matches.size()) {s_nextRow=s_count;s_rowPointers[s_count++]=u8"次の候補";}
 }
+bool SearchItems(const char *query,bool all) {
+    if (!ItemNames::LoadNormal()) {Error(u8"ゲームのアイテム名を読めません。");return false;}
+    char normalized[100]={};
+    if (!all && (!NormalizeKana(query,normalized,sizeof(normalized)) || !*normalized)) {
+        Error(u8"かなでアイテム名を入力してください。");return false;
+    }
+    const u32 normal=ItemNames::NormalCount(), hidden=ItemNames::HiddenCount();
+    s_matches.clear();
+    for(u32 i=0;i<normal+hidden;++i) {
+        const auto *entry=i>=normal?ItemNames::HiddenAt(i-normal):nullptr;
+        const u32 id=i<normal?0x2000u+i:entry->id;
+        if(id>=0x7FFE)continue;
+        char kana[128], folded[128];
+        if(!ItemNames::NameUtf8(static_cast<u16>(id),kana,sizeof(kana),true))continue;
+        if(!all && (!NormalizeKana(kana,folded,sizeof(folded)) || !std::strstr(folded,normalized)))continue;
+        s_matches.push_back(static_cast<u16>(id));
+    }
+    std::sort(s_matches.begin(),s_matches.end());
+    s_matches.erase(std::unique(s_matches.begin(),s_matches.end()),s_matches.end());
+    if(s_matches.empty()) {Error(u8"一致するアイテムがありません。");return false;}
+    return true;
+}
+void OpenCloset(const char *query,u16 anchor,bool byId) {
+    ChatIme::DismissForCommand();
+    if(!ClosetMenu::Begin(true)) {Error(ClosetMenu::TakeError());return;}
+    // Begin owns the opening request; searching doesn't wait for the native entrance animation.
+    if(!SearchItems(query,byId)) {ClosetMenu::Close();return;}
+    std::vector<ClosetMenu::Item> items;
+    items.reserve(s_matches.size());
+    for(u16 id:s_matches)items.push_back({id,0});
+    u32 first=0;
+    if(byId) {
+        const auto it=std::lower_bound(s_matches.begin(),s_matches.end(),anchor);
+        first=it==s_matches.end()?static_cast<u32>(s_matches.size()-1u):static_cast<u32>(it-s_matches.begin());
+    }
+    if(!ClosetMenu::Publish(items.data(),items.size(),first)) {
+        ClosetMenu::Close();Error(u8"検索結果をクローゼットへ渡せませんでした。");
+    }
+    GuiMenu::CaptureGameTouchUntilRelease();
+}
+void CloseList();
 void OpenList(bool commandList,const char *query=nullptr) {
     if (GameList::Wanted() || GameList::Present()) {Error(u8"別のリストを使用中です。");return;}
     s_count=0;
@@ -232,24 +275,11 @@ void OpenList(bool commandList,const char *query=nullptr) {
         s_count=sizeof(kCommands)/sizeof(kCommands[0]);
         for(u32 i=0;i<s_count;++i)s_rowPointers[i]=kCommands[i];
     } else {
-        if (!ItemNames::LoadNormal()) {Error(u8"ゲームのアイテム名を読めません。");return;}
-        char normalized[100];
-        if (!NormalizeKana(query,normalized,sizeof(normalized)) || !*normalized) {Error(u8"かなでアイテム名を入力してください。");return;}
-        const u32 normal=ItemNames::NormalCount(), hidden=ItemNames::HiddenCount();
-        s_matches.clear();
-        for(u32 i=0;i<normal+hidden;++i) {
-            const auto *entry=i>=normal?ItemNames::HiddenAt(i-normal):nullptr;
-            const u32 id=i<normal?0x2000u+i:entry->id;
-            if(id>=0x7FFE)continue;
-            char kana[128], folded[128];
-            if(!ItemNames::NameUtf8(static_cast<u16>(id),kana,sizeof(kana),true)
-                || !NormalizeKana(kana,folded,sizeof(folded)) || !std::strstr(folded,normalized))continue;
-            s_matches.push_back(static_cast<u16>(id));
-        }
-        if (s_matches.empty()) {Error(u8"一致するアイテムがありません。");return;}
-        // fgobjを含む補完名は別表。通常名との境界をページ順へ持ち込まない。
-        std::sort(s_matches.begin(),s_matches.end());
-        s_matches.erase(std::unique(s_matches.begin(),s_matches.end()),s_matches.end());
+        const char *loading[]={u8"検索中…"};
+        GameList::SetItems(loading,1);GameList::SetOverChat(true);GameList::Show(0);
+        s_commandList=false;s_list=true;s_retiring=false;
+        __atomic_store_n(&s_pause,1u,__ATOMIC_RELEASE);
+        if(!SearchItems(query,false)) {CloseList();return;}
         s_page=0;FillPage();
     }
     ChatIme::DismissForCommand();
@@ -289,7 +319,7 @@ void SetActive(int,bool on) {
 }
 }
 bool KeyboardPaused() {
-    return __atomic_load_n(&s_pause,__ATOMIC_ACQUIRE)!=0 || __atomic_load_n(&s_hotkeyPause,__ATOMIC_ACQUIRE)!=0;
+    return ClosetMenu::Busy() || __atomic_load_n(&s_pause,__ATOMIC_ACQUIRE)!=0 || __atomic_load_n(&s_hotkeyPause,__ATOMIC_ACQUIRE)!=0;
 }
 bool HandleKeyboardHotkey() {
     if (!IsActive(0) || GuiMenu::IsVisible() || !ChatKanji::NormalChatOpen()) {
@@ -313,9 +343,12 @@ bool HandleKeyboardHotkey() {
 }
 void Wire() {
     s_index=GuiMenu::FindItem(Cheats::kChatCommands);
+    s_viewIndex=GuiMenu::FindItem(Cheats::kChatSearchView);
 }
-void Shutdown() { s_wanted=false;SetActive(-1,false); }
+void Shutdown() { ClosetMenu::Shutdown();s_wanted=false;SetActive(-1,false); }
 void Tick(u16) {
+    const char *closetError=ClosetMenu::TakeError();
+    if(*closetError)Error(closetError);
     const bool wanted=s_index>=0 && GuiMenu::ItemApplied(s_index)!=0;
     if (wanted!=s_wanted) {s_wanted=wanted;SetActive(s_index,wanted);}
     const u16 mask=s_index>=0?GuiMenu::ItemAppliedHotkey(s_index):0;
@@ -378,11 +411,12 @@ void Tick(u16) {
     __atomic_store_n(&s_incoming,0u,__ATOMIC_RELEASE);
     const Command command=Parse(text);
     ChatIme::DismissForCommand();
-    if(s_list || s_retiring || s_afterClose!=Kind::None){Error(u8"前のコマンドを処理中です。");return;}
+    if(s_list || s_retiring || s_afterClose!=Kind::None || ClosetMenu::Busy()){Error(u8"前のコマンドを処理中です。");return;}
+    const bool closet=s_viewIndex>=0 && GuiMenu::ItemApplied(s_viewIndex)==1;
     switch(command.kind) {
     case Kind::List: OpenList(true);break;
-    case Kind::ItemId: if(!ItemNames::LoadNormal())Error(u8"アイテム名を読めません。");else AddItem(command.item);break;
-    case Kind::ItemName: OpenList(false,command.query);break;
+    case Kind::ItemId: if(closet)OpenCloset(nullptr,command.item,true);else if(!ItemNames::LoadNormal())Error(u8"アイテム名を読めません。");else AddItem(command.item);break;
+    case Kind::ItemName: if(closet)OpenCloset(command.query,0,false);else OpenList(false,command.query);break;
     case Kind::Weather: if(!Cheats::SetWeather(command.weather))Error(u8"天気の処理が競合しています。");break;
     case Kind::Style:
         // 下画面の退場と待機はHHD画面自身が行う。

@@ -1,5 +1,17 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-T009 / GPT-6: クローゼット検索
+
+- 最終PC gate18Closet scenario＋native180/旧list20/repeat12/scroll/style6、4334parser/33anchor/15CPP、linked/ABI/hash/しずえPASS。解析DB37name/5型/公式XML読戻しPASS、正常・全旧版保持。今回CloneMenu2新file＋6既存製品file＋2仕様＋STATE/SESSIONの12fileだけ最後一括work枝保存へ。期待HEAD9d3e65e/index空、旧整理dirtyは含めず実機未確認/main未変更。最終artifact hash/commitは解析側manifest/publication参照。
+
+- ClosetMenu/検索backend/メニュー項目を追加、検索開始要求後に同期検索。nativegetter/setterを私有領域へ、nativepocket転送を保ちoccupied pocketの預入を拒否、chat原個体のpause/detach/dtor監視/復帰。prebuild4334parser/33anchor/15CPP PASS、初回構文2件は訂正。これから専用BuildClosetSearchで別artifactのみ生成し、nativeCPU/linked/XMLを検査。実機未確認/main/Git/旧整理不変。
+
+- 実装前設計を解析側closet_search_designへ保存。10slot/nativeドラッグ、1tab/private provider、動的pageCount、occupied pocketの預入拒否、chat原個体のpause/detach/復帰、開く受付→検索→async表示を採用。native取得を自前で作らない。製品変更は次から、旧list/style/time経路を保持、Git最後一括/実機未確認/work枝のみ。
+
+- 回答確定: 取得はnativeクローゼットの掴む/持ち物移動へ任せ、チート独自の取得処理は追加しない。検索表示用data providerの read/write と通常保存クローゼットを混同しない。解析では10slot/page・pocket16/control6/slotbase22、nativegetter/setter/tab/page/drag監視を取得、assembly独立照合とchat共存/復帰は未完。製品実装前、次はこの契約を確定して設計を保存する。
+
+- 利用者のnativeクローゼット解析→指定slot/itemsで開くチート→chat検索list/closet切替を開始。追加4条件: 名前hit集合、IDはtab1個/前後の無固定page（指定ID未満も閲覧）、閉じたらchatへ、先に開始要求して入場完了を待たず検索。取得/閲覧のみは任意回答待ち。まず解析、未確定契約で実装しない。開始9d3e65e、製品scope/index空、旧整理中断/dirtyと正常・全配布版保持、Git最後一括、実機/SD/main未操作。次はBsMenuChest slot backing/生成/ページを独立照合。
+
 ## 2026-10-12 IDA-gpt-6-T008 / GPT-6
 
 - 最終32source SHA/正常・全旧配布版保持/DB公式XML訂正読戻し/EOL/diff-check PASS。今回4fileのみ最後一括work/gohan-chat-and-portsへcommit/push/独立remote照合、確定commit/hashは解析側gohan_chat_style_direct1/manifestとgohan_chat_style_direct/publication参照。新版実機未確認/main未変更、次は4alias表示/B閉鎖/再起動の利用者実機確認。

@@ -47,7 +47,7 @@ namespace GameList
     // ★依頼は持ち主ごと（2026-10-06）。以前は旗 1 本を共用していて、マップエディターが毎フレーム自分の依頼を返すと
     //   HHD式スタイル変更の依頼まで消え、HHD が「下画面 UI の退場待ち」のまま入力だけ止めていた（利用者報告）。
     //   誰か 1 人でも持っていれば退場させておく。
-    enum HoldOwner : u32 { kHoldMapEditor = 1u, kHoldHhd = 2u, kHoldChatTime = 4u };
+    enum HoldOwner : u32 { kHoldMapEditor = 1u, kHoldHhd = 2u, kHoldChatTime = 4u, kHoldCloset = 8u };
     bool        HoldField(bool on, u32 owner);
     bool        FieldHidden(void);      // 元の UI が隠れきっていて、リストも組んでいない（ほかの部品が下画面を使ってよい）
     bool        FieldShown(void);       // 元の UI が戻りきっている

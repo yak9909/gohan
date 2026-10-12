@@ -33,6 +33,9 @@ namespace CTRPluginFramework
         static const char kNoBedHead[]      = u8"寝癖付かない";
         // ---- root/アイテム ----
         static const char kPocketItem[]     = u8"ポケットアイテム";
+        static const char kClosetSlot[]     = u8"クローゼットのスロット";
+        static const char kClosetItem[]     = u8"クローゼットのアイテム";
+        static const char kClosetOpen[]     = u8"クローゼットを開く";
         static const char kHiddenItems[]    = u8"没アイテム表示";
         static const char *const kHiddenItemsOptions[] = { u8"非表示", u8"表示", u8"自前表示" };
         // ---- root/アイテム/ドロップ ----
@@ -46,6 +49,8 @@ namespace CTRPluginFramework
         static const char kWeather[]        = u8"天気";
         static const char kKeepItems[]      = u8"アイテムが消えない";
         static const char kChatCommands[]   = u8"チャットコマンド";
+        static const char kChatSearchView[] = u8"アイテム検索の表示";
+        static const char *const kChatSearchViewOptions[] = {u8"リスト",u8"クローゼット"};
         static const char kNoLookUp[]       = u8"空を見上げない";
         // ---- root/ゲーム/店 ----
         static const char kShopsOpen[]      = u8"店24時間オープン";

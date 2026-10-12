@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了、最後一括保存中: クローゼット検索 / GPT-6
+
+- IDA-gpt-6-T009/F006: native10slot/private provider/指定複数slot/items、chat list/closet切替。名前hitのみ、ID1tab/前後の動的page/0x入力、begin→search、native掴む→empty pocket、元chat原個体/登録値復帰。4334parser/33anchor/15CPP、18Closet/native180、旧list20/repeat12/scroll/style6、linked/ABI/hash/しずえ・DB公式XML PASS。新3gxは解析側gohan_closet_search1/manifest、実機未確認/work枝のみ/main/SD/旧整理不変。今回12fileだけ最後一括保存/remote確認へ。
+
+- IDA-gpt-6-T009: native解析後に指定slot/itemsのクローゼットチートとlist/closet検索表示切替を実装。名前hit集合、IDはtab1個/前後無固定pageで指定ID未満も閲覧、終了chatへ、開始要求→検索（入場完了待ちなし）。取得/閲覧のみは任意回答待ち。開始9d3e65e、正常/全配布版と旧整理dirty保持、実機/main/SD未操作、Git最後一括。次は解析環境のBsMenuChest契約から設計。
+
 ## 実装・PC検証完了: hair等の直接HHD呼出し / GPT-6
 
 - IDA-gpt-6-T008: 利用者実機でfix2 list修復確認/hair不動。4aliasは直接HHD Show、CloseChat/AfterCloseはTimeMenuのみへ。HHD/GameList本体source不変。別build・実chat bound即Show/再要求/失敗/time分離6case＋既存20/12case/native回帰/linked570func・ABI/hash・14CPP/4330parser/23anchor PASS。解析側gohan_chat_style_direct1/最終hash保存commitはmanifest/publication参照。今回ChatCommands/§14/STATE/SESSIONの4fileだけ最後一括work枝保存、実機未確認/main未変更/旧整理中断。次は利用者の新版実機確認。

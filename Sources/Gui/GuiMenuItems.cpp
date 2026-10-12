@@ -168,6 +168,11 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_ACTION, kPocketItem,
                             u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
+                i = AddItem(ITEM_VALUE, kClosetSlot, u8"0から始まるスロット番号。10枠ごとにページが変わります。");
+                SetValue(i, FMT_DEC, 0, 0, 0x7FFD, 1);
+                i = AddItem(ITEM_ACTION, kClosetItem, u8"指定スロットに表示するID。複数のスロットを設定してからクローゼットを開けます。7FFEは空き枠です。");
+                SetValue(i, FMT_HEX, 0x7FFE, 0, 0x7FFE, 1);
+                AddItem(ITEM_ACTION, kClosetOpen, u8"設定したアイテムをネイティブのクローゼットで表示します。掴んで持ち物の空き枠へ移せます。再実行またはBで閉じます。");
                 // Issue #15。連動型リスト（ゲームのコードの 1 語を読んで今の状態を出す）
                 i = AddItem(ITEM_LINKED_LIST, kHiddenItems,
                             u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムに名前とアイコンを付けます。");
@@ -386,6 +391,8 @@ namespace CTRPluginFramework
                 i = AddItem(ITEM_CHECKBOX, kChatCommands,
                             u8"有効中はホットキーで入力したコマンドを実行します。list で一覧を確認できます。");
                 SetHotkey(i, Bit(HB_R) | Bit(HB_B));
+                i = AddItem(ITEM_LIST, kChatSearchView, u8"チャットのアイテム名検索をリスト／クローゼットで表示します。クローゼットのID検索は指定ID付近から前後へ閲覧できます。");
+                SetOptions(i, kChatSearchViewOptions, 2);
                 g_rootCount = g_itemCount - g_rootFirst;
             }
 
