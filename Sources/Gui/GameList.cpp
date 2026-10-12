@@ -1181,6 +1181,17 @@ bool HoldFieldFromMenu(u32 owner) {
     return true;
 }
 
+bool ReleaseFieldToMenu(u32 owner) {
+    if (!owner || (s_holdField & owner) != owner || s_field != Field::Hidden || s_stage != Stage::Off
+        || s_menuCloseSent || !MenuOpen() || (R32(kMenuFlags) & (0x10u | 0x80u)) == 0)
+        return false;
+    // 隠したfieldの復帰を予約せず、以後の退場・地図復帰をnative窓へ渡す。
+    SetField(Field::Shown, 4, false);
+    s_fieldHiddenNow = false;
+    HoldField(false, owner);
+    return true;
+}
+
 void Show(s32 selected) {
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {

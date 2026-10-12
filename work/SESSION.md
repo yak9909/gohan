@@ -1,5 +1,15 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 追加: 自前没icon・帰還直通・即時page / GPT-6
+
+- 2026-10-13最終PC gate: native29＋timing/memory7/旧24・list20/repeat12/style6、4334parser/49anchor/17CPP/linked ABI/hash/しずえ、DB公式XML16名21注記/876B型3prototype、37source/正常旧10版/14owner対16 PASS。実装完了、今回11fileだけ最後一括work枝保存/pushへ。新artifactと確定SHAは解析側gohan_closet_followup1/manifest、実機未確認/main/SD/旧整理未操作。
+
+- 最新追加: closet退場→chatを高速化、page間隔待機も削除。同T012/F009へ追加、前3点29case/旧24・linked/XMLはPASS、Gitは全追加完了後まで保留。native退場/決定完了・repeatを解析する。実機/main未操作。
+
+- F009/T012実装前設計を解析側へ保存し、参照数で画像保持/32枠、widget両dtor解放、owned即時pager、hold維持→menu5→chat readyでnativeへ所有を渡す変更を実装。先行PC相対LDRを残しPUSH位置hookでR1/R2をforward。未ビルド/PC未検証、Git完了後一括/実機・main未操作。次は原bytes/ABIと旧症状再現・新版回帰。
+
+- 利用者: 自前表示ONでpage送りに伴いpocket没iconが変化、closet閉鎖後map/tab登場を挟まずchat、pageアニメを省いて即切替へ。T011の直通開始/項目残留/pocket操作・消去/lowID/BC hideを保持。開始codeb11a8a1/メモdb985d8、全製品scopeはclean、旧整理dirty保持/main/SD/実機未操作。追加作業完了までGit保留し、cache lifetimeとnativepage/returnを解析して設計する。
+
 ## 2026-10-12 IDA-gpt-6-F008/T011: closet直通と反復取得
 
 - 保存成功: codeb11a8a1470ff32df5e06d8cea6d9cd227b0873f4/work枝を最後一括commit、初回push33886はGitHub commit_refs failure。独立remoteがbc5cfe3のままと確認、log出力先の欠落（その試行の後もremote旧値）を絶対pathへ訂正、HTTP1.1再送は終了0/独立ls-remote b11a8a1一致。34source SHA/Git・製品scope空、全PC/XML/正常・旧9版保持/14owner対16 PASS。結果メモだけ同最終batchへ追補し、確定root/hashは解析側manifest/publicationを参照。新変更実機未確認/main/SD/旧整理未操作、次は利用者実機確認。

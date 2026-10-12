@@ -23,18 +23,19 @@ const NativePortGuard::Word kAnchors[] = {
     {0x193988,0xE59000DC}, {0x57B238,0xE92D4010}, {0x57F944,0xE92D5FF0},
     {0x6D5510,0xE92D41F0}, {0x6D6214,0xE92D4010}, {0x6D72C0,0xE92D4070},
     {0x81B41C,0xE92D47F0}, {0x723878,0xE92D4038}, {0x1C4238,0xE92D4070},
-    {0x26DB1C,0xE92D4070}, {0x2B9470,0xE92D4070}
+    {0x26DB1C,0xE92D4070}, {0x2B9470,0xE92D4070}, {0x267A54,0xE92D4070},
+    {0x568928,0xE92D4010}, {0x2B79C4,0xE92D4010}, {0x26EC94,0xE92D4010}, {0x1C3214,0xE92D4010}
 };
 const u32 kMenuList=0x9864FC, kManager=0x949D4C, kFlags=0x949D68;
 const u32 kChestVt=0x8E5BB0, kCabinetVt=0x8EAB34;
 const Item kEmpty={0x7FFE,0};
 const u32 kSlots=10, kMaxSlots=0x7FFE;
 enum Phase : u32 { Off, Starting, WaitField, Requested, Live, Returning, WaitChat, ReopeningChat };
-u32 s_phase, s_publish, s_close, s_returnReleased, s_cancelReleased;
+u32 s_phase, s_publish, s_close, s_returnReleased, s_cancelReleased, s_lastKeys, s_returnKeys;
 bool s_returnChat, s_installed, s_armed, s_actorGone, s_hold;
 u32 s_actor, s_child, s_room, s_frames, s_initialSlot, s_pendingInitialSlot, s_originManager, s_nativeDepth;
 const char *s_error;
-Hook s_ctorHook, s_pocketReadHook, s_itemWriteHook;
+Hook s_ctorHook, s_pocketReadHook, s_itemWriteHook, s_pageHook;
 struct NativeScope {
     NativeScope() {++s_nativeDepth;}
     ~NativeScope() {--s_nativeDepth;}
@@ -111,6 +112,19 @@ int SetupSlots(u32 self,u32 base,u32 bindings) {
     if(result)HideExtraTabs(self);
     return result;
 }
+__attribute__((noinline)) int PageStep(u32 self,u32 uiIndex,u32 nativeR2) {
+    if (!s_child || self!=s_child)
+        return HookContext::GetCurrent().OriginalFunction<int>(self,uiIndex,nativeR2);
+    const u32 base=Read(self+6260u);
+    if (uiIndex<base || (uiIndex-base!=4u && uiIndex-base!=5u)) return 0;
+    const u32 relative=uiIndex-base, page=Read(self+6240u), count=Pages();
+    W(self+6268u,relative);
+    W(self+6240u,relative==4u?(page<=1u?count:page-1u):(page>=count?1u:page+1u));
+    // scrollの状態へ入らず内容を更新する。親の待機は既存のchild idle判定で即完了する。
+    reinterpret_cast<void (*)(u32)>(0x297BA0)(self);
+    reinterpret_cast<void (*)(u32)>(0x267660)(self);
+    return 1;
+}
 void UpdatePocketInput(u32 self) {
     if(Read(self+38704u)<3u)return;
     for(u32 i=0;i<16u;++i) {
@@ -175,8 +189,35 @@ int LoadStep(u32 self,u32 allocator) {
 }
 int Calc(u32 self) {
     NativeScope scope;
+    const u32 controls=self+33976u, node=Read(controls+180u);
+    if(s_child && node && !Read(controls+260u)) {
+        const u32 index=Read(node+200u), base=Read(s_child+6260u);
+        if(index>=base && (index-base==4u || index-base==5u)) {
+            // nativeの11/3frameリピート待機と、pageボタンの決定アニメ待ちを省く。
+            W(controls+216u,0xFFFFFFFFu);W(controls+220u,1);
+            if(Read(controls+184u)==0x2F6694 && !Read(controls+188u))
+                for(u32 offset : {112u,152u})if(Read(node+offset+24u))
+                    reinterpret_cast<void (*)(u32)>(0x568928)(node+offset);
+        }
+    }
     UpdatePocketInput(self);
     const int result=reinterpret_cast<int (*)(u32)>(0x1C3F54)(self);
+    if(s_child && Read(self+52u)==0x1C38A0 && !Read(self+56u)
+        && Read(s_child+2636u)==0x267878 && !Read(s_child+2640u))
+        reinterpret_cast<void (*)(u32)>(0x1C38A0)(self);
+    if(s_child && Read(self+52u)==0x1C3214 && !Read(self+56u)) {
+        // アニメだけ終端へ進め、nativeのunbindと破棄要求をそのまま通す。
+        if(Read(s_child+12u)==0x2B79C4 && !Read(s_child+16u)) {
+            reinterpret_cast<void (*)(u32)>(0x568928)(s_child+996u);
+            reinterpret_cast<void (*)(u32)>(0x2B79C4)(s_child);
+        }
+        const u32 window=self+80u;
+        if(Read(window+12u)==0x26EC94 && !Read(window+16u) && Read(window+1988u)) {
+            reinterpret_cast<void (*)(u32)>(0x568928)(Read(window+1988u));
+            reinterpret_cast<void (*)(u32)>(0x26EC94)(window);
+        }
+        reinterpret_cast<void (*)(u32)>(0x1C3214)(self);
+    }
     UpdatePocketInput(self);
     if(s_child)HideExtraTabs(s_child);
     return result;
@@ -206,13 +247,16 @@ __attribute__((noinline)) u32 Construct(u32 self) {
 }
 void BeginReturn() {
     s_armed=false;
-    if(s_hold) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
+    if(s_hold && !s_returnChat) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
     // The tab's normal close state is bypassed while held; consume the finished menu notification.
     W(kFlags,Read(kFlags)&~0x28u);
-    Store(&s_returnReleased,0u);Store(&s_phase,Returning);s_frames=0;
+    // 旧actorが消えた時点で次のchatを要求できる。キー全releaseを待たない。
+    std::vector<Item>().swap(s_items);std::vector<Item>().swap(s_pending);
+    Store(&s_returnKeys,Load(&s_lastKeys));
+    Store(&s_returnReleased,1u);Store(&s_phase,Returning);s_frames=0;
 }
 void Finish() {
-    s_items.clear();s_pending.clear();
+    std::vector<Item>().swap(s_items);std::vector<Item>().swap(s_pending);
     Store(&s_publish,0u);Store(&s_close,0u);Store(&s_phase,Off);
 }
 void WaitForField() {
@@ -220,13 +264,13 @@ void WaitForField() {
     s_hold=true;s_frames=0;Store(&s_phase,WaitField);
 }
 bool ReopenChat() {
-    if(!GameList::FieldReady() || !reinterpret_cast<bool (*)()>(0x6D1074)())return false;
+    if(!GameList::FieldHidden() || !GameList::FieldReady() || !reinterpret_cast<bool (*)()>(0x6D1074)())return false;
     const u32 tab=Read(s_originManager+480u);
     if(!NativePortGuard::Heap(tab))return false;
-    // The native chat button selects index6 and enters "chat tabs out".
-    // Its following state issues menu5 itself, including field/background transitions.
+    // fieldを隠したまま普通chatを要求する。通常tab6経路の地図復帰・タブ入場を省く。
+    if(!reinterpret_cast<int (*)(int,int)>(0x6D1330)(5,1))return false;
     WB(tab+6427u,6);
-    reinterpret_cast<void (*)(u32,u32,u32)>(0x81B41C)(tab+20u,0x6D6214,0);
+    reinterpret_cast<void (*)(u32,u32)>(0x693EE8)(Read(0x949718),6);
     Store(&s_phase,ReopeningChat);s_frames=0;return true;
 }
 void FrameStep() {
@@ -293,17 +337,34 @@ void FrameStep() {
         return;
     }
     if(phase==Returning && Load(&s_returnReleased)) {
-        if(!s_returnChat) {if(Room()!=s_room || GameList::FieldShown())Finish();}
-        else if(GameList::FieldShown())ReopenChat();
+        if(!s_returnChat) {
+            if(s_hold) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
+            if(Room()!=s_room || GameList::FieldShown())Finish();
+        }
+        else if(!ReopenChat() && ++s_frames>180u) {
+            s_error=u8"チャットを開き直せませんでした。";
+            if(s_hold) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
+            Finish();
+        }
     }
     if(phase==ReopeningChat) {
         const u32 parent=Read(s_originManager+492u);
         if(ChatKanji::NormalChatOpen() && NativePortGuard::Heap(parent)
-            && Read(parent+52u)==0x193764 && Read(parent+56u)==0)Finish();
-        else if(++s_frames>180u) {
-            s_error=u8"チャットを開き直せませんでした。";
-            if(ChatGone())WB(0x949D24,2); // native map/tab restoration after a failed creation
+            && Read(parent+52u)==0x193764 && Read(parent+56u)==0
+            && GameList::ReleaseFieldToMenu(GameList::kHoldCloset)) {
+            s_hold=false;
+            const u32 tab=Read(s_originManager+480u);
+            reinterpret_cast<void (*)(u32,u32,u32)>(0x81B41C)(tab+20u,0x6D5510,0);
             Finish();
+        }
+        else {
+            ++s_frames;
+            if(s_frames==181u)s_error=u8"チャットを開き直せませんでした。";
+            // 受理済みの生成中要求を放棄しない。実際に窓が無くなった失敗だけfieldへ戻す。
+            if(s_frames>180u && ChatGone()) {
+                if(s_hold) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
+                Finish();
+            }
         }
     }
 }
@@ -314,9 +375,10 @@ bool Install() {
     s_ctorHook.InitializeForMitm(0x1C42D4,reinterpret_cast<u32>(Construct));
     s_pocketReadHook.InitializeForMitm(0x723878,reinterpret_cast<u32>(ReadPocket));
     s_itemWriteHook.InitializeForMitm(0x1C4238,reinterpret_cast<u32>(WriteItem));
+    s_pageHook.InitializeForMitm(0x267A54,reinterpret_cast<u32>(PageStep));
     if(s_ctorHook.Enable()!=HookResult::Success || s_pocketReadHook.Enable()!=HookResult::Success
-        || s_itemWriteHook.Enable()!=HookResult::Success) {
-        s_itemWriteHook.Disable();s_pocketReadHook.Disable();s_ctorHook.Disable();return false;
+        || s_itemWriteHook.Enable()!=HookResult::Success || s_pageHook.Enable()!=HookResult::Success) {
+        s_pageHook.Disable();s_itemWriteHook.Disable();s_pocketReadHook.Disable();s_ctorHook.Disable();return false;
     }
     s_installed=true;return true;
 }
@@ -362,9 +424,14 @@ bool Busy() {return Load(&s_phase)!=Off;}
 bool BlocksInput() {const u32 p=Load(&s_phase);return p!=Off && (p!=Live || !s_actor || Read(s_actor+38704u)<3u);}
 const char *TakeError() {const char *result=s_error;s_error=nullptr;return result?result:"";}
 void Tick() {
+    const u32 physical=Controller::GetKeysDown(true);
+    Store(&s_lastKeys,physical);
+    const u32 heldReturn=__atomic_fetch_and(&s_returnKeys,physical,__ATOMIC_ACQ_REL)&physical;
+    // chatの入場は進める。閉じた時の押しっぱなしだけを新しい窓へ渡さない。
+    if(heldReturn)GuiMenu::BlockGameAll();
     if(!Busy())return;
     if(BlocksInput()) {GuiMenu::BlockGameAll();GuiMenu::BlockGameTouch();}
-    const u32 keys=Controller::GetKeysDown(true), phase=Load(&s_phase);
+    const u32 keys=physical, phase=Load(&s_phase);
     if(!(keys&static_cast<u32>(Key::B)))Store(&s_cancelReleased,1u);
     else if(Load(&s_cancelReleased) && phase!=Live && phase!=Returning && phase!=ReopeningChat)Close();
     if(Load(&s_phase)==Returning) {

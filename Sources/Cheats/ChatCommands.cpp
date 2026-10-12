@@ -265,6 +265,9 @@ void OpenCloset(const char *query,u16 anchor,bool byId) {
     if(!ClosetMenu::Publish(items.data(),items.size(),first)) {
         ClosetMenu::Close();Error(u8"検索結果をクローゼットへ渡せませんでした。");
     }
+    // native表示はIDだけを使う。名前表と検索バッファを返し、漢字変換の5MiB再確保を妨げない。
+    std::vector<u16>().swap(s_matches);
+    ItemNames::ReleaseNormal();
     GuiMenu::CaptureGameTouchUntilRelease();
 }
 void CloseList();

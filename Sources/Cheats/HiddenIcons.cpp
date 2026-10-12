@@ -9,8 +9,7 @@
 // 絵は 32x32（利用者が見比べて決めた。2026-09-27）。sdmc:/luma/plugins/gohan/common/hidden_item_icons.arc（DARC。timg/<番号>.bclim、各 1,064 B =
 //   ETC1A4 1,024 B + CLIM 見出し 0x28。ゲームの Layout/ItemWin/item_icon_tex.arc と同じ形。解析 repo tools/items/export_hidden_icons.py）を
 //   起動時にプラグインのヒープへ読む（LoadIcons）。プラグインのヒープは GPU から読めないので、
-//   借りたヒープの末尾のキャッシュ（GuiRenderer::GpuIconCache、1,024 B x 16 枠）へ写して使う。
-//   枠は絵と大きさで引き、無ければ一番長く使っていない枠へ写す（持ち物は 16 枠なので 16 種類までは同時に出せる）。
+//   借りたヒープの末尾の32枠へ写し、widgetが使う間は保持する。持ち物16枠と一覧10枠を同時に表示できる。
 // arc が無ければ何もしない（ゲームのアイコンのまま）。
 
 #include "HiddenIcons.hpp"
@@ -36,6 +35,9 @@ using CTRPluginFramework::HookResult;
 
 const u32 kSetItem = 0x002B8EAC;            // ItemIconWidget_SetItem(widget, &item, kind)
 const u32 kSetItemOrig = 0xE92D4FF7;        // PUSH {R0-R2,R4-R11,LR}
+// 先頭LDRの次のPUSHへ置く。MITMはPC相対LDRを再配置しない。
+const u32 kDtor = 0x002B99D0, kDelete = 0x002B9978;
+const u32 kDtorOrig = 0xE92D4010;
 const u32 kFindPane = 0x00567E44;           // (layout, name) -> pane（widget +308 の layout から）
 const u32 kFindPaneOrig = 0xE92D4070;
 const u32 kTexMapUpdate = 0x004B9830;       // nwlyt_TexMap_UpdateGpuRegs(texMap)
@@ -47,12 +49,13 @@ const u32 kMaterialFlags = 77;
 const u32 kFmtEtc1a4 = 11;
 const u32 kSlotBytes = 1024;               // 32x32 ETC1A4
 const u32 kIconSize = 32;
-const u32 kSlots = 16;
+const u32 kSlots = 32, kUsers = 128;
 
 struct Slot {
     s16 image;      // s_images の番号（-1 = 空）
-    u32 stamp;
+    u16 references;
 };
+struct User { u32 widget; u16 slot; };
 
 // 読んだ arc の絵（番号の昇順）
 struct Image {
@@ -66,11 +69,11 @@ Image *s_images;
 u32 s_imageCount;
 bool s_loadTried;
 
-Hook s_hook;
+Hook s_hook, s_dtorHook, s_deleteHook;
 bool s_hooked;
 volatile bool s_on;
 Slot s_slots[kSlots];
-u32 s_clock;
+User s_users[kUsers];
 u32 s_gen = 0xFFFFFFFFu;
 
 inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
@@ -115,40 +118,58 @@ int ImageIndex(u16 number) {
 }
 
 // 絵をキャッシュへ置いて VA を返す（無ければ 0）。ゲームのスレッド
-u32 Place(int image) {
+void Release(u32 widget) {
+    if (!widget) return;
+    for (User &user : s_users)
+        if (user.widget == widget) {
+            if (s_slots[user.slot].references) --s_slots[user.slot].references;
+            user.widget = 0;
+            return;
+        }
+}
+
+u32 Place(u32 widget, int image) {
     u32 bytes = 0;
     const u32 base = CTRPluginFramework::GuiRenderer::GpuIconCache(bytes);
     if (base == 0 || bytes < kSlotBytes * kSlots)
         return 0;
     if (s_gen != CTRPluginFramework::GuiRenderer::Generation()) {
         s_gen = CTRPluginFramework::GuiRenderer::Generation();     // 描画器が組み直された: 中身は無い
-        for (u32 i = 0; i < kSlots; ++i)
-            s_slots[i].image = -1;
+        for (Slot &slot : s_slots) {slot.image = -1; slot.references = 0;}
+        for (User &user : s_users) user.widget = 0;
     }
-    int empty = -1, oldest = 0;
+    User *user = nullptr;
+    for (User &candidate : s_users) if (!candidate.widget) {user = &candidate; break;}
+    if (!user) return 0;
+    int pick = -1;
     for (u32 i = 0; i < kSlots; ++i) {
         if (s_slots[i].image == image) {
-            s_slots[i].stamp = ++s_clock;
+            ++s_slots[i].references;
+            *user = {widget, static_cast<u16>(i)};
             return base + i * kSlotBytes;
         }
-        if (s_slots[i].image < 0) {
-            if (empty < 0)
-                empty = (int)i;
-        } else if (s_slots[i].stamp < s_slots[oldest].stamp || s_slots[oldest].image < 0)
-            oldest = (int)i;
+        if (!s_slots[i].references && pick < 0) pick = static_cast<int>(i);
     }
-    const u32 pick = (u32)(empty >= 0 ? empty : oldest);
+    // TexMapはPAを保持するため、表示中の枠を再利用すると別widgetの絵まで変わる。
+    if (pick < 0) return 0;
     const u32 va = base + pick * kSlotBytes;
     std::memcpy(reinterpret_cast<void *>(va), s_images[image].data, kSlotBytes);
     svcFlushProcessDataCache(CUR_PROCESS_HANDLE, va, kSlotBytes);    // GPU は D-cache を見ない
     s_slots[pick].image = (s16)image;
-    s_slots[pick].stamp = ++s_clock;
+    s_slots[pick].references = 1;
+    *user = {widget, static_cast<u16>(pick)};
     return va;
+}
+
+__attribute__((noinline)) u32 DtorHook(u32 widget, u32 nativeVtable) {
+    Release(widget);
+    return HookContext::GetCurrent().OriginalFunction<u32>(widget, nativeVtable);
 }
 
 __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     HookContext &ctx = HookContext::GetCurrent();
     const u32 r = ctx.OriginalFunction<u32>(widget, item, kind);
+    Release(widget);
 
     if (!s_on || widget == 0 || kind != 0)
         return r;
@@ -162,9 +183,6 @@ __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     if (image < 0)
         return r;
     const u32 size = kIconSize;
-    const u32 va = Place(image);
-    if (va == 0)
-        return r;
 
     typedef u32 (*FindPaneFn)(u32 layout, const char *name);
     typedef u32 (*GetMaterialFn)(u32 pane, u32 index);
@@ -174,6 +192,8 @@ __attribute__((noinline)) u32 SetItemHook(u32 widget, u16 *item, u32 kind) {
     const u32 texMap = material != 0 ? R32(material + kMaterialTexMap) : 0;
     if (texMap == 0)
         return r;
+    const u32 va = Place(widget, image);
+    if (va == 0) return r;
     W32(texMap + 0, 0);
     W32(texMap + 4, va - 0x10000000u);
     W32(texMap + 8, size | size << 16);
@@ -258,9 +278,16 @@ bool SetEnabled(bool on) {
         if (CTRPluginFramework::Process::GetTitleID() != 0x0004000000086200ULL || R32(kSetItem) != kSetItemOrig
             || R32(kFindPane) != kFindPaneOrig || R32(kTexMapUpdate) != kTexMapUpdateOrig)
             return false;
+        if (R32(kDtor) != kDtorOrig || R32(kDelete) != kDtorOrig
+            || R32(kDtor-4u) != 0xE59F1044 || R32(kDelete-4u) != 0xE59F1048) return false;
         s_hook.InitializeForMitm(kSetItem, reinterpret_cast<u32>(SetItemHook));
-        if (s_hook.Enable() != HookResult::Success)
+        s_dtorHook.InitializeForMitm(kDtor, reinterpret_cast<u32>(DtorHook));
+        s_deleteHook.InitializeForMitm(kDelete, reinterpret_cast<u32>(DtorHook));
+        if (s_hook.Enable() != HookResult::Success || s_dtorHook.Enable() != HookResult::Success
+            || s_deleteHook.Enable() != HookResult::Success) {
+            s_deleteHook.Disable();s_dtorHook.Disable();s_hook.Disable();
             return false;
+        }
         s_hooked = true;
     }
     s_on = on;          // フックは入れたまま（切っている間は元のアイコンのまま）

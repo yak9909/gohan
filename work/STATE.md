@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 追加実装中: 自前没icon・帰還直通・即時page / GPT-6
+
+- 2026-10-13追加の退場高速化/ページ間隔撤去/漢字変換ERROR2/STAGE1も同T012/F009で実装。表示中画像32pin/両dtor、直通menu5/field所有引継ぎ、native退出/decide終端・repeat間隔なし、検索バッファ容量と名前表返却、held閉鎖キー遮断。新29case＋timing/memory7・旧24症状/既存list20/repeat12/style6とDB16名21注記/型XML PASS。最終atomic差分build/linked・hashを再確認して最後一括作業枝保存する。実機/main/旧整理/正常旧10版未操作。
+
+- T011に加え、page送りの自前没icon安定、closet→chat直通、pageの即切替を追加する。Sourceb11a8a1/db985d8、製品clean/旧整理dirty保持、追加完了後までGit保留/実機・SD/main未操作。次はHiddenIcons cacheとnativepage/returnの所有関係を調査。
+
 ## 実装・PC検証完了: クローゼット直通・反復取得・持ち物操作 / GPT-6
 
 - 今回7fileのcodeb11a8a1470ff32df5e06d8cea6d9cd227b0873f4を最後一括commit/push、独立remote一致。初回GitHub commit_refs失敗はremote未反映を確認後の再送で成功。全PC/XML/hash・34source Git一致/正常・旧9版保持PASS。保存結果メモも同最終batchへ追補。新3gx1e9d238e...は実機未確認/main/SD/旧整理不変、次は利用者の新版実機確認のみ。
