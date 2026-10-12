@@ -51,6 +51,7 @@ namespace GameList
     bool        HoldField(bool on, u32 owner);
     bool        FieldHidden(void);      // 元の UI が隠れきっていて、リストも組んでいない（ほかの部品が下画面を使ってよい）
     bool        FieldShown(void);       // 元の UI が戻りきっている
+    bool        FieldReady(void);       // nativeタブが実際に待機状態で、命令/出入りも終わっている
 
     void        FrameStep(void);        // ゲームのスレッド
     void        Shutdown(void);         // プラグイン終了時（ゲームのスレッドで片付け終わるまで待つ）

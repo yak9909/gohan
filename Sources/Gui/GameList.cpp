@@ -1201,6 +1201,10 @@ bool FieldShown(void) {
     return s_field == Field::Shown && !s_menuCloseSent;
 }
 
+bool FieldReady(void) {
+    return FieldIdle();
+}
+
 bool FieldTransition(void) {
     return s_field == Field::Exiting || s_field == Field::Restoring || s_menuCloseSent;
 }

@@ -1,5 +1,9 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: クローゼット検索の実退場修正 / GPT-6
+
+- IDA-gpt-6-F007/T010: 普通chatのnativeキャンセル/実退場→tab復帰→closet61、終了はnative tab6/menu5→新chatへ変更。凍結/手動detach/旧actor再利用を撤去。旧Tab13でtimeout再現、新20case/native180・旧list20/repeat12/scroll/style6・4334parser/40anchor/15CPP/linked ABI/hash/しずえPASS。DB/XML/34source・正常/全旧8配布版保持/14owner対16もPASS。新成果物は解析側gohan_closet_exit_fix1/3gx c8ff8fed...。新成功表示は実機未確認/main/SD/旧整理不変。次は今回7fileだけ最後一括work枝保存/push/remote照合、確認操作はかな/0xID→native表示/掴む/page/B→chat復帰。
+
 ## 実装・PC検証・作業枝保存完了: クローゼット検索 / GPT-6
 
 - IDA-gpt-6-T009/F006: native10slot/private provider/指定複数slot/items、chat list/closet切替。名前hitのみ、ID1tab/前後の動的page/0x入力、begin→search、native掴む→empty pocket、元chat原個体/登録値復帰。4334parser/33anchor/15CPP、18Closet/native180、旧list20/repeat12/scroll/style6、linked/ABI/hash/しずえ・DB公式XML PASS。今回12fileをcodeaf118fa34bb4ae036593a6dec936816d9b15fcbe/work枝へ最後一括保存/push終了0・独立remote一致。解析artifact checkpointc2f6ba13も保存/push終了0、結果メモ追補は同最終batch。新3gxは解析側gohan_closet_search1/manifest、実機未確認/main/SD/旧整理不変。次は利用者のnative画面/page/tab/掴む/閉じるchat復帰・複数slotの実機確認。
