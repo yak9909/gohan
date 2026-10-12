@@ -1,10 +1,10 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
-## 実装・PC検証完了、最後一括保存中: クローゼット検索 / GPT-6
+## 実装・PC検証・作業枝保存完了: クローゼット検索 / GPT-6
 
-- IDA-gpt-6-T009/F006: native10slot/private provider/指定複数slot/items、chat list/closet切替。名前hitのみ、ID1tab/前後の動的page/0x入力、begin→search、native掴む→empty pocket、元chat原個体/登録値復帰。4334parser/33anchor/15CPP、18Closet/native180、旧list20/repeat12/scroll/style6、linked/ABI/hash/しずえ・DB公式XML PASS。新3gxは解析側gohan_closet_search1/manifest、実機未確認/work枝のみ/main/SD/旧整理不変。今回12fileだけ最後一括保存/remote確認へ。
+- IDA-gpt-6-T009/F006: native10slot/private provider/指定複数slot/items、chat list/closet切替。名前hitのみ、ID1tab/前後の動的page/0x入力、begin→search、native掴む→empty pocket、元chat原個体/登録値復帰。4334parser/33anchor/15CPP、18Closet/native180、旧list20/repeat12/scroll/style6、linked/ABI/hash/しずえ・DB公式XML PASS。今回12fileをcodeaf118fa34bb4ae036593a6dec936816d9b15fcbe/work枝へ最後一括保存/push終了0・独立remote一致。解析artifact checkpointc2f6ba13も保存/push終了0、結果メモ追補は同最終batch。新3gxは解析側gohan_closet_search1/manifest、実機未確認/main/SD/旧整理不変。次は利用者のnative画面/page/tab/掴む/閉じるchat復帰・複数slotの実機確認。
 
-- IDA-gpt-6-T009: native解析後に指定slot/itemsのクローゼットチートとlist/closet検索表示切替を実装。名前hit集合、IDはtab1個/前後無固定pageで指定ID未満も閲覧、終了chatへ、開始要求→検索（入場完了待ちなし）。取得/閲覧のみは任意回答待ち。開始9d3e65e、正常/全配布版と旧整理dirty保持、実機/main/SD未操作、Git最後一括。次は解析環境のBsMenuChest契約から設計。
+- 取得操作はnativeクローゼットへ任せると回答確定。追加回答待ちなし。解析/設計/製品実装/PC検査を完了し、原保存クローゼットと正常・全旧配布版/旧整理dirtyを保持。初期経過はSESSION、根拠は解析環境closet_search_designを参照。
 
 ## 実装・PC検証完了: hair等の直接HHD呼出し / GPT-6
 
