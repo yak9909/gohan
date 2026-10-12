@@ -2,6 +2,8 @@
 
 ## 実装・PC検証完了: クローゼット直通・反復取得・持ち物操作 / GPT-6
 
+- 今回7fileのcodeb11a8a1470ff32df5e06d8cea6d9cd227b0873f4を最後一括commit/push、独立remote一致。初回GitHub commit_refs失敗はremote未反映を確認後の再送で成功。全PC/XML/hash・34source Git一致/正常・旧9版保持PASS。保存結果メモも同最終batchへ追補。新3gx1e9d238e...は実機未確認/main/SD/旧整理不変、次は利用者の新版実機確認のみ。
+
 - F008/T011: chatのmap/tab復帰を省く、clone項目残留/持ち物move・swap・stack/closetへ消去、low/invalid IDsとflags保持、B/C親と影hide。新22case/native180・旧5症状再現/pager/ctor/search・既存list20/repeat12/scroll/style6、4334parser/44anchor/15CPP/linked ABI/hash・しずえ・DB公式XML・34source hash/正常・旧9版/14owner対16 PASS。新3gxは解析側gohan_closet_direct1/SHA1e9d238e...、実機未確認/main/SD/旧整理不変。今回7fileだけ最後一括work枝へ保存/push、確定版は解析側manifest/publication。次は利用者の新版実機確認。
 
 - F008/T011: T010実機表示に到達、chat後のmap/tab入退場を省いてcloset直通へ。検索slot残留/無限取得、pocket移動とclosetへ消去、B/C widget非表示。開始bc5cfe3/製品scope・index空、旧整理dirtyと正常/旧9版保持、Git最後一括/実機/main/SD未操作。解析・設計して実装する。

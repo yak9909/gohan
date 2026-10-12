@@ -2,6 +2,10 @@
 
 ## 2026-10-12 IDA-gpt-6-F008/T011: closet直通と反復取得
 
+- 保存成功: codeb11a8a1470ff32df5e06d8cea6d9cd227b0873f4/work枝を最後一括commit、初回push33886はGitHub commit_refs failure。独立remoteがbc5cfe3のままと確認、log出力先の欠落（その試行の後もremote旧値）を絶対pathへ訂正、HTTP1.1再送は終了0/独立ls-remote b11a8a1一致。34source SHA/Git・製品scope空、全PC/XML/正常・旧9版保持/14owner対16 PASS。結果メモだけ同最終batchへ追補し、確定root/hashは解析側manifest/publicationを参照。新変更実機未確認/main/SD/旧整理未操作、次は利用者実機確認。
+
+- 今回7fileのcodeb11a8a1470ff32df5e06d8cea6d9cd227b0873f4はcommit成功、34source SHA/Git一致。pushはGitHub remote commit_refs failureで終了1、反映未確認のため独立remoteを確認してから必要時のみ再送する。実機/main/SD/旧整理未操作、製品の修正・PC gateは完了。
+
 - 実装・PC完了: nativeキャンセル前にtab待機を同期設定、GameList既存close/hideで直通。storage setter無視/owned raw read-write/低ID+flags保持、pocket移動とclosetへ消去、B/C親+影hide。新22case/native180・旧5再現・pager/ctor/search/list20/repeat12/scroll/style6、4334/44anchor/15CPP/linked ABI/しずえ・全hash/XML PASS。正常・旧9版/34source/14owner対16保持。3gx1e9d238e...は解析側gohan_closet_direct1、今回成功表示は実機未確認/main/SD/旧整理未操作。今回3製品codefile＋2仕様＋2memoだけ最後一括work枝保存/push、版は解析側manifest/publication。継続中・成否不明なし。
 
 - 利用者T010実機でcloset表示を確認、chat退場後のmap/tab入退場を省く。検索slotを取得後も保持/pocket操作を許可/pocket→closetで消去/BとCのpage widgets非表示を実装する。native取得・pager・chat復帰/保存closet不変を保持。開始bc5cfe3/index空・製品clean/旧整理dirty保持、Git最後一括、実機/SD/main未操作。次はnative転送・tab閉鎖/レイアウトgroupを照合して設計する。
