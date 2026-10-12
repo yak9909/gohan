@@ -1,6 +1,8 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
-## 追加実装中: 自前没icon・帰還直通・即時page / GPT-6
+## 実装・PC検証・作業枝保存済み: 自前没icon・帰還直通・即時page / GPT-6
+
+- 2026-10-13: 最終11fileをcd7fd3b8bbdb3742cc198f6e92b91857238164d1へcommit/push終了0/独立remote一致。37source Git/全gate/正常旧10版保持PASS。新3gx SHA e273acb79da3d3e9b42c52f615e8c3cec64c72b4b44e77a6656916763d9443e9、実機未確認。次は利用者のpage/退出・chat漢字変換確認、main/実機/SD/旧整理未操作。
 
 - 2026-10-13追加の退場高速化/ページ間隔撤去/漢字変換ERROR2/STAGE1も同T012/F009で実装。表示中画像32pin/両dtor、直通menu5/field所有引継ぎ、native退出/decide終端・repeat間隔なし、検索バッファ容量と名前表返却、held閉鎖キー遮断。新29case＋timing/memory7・旧24症状/既存list20/repeat12/style6とDB16名21注記/型XML PASS。最終atomic差分build/linked・hashを再確認して最後一括作業枝保存する。実機/main/旧整理/正常旧10版未操作。
 
