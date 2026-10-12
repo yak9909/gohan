@@ -49,6 +49,7 @@ namespace GameList
     //   誰か 1 人でも持っていれば退場させておく。
     enum HoldOwner : u32 { kHoldMapEditor = 1u, kHoldHhd = 2u, kHoldChatTime = 4u, kHoldCloset = 8u };
     bool        HoldField(bool on, u32 owner);
+    bool        HoldFieldFromMenu(u32 owner); // 開いているnative窓を、地図の再表示なしで次の画面へ引き継ぐ
     bool        FieldHidden(void);      // 元の UI が隠れきっていて、リストも組んでいない（ほかの部品が下画面を使ってよい）
     bool        FieldShown(void);       // 元の UI が戻りきっている
     bool        FieldReady(void);       // nativeタブが実際に待機状態で、命令/出入りも終わっている

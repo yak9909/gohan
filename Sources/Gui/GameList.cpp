@@ -1166,6 +1166,21 @@ bool FieldHidden(void) {
     return s_fieldHiddenNow && s_stage == Stage::Off;
 }
 
+bool HoldFieldFromMenu(u32 owner) {
+    const u32 mgr = R32(kMenuMgrPtr);
+    const u32 tab = mgr != 0 ? R32(mgr + kMgrTab) : 0;
+    if (!owner || !tab || s_field != Field::Shown || s_stage != Stage::Off || s_overChat || s_menuCloseSent
+        || !MenuOpen() || (R32(kMenuFlags) & 0x08u) == 0
+        || (R32(kMenuFlags) & (0x10u | 0x80u)) == 0 || R8(kTabCommand) != kCmdNone)
+        return false;
+    if (!HoldField(true, owner))
+        return false;
+    // Cancelに先行してtabを待機へ置く。通常のchat Returnが地図を出し始める前に出口を引き継ぐ。
+    BeginMenuClose(mgr, tab);
+    s_menuCloseSent = true;
+    return true;
+}
+
 void Show(s32 selected) {
     if (!s_hookReady) {
         if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {

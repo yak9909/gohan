@@ -22,7 +22,8 @@ const NativePortGuard::Word kAnchors[] = {
     {0x267A50,0xE59F20F4}, {0x26F030,0xE92D41F0},
     {0x193988,0xE59000DC}, {0x57B238,0xE92D4010}, {0x57F944,0xE92D5FF0},
     {0x6D5510,0xE92D41F0}, {0x6D6214,0xE92D4010}, {0x6D72C0,0xE92D4070},
-    {0x81B41C,0xE92D47F0}
+    {0x81B41C,0xE92D47F0}, {0x723878,0xE92D4038}, {0x1C4238,0xE92D4070},
+    {0x26DB1C,0xE92D4070}, {0x2B9470,0xE92D4070}
 };
 const u32 kMenuList=0x9864FC, kManager=0x949D4C, kFlags=0x949D68;
 const u32 kChestVt=0x8E5BB0, kCabinetVt=0x8EAB34;
@@ -31,9 +32,13 @@ const u32 kSlots=10, kMaxSlots=0x7FFE;
 enum Phase : u32 { Off, Starting, WaitField, Requested, Live, Returning, WaitChat, ReopeningChat };
 u32 s_phase, s_publish, s_close, s_returnReleased, s_cancelReleased;
 bool s_returnChat, s_installed, s_armed, s_actorGone, s_hold;
-u32 s_actor, s_child, s_room, s_frames, s_initialSlot, s_pendingInitialSlot, s_originManager;
+u32 s_actor, s_child, s_room, s_frames, s_initialSlot, s_pendingInitialSlot, s_originManager, s_nativeDepth;
 const char *s_error;
-Hook s_ctorHook;
+Hook s_ctorHook, s_pocketReadHook, s_itemWriteHook;
+struct NativeScope {
+    NativeScope() {++s_nativeDepth;}
+    ~NativeScope() {--s_nativeDepth;}
+};
 std::vector<Item> s_pending, s_items;
 u32 s_chestTable[27], s_childTable[19]; // Itanium header2+primary methods; secondary tables remain native
 const char *const s_oneTab[4]={"G_btnA_00",nullptr,nullptr,nullptr};
@@ -56,6 +61,8 @@ bool RequestChatClose() {
     for(u32 node=Read(kMenuList+4u);node;node=Read(node+8u)) {
         if(++count>2u || (node!=parent+20u && node!=keyboard+20u)) return false;
     }
+    if(!GameList::HoldFieldFromMenu(GameList::kHoldCloset)) return false;
+    s_hold=true;
     // BsSkb's Cancel branch notifies both the parent and the tab waiting for chat.
     // Publishing result1 alone leaves the tab's completion signal unchanged.
     if(B(keyboard+4424u))WB(0x949D3B,0);
@@ -76,10 +83,9 @@ Item *GetItem(u32 self,u32 uiIndex) {
     const u32 index=Index(self,uiIndex);
     return index<s_items.size()?&s_items[index]:const_cast<Item *>(&kEmpty);
 }
-void *SetItem(u32 self,u32 uiIndex,const Item *item) {
-    const u32 index=Index(self,uiIndex);
-    if(item && index<s_items.size())s_items[index]=*item;
-    return nullptr; // native callers ignore R0; no stack-local pointer escapes
+void *SetItem(u32,u32,const Item *) {
+    // このクローゼットは在庫ではなく複製元。nativeのswap/stack後も検索結果を残す。
+    return nullptr;
 }
 int FindEmpty(u32 self) {
     const u32 base=Read(self+15524u);
@@ -90,30 +96,62 @@ void SetPages(u32 self) {
     W(self+6236u,0);W(self+6256u,Pages());
     for(u32 i=0;i<4u;++i)W(self+6240u+i*sizeof(u32),s_initialSlot/kSlots+1u);
 }
-int SetupSlots(u32 self,u32 base,u32 bindings) {
-    SetPages(self);
-    const int result=reinterpret_cast<int (*)(u32,u32,u32)>(0x297980)(self,base,bindings);
-    if(result) {
-        for(const char *name : {"B_btn_01","B_btn_02","B_btn_03"}) {
+void HideExtraTabs(u32 self) {
+    if(B(self+15520u)) {
+        // B_btnは当たり判定だけ。絵を含む親と、別の兄弟にある影を隠す。
+        for(const char *name : {"N_btn_01","N_btn_02","P_btn_sh_01","P_btn_sh_02"}) {
             const u32 pane=reinterpret_cast<u32 (*)(u32,const char *)>(0x567BAC)(self+624u,name);
             if(pane)WB(pane+183u,B(pane+183u)&~1u);
         }
     }
+}
+int SetupSlots(u32 self,u32 base,u32 bindings) {
+    SetPages(self);
+    const int result=reinterpret_cast<int (*)(u32,u32,u32)>(0x297980)(self,base,bindings);
+    if(result)HideExtraTabs(self);
     return result;
 }
-void UpdatePocketLocks(u32 self) {
+void UpdatePocketInput(u32 self) {
     if(Read(self+38704u)<3u)return;
     for(u32 i=0;i<16u;++i) {
-        const Item *item=reinterpret_cast<const Item *(*)(u32,u32)>(0x723854)(self+80u,i);
-        const bool occupied=item && item->id!=kEmpty.id;
-        // Native LoadStep may already disable an empty but unavailable pocket slot; don't unlock it.
         const u32 window=self+80u;
         const u32 widget=B(window+33841u)?window+17424u+916u*i:window+2192u+876u*i;
-        if(occupied && (B(widget+217u) || B(widget+301u)))
-            reinterpret_cast<void (*)(u32,u32,int)>(0x26F030)(window,i,1);
+        if(!B(widget+301u))
+            reinterpret_cast<void (*)(u32,u32,int)>(0x26F030)(window,i,0);
     }
 }
+u32 Pocket() {
+    const u32 player=reinterpret_cast<u32 (*)()>(0x2FB900)();
+    return NativePortGuard::Heap(player)?player+27600u:0u;
+}
+__attribute__((noinline)) Item *ReadPocket(u32 container,u32 slot,u8 *outFlag,u32 fallback) {
+    if(s_nativeDepth && slot<16u && container==Pocket()) {
+        if(outFlag)*outFlag=B(container+64u+slot);
+        return reinterpret_cast<Item *>(container+slot*sizeof(Item));
+    }
+    return HookContext::GetCurrent().OriginalFunction<Item *>(container,slot,outFlag,fallback);
+}
+__attribute__((noinline)) int WriteItem(u32 self,u32 uiIndex,const Item *item) {
+    if(self!=s_actor || !s_actor)return HookContext::GetCurrent().OriginalFunction<int>(self,uiIndex,item);
+    NativeScope scope;
+    if(uiIndex<16u && item) {
+        const u32 pocket=Pocket();
+        if(!pocket)return 0;
+        const u32 controls=self+33976u;
+        const int from=reinterpret_cast<int (*)(u32)>(0x71A288)(controls);
+        const int to=reinterpret_cast<int (*)(u32)>(0x71A23C)(controls);
+        const Item *value=item;
+        // 持ち物を複製元へ送る操作は破棄。通常swapの相手側の品を持ち物へ戻さない。
+        if(from==static_cast<int>(uiIndex) && s_child && Index(s_child,static_cast<u32>(to))!=0xFFFFFFFFu)value=&kEmpty;
+        // native pocket setterの正規化は低ID/没品を空や別IDへ変えるため、4byteをそのまま保つ。
+        W(pocket+uiIndex*sizeof(Item),Read(reinterpret_cast<u32>(value)));
+        WB(pocket+64u+uiIndex,0);
+        return reinterpret_cast<int (*)(u32,u32)>(0x26DB1C)(self+80u,uiIndex);
+    }
+    return HookContext::GetCurrent().OriginalFunction<int>(self,uiIndex,item);
+}
 int LoadStep(u32 self,u32 allocator) {
+    NativeScope scope;
     if(Load(&s_close) || Room()!=s_room) {
         reinterpret_cast<void (*)(u32)>(0x5200B8)(self);
         return 3;
@@ -132,13 +170,15 @@ int LoadStep(u32 self,u32 allocator) {
         W(self+76u,child);s_child=child;
     }
     const int result=reinterpret_cast<int (*)(u32,u32)>(0x1C3BCC)(self,allocator);
-    UpdatePocketLocks(self);
+    UpdatePocketInput(self);
     return result;
 }
 int Calc(u32 self) {
-    UpdatePocketLocks(self);
+    NativeScope scope;
+    UpdatePocketInput(self);
     const int result=reinterpret_cast<int (*)(u32)>(0x1C3F54)(self);
-    UpdatePocketLocks(self);
+    UpdatePocketInput(self);
+    if(s_child)HideExtraTabs(s_child);
     return result;
 }
 int DestroyChest(u32 self,bool deleting) {
@@ -222,8 +262,12 @@ void FrameStep() {
         if(phase!=Returning && !s_actor && B(0x949D1E)!=2u) {BeginReturn();return;}
     }
     if(phase==WaitChat) {
-        if(ChatGone()) {if(Load(&s_close))BeginReturn();else WaitForField();}
-        else if(++s_frames>180u) {s_error=u8"チャットの退場を完了できませんでした。";Finish();}
+        if(ChatGone()) {if(Load(&s_close))BeginReturn();else {s_frames=0;Store(&s_phase,WaitField);}}
+        else if(++s_frames>180u) {
+            s_error=u8"チャットの退場を完了できませんでした。";
+            if(s_hold) {GameList::HoldField(false,GameList::kHoldCloset);s_hold=false;}
+            Finish();
+        }
         return;
     }
     if(phase==WaitField) {
@@ -268,7 +312,12 @@ bool Install() {
     if(!NativePortGuard::Matches(kAnchors) || !GridCursor::InstallFrameHook()
         || !GridCursor::AddExtraFrameStep(FrameStep))return false;
     s_ctorHook.InitializeForMitm(0x1C42D4,reinterpret_cast<u32>(Construct));
-    if(s_ctorHook.Enable()!=HookResult::Success)return false;
+    s_pocketReadHook.InitializeForMitm(0x723878,reinterpret_cast<u32>(ReadPocket));
+    s_itemWriteHook.InitializeForMitm(0x1C4238,reinterpret_cast<u32>(WriteItem));
+    if(s_ctorHook.Enable()!=HookResult::Success || s_pocketReadHook.Enable()!=HookResult::Success
+        || s_itemWriteHook.Enable()!=HookResult::Success) {
+        s_itemWriteHook.Disable();s_pocketReadHook.Disable();s_ctorHook.Disable();return false;
+    }
     s_installed=true;return true;
 }
 void ConfigItem(int,s32 value) {

@@ -1,5 +1,11 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-F008/T011: closet直通と反復取得
+
+- 実装・PC完了: nativeキャンセル前にtab待機を同期設定、GameList既存close/hideで直通。storage setter無視/owned raw read-write/低ID+flags保持、pocket移動とclosetへ消去、B/C親+影hide。新22case/native180・旧5再現・pager/ctor/search/list20/repeat12/scroll/style6、4334/44anchor/15CPP/linked ABI/しずえ・全hash/XML PASS。正常・旧9版/34source/14owner対16保持。3gx1e9d238e...は解析側gohan_closet_direct1、今回成功表示は実機未確認/main/SD/旧整理未操作。今回3製品codefile＋2仕様＋2memoだけ最後一括work枝保存/push、版は解析側manifest/publication。継続中・成否不明なし。
+
+- 利用者T010実機でcloset表示を確認、chat退場後のmap/tab入退場を省く。検索slotを取得後も保持/pocket操作を許可/pocket→closetで消去/BとCのpage widgets非表示を実装する。native取得・pager・chat復帰/保存closet不変を保持。開始bc5cfe3/index空・製品clean/旧整理dirty保持、Git最後一括、実機/SD/main未操作。次はnative転送・tab閉鎖/レイアウトgroupを照合して設計する。
+
 ## 2026-10-12 クローゼット退場待ち修正 / GPT-6
 
 - Source code65d4ab581559e115b3f07afb07a236649fcec5a3/work枝を最後一括commit/push終了0・独立ls-remote一致。最終34source SHA/Git一致と正常・全旧8artifact/DB公式XML/14owner対16 PASS、製品scope空/旧整理dirty未stage。新3gx c8ff8fed...、今回成功表示は実機未確認/main不変。結果メモだけを同最終batchへ追補して終了、確定root保存/hashは解析側manifest/publication。次は利用者の新版実機確認のみ。

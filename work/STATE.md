@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: クローゼット直通・反復取得・持ち物操作 / GPT-6
+
+- F008/T011: chatのmap/tab復帰を省く、clone項目残留/持ち物move・swap・stack/closetへ消去、low/invalid IDsとflags保持、B/C親と影hide。新22case/native180・旧5症状再現/pager/ctor/search・既存list20/repeat12/scroll/style6、4334parser/44anchor/15CPP/linked ABI/hash・しずえ・DB公式XML・34source hash/正常・旧9版/14owner対16 PASS。新3gxは解析側gohan_closet_direct1/SHA1e9d238e...、実機未確認/main/SD/旧整理不変。今回7fileだけ最後一括work枝へ保存/push、確定版は解析側manifest/publication。次は利用者の新版実機確認。
+
+- F008/T011: T010実機表示に到達、chat後のmap/tab入退場を省いてcloset直通へ。検索slot残留/無限取得、pocket移動とclosetへ消去、B/C widget非表示。開始bc5cfe3/製品scope・index空、旧整理dirtyと正常/旧9版保持、Git最後一括/実機/main/SD未操作。解析・設計して実装する。
+
 ## 実装・PC検証完了: クローゼット検索の実退場修正 / GPT-6
 
 - Source今回7fileのcode65d4ab581559e115b3f07afb07a236649fcec5a3を最後一括commit/push終了0・独立remote一致。最終34source hash/Git一致・製品scope空/正常と全旧8版/14owner対16 PASS。保存結果メモ追補も同最終batch。新3gxは解析側gohan_closet_exit_fix1/SHA c8ff8fed...、実機未確認/main不変。次は利用者の検索開始・native取得/page・B閉鎖→chat復帰の実機確認のみ。
