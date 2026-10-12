@@ -2,6 +2,8 @@
 
 ## 実装・PC検証完了: クローゼット検索の実退場修正 / GPT-6
 
+- Source今回7fileのcode65d4ab581559e115b3f07afb07a236649fcec5a3を最後一括commit/push終了0・独立remote一致。最終34source hash/Git一致・製品scope空/正常と全旧8版/14owner対16 PASS。保存結果メモ追補も同最終batch。新3gxは解析側gohan_closet_exit_fix1/SHA c8ff8fed...、実機未確認/main不変。次は利用者の検索開始・native取得/page・B閉鎖→chat復帰の実機確認のみ。
+
 - IDA-gpt-6-F007/T010: 普通chatのnativeキャンセル/実退場→tab復帰→closet61、終了はnative tab6/menu5→新chatへ変更。凍結/手動detach/旧actor再利用を撤去。旧Tab13でtimeout再現、新20case/native180・旧list20/repeat12/scroll/style6・4334parser/40anchor/15CPP/linked ABI/hash/しずえPASS。DB/XML/34source・正常/全旧8配布版保持/14owner対16もPASS。新成果物は解析側gohan_closet_exit_fix1/3gx c8ff8fed...。新成功表示は実機未確認/main/SD/旧整理不変。次は今回7fileだけ最後一括work枝保存/push/remote照合、確認操作はかな/0xID→native表示/掴む/page/B→chat復帰。
 
 ## 実装・PC検証・作業枝保存完了: クローゼット検索 / GPT-6

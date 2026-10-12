@@ -2,6 +2,8 @@
 
 ## 2026-10-12 クローゼット退場待ち修正 / GPT-6
 
+- Source code65d4ab581559e115b3f07afb07a236649fcec5a3/work枝を最後一括commit/push終了0・独立ls-remote一致。最終34source SHA/Git一致と正常・全旧8artifact/DB公式XML/14owner対16 PASS、製品scope空/旧整理dirty未stage。新3gx c8ff8fed...、今回成功表示は実機未確認/main不変。結果メモだけを同最終batchへ追補して終了、確定root保存/hashは解析側manifest/publication。次は利用者の新版実機確認のみ。
+
 - 最終PC検査PASS: nativeキャンセル値の原ARM一致、親/keyboard実Release/Detachとtab13→Return、closet61要求、終了後tab6/menu5→新chat Waitを検査。旧Tab13で180frame timeout再現、新20case/native180と旧一覧20/repeat12/scroll/style6/linked ABI/しずえ/hash、4334parser/40anchor/15CPP、正常・全旧8版保持/34source/14owner対16 PASS。DB公式XMLも解析側で保存/検証・所有0。3gx c8ff8fed...は解析側gohan_closet_exit_fix1、実機未確認/main/SD/旧整理不変。今回5製品file＋2memoだけwork/gohan-chat-and-portsへ最後一括保存/push、確定版は解析側manifest/publicationで参照する。
 
 - F007/T010: 普通chatのnativeキャンセル通知→parent/keyboard実退場→tab復帰→field hide→closetを実装。終了はnative tab6/state9から新chatへ。凍結/手動detach/旧pointer復元を撤去、GameList FieldReady追加。検索/slot provider/native取得とstyle直接Showは維持。未ビルド/実機未確認、Git最後一括、次はprebuildと専用成果物のnative退場検証。
