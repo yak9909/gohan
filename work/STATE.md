@@ -1,5 +1,9 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 実装・PC検証完了: hair等の直接HHD呼出し / GPT-6
+
+- IDA-gpt-6-T008: 利用者実機でfix2 list修復確認/hair不動。4aliasは直接HHD Show、CloseChat/AfterCloseはTimeMenuのみへ。HHD/GameList本体source不変。別build・実chat bound即Show/再要求/失敗/time分離6case＋既存20/12case/native回帰/linked570func・ABI/hash・14CPP/4330parser/23anchor PASS。解析側gohan_chat_style_direct1/最終hash保存commitはmanifest/publication参照。今回ChatCommands/§14/STATE/SESSIONの4fileだけ最後一括work枝保存、実機未確認/main未変更/旧整理中断。次は利用者の新版実機確認。
+
 ## 実装・PC検証完了: チャット一覧scrollとhair遷移の再修正 / GPT-6
 
 - IDA-gpt-6-T007: Controller画素座標/vtableを訂正、parentchat/kbd退場後のstyle起動・HHD待機中B/180frame退避/失敗通知を実装。旧版の元幾何scroll top0/vtable書換4・style早期起動/Copy無限待機、新版top8/書換0・B/timeout/field復帰をPC再現。4330parser/23anchor/14CPP・一覧20case/連続取得12case/Map/hotkey/arc/ID順/linked ABI PASS。解析側fix2/3gx e2afb75a...、DB公式XML読戻し/32source hash/正常・全旧成果物保持PASS。今回6fileだけ最後一括work枝保存、最終commit/送信結果は解析側manifest/publication参照。実機原因全体/成功HHD GPU表示未確定、main/旧整理不変。次は利用者の新版実機確認。

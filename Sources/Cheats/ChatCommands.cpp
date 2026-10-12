@@ -342,9 +342,8 @@ void Tick(u16) {
         if(++s_waitFrames>180){s_afterClose=Kind::None;Error(u8"画面を切り替えられませんでした。");}
         else if(!ChatKanji::NormalChatOpen() && ChatRetired() && GameList::FieldShown() && !GuiMenu::IsVisible()
             && __atomic_load_n(&s_op,__ATOMIC_ACQUIRE)==NoOp) {
-            const Kind next=s_afterClose;s_afterClose=Kind::None;
-            if(next==Kind::Style) {if(!HhdScreen::Shown()&&!HhdScreen::Show())Error(HhdScreen::LastError());}
-            else Post(OpenTimeMenu);
+            s_afterClose=Kind::None;
+            Post(OpenTimeMenu);
         }
     }
     if(s_list) {
@@ -386,6 +385,8 @@ void Tick(u16) {
     case Kind::ItemName: OpenList(false,command.query);break;
     case Kind::Weather: if(!Cheats::SetWeather(command.weather))Error(u8"天気の処理が競合しています。");break;
     case Kind::Style:
+        // 下画面の退場と待機はHHD画面自身が行う。
+        if(!HhdScreen::Show())Error(HhdScreen::LastError());break;
     case Kind::TimeMenu:
         if(Post(CloseChat)){s_afterClose=command.kind;s_waitFrames=0;}break;
     case Kind::Time:

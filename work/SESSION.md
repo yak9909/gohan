@@ -1,5 +1,13 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-12 IDA-gpt-6-T008 / GPT-6
+
+- 最終32source SHA/正常・全旧配布版保持/DB公式XML訂正読戻し/EOL/diff-check PASS。今回4fileのみ最後一括work/gohan-chat-and-portsへcommit/push/独立remote照合、確定commit/hashは解析側gohan_chat_style_direct1/manifestとgohan_chat_style_direct/publication参照。新版実機未確認/main未変更、次は4alias表示/B閉鎖/再起動の利用者実機確認。
+
+- Styleから直接Show/AfterCloseはTimeMenuのみの最小差分、HHD/GameList本体source不変。専用BuildChatStyleDirect終了0、4alias実chat bound即Show/再要求/失敗/TimeMenu分離6case＋旧版CloseChat予約再現、一覧20/連続12/native scroll/arc/ID順/Map/hotkey/linked570func ABI・しずえPASS。14CPP/4330parser/23anchor。解析DB3注記へT007待機要件撤回を追記してsave/close/XML出力済み。次はXML/32source hash・旧成果物保持→今回4fileだけ最後一括work枝保存。実機/main/旧整理未操作。
+
+- 最新訂正: fix2 listは利用者実機PASS、hairは未修復。HHD式スタイル変更自体が退場/完了待ちを所有するため、コマンドは直接呼ぶだけにする。StyleへCloseChat/AfterCloseを適用するT007仕様を撤回し、TimeMenuと分離。開始3b1e8e1、製品scope/index空/旧整理dirty保持、実機/SD/main未操作、Gitは完成後一括。次はChatCommands Style直接Show・仕様訂正→旧待機版とnew alias実Tick/専用build/linked ABI/保存。
+
 ## 2026-10-12 IDA-gpt-6-T007 / GPT-6
 
 - 最終PC/XML/EOL/hash gate PASS、正常ELF・全旧配布版/旧整理dirty保持。今回3CPP/§14/STATE/SESSIONの6fileのみ最後一括work/gohan-chat-and-portsへ保存・pushし、独立remote照合する。最終source commitは解析側fix2/manifestとgohan_chat_scroll_style_followup/publication参照。実機未確認/main未変更、次は両scrollbar/hair/style/eyes表示・B終了/再起動/失敗復帰の利用者確認。
