@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 2026-10-13 再入場/チェックリスト/青選択色の修正 / IDA-gpt-6-F012・T015（GPT-6）
+
+- 実装・全PC検証完了: 通常A→checkboxlist、native長押しtrash非drag/通常drop音、再入場/同actor再利用・priority、青保持/旧行解除・scroll、manual3cheat削除。runtime53・prebuild4334/69anchor21CPP/linked/半scroll、DB最新XML116name59comment12type/T/hash、44source/normal旧13版保持PASS。製品source10file＋このwork2fileだけを最後一括work枝へ保存、送信結果/commit/全SHAは解析側gohan_inventory_ui_fix/publicationとmanifestを参照。実機未確認/main/SD/中断整理未操作、製品の次は利用者実機確認。
+
+- source c312b2a/work枝から。実GUI入口の個別checkbox表示、pocket再入場trash/背景より前、青selected維持、manualクローゼット3cheat削除（chat検索保持）。正常・旧13版/中断整理保持、最後一括Git/main/実機/SD未操作。次は解析側で契約照合・設計して編集する。
+
 ## 2026-10-13 実機不具合修正中 / IDA-gpt-6-F011・T014
 
 - 最後一括source codef6e560bba566ecc01ebebd364f76980b5fe99172をwork/gohan-chat-and-portsへcommit/push終了0、独立ls-remote一致。44source Git/全PC・最新公式XML/正常旧12版保持PASS。新3gx b77445c0…実機未確認。結果メモを同最終batchへ追補し、製品の次は利用者の新3gx実機確認。main/SD/実機/中断整理不変。

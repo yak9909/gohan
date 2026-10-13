@@ -172,11 +172,6 @@ namespace CTRPluginFramework
                 static const char *const kInventoryOptionsList[] = {u8"複製",u8"ラッピング",u8"収納する",u8"ローンを返す"};
                 i = AddItem(ITEM_CHECKBOX_LIST, kInventoryOptions, u8"持ち物に追加する選択肢を個別に選びます。元の選択肢とやめるを残し、6行に収まる項目を表示します。");
                 SetOptions(i, kInventoryOptionsList, 4);
-                i = AddItem(ITEM_VALUE, kClosetSlot, u8"0から始まるスロット番号。10枠ごとにページが変わります。");
-                SetValue(i, FMT_DEC, 0, 0, 0x7FFD, 1);
-                i = AddItem(ITEM_ACTION, kClosetItem, u8"指定スロットに表示するID。複数のスロットを設定してからクローゼットを開けます。7FFEは空き枠です。");
-                SetValue(i, FMT_HEX, 0x7FFE, 0, 0x7FFE, 1);
-                AddItem(ITEM_ACTION, kClosetOpen, u8"設定したアイテムをネイティブのクローゼットで表示します。掴んで持ち物の空き枠へ移せます。再実行またはBで閉じます。");
                 // Issue #15。連動型リスト（ゲームのコードの 1 語を読んで今の状態を出す）
                 i = AddItem(ITEM_LINKED_LIST, kHiddenItems,
                             u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムに名前とアイコンを付けます。");

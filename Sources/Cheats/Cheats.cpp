@@ -313,7 +313,6 @@ namespace CTRPluginFramework
             PlayerActions::Wire();
             KeepItems::Wire();
             ChatCommands::Wire();
-            ClosetMenu::Wire();
             InventoryTools::Wire();
             ChatIme::Wire();
             DecorTrash::Wire();

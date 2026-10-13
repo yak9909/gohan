@@ -1440,6 +1440,9 @@ namespace CTRPluginFramework
                     it.value = it.value ? 0 : 1;
                 else if (it.type == ITEM_ACTION)
                     RunAction(it, now);
+                else if (it.type == ITEM_CHECKBOX_LIST)
+                    OpenList(g_inline, 0, it.label, it.options, (int)it.optionCount,
+                             OV_GENERIC, ItemIndex(it), 0, kInlineRows, now);
                 else if (it.type == ITEM_LIST || it.type == ITEM_LINKED_LIST)
                     OpenList(g_inline, 0, it.label, it.options, (int)it.optionCount,
                              OV_GENERIC, ItemIndex(it), it.value, kInlineRows, now);

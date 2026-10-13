@@ -14,6 +14,5 @@ bool Busy();
 bool BlocksInput(); // native bodyへは入力を流す。切替/復帰中だけ止める
 const char *TakeError();
 void Tick();
-void Wire();
 void Shutdown();
 }

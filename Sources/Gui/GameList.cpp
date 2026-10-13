@@ -172,6 +172,7 @@ alignas(8) u8 s_frameKind[40];
 u32 s_vtblStore[1 + kVtblWords];           // [0] = TypeInfo（ゲームの vtable の 1 語手前と同じ）
 u32 *const s_vtbl = s_vtblStore + 1;
 u8 *s_list;                                 // ゲームのヒープ
+void *s_selectedNode;                       // スクロールで行部品が再利用されても旧選択を消す
 
 // ---- 行の前置き（名前の左に小さく出す文字。例: アイテム ID「0x5C」。利用者指示 2026-09-25）----------------
 // ★名前とは別の TextBox に描く（利用者指示: 同じ文字列にしない）。一覧の Layout（ctlg_cntnt_00）の中に置くので、
@@ -305,22 +306,47 @@ inline u32 R32(u32 a) { return *reinterpret_cast<const volatile u32 *>(a); }
 inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 // ---- 自前の仮想関数（ゲームが BLX で呼ぶ）-----------------------------------------------------
+void *SelectedNode(void *list) {
+    const s32 row = S(list,kListSelected) - S(list,kListTop);
+    return row >= 0 && (u32)row < kListRows && W(list,2556)
+        ? P(reinterpret_cast<void *>(W(list,2556)),(u32)row * 224u) : nullptr;
+}
+void ClearSelectionVisual(void *node) {
+    if (!node) return;
+    const u32 *vt = *reinterpret_cast<u32 **>(node);
+    reinterpret_cast<void (*)(void *,int,int)>(vt[7])(node,0,0);
+    const auto play = reinterpret_cast<void (*)(void *,void *,int)>(vt[13]);
+    // native SetSelect(0)はselectだけを戻す。取得時に残した青いdecide終端も解除する。
+    play(node,P(node,112),0);
+    play(node,P(node,152),0);
+}
+void ListSetSelect(void *list,s32 index,s32 previous) {
+    ClearSelectionVisual(s_selectedNode);
+    reinterpret_cast<SetSelectFn>(0x001AF858)(list,index,previous);
+    s_selectedNode = SelectedNode(list);
+}
 void ListWaitCalc(void *list) {
     // nativeの後始末は同じ行でも選択色を外す。決定前のfocusを覚え、処理後に戻す。
     const s32 previous = S(list, kListSelected);
     const bool decided = reinterpret_cast<int (*)(void *)>(0x00722C34)(P(list,2560)) != 0;
     reinterpret_cast<ListFn>(0x001B0698)(list);
     const s32 selected = S(list, kListSelected);
+    void *node = SelectedNode(list);
+    const bool changedNode = s_selectedNode != node;
+    if (changedNode) ClearSelectionVisual(s_selectedNode);
+    s_selectedNode = node;
     if (selected >= 0 && (u32)selected < s_count) {
         if (decided) {
             if (previous == selected) s_decided = selected;
         }
-        const s32 row = selected - S(list,kListTop);
-        if (row >= 0 && (u32)row < kListRows && W(list,2556)) {
-            void *node = P(reinterpret_cast<void *>(W(list,2556)), (u32)row * 224u);
-            if (decided) {
+        if (node) {
+            if (decided || changedNode) {
                 const u32 *vt = *reinterpret_cast<u32 **>(node);
-                reinterpret_cast<void (*)(void *,int,int)>(vt[7])(node,1,0);
+                // touch/selectの終端とは色が違う。nativeの選択移動と同じ青いselect_okを維持する。
+                B(node,215) = 1;
+                const auto play = reinterpret_cast<void (*)(void *,void *,int)>(vt[13]);
+                play(node,P(node,112),1);
+                play(node,P(node,152),1);
             }
             B(node,217) = 1;
         }
@@ -648,6 +674,7 @@ void SwitchAnim(void *layout, void *from, void *to) {
 void DestroyAll(void) {
     FrameTrace::Mark(FrameTrace::ListDestroy, reinterpret_cast<u32>(s_list));
     s_idReady = false;
+    s_selectedNode = nullptr;
     if (s_list != nullptr) {
         if (s_listSetup) {
             u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -979,6 +1006,7 @@ bool BuildStep(void) {
         for (u32 i = 0; i < kVtblWords; ++i)
             s_vtbl[i] = base[i];
         s_vtbl[13] = reinterpret_cast<u32>(&ListBuildItems);
+        s_vtbl[16] = reinterpret_cast<u32>(&ListSetSelect);
         s_vtbl[24] = reinterpret_cast<u32>(&ListWaitCalc);
         s_vtbl[25] = reinterpret_cast<u32>(&ListWordAt);
         W(s_list, 0) = reinterpret_cast<u32>(s_vtbl);

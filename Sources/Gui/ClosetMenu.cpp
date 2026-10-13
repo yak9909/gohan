@@ -3,9 +3,7 @@
 #include "GridCursor.hpp"
 #include "GameList.hpp"
 #include "GuiMenu.hpp"
-#include "GuiDialog.hpp"
 #include "ChatKanji.hpp"
-#include "Cheats.hpp"
 #include <CTRPluginFramework.hpp>
 #include <vector>
 #include <cstring>
@@ -46,8 +44,6 @@ struct NativeScope {
 std::vector<Item> s_pending, s_items;
 u32 s_chestTable[27], s_childTable[19]; // Itanium header2+primary methods; secondary tables remain native
 const char *const s_oneTab[4]={"G_btnA_00",nullptr,nullptr,nullptr};
-std::vector<Item> s_configured(1,kEmpty);
-int s_slotIndex=-1;
 u32 Load(u32 *p) {return __atomic_load_n(p,__ATOMIC_ACQUIRE);}
 void Store(u32 *p,u32 v) {__atomic_store_n(p,v,__ATOMIC_RELEASE);}
 void W(u32 a,u32 v) {*reinterpret_cast<volatile u32 *>(a)=v;}
@@ -399,19 +395,6 @@ bool Install() {
     }
     s_installed=true;return true;
 }
-void ConfigItem(int,s32 value) {
-    const u32 slot=s_slotIndex>=0?static_cast<u32>(GuiMenu::ItemApplied(s_slotIndex)):0u;
-    if(slot>=kMaxSlots)return;
-    if(s_configured.size()<=slot)s_configured.resize(slot+1u,kEmpty);
-    s_configured[slot]={static_cast<u16>(value),0};
-}
-void OpenConfigured(int) {
-    if(Busy()) {Close();GuiMenu::Close();return;}
-    if(!Begin(false)) {GuiDialog::ShowMessage(Cheats::kClosetOpen,TakeError());return;}
-    const u32 slot=s_slotIndex>=0?static_cast<u32>(GuiMenu::ItemApplied(s_slotIndex)):0u;
-    if(!Publish(s_configured.data(),s_configured.size(),std::min(slot,static_cast<u32>(s_configured.size()-1u))))Close();
-    GuiMenu::Close();
-}
 }
 bool Begin(bool returnToChat) {
     if(Busy() || GameList::Wanted() || GameList::Present()) {s_error=u8"別の一覧を使用中です。";return false;}
@@ -475,12 +458,6 @@ void Tick() {
             GuiMenu::CaptureGameTouchUntilRelease();Store(&s_returnReleased,1u);
         }
     }
-}
-void Wire() {
-    s_slotIndex=GuiMenu::FindItem(Cheats::kClosetSlot);
-    const int item=GuiMenu::FindItem(Cheats::kClosetItem), open=GuiMenu::FindItem(Cheats::kClosetOpen);
-    if(item>=0)GuiMenu::RegisterApply(item,ConfigItem);
-    if(open>=0)GuiMenu::RegisterExecute(open,OpenConfigured);
 }
 void Shutdown() {Close();Store(&s_returnReleased,1u);}
 }

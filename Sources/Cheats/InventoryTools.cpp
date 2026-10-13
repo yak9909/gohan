@@ -23,12 +23,13 @@ const NativePortGuard::Word kAnchors[] = {
     {0x303404,0xE92D4070},{0x305688,0xE92D41F0},{0x2D0660,0xE92D4010},
     {0x22C988,0xE92D47F0},{0x13F718,0xE52D4004},{0x13F84C,0xE5912008},
     {0x2B6EC0,0xE5912000},{0x22CA38,0xE92D4010},{0x22C88C,0xE92D4030},
-    {0x29BC24,0xE92D4070},{0x29B364,0xE92D41F0},{0x815E8C,0xE92D47F0}
+    {0x29BC24,0xE92D4070},{0x29B364,0xE92D41F0},{0x815E8C,0xE92D47F0},
+    {0x19FF4C,0xE92D4070}
 };
 const u32 kVtable=0x8E5220, kEmpty=0x7FFE, kPocketOffset=27600;
 u32 s_trashOn, s_extraOn;
 bool s_installed;
-Hook s_buildHook,s_finalizeHook,s_copyHook,s_commitHook,s_dispatchHook,s_waitHook,s_updateHook;
+Hook s_buildHook,s_finalizeHook,s_copyHook,s_commitHook,s_dispatchHook,s_waitHook,s_updateHook,s_disposeHook;
 u32 s_buildActor,s_extraActor,s_extraSlot,s_extraItem,s_originalCount,s_extraCount,s_extraKinds[4];
 alignas(8) u8 s_cancel[32];
 bool s_cancelCopied,s_committing;
@@ -168,7 +169,7 @@ DecorLayout::Anim s_anim[6]{};
 const char *const kAnimations[]={"hhd_trash_in.bclan","hhd_trash_out.bclan","hhd_trash_on.bclan", "hhd_trash_off.bclan","hhd_trash_ok.bclan","hhd_trash_loop.bclan"};
 alignas(8) u8 s_node[304],s_group[320];
 bool s_nodeMade,s_groupMade,s_linked,s_hover;
-u32 s_choice,s_failed;
+u32 s_choice,s_failed,s_retryFrames;
 u32 s_trashActor,s_choicePlayer,s_idleFrames,s_hiddenPane;
 bool s_oldVisible;
 u8 s_oldEnabled;
@@ -182,7 +183,8 @@ void TrashAnim(int index) {
     s_bound=index;DecorLayout::Bind(s_anim[index],s_layout,"G_InOut");
 }
 void Detach(u32 actor) {
-    if(s_linked && Owned(actor)) {
+    // Dispose入口ではmanagerの登録や+36が既に変わる場合がある。まだ生きているthisを使う。
+    if(s_linked && actor && actor==s_trashActor) {
         const u32 control=actor+41392u;
         if(Read(control+180u)==Node() || Read(control+260u)==Node())
             reinterpret_cast<void (*)(u32)>(Read(Read(control)+12u))(control);
@@ -204,14 +206,17 @@ void FreeTrash() {
 }
 bool BuildTrash() {
     if(s_layout.built)return true;
-    if(Load(&s_failed) || !s_file || !DecorLayout::LoadArc(s_arc,s_file,s_fileSize)
-        || !DecorLayout::Build(s_layout,s_arc,"hhd_trash.bclyt",0x2000,6))return false;
+    // native item_scrnのpriority=0x83。模様替えの6では持ち物背景の後ろに隠れる。
+    if(!s_file || !DecorLayout::LoadArc(s_arc,s_file,s_fileSize)
+        || !DecorLayout::Build(s_layout,s_arc,"hhd_trash.bclyt",0x2000,0x84))return false;
     for(u32 i=0;i<6u;++i)if(!DecorLayout::LoadAnim(s_anim[i],s_arc,kAnimations[i]))return false;
     if(!DecorLayout::Bind(s_anim[5],s_layout,"G_Loop"))return false;
     reinterpret_cast<void (*)(u32)>(0x22CA38)(Group());s_groupMade=true;
     reinterpret_cast<void (*)(u32)>(0x2D0660)(Node());s_nodeMade=true;
     const u32 groupParams[11]={reinterpret_cast<u32>(s_arc.holder),reinterpret_cast<u32>(s_layout.obj),0,0,0,0,0,0,0,0,0};
     reinterpret_cast<void (*)(u32,const void *)>(0x22C88C)(Group(),groupParams);
+    // group+317だけがdrag開始を許す。クリック(+318)とitemの受け取り(+319)は残す。
+    WB(Group()+317u,0);
     // 第2欄はアニメ群でありLayoutではない。LayoutはAddNodeがgroupから設定する。
     const u32 nodeParams[7]={reinterpret_cast<u32>(DecorLayout::Pane(s_layout,"B_Base_00")),0,0,0,0,19,0};
     if(!nodeParams[0])return false;
@@ -250,6 +255,12 @@ __attribute__((noinline)) int Update(u32 actor) {
     if(s_choice && actor==s_trashActor && Owned(actor) && !(Read(0x949D68)&0x20u))return 2;
     return hook.OriginalFunction<int>(actor);
 }
+__attribute__((noinline)) int Dispose(u32 actor) {
+    auto &hook=HookContext::GetCurrent();
+    // letterのroot/drag controlが解放される前に外す。同じアドレスで次の持ち物が作られても再登録する。
+    if(actor==s_trashActor)Detach(actor);
+    return hook.OriginalFunction<int>(actor);
+}
 void FrameStep() {
     const u32 actor=Actor();
     const bool context=actor && Read(actor+176u)==0x19CB74 && !Read(actor+180u) && !GuiMenu::IsVisible();
@@ -269,20 +280,28 @@ void FrameStep() {
         && Read(actor+176u)!=0x19AAC0 && !B(letter+9288u);
     if(!valid || (s_linked && actor!=s_trashActor)) {
         Detach(actor==s_trashActor?actor:0);
+        s_retryFrames=0;
         if(++s_idleFrames>=3u && s_layout.made)FreeTrash();
         return;
     }
+    if(s_retryFrames) {--s_retryFrames;return;}
     if(!BuildTrash()) {
-        Store(&s_failed,1u);FreeTrash();Store(&s_trashOn,0u);
-        GuiMenu::NotifyRed(Cheats::kPocketTrash,u8"ゴミ箱の資源を読み込めません。common/hhd_decorate.arcを確認してください。");return;
+        FreeTrash();s_retryFrames=30;
+        // 入場時の一時的なheap不足で利用者のONを消さない。次の入場、または資源回復時に再試行する。
+        if(!Load(&s_failed))GuiMenu::NotifyRed(Cheats::kPocketTrash,u8"ゴミ箱の資源を読み込めません。common/hhd_decorate.arcを確認してください。");
+        Store(&s_failed,1u);return;
     }
+    Store(&s_failed,0u);
     s_idleFrames=0;
     if(!s_linked) {
         s_trashActor=actor;
         s_hiddenPane=Read(letter+632u);
         if(!s_hiddenPane)return;
         s_oldVisible=DecorLayout::Visible(reinterpret_cast<void *>(s_hiddenPane));s_oldEnabled=B(letter+8664u+217u);
+        // AppendIconGroupはgroupのnodeをcontrolへ移す。再入場時は空のgroupへnodeを戻してから登録する。
+        if(!Read(Group()+4u))reinterpret_cast<void (*)(u32,u32)>(0x13F84C)(Group(),Node());
         reinterpret_cast<void (*)(u32,u32)>(0x29BC24)(actor+41392u,Group());s_linked=true;
+        TrashAnim(0);
     }
     // alphaは子へ継承されないペインがあるため、手紙のsubtreeを可視flagで止める。
     WB(letter+8664u+217u,0);DecorLayout::SetVisible(reinterpret_cast<void *>(s_hiddenPane),false);
@@ -311,11 +330,11 @@ bool Install() {
     if(s_installed)return true;
     if(!NativePortGuard::Matches(kAnchors) || !GridCursor::InstallFrameHook()
         || !GridCursor::AddExtraFrameStep(FrameStep))return false;
-    const u32 sites[]={0x19B7B0,0x5E3D48,0x5E3D1C,0x5E3D10,0x19ED80,0x19CB74,0x19FC58};
+    const u32 sites[]={0x19B7B0,0x5E3D48,0x5E3D1C,0x5E3D10,0x19ED80,0x19CB74,0x19FC58,0x19FF4C};
     const u32 functions[]={reinterpret_cast<u32>(BuildOptions),reinterpret_cast<u32>(Finalize),reinterpret_cast<u32>(CopyOption),
-        reinterpret_cast<u32>(Commit),reinterpret_cast<u32>(Dispatch),reinterpret_cast<u32>(WaitInput),reinterpret_cast<u32>(Update)};
-    Hook *const hooks[]={&s_buildHook,&s_finalizeHook,&s_copyHook,&s_commitHook,&s_dispatchHook,&s_waitHook,&s_updateHook};
-    for(u32 i=0;i<7u;++i) {
+        reinterpret_cast<u32>(Commit),reinterpret_cast<u32>(Dispatch),reinterpret_cast<u32>(WaitInput),reinterpret_cast<u32>(Update),reinterpret_cast<u32>(Dispose)};
+    Hook *const hooks[]={&s_buildHook,&s_finalizeHook,&s_copyHook,&s_commitHook,&s_dispatchHook,&s_waitHook,&s_updateHook,&s_disposeHook};
+    for(u32 i=0;i<8u;++i) {
         hooks[i]->InitializeForMitm(sites[i],functions[i]);
         if(hooks[i]->Enable()!=HookResult::Success) {for(auto h:hooks)h->Disable();return false;}
     }

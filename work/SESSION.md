@@ -1,5 +1,17 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-13 追加実機訂正 / IDA-gpt-6-F012・T015（GPT-6）
+
+- 最終全gate終了0: build・runtime6/53case/音、prebuild4334/69anchor21CPP・linked/scroll、DB最新XML116name59comment12type/T/hash、44source/15owner対16/normal旧13版保持PASS。源source10製品file69insert55delete＋このwork2fileだけを最後一括work/gohan-chat-and-portsへ保存/pushする。最終commit/送信結果は解析側publication、全SHAはgohan_inventory_ui_fix1/manifestを正とする。新版実機未確認/main/SD/中断整理未操作、製品の次は利用者実機確認。
+
+- 専用build/prebuild4334・69anchor21CPP/linked、runtime53case（旧46＋実入口A/edit/B/apply、青旧行解除/scroll、同actor再入場/Dispose、資源retry、nativepriority順、実DragControlの長押し/通常itemdrop）PASS。音を含む最終runtime6検証中、DB追補後のXML2出力/最新readback未完。検証mock29BAB4残留によるflag不動はfixture訂正、製品へ不要な後片付け変更はしない。source10file差分/normal旧13版保持、Git/実機/main/SD/中断整理未操作。次は最終report/XML/hash/EOL→最後一括作業枝保存。
+
+- 追加list症状: DPad選択→A取得→別行へDPad移動で旧selected描画残留。青保持と旧行解除、スクロール再利用を同T015で修正/検証する。trashdrag修正も解析中、未build/Git。
+
+- 追加: trash自身を掴めてcrash。nativedrag開始を禁止し、itemdrop/クリック選択窓は保つ。未build/Git、解析側でnative条件を照合中。既存4修正source差分あり、次はdrag禁止条件とguard訂正。
+
+- checklist未表示、pocket開閉でtrash消失/背景より後ろ、保持色は青、manualクローゼット3cheat削除。chat検索closetと既存操作を保持。開始c312b2a/work枝・製品scope/index空、解析DB所有0。実機/main/SD/中断整理未操作、全修正/PC/DBXML後に最後一括Git。次は実GUI入口/native actor寿命・描画priority・selected animを照合。根拠/別buildは解析側gohan_inventory_ui_fixへ。
+
 ## 2026-10-13 実機不具合修正 / IDA-gpt-6-F011・T014
 
 - source今回12file112insert41deleteをf6e560bba566ecc01ebebd364f76980b5fe99172へ保存。push88611終了0、独立remote同SHA、--saved80080終了0/44source Git・正常旧12版/全PC・XML PASS。source保存結果メモのみ同最終batch追補する。製品の次は実機確認、親の解析artifact保存結果はgohan_inventory_fix/publication.jsonを参照。main/SD/実機/中断整理未操作。
