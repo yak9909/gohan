@@ -2,6 +2,8 @@
 
 ## 2026-10-13 実機不具合修正中 / IDA-gpt-6-F011・T014
 
+- 最後一括source codef6e560bba566ecc01ebebd364f76980b5fe99172をwork/gohan-chat-and-portsへcommit/push終了0、独立ls-remote一致。44source Git/全PC・最新公式XML/正常旧12版保持PASS。新3gx b77445c0…実機未確認。結果メモを同最終batchへ追補し、製品の次は利用者の新3gx実機確認。main/SD/実機/中断整理不変。
+
 - 修正/PC検証完了。letterroot visible/Group引数、入口HookContext保持、4個別checkbox編集適用保持、現在selected行1tap/色復元、私有Choice touchを反映。build3・native46/旧UI・closet・scroll/4334・68anchor・21CPP/linked/公式XML PASS。新3gx b77445c0…実機未確認、正常旧12版保持。次は最終hash確認後、このscopeだけ最後一括作業枝commit/push。main/SD/実機/中断整理は不変。
 
 - T013のletterhide/trashクリック/pocketクリックを利用者実機で不具合確認。追加選択肢はVapecordと同じ個別checkboxへ、listは現在selected行1tap実行と選択色保持へ訂正する。source22fcd262/work枝開始、解析側主DBroot単独、正常/旧版不変。実機/main/SD未操作、最後一括Git。次はnative契約/症状再現→修正→専用build。

@@ -2,6 +2,8 @@
 
 ## 2026-10-13 実機不具合修正 / IDA-gpt-6-F011・T014
 
+- source今回12file112insert41deleteをf6e560bba566ecc01ebebd364f76980b5fe99172へ保存。push88611終了0、独立remote同SHA、--saved80080終了0/44source Git・正常旧12版/全PC・XML PASS。source保存結果メモのみ同最終batch追補する。製品の次は実機確認、親の解析artifact保存結果はgohan_inventory_fix/publication.jsonを参照。main/SD/実機/中断整理未操作。
+
 - 最新build3/正規prebuild5・native12（46case）、旧list20/repeat12/style6/closet29・scroll2/linked2と主DB公式XML2の読戻しが全終了0。nativeWord65/ctx誤戻り、GUI編集適用保持、実選択色、sourcetrash生成/letterhide/actualtouch→Choice/Open・窓Ctorを確認。PCの資源/GPU/fontはendpointとして区別。sourceへの最終実変更はModel保持判定のcheckboxlist追加、ヘッダ注記訂正のみ。
 - 3gxSHA b77445c052a6ab40fdd9c0aefa0ebbd28eac0ae0f9fc2cf024b70d6e1eee7393、ELF cce582e7f2915b8ec87e54db2993f695d3b98065a74948472b5efa7adee385ca。解析側gohan_inventory_fix1。新実機未確認/正常旧12版保持、main/SD/実機/中断整理未操作。最終hashgate後にこのsource/仕様/work範囲だけを最後一括commit/pushする。
 
