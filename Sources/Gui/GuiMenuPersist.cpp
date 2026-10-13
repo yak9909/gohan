@@ -65,7 +65,8 @@ namespace CTRPluginFramework
                 bool    Retainable(const Item &it)
                 {
                     return it.type == ITEM_CHECKBOX || it.type == ITEM_VALUE || it.type == ITEM_SLIDER
-                           || it.type == ITEM_LIST || it.type == ITEM_LINKED_VALUE || it.type == ITEM_LINKED_LIST;
+                           || it.type == ITEM_LIST || it.type == ITEM_CHECKBOX_LIST
+                           || it.type == ITEM_LINKED_VALUE || it.type == ITEM_LINKED_LIST;
                 }
 
                 // 深さ優先で (項目番号, 階層パス) を回す（walkItems と同じ順）
@@ -147,6 +148,10 @@ namespace CTRPluginFramework
                 {
                     if (it.type == ITEM_CHECKBOX)
                         return v != 0 ? 1 : 0;
+                    if (it.type == ITEM_CHECKBOX_LIST) {
+                        const u32 mask=it.optionCount>=32 ? ~0u : (1u<<it.optionCount)-1u;
+                        return static_cast<s32>(static_cast<u32>(v)&mask);
+                    }
                     if (it.type == ITEM_LIST || it.type == ITEM_LINKED_LIST)
                         return ClampI(v, 0, it.optionCount > 0 ? (int)it.optionCount - 1 : 0);
                     return ClampI(v, it.minimum, it.maximum);

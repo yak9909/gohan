@@ -95,13 +95,15 @@ bool ExtraAction(u32 actor,u32 kind) {
     WritePocket(actor,player,slot,kEmpty);Sound(0x01000492);return true;
 }
 __attribute__((noinline)) int BuildOptions(u32 actor,u32 slot) {
+    auto &hook=HookContext::GetCurrent();
     const u32 saved=s_buildActor;
     s_buildActor=Load(&s_extraOn) && Owned(actor) && slot<16u?actor:0u;
     s_extraCount=0;s_cancelCopied=false;
-    const int result=HookContext::GetCurrent().OriginalFunction<int>(actor,slot);
+    const int result=hook.OriginalFunction<int>(actor,slot);
     s_buildActor=saved;return result;
 }
 __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
+    auto &hook=HookContext::GetCurrent();
     if(s_buildActor && system==s_buildActor+224u && count>=1 && count<=6 && cancel==count-1) {
         const u32 player=Player(),slot=Read(s_buildActor+204u);
         if(NativePortGuard::Heap(player) && slot<16u) {
@@ -111,21 +113,25 @@ __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
                 const u32 category=reinterpret_cast<u32 (*)(const u32 *)>(0x2FCB64)(&s_extraItem);
                 // ベル袋では返済を先に入れる。元の項目で6行が埋まる品にもcancelを残す。
                 const u32 order[4]={category==2u?3u:0u,category==2u?0u:1u,category==2u?1u:2u,category==2u?2u:3u};
-                for(u32 kind : order)if(static_cast<u32>(count)+s_extraCount<6u && (kind!=3u || category==2u))
+                const u32 capacity=std::min<u32>(6u,Read(system+16u)),mask=Load(&s_extraOn);
+                for(u32 kind : order)if(static_cast<u32>(count)+s_extraCount<capacity && (mask&(1u<<kind)) && (kind!=3u || category==2u))
                     s_extraKinds[s_extraCount++]=kind;
                 count+=s_extraCount;cancel+=s_extraCount;
             }
         }
     }
-    return HookContext::GetCurrent().OriginalFunction<int>(system,count,cancel);
+    return hook.OriginalFunction<int>(system,count,cancel);
 }
 __attribute__((noinline)) int CopyOption(u32 system,int index,const void *descriptor) {
+    auto &hook=HookContext::GetCurrent();
     if(s_buildActor && !s_committing && system==s_buildActor+224u && s_extraCount && index==static_cast<int>(s_originalCount)-1) {
         std::memcpy(s_cancel,descriptor,sizeof(s_cancel));s_cancelCopied=true;
     }
-    return HookContext::GetCurrent().OriginalFunction<int>(system,index,descriptor);
+    return hook.OriginalFunction<int>(system,index,descriptor);
 }
 __attribute__((noinline)) int Commit(u32 system) {
+    // COPYのhookを呼ぶとCTRPFのTLSがそちらへ切り替わる。元のCOMMITをここで保持する。
+    auto &hook=HookContext::GetCurrent();
     if(s_buildActor && system==s_buildActor+224u && s_extraCount && s_cancelCopied) {
         s_committing=true;
         for(u32 i=0;i<s_extraCount;++i) {
@@ -139,19 +145,21 @@ __attribute__((noinline)) int Commit(u32 system) {
         reinterpret_cast<void (*)(u32,u32,const void *)>(0x5E3D1C)(system,s_originalCount-1u+s_extraCount,s_cancel);
         s_committing=false;
     }
-    return HookContext::GetCurrent().OriginalFunction<int>(system);
+    return hook.OriginalFunction<int>(system);
 }
 __attribute__((noinline)) int Dispatch(u32 actor) {
+    auto &hook=HookContext::GetCurrent();
     if(Owned(actor) && actor==s_extraActor && reinterpret_cast<int (*)(u32)>(0x71C610)(actor+444u)) {
         const u32 selected=reinterpret_cast<u32 (*)(u32)>(0x7592E0)(actor+224u);
         const u32 action=selected?Read(selected+168u):0;
         if(action>=0x40u && action<=0x43u) {
             reinterpret_cast<void (*)(u32)>(0x7592D4)(actor+224u);
-            if(Load(&s_extraOn))ExtraAction(actor,action-0x40u);
+            const u32 kind=action-0x40u;
+            if(Load(&s_extraOn)&(1u<<kind))ExtraAction(actor,kind);
             return reinterpret_cast<int (*)(u32,u32,int)>(0x815E8C)(actor+164u,0x19CB74,0);
         }
     }
-    return HookContext::GetCurrent().OriginalFunction<int>(actor);
+    return hook.OriginalFunction<int>(actor);
 }
 
 DecorLayout::Arc s_arc{};
@@ -162,7 +170,8 @@ alignas(8) u8 s_node[304],s_group[320];
 bool s_nodeMade,s_groupMade,s_linked,s_hover;
 u32 s_choice,s_failed;
 u32 s_trashActor,s_choicePlayer,s_idleFrames,s_hiddenPane;
-u8 s_oldAlpha,s_oldEnabled;
+bool s_oldVisible;
+u8 s_oldEnabled;
 int s_bound=-1;
 float s_x,s_y;
 u8 *s_file;u32 s_fileSize;
@@ -179,7 +188,7 @@ void Detach(u32 actor) {
             reinterpret_cast<void (*)(u32)>(Read(Read(control)+12u))(control);
         reinterpret_cast<void (*)(u32,u32)>(0x13F718)(control,Node());
         reinterpret_cast<void (*)(u32,u32)>(0x13F718)(control+228u,Group()+12u);
-        if(s_hiddenPane)DecorLayout::SetAlpha(reinterpret_cast<void *>(s_hiddenPane),s_oldAlpha);
+        if(s_hiddenPane)DecorLayout::SetVisible(reinterpret_cast<void *>(s_hiddenPane),s_oldVisible);
         const u32 letter=Read(actor+41768u);
         if(letter)WB(letter+8664u+217u,s_oldEnabled);
     }
@@ -203,13 +212,15 @@ bool BuildTrash() {
     reinterpret_cast<void (*)(u32)>(0x2D0660)(Node());s_nodeMade=true;
     const u32 groupParams[11]={reinterpret_cast<u32>(s_arc.holder),reinterpret_cast<u32>(s_layout.obj),0,0,0,0,0,0,0,0,0};
     reinterpret_cast<void (*)(u32,const void *)>(0x22C88C)(Group(),groupParams);
-    const u32 nodeParams[7]={reinterpret_cast<u32>(DecorLayout::Pane(s_layout,"B_Base_00")),reinterpret_cast<u32>(s_layout.obj),0,0,0,19,0};
+    // 第2欄はアニメ群でありLayoutではない。LayoutはAddNodeがgroupから設定する。
+    const u32 nodeParams[7]={reinterpret_cast<u32>(DecorLayout::Pane(s_layout,"B_Base_00")),0,0,0,0,19,0};
     if(!nodeParams[0])return false;
     reinterpret_cast<void (*)(u32,const void *)>(0x2B6EC0)(Node(),nodeParams);
     reinterpret_cast<void (*)(u32,u32,int)>(0x22C988)(Group(),Node(),0);
     WB(Node()+217u,1);WB(Node()+221u,0);TrashAnim(0);return true;
 }
 __attribute__((noinline)) int WaitInput(u32 actor) {
+    auto &hook=HookContext::GetCurrent();
     if(s_linked && Owned(actor) && actor==s_trashActor) {
         const u32 control=actor+41392u;
         const bool decided=reinterpret_cast<int (*)(u32)>(0x722C34)(control)!=0;
@@ -232,11 +243,12 @@ __attribute__((noinline)) int WaitInput(u32 actor) {
             return 0;
         }
     }
-    return HookContext::GetCurrent().OriginalFunction<int>(actor);
+    return hook.OriginalFunction<int>(actor);
 }
 __attribute__((noinline)) int Update(u32 actor) {
+    auto &hook=HookContext::GetCurrent();
     if(s_choice && actor==s_trashActor && Owned(actor) && !(Read(0x949D68)&0x20u))return 2;
-    return HookContext::GetCurrent().OriginalFunction<int>(actor);
+    return hook.OriginalFunction<int>(actor);
 }
 void FrameStep() {
     const u32 actor=Actor();
@@ -269,10 +281,11 @@ void FrameStep() {
         s_trashActor=actor;
         s_hiddenPane=Read(letter+632u);
         if(!s_hiddenPane)return;
-        s_oldAlpha=B(s_hiddenPane+180u);s_oldEnabled=B(letter+8664u+217u);
+        s_oldVisible=DecorLayout::Visible(reinterpret_cast<void *>(s_hiddenPane));s_oldEnabled=B(letter+8664u+217u);
         reinterpret_cast<void (*)(u32,u32)>(0x29BC24)(actor+41392u,Group());s_linked=true;
     }
-    WB(letter+8664u+217u,0);DecorLayout::SetAlpha(reinterpret_cast<void *>(s_hiddenPane),0);
+    // alphaは子へ継承されないペインがあるため、手紙のsubtreeを可視flagで止める。
+    WB(letter+8664u+217u,0);DecorLayout::SetVisible(reinterpret_cast<void *>(s_hiddenPane),false);
     // originが左寄せのHHDの部品も、native手紙ボタンの矩形中心へ合わせる。
     float nativeRect[4],trashRect[4],center[3],world[3];
     const u32 trashPane=reinterpret_cast<u32>(DecorLayout::Pane(s_layout,"B_Base_00"));
@@ -309,7 +322,6 @@ bool Install() {
     s_installed=true;return true;
 }
 bool TrashActive(int) {return Load(&s_trashOn)!=0;}
-bool ExtraActive(int) {return Load(&s_extraOn)!=0;}
 void SetTrash(int,bool enabled) {
     if(enabled && !Install()) {GuiMenu::NotifyRed(Cheats::kPocketTrash,u8"対象の持ち物処理を確認できません。");return;}
     if(enabled && !s_file) {
@@ -319,16 +331,17 @@ void SetTrash(int,bool enabled) {
     }
     Store(&s_failed,0u);Store(&s_trashOn,enabled?1u:0u);
 }
-void SetExtra(int,bool enabled) {
-    if(enabled && !Install()) {Error(u8"対象の持ち物処理を確認できません。");return;}
-    Store(&s_extraOn,enabled?1u:0u);
+void SetExtra(int,s32 value) {
+    const u32 mask=static_cast<u32>(value)&0xFu;
+    if(mask && !Install()) {Error(u8"対象の持ち物処理を確認できません。");return;}
+    Store(&s_extraOn,mask);
 }
-const GuiMenu::ToggleEffectFuncs kTrash={TrashActive,SetTrash},kExtra={ExtraActive,SetExtra};
+const GuiMenu::ToggleEffectFuncs kTrash={TrashActive,SetTrash};
 }
 void Wire() {
     const int trash=GuiMenu::FindItem(Cheats::kPocketTrash),extra=GuiMenu::FindItem(Cheats::kInventoryOptions);
     if(trash>=0)GuiMenu::RegisterToggleEffect(trash,&kTrash);
-    if(extra>=0)GuiMenu::RegisterToggleEffect(extra,&kExtra);
+    if(extra>=0)GuiMenu::RegisterApply(extra,SetExtra);
     char path[256];
     if(!s_file && GohanFiles::CommonPath(path,sizeof(path),"hhd_decorate.arc"))s_file=GohanFiles::ReadAll(path,0x10000,s_fileSize);
 }

@@ -169,7 +169,9 @@ namespace CTRPluginFramework
                             u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
                 AddItem(ITEM_CHECKBOX, kPocketTrash, u8"持ち物の手紙ボタンをゴミ箱にします。掴んだアイテムを捨てられ、ゴミ箱を押すと全て削除／やめるを選べます。");
-                AddItem(ITEM_CHECKBOX, kInventoryOptions, u8"持ち物の選択窓に複製・ラッピング・収納する・ローンを返すを追加します。元の選択肢とやめるを残し、6行に収まる項目を表示します。");
+                static const char *const kInventoryOptionsList[] = {u8"複製",u8"ラッピング",u8"収納する",u8"ローンを返す"};
+                i = AddItem(ITEM_CHECKBOX_LIST, kInventoryOptions, u8"持ち物に追加する選択肢を個別に選びます。元の選択肢とやめるを残し、6行に収まる項目を表示します。");
+                SetOptions(i, kInventoryOptionsList, 4);
                 i = AddItem(ITEM_VALUE, kClosetSlot, u8"0から始まるスロット番号。10枠ごとにページが変わります。");
                 SetValue(i, FMT_DEC, 0, 0, 0x7FFD, 1);
                 i = AddItem(ITEM_ACTION, kClosetItem, u8"指定スロットに表示するID。複数のスロットを設定してからクローゼットを開けます。7FFEは空き枠です。");

@@ -118,7 +118,7 @@ namespace CTRPluginFramework
                 ITEM_VALUE,             // "value"
                 ITEM_LINKED_VALUE,      // "linked-value"
                 ITEM_SLIDER,            // "slider"
-                ITEM_CHECKBOX_LIST      // "checkbox-list"（Simulator e5f8f01。値 = ビット。いまは設定画面だけ）
+                ITEM_CHECKBOX_LIST      // "checkbox-list"（Simulator e5f8f01。値 = 選択肢ごとのビット）
             };
             enum Format { FMT_NONE = 0, FMT_DEC, FMT_HEX, FMT_FLOAT };
             enum ActionId

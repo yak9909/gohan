@@ -1,5 +1,13 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-13 実機不具合修正 / IDA-gpt-6-F011・T014
+
+- 最新build3/正規prebuild5・native12（46case）、旧list20/repeat12/style6/closet29・scroll2/linked2と主DB公式XML2の読戻しが全終了0。nativeWord65/ctx誤戻り、GUI編集適用保持、実選択色、sourcetrash生成/letterhide/actualtouch→Choice/Open・窓Ctorを確認。PCの資源/GPU/fontはendpointとして区別。sourceへの最終実変更はModel保持判定のcheckboxlist追加、ヘッダ注記訂正のみ。
+- 3gxSHA b77445c052a6ab40fdd9c0aefa0ebbd28eac0ae0f9fc2cf024b70d6e1eee7393、ELF cce582e7f2915b8ec87e54db2993f695d3b98065a74948472b5efa7adee385ca。解析側gohan_inventory_fix1。新実機未確認/正常旧12版保持、main/SD/実機/中断整理未操作。最終hashgate後にこのsource/仕様/work範囲だけを最後一括commit/pushする。
+
+- 最新: 手紙widget残留、trash/pockettouchcrash、追加選択肢の個別checkbox化、selected行1tap実行・選択色保持。T013PC試験ではnative touch/word/choiceをmockしており実機動作を保証していなかった。
+- source22fcd262/work/gohan-chat-and-ports開始。正常/旧12版保持、main/SD/実機/中断整理未操作。親DBacnl_v2=root単独所有、F011/T014予約。全修正・検証後に最後一括commit/push、次はnative原因解析と再現。
+
 ## 2026-10-13 新追加: リスト/scroll・closet DPad・pocket trash/選択肢 / GPT-6
 
 - 保存成功: 今回14file/499insert17deleteをcode610445b3861f6bb8ee0adc13501d18c31f3fa3e1へ最後一括commit/push終了0、独立ls-remote一致。--saved41source Git・製品scope空/全PC/XML/正常旧11版保持PASS。新3gx637b970b...は実機未確認、main/実機/SD/旧整理不変。結果メモを同最終batchで追補、製品の次は利用者実機確認のみ。

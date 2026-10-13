@@ -1494,7 +1494,7 @@ namespace CTRPluginFramework
                         else if (m_tapCandidate >= 0 && m_phase == M_SHOW && m_tapCandidate < m_count
                                  && CandidateAt((int)(m_fx + 0.5f)) == m_tapCandidate)
                         {
-                            const bool confirm = m_touchSel == m_tapCandidate && m_sel == m_tapCandidate;
+                            const bool confirm = m_sel == m_tapCandidate;
                             if (confirm) {
                                 Select(m_tapCandidate);
                                 m_wantEnter = true;

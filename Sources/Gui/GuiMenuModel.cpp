@@ -336,7 +336,7 @@ namespace CTRPluginFramework
                 const Item &it = g_items[index];
 
                 return it.type == ITEM_CHECKBOX || it.type == ITEM_VALUE || it.type == ITEM_SLIDER
-                       || it.type == ITEM_LIST || IsLinked(it);
+                       || it.type == ITEM_LIST || it.type == ITEM_CHECKBOX_LIST || IsLinked(it);
             }
 
             bool    IsItemRetained(int index)
@@ -1195,7 +1195,7 @@ namespace CTRPluginFramework
                 }
                 else if (valueChanged
                          && (it.type == ITEM_VALUE || it.type == ITEM_SLIDER
-                             || it.type == ITEM_LIST || IsLinked(it)))
+                             || it.type == ITEM_LIST || it.type == ITEM_CHECKBOX_LIST || IsLinked(it)))
                     ExecuteValue(it);
                 // ホットキー設定だけの適用では効果に触れない。
                 return true;

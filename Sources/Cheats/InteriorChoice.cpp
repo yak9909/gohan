@@ -9,6 +9,8 @@ namespace InteriorChoice {
 namespace {
 using namespace CTRPluginFramework;
 alignas(8) u8 s_window[2880], s_anchor[80];
+alignas(4) u8 s_touch[40];
+bool s_touchBlocked;
 bool s_made, s_loaded, s_built, s_wanted, s_opened;
 u32 s_wait, s_prev, s_hold[32];
 float s_x, s_y;
@@ -102,7 +104,34 @@ void OpenNative(void) {
     reinterpret_cast<void (*)(void *, s32)>(0x002BAF48)(s_window, 1);
     s_prev = Keys();                           // Opening held buttons are not a new press.
     std::memset(s_hold, 0, sizeof(s_hold));
+    std::memset(s_touch, 0, sizeof(s_touch));
+    *reinterpret_cast<s16 *>(s_touch+2)=-1;
+    *reinterpret_cast<s16 *>(s_touch+4)=-1;
+    s_touch[15]=s_touch[25]=200;
+    s_touchBlocked=Touch::IsDown();
     s_opened = true;
+}
+void UpdateTouch(void) {
+    const bool down=Touch::IsDown();
+    if(!down)s_touchBlocked=false;
+    const bool held=down && !s_touchBlocked;
+    // 背景を遮断しても選択窓へはpress/release一式を渡す。開いた指の再入力は離上後だけ。
+    std::memcpy(s_touch+16,s_touch+6,8);
+    std::memcpy(s_touch+24,s_touch+14,2);
+    s_touch[26]=s_touch[0];s_touch[27]=s_touch[1];
+    std::memcpy(s_touch+28,s_touch+4,2);
+    s_touch[1]=s_touch[0]^(held?1u:0u);s_touch[0]=held?1u:0u;
+    if(held) {
+        const UIntVector pos=Touch::GetPosition();
+        *reinterpret_cast<s16 *>(s_touch+2)=static_cast<s16>(pos.x);
+        *reinterpret_cast<s16 *>(s_touch+4)=static_cast<s16>(pos.y);
+        if(!s_touch[26]) {std::memcpy(s_touch+6,s_touch+2,4);s_touch[14]=0;}
+        if(s_touch[14]<200)++s_touch[14];
+        std::memcpy(s_touch+10,s_touch+2,4);
+    } else if(s_touch[26])s_touch[15]=1;
+    else if(s_touch[15]<200)++s_touch[15];
+    *reinterpret_cast<float *>(s_touch+32)=static_cast<float>(*reinterpret_cast<s16 *>(s_touch+10))-160.0f;
+    *reinterpret_cast<float *>(s_touch+36)=120.0f-static_cast<float>(*reinterpret_cast<s16 *>(s_touch+12));
 }
 void Update(void) {
     const u32 held = Keys();
@@ -122,7 +151,13 @@ void Update(void) {
         *reinterpret_cast<u32 *>(menu + 72) = trig;
         *reinterpret_cast<u32 *>(menu + 80) = repeat;
     }
+    UpdateTouch();
+    u8 oldTouch[sizeof(s_touch)];
+    void *gameTouch=reinterpret_cast<void *>(0x00ACF6E0);
+    std::memcpy(oldTouch,gameTouch,sizeof(oldTouch));
+    std::memcpy(gameTouch,s_touch,sizeof(s_touch));
     reinterpret_cast<void (*)(void *)>(0x002BABAC)(s_window);
+    std::memcpy(gameTouch,oldTouch,sizeof(oldTouch));
     if (menu) {
         *reinterpret_cast<u32 *>(menu + 72) = oldTrig;
         *reinterpret_cast<u32 *>(menu + 80) = oldRepeat;

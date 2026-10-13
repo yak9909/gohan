@@ -249,7 +249,6 @@ volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
 u32 s_selectDone;
 volatile s32 s_decided = -1;
-s32 s_touchSelected = -1;
 CTRPluginFramework::Hook s_scrollDragHook;
 bool s_scrollDragHooked;
 volatile bool s_shutdown;
@@ -307,18 +306,24 @@ inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 // ---- 自前の仮想関数（ゲームが BLX で呼ぶ）-----------------------------------------------------
 void ListWaitCalc(void *list) {
-    // nativeは選択行を無効にして再タッチを禁止する。所有する行だけ戻す。
+    // nativeの後始末は同じ行でも選択色を外す。決定前のfocusを覚え、処理後に戻す。
+    const s32 previous = S(list, kListSelected);
     const bool decided = reinterpret_cast<int (*)(void *)>(0x00722C34)(P(list,2560)) != 0;
     reinterpret_cast<ListFn>(0x001B0698)(list);
     const s32 selected = S(list, kListSelected);
     if (selected >= 0 && (u32)selected < s_count) {
         if (decided) {
-            if (s_touchSelected == selected) s_decided = selected;
-            s_touchSelected = selected;
+            if (previous == selected) s_decided = selected;
         }
         const s32 row = selected - S(list,kListTop);
-        if (row >= 0 && (u32)row < kListRows && W(list,2556))
-            B(reinterpret_cast<void *>(W(list,2556)), (u32)row * 224u + 217u) = 1;
+        if (row >= 0 && (u32)row < kListRows && W(list,2556)) {
+            void *node = P(reinterpret_cast<void *>(W(list,2556)), (u32)row * 224u);
+            if (decided) {
+                const u32 *vt = *reinterpret_cast<u32 **>(node);
+                reinterpret_cast<void (*)(void *,int,int)>(vt[7])(node,1,0);
+            }
+            B(node,217) = 1;
+        }
     }
 }
 
@@ -980,7 +985,6 @@ bool BuildStep(void) {
         W(s_list, kListTextCap) = kMaxChars;
         s_idReady = false;
         s_decided = -1;
-        s_touchSelected = -1;
         __atomic_store_n(&s_confirm, 0u, __ATOMIC_RELEASE);
         ResetChatTouch();
         s_chatTouchBlocked = CTRPluginFramework::Touch::IsDown();
@@ -1032,7 +1036,6 @@ void ApplySelect(s32 index) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
     s_lastSelected = S(s_list, kListSelected);
-    s_touchSelected = -1;
 }
 
 // 選択を index へ動かす。見えていなければ 1 行ずつスクロールして端に入れる（上なら先頭、下なら末尾の行）
@@ -1050,7 +1053,6 @@ void MoveSelect(s32 index) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
     s_lastSelected = S(s_list, kListSelected);
-    s_touchSelected = -1;
     if (!s_overChat) s_decided = index;    // 公共事業の十字previewを維持。chatはfocusだけ
 }
 

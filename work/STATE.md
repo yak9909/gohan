@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 2026-10-13 実機不具合修正中 / IDA-gpt-6-F011・T014
+
+- 修正/PC検証完了。letterroot visible/Group引数、入口HookContext保持、4個別checkbox編集適用保持、現在selected行1tap/色復元、私有Choice touchを反映。build3・native46/旧UI・closet・scroll/4334・68anchor・21CPP/linked/公式XML PASS。新3gx b77445c0…実機未確認、正常旧12版保持。次は最終hash確認後、このscopeだけ最後一括作業枝commit/push。main/SD/実機/中断整理は不変。
+
+- T013のletterhide/trashクリック/pocketクリックを利用者実機で不具合確認。追加選択肢はVapecordと同じ個別checkboxへ、listは現在selected行1tap実行と選択色保持へ訂正する。source22fcd262/work枝開始、解析側主DBroot単独、正常/旧版不変。実機/main/SD未操作、最後一括Git。次はnative契約/症状再現→修正→専用build。
+
 ## 2026-10-13 F010/T013: list2tap・thumb半分・closet加速・pocketゴミ箱/追加選択肢
 
 - 最後一括source code610445b3861f6bb8ee0adc13501d18c31f3fa3e1をwork/gohan-chat-and-portsへ保存/push終了0、独立remote一致。41source Git/全PC・DB公式XML・正常旧11版保持PASS。製品scope完了、次は利用者の実機確認（3gx637b970b...）。保存結果メモも同最終batchで追補、main/実機/SD/旧整理未操作。
