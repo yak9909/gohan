@@ -2,6 +2,7 @@
 
 ## 2026-10-13 F010/T013: list2tap・thumb半分・closet加速・pocketゴミ箱/追加選択肢
 
+- 最後一括source code610445b3861f6bb8ee0adc13501d18c31f3fa3e1をwork/gohan-chat-and-portsへ保存/push終了0、独立remote一致。41source Git/全PC・DB公式XML・正常旧11版保持PASS。製品scope完了、次は利用者の実機確認（3gx637b970b...）。保存結果メモも同最終batchで追補、main/実機/SD/旧整理未操作。
 - 最終全PC/DB公式XML gate完了。build3・39operation/half6/memory7・旧list20/repeat12/style6、4334/68anchor/19CPP/linked ABI/しずえ、41source・15owner対16・正常旧11版保持PASS。3gx637b970b...、実機未確認。次はこのscope14fileを最後一括work枝へ保存/push、main/実機/SD/旧整理未操作。
 - 全機能source差分あり、旧回帰と追加36case/half scrollbar PASS。最新pendingOFF/atomic/arc再読・矩形中心補正・非pocket拒否を最終buildへ反映する。root DB21name/29注記・10型save/open、公式XMLと最終nativeDrop/click/linked gate未完。専用gohan_inventory_controls1・正常旧11版保持、Git最後一括/main/実機未操作。
 - 初tap選択/再tap実行・音anim、thumbは1回dragの距離0.5倍(track click保持)、DPad200ms→1500ms加速→50ms/page。手紙icon置換toggle/drag消去/同trashanim・native全削除窓、Vapecord参考の追加pocket選択肢checkboxを調査・実装する。source8e3e596開始/前版保持/旧整理dirty中断、Git最後一括/main/実機/SD未操作。次は関連native照合→設計/差分。

@@ -2,6 +2,7 @@
 
 ## 2026-10-13 新追加: リスト/scroll・closet DPad・pocket trash/選択肢 / GPT-6
 
+- 保存成功: 今回14file/499insert17deleteをcode610445b3861f6bb8ee0adc13501d18c31f3fa3e1へ最後一括commit/push終了0、独立ls-remote一致。--saved41source Git・製品scope空/全PC/XML/正常旧11版保持PASS。新3gx637b970b...は実機未確認、main/実機/SD/旧整理不変。結果メモを同最終batchで追補、製品の次は利用者実機確認のみ。
 - 全実装/最終PC gate完了: build3/39case（nativeDrop/click、矩形origin中心、erase sound含む）・half6・exit/memory7・list20/repeat12/style6、4334parser/68anchor/19CPP・linked/全分岐PC参照ABI/しずえ、DB公式XML24名33func+tablehead/7詳細型・旧名T/hash/41source・15owner対16/正常旧11版保持PASS。3gx637b970b113b82b2a7b1e1822a0721eae7a597da61d80866ba3c51afee7ddd52、実機未確認。source今回14fileだけを最後一括work枝へ保存/push、main/SD/実機/旧整理未操作。確定SHAは解析側manifest/publicationを参照。
 - 実装済/PC検証中: GameList2tap/StartDecide/owned drag0.5、候補touchfocus/re-tap/音pulse、closet実時間200/1500/50ms queue、InventoryTools native6行helper/元cancel保持・4操作、nativePartsDragNode/Groupで手紙位置trash・全削除/やめる、InteriorChoice actionlabel引数化。rootにDB21name/29注記・10型save/まだopen、正常旧11版保持。初/訂正専用build終了0、旧list20/repeat12/style6/closet29＋新36case/half8→4/track9→9 PASS。最新OFFpending保護/atomic/arc再読/非pocketsafe cleanup/矩形中心補正/erase音0x1000393はbuild3待ち。Git/main/実機/SD未操作、次は最終gate/build/nativeDrop/click/linked/XML→最後一括保存。
 - IDA-gpt-6-F010/T013。scroll最新回答は「1回のドラッグの移動量を半分」（連続追従補間は却下）。owned thumb入力をdrag初期point基準0.5倍、track click保持。native selected行input-enable217をownedのみ戻し、2tapactionを分離/StartDecide音animを使う。解析側evidence/gohan_inventory_controls、主DBroot単独。Git/実機/main未操作、native pocket/trash照合中。
