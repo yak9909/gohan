@@ -87,6 +87,9 @@ namespace CTRPluginFramework
 
                 int     FindByPath(const std::string &want)
                 {
+                    // 同じ保存形式のまま移した2項目は、以前のrootパスでも復元する。
+                    if (want == u8"チャットコマンド" || want == u8"アイテム検索の表示")
+                        return FindByPath(std::string(u8"ゲーム/キーボード/") + want);
                     struct { const std::string *want; int found; void operator()(int idx, const std::string &p) { if (found < 0 && p == *want) found = idx; } } fn = { &want, -1 };
 
                     WalkPaths(g_rootFirst, g_rootCount, std::string(), fn);

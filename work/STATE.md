@@ -1,5 +1,13 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 2026-10-13 再実機報告修正 / IDA-gpt-6-F013・T016（GPT-6）
+
+- 製品/PC検証全完了: 60case/最新build3・71anchor21CPP・4334・font欠字0/linked・scroll・DB/XML PASS。chat2項目はゲーム/キーボードへ移動、旧path設定も復元。製品7+memo2fileを最後一括work枝へ保存/pushし、結果/SHAは解析側publication/manifest。新版実機未確認/main/実機/SD/中断整理保持、製品の次は利用者実機確認。
+
+- 製品差分/字体生成欠字0/メニュー移動完了、次は正規prebuild・別build・native症状回帰・DB/XML、全完成後Git。実機未確認/main/SD/旧14版/中断整理保持。
+
+- 初/再入場trash表示・消去音・A後青、checkbox食べる/じめんにおく、font再生成。a1224fb/work枝開始、正常旧14版/中断整理保持、main/実機/SD未操作/最後一括Git。次はnative契約照合と実装。
+
 ## 2026-10-13 再入場/チェックリスト/青選択色の修正 / IDA-gpt-6-F012・T015（GPT-6）
 
 - 実装・全PC検証完了: 通常A→checkboxlist、native長押しtrash非drag/通常drop音、再入場/同actor再利用・priority、青保持/旧行解除・scroll、manual3cheat削除。runtime53・prebuild4334/69anchor21CPP/linked/半scroll、DB最新XML116name59comment12type/T/hash、44source/normal旧13版保持PASS。製品source10file＋このwork2fileだけを最後一括work枝へ保存、送信結果/commit/全SHAは解析側gohan_inventory_ui_fix/publicationとmanifestを参照。実機未確認/main/SD/中断整理未操作、製品の次は利用者実機確認。

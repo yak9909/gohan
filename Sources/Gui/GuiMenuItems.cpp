@@ -169,9 +169,9 @@ namespace CTRPluginFramework
                             u8"入力したIDのアイテムを持ち物の空いているスロットに入れます。");
                 SetValue(i, FMT_HEX, 0, 0, 0x7FFF, 1);
                 AddItem(ITEM_CHECKBOX, kPocketTrash, u8"持ち物の手紙ボタンをゴミ箱にします。掴んだアイテムを捨てられ、ゴミ箱を押すと全て削除／やめるを選べます。");
-                static const char *const kInventoryOptionsList[] = {u8"複製",u8"ラッピング",u8"収納する",u8"ローンを返す"};
+                static const char *const kInventoryOptionsList[] = {u8"複製",u8"ラッピング",u8"収納する",u8"ローンを返す",u8"食べる",u8"じめんにおく"};
                 i = AddItem(ITEM_CHECKBOX_LIST, kInventoryOptions, u8"持ち物に追加する選択肢を個別に選びます。元の選択肢とやめるを残し、6行に収まる項目を表示します。");
-                SetOptions(i, kInventoryOptionsList, 4);
+                SetOptions(i, kInventoryOptionsList, 6);
                 // Issue #15。連動型リスト（ゲームのコードの 1 語を読んで今の状態を出す）
                 i = AddItem(ITEM_LINKED_LIST, kHiddenItems,
                             u8"持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムに名前とアイコンを付けます。");
@@ -211,6 +211,11 @@ namespace CTRPluginFramework
                 AddItem(ITEM_CHECKBOX, kKanji, u8"漢字変換が出来るようになります。");
                 AddItem(ITEM_CHECKBOX, kComposition,
                         u8"かな入力に未確定の文字列を付けます。漢字変換はこの未確定の文字列を変換します。");
+                i = AddItem(ITEM_CHECKBOX, kChatCommands,
+                            u8"有効中はホットキーで入力したコマンドを実行します。list で一覧を確認できます。");
+                SetHotkey(i, Bit(HB_R) | Bit(HB_B));
+                i = AddItem(ITEM_LIST, kChatSearchView, u8"チャットのアイテム名検索をリスト／クローゼットで表示します。クローゼットのID検索は指定ID付近から前後へ閲覧できます。");
+                SetOptions(i, kChatSearchViewOptions, 2);
                 const int keyboardCount = g_itemCount - keyboardFirst;
 
                 // ---- root/ゲーム/店（§12.5）----
@@ -387,11 +392,6 @@ namespace CTRPluginFramework
                 SetFolder(i, gameFirst, gameCount);
                 i = AddItem(ITEM_FOLDER, u8"テスト", u8"解析の試験用です。確かめ終わったら本来の場所へ移します。");
                 SetFolder(i, testFirst, testCount);
-                i = AddItem(ITEM_CHECKBOX, kChatCommands,
-                            u8"有効中はホットキーで入力したコマンドを実行します。list で一覧を確認できます。");
-                SetHotkey(i, Bit(HB_R) | Bit(HB_B));
-                i = AddItem(ITEM_LIST, kChatSearchView, u8"チャットのアイテム名検索をリスト／クローゼットで表示します。クローゼットのID検索は指定ID付近から前後へ閲覧できます。");
-                SetOptions(i, kChatSearchViewOptions, 2);
                 g_rootCount = g_itemCount - g_rootFirst;
             }
 

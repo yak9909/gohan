@@ -30,11 +30,13 @@ const u32 kVtable=0x8E5220, kEmpty=0x7FFE, kPocketOffset=27600;
 u32 s_trashOn, s_extraOn;
 bool s_installed;
 Hook s_buildHook,s_finalizeHook,s_copyHook,s_commitHook,s_dispatchHook,s_waitHook,s_updateHook,s_disposeHook;
-u32 s_buildActor,s_extraActor,s_extraSlot,s_extraItem,s_originalCount,s_extraCount,s_extraKinds[4];
+u32 s_buildActor,s_extraActor,s_extraSlot,s_extraItem,s_originalCount,s_extraCount,s_requestedCount,s_extraKinds[6];
+bool s_nativeExtra[2];
 alignas(8) u8 s_cancel[32];
 bool s_cancelCopied,s_committing;
 const u16 *const kExtraText[] = {reinterpret_cast<const u16 *>(u"複製"),reinterpret_cast<const u16 *>(u"ラッピング"),
-    reinterpret_cast<const u16 *>(u"収納する"),reinterpret_cast<const u16 *>(u"ローンを返す")};
+    reinterpret_cast<const u16 *>(u"収納する"),reinterpret_cast<const u16 *>(u"ローンを返す"),
+    reinterpret_cast<const u16 *>(u"食べる"),reinterpret_cast<const u16 *>(u"じめんにおく")};
 u32 Load(u32 *p) {return __atomic_load_n(p,__ATOMIC_ACQUIRE);}
 void Store(u32 *p,u32 v) {__atomic_store_n(p,v,__ATOMIC_RELEASE);}
 void W(u32 a,u32 v) {*reinterpret_cast<volatile u32 *>(a)=v;}
@@ -42,10 +44,18 @@ u8 B(u32 a) {return *reinterpret_cast<const volatile u8 *>(a);}
 void WB(u32 a,u8 v) {*reinterpret_cast<volatile u8 *>(a)=v;}
 u32 Player() {return reinterpret_cast<u32 (*)()>(0x2FB900)();}
 u32 Actor() {
-    const u32 holder=Read(0x986500);
-    if(!NativePortGuard::Heap(holder))return 0;
-    const u32 actor=Read(holder+12u);
-    return NativePortGuard::Heap(actor) && Read(actor)==kVtable && !B(actor+36u)?actor:0u;
+    // LoadStepが登録する現行pocketを優先する。screen listの先頭は別のメニューの場合もある。
+    const u32 active=Read(0x9499EC);
+    if(NativePortGuard::Heap(active) && Read(active)==kVtable && !B(active+36u))return active;
+    u32 holder=Read(0x986500);
+    for(u32 i=0;i<64u && NativePortGuard::Heap(holder);++i) {
+        const u32 actor=Read(holder+12u);
+        if(NativePortGuard::Heap(actor) && Read(actor)==kVtable && !B(actor+36u))return actor;
+        const u32 next=Read(holder+8u);
+        if(next==holder)break;
+        holder=next;
+    }
+    return 0;
 }
 bool Owned(u32 actor) {return actor && actor==Actor();}
 void Sound(u32 id) {reinterpret_cast<void (*)(u32)>(0x58C7D4)(id);}
@@ -105,7 +115,8 @@ __attribute__((noinline)) int BuildOptions(u32 actor,u32 slot) {
 }
 __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
     auto &hook=HookContext::GetCurrent();
-    if(s_buildActor && system==s_buildActor+224u && count>=1 && count<=6 && cancel==count-1) {
+    if(s_buildActor && !s_committing && system==s_buildActor+224u && count>=1 && count<=6 && cancel==count-1) {
+        s_requestedCount=0;s_nativeExtra[0]=s_nativeExtra[1]=false;
         const u32 player=Player(),slot=Read(s_buildActor+204u);
         if(NativePortGuard::Heap(player) && slot<16u) {
             s_originalCount=count;s_extraActor=s_buildActor;s_extraSlot=slot;
@@ -113,10 +124,11 @@ __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
             if((s_extraItem&0x7FFFu)!=kEmpty) {
                 const u32 category=reinterpret_cast<u32 (*)(const u32 *)>(0x2FCB64)(&s_extraItem);
                 // ベル袋では返済を先に入れる。元の項目で6行が埋まる品にもcancelを残す。
-                const u32 order[4]={category==2u?3u:0u,category==2u?0u:1u,category==2u?1u:2u,category==2u?2u:3u};
+                const u32 order[6]={category==2u?3u:0u,category==2u?0u:1u,category==2u?1u:2u,category==2u?2u:3u,4u,5u};
                 const u32 capacity=std::min<u32>(6u,Read(system+16u)),mask=Load(&s_extraOn);
-                for(u32 kind : order)if(static_cast<u32>(count)+s_extraCount<capacity && (mask&(1u<<kind)) && (kind!=3u || category==2u))
-                    s_extraKinds[s_extraCount++]=kind;
+                for(u32 kind : order)if((mask&(1u<<kind)) && (kind!=3u || category==2u))
+                    s_extraKinds[s_requestedCount++]=kind;
+                s_extraCount=capacity>static_cast<u32>(count)?std::min(s_requestedCount,capacity-static_cast<u32>(count)):0u;
                 count+=s_extraCount;cancel+=s_extraCount;
             }
         }
@@ -125,6 +137,11 @@ __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
 }
 __attribute__((noinline)) int CopyOption(u32 system,int index,const void *descriptor) {
     auto &hook=HookContext::GetCurrent();
+    if(s_buildActor && !s_committing && system==s_buildActor+224u && index>=0 && index<static_cast<int>(s_originalCount)-1) {
+        const u32 action=static_cast<const u32 *>(descriptor)[6];
+        if(action==16u)s_nativeExtra[0]=true;
+        if(action==0u)s_nativeExtra[1]=true;
+    }
     if(s_buildActor && !s_committing && system==s_buildActor+224u && s_extraCount && index==static_cast<int>(s_originalCount)-1) {
         std::memcpy(s_cancel,descriptor,sizeof(s_cancel));s_cancelCopied=true;
     }
@@ -135,9 +152,23 @@ __attribute__((noinline)) int Commit(u32 system) {
     auto &hook=HookContext::GetCurrent();
     if(s_buildActor && system==s_buildActor+224u && s_extraCount && s_cancelCopied) {
         s_committing=true;
+        // 食べる/action16、置く/action0は本来のPMFへ渡す。元からある行は重複させない。
+        const u32 capacity=std::min<u32>(6u,Read(system+16u));
+        u32 added=0;
+        for(u32 i=0;i<s_requestedCount && s_originalCount+added<capacity;++i) {
+            const u32 kind=s_extraKinds[i];
+            if(kind>=4u && s_nativeExtra[kind-4u])continue;
+            s_extraKinds[added++]=kind;
+        }
+        if(added!=s_extraCount) {
+            // native SetOptionCountは全rowを初期化する。descriptorコピー後はheaderだけ更新する。
+            W(system+8u,s_originalCount+added);W(system+192u,s_originalCount+added-1u);
+        }
+        s_extraCount=added;
         for(u32 i=0;i<s_extraCount;++i) {
             const u32 index=s_originalCount-1u+i,kind=s_extraKinds[i];
-            alignas(8) u32 descriptor[8]={0,0,0,0,0,0,0x40u+kind,7};
+            const u32 action=kind<4u?0x40u+kind:(kind==4u?16u:0u);
+            alignas(8) u32 descriptor[8]={0,0,0,0,0,0,action,7};
             reinterpret_cast<void (*)(u32,u32,const void *)>(0x5E3D1C)(system,index,descriptor);
             const u32 word=Read(system+12u)+172u*index+8u;
             const u32 script[3]={0x904954,reinterpret_cast<u32>(kExtraText[kind]),0x3FFFFFFFu};
@@ -236,7 +267,9 @@ __attribute__((noinline)) int WaitInput(u32 actor) {
             const u32 slot=reinterpret_cast<u32 (*)(u32)>(0x71A288)(control),player=Player();
             if(slot<16u && NativePortGuard::Heap(player)) {
                 WritePocket(actor,player,slot,kEmpty);TrashAnim(4);s_hover=false;
-                return reinterpret_cast<int (*)(u32,int,u32)>(0x29B364)(control,1,0x01000962);
+                // icon更新でsourceが無効になるとnative cleanupの音条件から外れる。
+                Sound(0x01000962);
+                return reinterpret_cast<int (*)(u32,int,u32)>(0x29B364)(control,1,0);
             }
             // 手紙など持ち物slot以外は捨てず、nativeの掴みだけ解いて戻す。
             return reinterpret_cast<int (*)(u32,int,u32)>(0x29B364)(control,1,0);
@@ -351,7 +384,7 @@ void SetTrash(int,bool enabled) {
     Store(&s_failed,0u);Store(&s_trashOn,enabled?1u:0u);
 }
 void SetExtra(int,s32 value) {
-    const u32 mask=static_cast<u32>(value)&0xFu;
+    const u32 mask=static_cast<u32>(value)&0x3Fu;
     if(mask && !Install()) {Error(u8"対象の持ち物処理を確認できません。");return;}
     Store(&s_extraOn,mask);
 }

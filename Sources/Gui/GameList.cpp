@@ -173,6 +173,7 @@ u32 s_vtblStore[1 + kVtblWords];           // [0] = TypeInfo（ゲームの vtab
 u32 *const s_vtbl = s_vtblStore + 1;
 u8 *s_list;                                 // ゲームのヒープ
 void *s_selectedNode;                       // スクロールで行部品が再利用されても旧選択を消す
+void *s_confirmedNode;                      // A取得済みの行。決定anim完了で二重取得しない
 
 // ---- 行の前置き（名前の左に小さく出す文字。例: アイテム ID「0x5C」。利用者指示 2026-09-25）----------------
 // ★名前とは別の TextBox に描く（利用者指示: 同じ文字列にしない）。一覧の Layout（ctlg_cntnt_00）の中に置くので、
@@ -321,6 +322,10 @@ void ClearSelectionVisual(void *node) {
     play(node,P(node,152),0);
 }
 void ListSetSelect(void *list,s32 index,s32 previous) {
+    if (s_confirmedNode) {
+        reinterpret_cast<ListFn>(0x002F72C4)(P(list,2560));
+        s_confirmedNode = nullptr;
+    }
     ClearSelectionVisual(s_selectedNode);
     reinterpret_cast<SetSelectFn>(0x001AF858)(list,index,previous);
     s_selectedNode = SelectedNode(list);
@@ -329,7 +334,9 @@ void ListWaitCalc(void *list) {
     // nativeの後始末は同じ行でも選択色を外す。決定前のfocusを覚え、処理後に戻す。
     const s32 previous = S(list, kListSelected);
     const bool decided = reinterpret_cast<int (*)(void *)>(0x00722C34)(P(list,2560)) != 0;
+    const bool acquired = s_confirmedNode && W(list,2560+180)==reinterpret_cast<u32>(s_confirmedNode);
     reinterpret_cast<ListFn>(0x001B0698)(list);
+    if (decided) s_confirmedNode = nullptr;
     const s32 selected = S(list, kListSelected);
     void *node = SelectedNode(list);
     const bool changedNode = s_selectedNode != node;
@@ -337,7 +344,7 @@ void ListWaitCalc(void *list) {
     s_selectedNode = node;
     if (selected >= 0 && (u32)selected < s_count) {
         if (decided) {
-            if (previous == selected) s_decided = selected;
+            if (!acquired && previous == selected) s_decided = selected;
         }
         if (node) {
             if (decided || changedNode) {
@@ -375,7 +382,8 @@ __attribute__((noinline)) int ScrollDrag(void *scroll) {
 
 bool InstallScrollDrag(void) {
     if (s_scrollDragHooked) return true;
-    const NativePortGuard::Word anchors[] = {{0x00298664,0xE92D4030}};
+    const NativePortGuard::Word anchors[] = {{0x00298664,0xE92D4030},
+        {0x002F6C28,0xE92D4070},{0x002F72C4,0xE92D4010}};
     if (!NativePortGuard::Matches(anchors)) return false;
     s_scrollDragHook.InitializeForMitm(0x00298664,reinterpret_cast<u32>(ScrollDrag));
     s_scrollDragHooked = s_scrollDragHook.Enable() == CTRPluginFramework::HookResult::Success;
@@ -675,6 +683,7 @@ void DestroyAll(void) {
     FrameTrace::Mark(FrameTrace::ListDestroy, reinterpret_cast<u32>(s_list));
     s_idReady = false;
     s_selectedNode = nullptr;
+    s_confirmedNode = nullptr;
     if (s_list != nullptr) {
         if (s_listSetup) {
             u32 *vt = *reinterpret_cast<u32 **>(s_list);
@@ -1411,8 +1420,12 @@ void FrameStep(void) {
         const s32 selected = S(s_list,kListSelected), row = selected - S(s_list,kListTop);
         if (selected >= 0 && (u32)selected < s_count && row >= 0 && (u32)row < kListRows) {
             void *node = P(reinterpret_cast<void *>(W(s_list,2556)), (u32)row * 224u);
-            const u32 *nodeVt = *reinterpret_cast<u32 **>(node);
-            reinterpret_cast<ListFn>(nodeVt[9])(node); // nativeの決定音とtouch_ok/select_ok
+            void *control = P(s_list,2560);
+            if (s_confirmedNode) reinterpret_cast<ListFn>(0x002F72C4)(control);
+            W(control,180) = reinterpret_cast<u32>(node);
+            // nodeのanim開始だけでは完了通知が来ない。BACの決定状態を通して青へ戻す。
+            reinterpret_cast<ListFn>(0x002F6C28)(control);
+            s_confirmedNode = node;
             s_decided = selected;
         }
     }

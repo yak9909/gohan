@@ -1,5 +1,17 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-13 再実機訂正 / IDA-gpt-6-F013・T016（GPT-6）
+
+- 全製品検証完了: runtime6/60case（実A→native待ち/完了→青、取得一度/再A/移動、複数actor、音一度、全6checkbox mask/実PMF/旧path復元）、最新prebuild4334・71anchor21CPP/font667codes欠字0/build3/linked3/scroll2/DB最新XML PASS。製品7file＋このwork2fileだけを最後一括work/gohan-chat-and-portsへ保存/push。正常/旧14版保持と全source SHA・Git/送信結果は解析側manifest/publicationを正とする。新版実機未確認/main/SD/実機/中断整理不変、製品の次は利用者実機確認。
+
+- 最新差分: Commit重複除去は既存rowを初期化せずcount/cancel header更新。移動chat2項目の保持設定は旧root pathも新keyboardへ復元（同形式）。解析側build3/prebuild3成功・nativeA/実PMF dispatch/旧path復元を含むruntime5継続、最新linked3も継続。DB/XML121名67注記13型+enum/global/hash PASS/所有0。全完成後だけ一括保存、main/SD/実機/正常旧14版/中断整理保持。
+
+- actor取得/消去音/実BAC A決定＋即取得marker、native2action・6checkbox、keyboardへ2項目移設を実装。font生成667codes/58source欠字0。根拠/設計は解析側inventory_ui_followup_design.md。次はprebuild→専用build→本物の経路検証/DBXML→最後一括Git、main/実機/正常旧14版/中断整理保持。
+
+- 追加: チャットコマンドと検索表示設定をゲーム/キーボードへ移動。
+
+- trashの初回/再入場表示・消去音・A後青色を再修正し、追加checkbox食べる/じめんにおく、UI全文字のfont再生成を実施。source a1224fb/work枝開始、製品scope空/DB所有0、正常旧14版/中断整理保持。main/実機/SD未操作、全完成後Git最後一括。次は原native契約照合、根拠/別buildは解析側gohan_inventory_ui_followupへ。
+
 ## 2026-10-13 追加実機訂正 / IDA-gpt-6-F012・T015（GPT-6）
 
 - 最終全gate終了0: build・runtime6/53case/音、prebuild4334/69anchor21CPP・linked/scroll、DB最新XML116name59comment12type/T/hash、44source/15owner対16/normal旧13版保持PASS。源source10製品file69insert55delete＋このwork2fileだけを最後一括work/gohan-chat-and-portsへ保存/pushする。最終commit/送信結果は解析側publication、全SHAはgohan_inventory_ui_fix1/manifestを正とする。新版実機未確認/main/SD/中断整理未操作、製品の次は利用者実機確認。
