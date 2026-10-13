@@ -34,6 +34,9 @@ enum Phase : u32 { Off, Starting, WaitField, Requested, Live, Returning, WaitCha
 u32 s_phase, s_publish, s_close, s_returnReleased, s_cancelReleased, s_lastKeys, s_returnKeys;
 bool s_returnChat, s_installed, s_armed, s_actorGone, s_hold;
 u32 s_actor, s_child, s_room, s_frames, s_initialSlot, s_pendingInitialSlot, s_originManager, s_nativeDepth;
+s32 s_dpadDirection;
+u32 s_dpadStartMs, s_dpadNextMs;
+u32 s_pagesBefore, s_pagesAfter;
 const char *s_error;
 Hook s_ctorHook, s_pocketReadHook, s_itemWriteHook, s_pageHook;
 struct NativeScope {
@@ -334,6 +337,20 @@ void FrameStep() {
             s_error=u8"クローゼットの読み込みを完了できませんでした。";Store(&s_close,1u);
         }
         if(s_actor && Load(&s_close) && Read(s_actor+38704u)>=3u)W(kFlags,Read(kFlags)|0x20u);
+        const u32 before=__atomic_exchange_n(&s_pagesBefore,0u,__ATOMIC_ACQ_REL);
+        const u32 after=__atomic_exchange_n(&s_pagesAfter,0u,__ATOMIC_ACQ_REL);
+        if(s_child && s_actor && !B(s_actor+38700u) && !Read(s_actor+33976u+260u)
+            && Read(s_actor+52u)==0x1C32F4 && !Read(s_actor+56u)) {
+            // 取りこぼした長時間分を一気に走らせず、次のgame frameでまとめてページ位置へ反映する。
+            const u32 count=Pages(), page=Read(s_child+6240u);
+            const u32 next=((page-1u)+(after%count)+count-(before%count))%count+1u;
+            if((before || after) && next!=page) {
+                W(s_child+6240u,next);
+                reinterpret_cast<void (*)(u32)>(0x297BA0)(s_child);
+                reinterpret_cast<void (*)(u32)>(0x267660)(s_child);
+                reinterpret_cast<void (*)(u32)>(0x58C7D4)(0x010003A5);
+            }
+        }
         return;
     }
     if(phase==Returning && Load(&s_returnReleased)) {
@@ -402,6 +419,7 @@ bool Begin(bool returnToChat) {
     s_error=nullptr;s_returnChat=returnToChat;s_armed=false;s_actor=0;s_child=0;s_hold=false;
     s_items.assign(1,kEmpty);s_initialSlot=0;Store(&s_close,0u);Store(&s_publish,0u);
     Store(&s_cancelReleased,0u);
+    s_dpadDirection=0;Store(&s_pagesBefore,0u);Store(&s_pagesAfter,0u);
     Store(&s_phase,Starting);return true;
 }
 bool Publish(const Item *items,u32 count,u32 initialSlot) {
@@ -432,6 +450,24 @@ void Tick() {
     if(!Busy())return;
     if(BlocksInput()) {GuiMenu::BlockGameAll();GuiMenu::BlockGameTouch();}
     const u32 keys=physical, phase=Load(&s_phase);
+    const u32 dpad=keys & static_cast<u32>(Key::DPadUp|Key::DPadDown|Key::DPadLeft|Key::DPadRight);
+    const s32 direction=(dpad & static_cast<u32>(Key::DPadUp|Key::DPadLeft))?-1
+        :(dpad & static_cast<u32>(Key::DPadDown|Key::DPadRight))?1:0;
+    const u32 now=static_cast<u32>(svcGetSystemTick()/static_cast<u64>(SYSCLOCK_ARM11/1000));
+    if(phase!=Live || GuiMenu::IsVisible() || BlocksInput())s_dpadDirection=0;
+    else {
+        GuiMenu::BlockGameDpad();
+        bool step=false;
+        if(direction!=s_dpadDirection) {
+            s_dpadDirection=direction;s_dpadStartMs=now;s_dpadNextMs=now+200u;
+            step=direction!=0;
+        } else if(direction && static_cast<s32>(now-s_dpadNextMs)>=0) {
+            step=true;
+            const u32 elapsed=std::min<u32>(now-s_dpadStartMs-200u,1500u);
+            s_dpadNextMs=now+200u-(150u*elapsed)/1500u;
+        }
+        if(step)__atomic_fetch_add(direction<0?&s_pagesBefore:&s_pagesAfter,1u,__ATOMIC_RELEASE);
+    }
     if(!(keys&static_cast<u32>(Key::B)))Store(&s_cancelReleased,1u);
     else if(Load(&s_cancelReleased) && phase!=Live && phase!=Returning && phase!=ReopeningChat)Close();
     if(Load(&s_phase)==Returning) {

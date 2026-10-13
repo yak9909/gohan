@@ -12,6 +12,8 @@ alignas(8) u8 s_window[2880], s_anchor[80];
 bool s_made, s_loaded, s_built, s_wanted, s_opened;
 u32 s_wait, s_prev, s_hold[32];
 float s_x, s_y;
+const u16 *s_action = reinterpret_cast<const u16 *>(u"複製");
+u32 s_sound = 0x01000395;
 int s_result = -1;
 u32 &W(u32 off) { return *reinterpret_cast<u32 *>(s_window + off); }
 u8 &B(u32 off) { return s_window[off]; }
@@ -71,9 +73,9 @@ u32 Keys(void) {
 }
 void OpenNative(void) {
     const u16 *const rows[] = {
-        reinterpret_cast<const u16 *>(u"複製"), reinterpret_cast<const u16 *>(u"やめる")
+        s_action, reinterpret_cast<const u16 *>(u"やめる")
     };
-    const u32 sounds[] = {0x01000395, 0x01000392};
+    const u32 sounds[] = {s_sound, 0x01000392};
     const u16 empty[] = {0};
     for (u32 i = 0; i < 6; ++i) {
         void *box = reinterpret_cast<void *>(W(956 + 12 * i));
@@ -132,7 +134,12 @@ void Update(void) {
 }
 }
 bool Open(float x, float y) {
+    return Open(x,y,reinterpret_cast<const u16 *>(u"複製"),0x01000395);
+}
+bool Open(float x, float y, const u16 *action, u32 sound) {
     if (Busy()) return false;
+    if (!action || !action[0]) return false;
+    s_action = action; s_sound = sound;
     s_x = x; s_y = y;
     s_wanted = true;
     s_result = -1;

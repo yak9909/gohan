@@ -31,6 +31,7 @@
 #include "KeepItems.hpp"
 #include "ChatCommands.hpp"
 #include "ClosetMenu.hpp"
+#include "InventoryTools.hpp"
 
 namespace CTRPluginFramework
 {
@@ -269,6 +270,7 @@ namespace CTRPluginFramework
                 MapEditorTick(g_mapAction,held);
                 ChatCommands::Tick(held);
                 ClosetMenu::Tick();
+                InventoryTools::Tick();
                 HhdScreen::Tick(GuiMenu::IsVisible());
                 InteriorTools::Tick();
             }
@@ -312,6 +314,7 @@ namespace CTRPluginFramework
             KeepItems::Wire();
             ChatCommands::Wire();
             ClosetMenu::Wire();
+            InventoryTools::Wire();
             ChatIme::Wire();
             DecorTrash::Wire();
             DecorCatalog::Wire();

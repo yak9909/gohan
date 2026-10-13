@@ -33,6 +33,8 @@ namespace CTRPluginFramework
         static const char kNoBedHead[]      = u8"寝癖付かない";
         // ---- root/アイテム ----
         static const char kPocketItem[]     = u8"ポケットアイテム";
+        static const char kPocketTrash[]    = u8"手紙アイコン->ゴミ箱";
+        static const char kInventoryOptions[] = u8"持ち物の選択肢を増やす";
         static const char kClosetSlot[]     = u8"クローゼットのスロット";
         static const char kClosetItem[]     = u8"クローゼットのアイテム";
         static const char kClosetOpen[]     = u8"クローゼットを開く";

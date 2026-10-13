@@ -1,5 +1,12 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-13 新追加: リスト/scroll・closet DPad・pocket trash/選択肢 / GPT-6
+
+- 全実装/最終PC gate完了: build3/39case（nativeDrop/click、矩形origin中心、erase sound含む）・half6・exit/memory7・list20/repeat12/style6、4334parser/68anchor/19CPP・linked/全分岐PC参照ABI/しずえ、DB公式XML24名33func+tablehead/7詳細型・旧名T/hash/41source・15owner対16/正常旧11版保持PASS。3gx637b970b113b82b2a7b1e1822a0721eae7a597da61d80866ba3c51afee7ddd52、実機未確認。source今回14fileだけを最後一括work枝へ保存/push、main/SD/実機/旧整理未操作。確定SHAは解析側manifest/publicationを参照。
+- 実装済/PC検証中: GameList2tap/StartDecide/owned drag0.5、候補touchfocus/re-tap/音pulse、closet実時間200/1500/50ms queue、InventoryTools native6行helper/元cancel保持・4操作、nativePartsDragNode/Groupで手紙位置trash・全削除/やめる、InteriorChoice actionlabel引数化。rootにDB21name/29注記・10型save/まだopen、正常旧11版保持。初/訂正専用build終了0、旧list20/repeat12/style6/closet29＋新36case/half8→4/track9→9 PASS。最新OFFpending保護/atomic/arc再読/非pocketsafe cleanup/矩形中心補正/erase音0x1000393はbuild3待ち。Git/main/実機/SD未操作、次は最終gate/build/nativeDrop/click/linked/XML→最後一括保存。
+- IDA-gpt-6-F010/T013。scroll最新回答は「1回のドラッグの移動量を半分」（連続追従補間は却下）。owned thumb入力をdrag初期point基準0.5倍、track click保持。native selected行input-enable217をownedのみ戻し、2tapactionを分離/StartDecide音animを使う。解析側evidence/gohan_inventory_controls、主DBroot単独。Git/実機/main未操作、native pocket/trash照合中。
+- list選択後再tap実行/音anim、thumb間隔半分(track click保持/距離意味質問中)、closetDPad200ms→1500ms加速→50ms/page。新手紙buttonを家具listtrashへ(toggle)/同anim・drag削除/クリックnative全削除窓、新pocket選択肢追加checkbox(Vapecord参考)。開始8e3e596/製品clean・旧整理dirty/前版保持。Git最後一括/main/実機未操作、まず既存nativeUI/trasher/choice/vendorを照合して設計。
+
 ## 2026-10-12 追加: 自前没icon・帰還直通・即時page / GPT-6
 
 - 保存成功: codecd7fd3b8bbdb3742cc198f6e92b91857238164d1をwork/gohan-chat-and-portsへ最後一括commit/push40383終了0、独立remote同SHA一致。37source Git/新29+timing7・旧24/全PC/DB公式XML/正常旧10版/14owner対16 PASS。結果メモを同最終batch追補する。新3gx e273acb7...は解析側gohan_closet_followup1、実機未確認/漢字変換復旧未確認/main/SD/旧整理不変。製品の次の操作は利用者実機確認、継続/成否不明の製品操作なし。

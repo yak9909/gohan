@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 2026-10-13 F010/T013: list2tap・thumb半分・closet加速・pocketゴミ箱/追加選択肢
+
+- 最終全PC/DB公式XML gate完了。build3・39operation/half6/memory7・旧list20/repeat12/style6、4334/68anchor/19CPP/linked ABI/しずえ、41source・15owner対16・正常旧11版保持PASS。3gx637b970b...、実機未確認。次はこのscope14fileを最後一括work枝へ保存/push、main/実機/SD/旧整理未操作。
+- 全機能source差分あり、旧回帰と追加36case/half scrollbar PASS。最新pendingOFF/atomic/arc再読・矩形中心補正・非pocket拒否を最終buildへ反映する。root DB21name/29注記・10型save/open、公式XMLと最終nativeDrop/click/linked gate未完。専用gohan_inventory_controls1・正常旧11版保持、Git最後一括/main/実機未操作。
+- 初tap選択/再tap実行・音anim、thumbは1回dragの距離0.5倍(track click保持)、DPad200ms→1500ms加速→50ms/page。手紙icon置換toggle/drag消去/同trashanim・native全削除窓、Vapecord参考の追加pocket選択肢checkboxを調査・実装する。source8e3e596開始/前版保持/旧整理dirty中断、Git最後一括/main/実機/SD未操作。次は関連native照合→設計/差分。
+
 ## 実装・PC検証・作業枝保存済み: 自前没icon・帰還直通・即時page / GPT-6
 
 - 2026-10-13: 最終11fileをcd7fd3b8bbdb3742cc198f6e92b91857238164d1へcommit/push終了0/独立remote一致。37source Git/全gate/正常旧10版保持PASS。新3gx SHA e273acb79da3d3e9b42c52f615e8c3cec64c72b4b44e77a6656916763d9443e9、実機未確認。次は利用者のpage/退出・chat漢字変換確認、main/実機/SD/旧整理未操作。

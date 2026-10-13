@@ -4,6 +4,7 @@
 #include "GridCursor.hpp"
 #include "ChatKanji.hpp"
 #include "GuiMenu.hpp"
+#include "NativePortGuard.hpp"
 #include <CTRPluginFramework.hpp>
 
 #include <3ds.h>
@@ -248,6 +249,9 @@ volatile s32 s_wantSelect = -1;
 volatile u32 s_selectSeq;
 u32 s_selectDone;
 volatile s32 s_decided = -1;
+s32 s_touchSelected = -1;
+CTRPluginFramework::Hook s_scrollDragHook;
+bool s_scrollDragHooked;
 volatile bool s_shutdown;
 const char *volatile s_error = "";
 
@@ -303,12 +307,48 @@ inline void W8(u32 a, u8 v) { *reinterpret_cast<volatile u8 *>(a) = v; }
 
 // ---- 自前の仮想関数（ゲームが BLX で呼ぶ）-----------------------------------------------------
 void ListWaitCalc(void *list) {
-    // native待機は決定旗を消す。同じfocusの行をtouchで決めた場合も、消費前に拾う。
+    // nativeは選択行を無効にして再タッチを禁止する。所有する行だけ戻す。
     const bool decided = reinterpret_cast<int (*)(void *)>(0x00722C34)(P(list,2560)) != 0;
     reinterpret_cast<ListFn>(0x001B0698)(list);
     const s32 selected = S(list, kListSelected);
-    if (decided && selected >= 0 && (u32)selected < s_count)
-        s_decided = selected;
+    if (selected >= 0 && (u32)selected < s_count) {
+        if (decided) {
+            if (s_touchSelected == selected) s_decided = selected;
+            s_touchSelected = selected;
+        }
+        const s32 row = selected - S(list,kListTop);
+        if (row >= 0 && (u32)row < kListRows && W(list,2556))
+            B(reinterpret_cast<void *>(W(list,2556)), (u32)row * 224u + 217u) = 1;
+    }
+}
+
+__attribute__((noinline)) int ScrollDrag(void *scroll) {
+    if (!s_list || scroll != P(s_list,kListScroll) || B(scroll,1786)==0
+        || B(scroll,1787)==1 || B(scroll,1860)!=2)
+        return CTRPluginFramework::HookContext::GetCurrent().OriginalFunction<int>(scroll);
+    void *touch = reinterpret_cast<void *>(0x00ACF6E0);
+    if (!reinterpret_cast<int (*)(void *)>(0x001B7A18)(touch)) return 0;
+    float from[3], point[3];
+    const float pixels[2] = {(float)H(touch,6),(float)H(touch,8)};
+    const float *now = reinterpret_cast<const float *(*)()>(0x00520DEC)();
+    typedef void (*Transform)(void *,const float *,float *);
+    const Transform transform = reinterpret_cast<Transform>(0x0074F3FC);
+    transform(P(scroll,588),pixels,from);
+    transform(P(scroll,588),now,point);
+    // 初期grabのoffsetを保ち、今回のdragの変位だけ半分にする。trackは別経路。
+    point[0] = from[0] + (point[0]-from[0])*0.5f;
+    point[1] = from[1] + (point[1]-from[1])*0.5f;
+    const u32 *vt = *reinterpret_cast<u32 **>(scroll);
+    return reinterpret_cast<int (*)(void *,float *)>(vt[4])(scroll,point);
+}
+
+bool InstallScrollDrag(void) {
+    if (s_scrollDragHooked) return true;
+    const NativePortGuard::Word anchors[] = {{0x00298664,0xE92D4030}};
+    if (!NativePortGuard::Matches(anchors)) return false;
+    s_scrollDragHook.InitializeForMitm(0x00298664,reinterpret_cast<u32>(ScrollDrag));
+    s_scrollDragHooked = s_scrollDragHook.Enable() == CTRPluginFramework::HookResult::Success;
+    return s_scrollDragHooked;
 }
 
 void ResetChatTouch(void) {
@@ -846,6 +886,7 @@ void *LytHeap(void) {
 // ---- 組み立て（1 フレームに 1 段）-------------------------------------------------------------
 // 戻り値: 真 = 完了。偽 = まだ（s_error が空でなければ失敗）。
 bool BuildStep(void) {
+    if (!InstallScrollDrag()) {s_error="スクロールの処理を確認できない";return false;}
     if (!s_holderMade) {
         ArcCtor(s_holder);
         s_holderMade = true;
@@ -939,6 +980,7 @@ bool BuildStep(void) {
         W(s_list, kListTextCap) = kMaxChars;
         s_idReady = false;
         s_decided = -1;
+        s_touchSelected = -1;
         __atomic_store_n(&s_confirm, 0u, __ATOMIC_RELEASE);
         ResetChatTouch();
         s_chatTouchBlocked = CTRPluginFramework::Touch::IsDown();
@@ -990,6 +1032,7 @@ void ApplySelect(s32 index) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
     s_lastSelected = S(s_list, kListSelected);
+    s_touchSelected = -1;
 }
 
 // 選択を index へ動かす。見えていなければ 1 行ずつスクロールして端に入れる（上なら先頭、下なら末尾の行）
@@ -1007,6 +1050,7 @@ void MoveSelect(s32 index) {
     u32 *vt = *reinterpret_cast<u32 **>(s_list);
     reinterpret_cast<SetSelectFn>(vt[16])(s_list, index, S(s_list, kListSelected));
     s_lastSelected = S(s_list, kListSelected);
+    s_touchSelected = -1;
     if (!s_overChat) s_decided = index;    // 公共事業の十字previewを維持。chatはfocusだけ
 }
 
@@ -1194,7 +1238,7 @@ bool ReleaseFieldToMenu(u32 owner) {
 
 void Show(s32 selected) {
     if (!s_hookReady) {
-        if (!GridCursor::InstallFrameHook() || !GridCursor::AddExtraFrameStep(FrameStep)) {
+        if (!EnsureHook()) {
             s_error = "フレームフックを入れられない";
             return;
         }
@@ -1338,7 +1382,7 @@ void FrameStep(void) {
         if (selected >= 0 && (u32)selected < s_count && row >= 0 && (u32)row < kListRows) {
             void *node = P(reinterpret_cast<void *>(W(s_list,2556)), (u32)row * 224u);
             const u32 *nodeVt = *reinterpret_cast<u32 **>(node);
-            reinterpret_cast<ListFn>(nodeVt[14])(node); // native行の決定音
+            reinterpret_cast<ListFn>(nodeVt[9])(node); // nativeの決定音とtouch_ok/select_ok
             s_decided = selected;
         }
     }
@@ -1351,8 +1395,6 @@ void FrameStep(void) {
     const s32 sel = S(s_list, kListSelected);
     if (sel != s_lastSelected) {
         s_lastSelected = sel;
-        if (!chat && sel >= 0 && (u32)sel < s_count)
-            s_decided = sel;
     }
 
     // 退場が両方終わったら片付けへ（この フレームから描かない）

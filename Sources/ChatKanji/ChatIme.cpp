@@ -172,7 +172,7 @@ namespace CTRPluginFramework
             const u32   kKeyTextPressed = 0xFF3A5EB8;   // 押下 (184,94,58)。文字は右下へ 1px（T_key_Spc の CLPA）
             const u32   kSoundChangeKeySet = 0x010003E0;    // SE_SYS_SWK_CHANGE_KEY_SET（全選択。「ABC」「あいう」の切り替えの音）
             const u32   kSoundBackspace    = 0x010003DA;    // SE_SYS_SWK_BACKSPACE（左右。Backspace で消せたときの音）
-            // ---- 候補欄のタッチ（利用者の指示 2026-09-26: 1 回のタッチで確定・慣性スクロール・揺れの補正）----
+            // 候補欄: 1回目はfocus、同じ候補を再tapして入力。慣性scrollは確定しない。
             const float kTapSlop = 6.0f;                // 触れた所から（補正後の位置で）これ以上動いたらスクロール（確定しない）
             // 揺れの補正（係数は解析 repo tools/chat_kanji/sim_touch.py で決めた）:
             //   1. 飛び値の保留: 前の値から 1 回で kSpikePx を越えて飛んだ値は 1 回保留し、次の値が続かなければ捨てる
@@ -205,6 +205,7 @@ namespace CTRPluginFramework
             // ---- 依頼（メニュー -> ゲーム）----
             enum { R_NONE = 0, R_START, R_APPLY, R_ABORT, R_ENTER, R_SELECT_ALL, R_LEFT, R_RIGHT, R_DESELECT };
             volatile u32    g_reqKind = R_NONE;
+            volatile u32    g_candidateSound;
             volatile s32    g_reqArg = 0;
             // R_APPLY で入れる文字列（メニューが写してから依頼する。ゲームのスレッドはキャッシュを読まない）
             u16             g_applyText[SWKBD_TEXT_UNITS];
@@ -329,6 +330,8 @@ namespace CTRPluginFramework
             int         m_wantApply = -1;               // 選んだ候補。依頼の枠が空いたら出す
             bool        m_preloadTried = false;         // このチャットで下準備を始めた
             int         m_sel = -1;
+            int         m_touchSel = -1;
+            u64         m_touchPulse = 0;
             float       m_scroll = 0.0f;
             int         m_count = 0;
             float       m_cellX[kMaxCand];
@@ -904,6 +907,8 @@ namespace CTRPluginFramework
                     g_broken = true;                    // 前提（同じスレッド）が崩れた。書き換えを止める
                 if (g_convOn && !g_broken)
                 {
+                    const u32 sound = __atomic_exchange_n(&g_candidateSound,0u,__ATOMIC_ACQ_REL);
+                    if (sound) ((void (*)(u32))kPlaySound)(sound);
                     const u32   tm = R32(kTmPtr);
 
                     RefreshKeyTextures();
@@ -1076,6 +1081,8 @@ namespace CTRPluginFramework
                 m_entry = -1;
                 m_wantApply = -1;
                 m_sel = -1;
+                m_touchSel = -1;
+                m_touchPulse = 0;
                 m_scroll = 0.0f;
                 m_flingV = 0.0f;
                 m_dragging = false;
@@ -1187,6 +1194,7 @@ namespace CTRPluginFramework
                 m_sel = ((i % m_count) + m_count) % m_count;     // 未選択（-1）から左で最後、右で最初
                 EnsureVisible(m_sel);
                 m_wantApply = m_sel;                    // 依頼の枠が空いたら写して出す（FlushWants）
+                m_touchSel = -1;
             }
 
             // 依頼の枠が空いているときだけ出す（ゲームのスレッドが読んでいる文字列を書き換えない）
@@ -1233,6 +1241,7 @@ namespace CTRPluginFramework
                 m_flingV = 0.0f;
                 m_tapCandidate = -1;           // 前の候補の上で触れていた指で、新しい候補を確定しない
                 m_sel = -1;                             // まだ入力欄には入れない（選んだときに入れる）
+                m_touchSel = -1;
                 m_phase = m_count > 0 ? M_SHOW : M_IDLE;
             }
 
@@ -1485,10 +1494,17 @@ namespace CTRPluginFramework
                         else if (m_tapCandidate >= 0 && m_phase == M_SHOW && m_tapCandidate < m_count
                                  && CandidateAt((int)(m_fx + 0.5f)) == m_tapCandidate)
                         {
-                            // 動かさずに離した（タップ）: その候補を入れて確定（入れる依頼のあとに Enter の依頼が出る）
-                            if (m_tapCandidate != m_sel)
+                            const bool confirm = m_touchSel == m_tapCandidate && m_sel == m_tapCandidate;
+                            if (confirm) {
                                 Select(m_tapCandidate);
-                            m_wantEnter = true;
+                                m_wantEnter = true;
+                            } else {
+                                m_sel = m_tapCandidate;
+                                EnsureVisible(m_sel);
+                            }
+                            m_touchSel = m_tapCandidate;
+                            m_touchPulse = now;
+                            __atomic_store_n(&g_candidateSound,confirm?0x0100038Eu:0x010003B0u,__ATOMIC_RELEASE);
                         }
                         m_tapCandidate = -1;
                         m_scrolling = false;
@@ -1936,8 +1952,14 @@ namespace CTRPluginFramework
                     float   x1 = x + m_cellW[i] > right ? right : x + m_cellW[i];
                     const int ix = (int)(x0 + 0.5f), iw = (int)(x1 + 0.5f) - ix;
 
-                    if (iw > 0)
-                        GuiRenderer::FillRect(BOT, ix, kBarY + 1 + dy, iw, kBarH - 2, kColBarSel);
+                    if (iw > 0) {
+                        const u64 age = svcGetSystemTick()-m_touchPulse;
+                        const u64 length = static_cast<u64>(SYSCLOCK_ARM11)*160u/1000u;
+                        const u32 alpha = m_touchPulse && i==m_touchSel && age<length
+                            ? 61u+static_cast<u32>(100u*(length-age)/length):61u;
+                        GuiRenderer::FillRect(BOT, ix, kBarY + 1 + dy, iw, kBarH - 2,
+                                              (kColBarSel&0x00FFFFFFu)|(alpha<<24));
+                    }
                 }
                 const float tx = x + (float)kBarPad;
 
