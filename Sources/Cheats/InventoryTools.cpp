@@ -24,19 +24,21 @@ const NativePortGuard::Word kAnchors[] = {
     {0x22C988,0xE92D47F0},{0x13F718,0xE52D4004},{0x13F84C,0xE5912008},
     {0x2B6EC0,0xE5912000},{0x22CA38,0xE92D4010},{0x22C88C,0xE92D4030},
     {0x29BC24,0xE92D4070},{0x29B364,0xE92D41F0},{0x815E8C,0xE92D47F0},
-    {0x19FF4C,0xE92D4070}
+    {0x19FF4C,0xE92D4070},{0x568030,0xE92D4070},{0x4B9718,0xE5900010},
+    {0x19C150,0x0A000009},{0x19BFB0,0x0A000017}
 };
+// CHEATS ui.txt「たべる」とdrop.txt「host drop」の選択肢許可部分。元の分岐をOFFで戻す。
+const GuiMenu::TogglePatch kNativeOptions[]={{0x19C150,4,0xE1A00000,0x0A000009},
+    {0x19BFB0,4,0xE1A00000,0x0A000017}};
 const u32 kVtable=0x8E5220, kEmpty=0x7FFE, kPocketOffset=27600;
 u32 s_trashOn, s_extraOn;
 bool s_installed;
 Hook s_buildHook,s_finalizeHook,s_copyHook,s_commitHook,s_dispatchHook,s_waitHook,s_updateHook,s_disposeHook;
-u32 s_buildActor,s_extraActor,s_extraSlot,s_extraItem,s_originalCount,s_extraCount,s_requestedCount,s_extraKinds[6];
-bool s_nativeExtra[2];
+u32 s_buildActor,s_extraActor,s_extraSlot,s_extraItem,s_originalCount,s_extraCount,s_extraKinds[4];
 alignas(8) u8 s_cancel[32];
 bool s_cancelCopied,s_committing;
 const u16 *const kExtraText[] = {reinterpret_cast<const u16 *>(u"複製"),reinterpret_cast<const u16 *>(u"ラッピング"),
-    reinterpret_cast<const u16 *>(u"収納する"),reinterpret_cast<const u16 *>(u"ローンを返す"),
-    reinterpret_cast<const u16 *>(u"食べる"),reinterpret_cast<const u16 *>(u"じめんにおく")};
+    reinterpret_cast<const u16 *>(u"収納する"),reinterpret_cast<const u16 *>(u"ローンを返す")};
 u32 Load(u32 *p) {return __atomic_load_n(p,__ATOMIC_ACQUIRE);}
 void Store(u32 *p,u32 v) {__atomic_store_n(p,v,__ATOMIC_RELEASE);}
 void W(u32 a,u32 v) {*reinterpret_cast<volatile u32 *>(a)=v;}
@@ -116,7 +118,6 @@ __attribute__((noinline)) int BuildOptions(u32 actor,u32 slot) {
 __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
     auto &hook=HookContext::GetCurrent();
     if(s_buildActor && !s_committing && system==s_buildActor+224u && count>=1 && count<=6 && cancel==count-1) {
-        s_requestedCount=0;s_nativeExtra[0]=s_nativeExtra[1]=false;
         const u32 player=Player(),slot=Read(s_buildActor+204u);
         if(NativePortGuard::Heap(player) && slot<16u) {
             s_originalCount=count;s_extraActor=s_buildActor;s_extraSlot=slot;
@@ -124,11 +125,10 @@ __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
             if((s_extraItem&0x7FFFu)!=kEmpty) {
                 const u32 category=reinterpret_cast<u32 (*)(const u32 *)>(0x2FCB64)(&s_extraItem);
                 // ベル袋では返済を先に入れる。元の項目で6行が埋まる品にもcancelを残す。
-                const u32 order[6]={category==2u?3u:0u,category==2u?0u:1u,category==2u?1u:2u,category==2u?2u:3u,4u,5u};
+                const u32 order[4]={category==2u?3u:0u,category==2u?0u:1u,category==2u?1u:2u,category==2u?2u:3u};
                 const u32 capacity=std::min<u32>(6u,Read(system+16u)),mask=Load(&s_extraOn);
-                for(u32 kind : order)if((mask&(1u<<kind)) && (kind!=3u || category==2u))
-                    s_extraKinds[s_requestedCount++]=kind;
-                s_extraCount=capacity>static_cast<u32>(count)?std::min(s_requestedCount,capacity-static_cast<u32>(count)):0u;
+                for(u32 kind : order)if(static_cast<u32>(count)+s_extraCount<capacity && (mask&(1u<<kind)) && (kind!=3u || category==2u))
+                    s_extraKinds[s_extraCount++]=kind;
                 count+=s_extraCount;cancel+=s_extraCount;
             }
         }
@@ -137,11 +137,6 @@ __attribute__((noinline)) int Finalize(u32 system,int count,int cancel) {
 }
 __attribute__((noinline)) int CopyOption(u32 system,int index,const void *descriptor) {
     auto &hook=HookContext::GetCurrent();
-    if(s_buildActor && !s_committing && system==s_buildActor+224u && index>=0 && index<static_cast<int>(s_originalCount)-1) {
-        const u32 action=static_cast<const u32 *>(descriptor)[6];
-        if(action==16u)s_nativeExtra[0]=true;
-        if(action==0u)s_nativeExtra[1]=true;
-    }
     if(s_buildActor && !s_committing && system==s_buildActor+224u && s_extraCount && index==static_cast<int>(s_originalCount)-1) {
         std::memcpy(s_cancel,descriptor,sizeof(s_cancel));s_cancelCopied=true;
     }
@@ -152,23 +147,9 @@ __attribute__((noinline)) int Commit(u32 system) {
     auto &hook=HookContext::GetCurrent();
     if(s_buildActor && system==s_buildActor+224u && s_extraCount && s_cancelCopied) {
         s_committing=true;
-        // 食べる/action16、置く/action0は本来のPMFへ渡す。元からある行は重複させない。
-        const u32 capacity=std::min<u32>(6u,Read(system+16u));
-        u32 added=0;
-        for(u32 i=0;i<s_requestedCount && s_originalCount+added<capacity;++i) {
-            const u32 kind=s_extraKinds[i];
-            if(kind>=4u && s_nativeExtra[kind-4u])continue;
-            s_extraKinds[added++]=kind;
-        }
-        if(added!=s_extraCount) {
-            // native SetOptionCountは全rowを初期化する。descriptorコピー後はheaderだけ更新する。
-            W(system+8u,s_originalCount+added);W(system+192u,s_originalCount+added-1u);
-        }
-        s_extraCount=added;
         for(u32 i=0;i<s_extraCount;++i) {
             const u32 index=s_originalCount-1u+i,kind=s_extraKinds[i];
-            const u32 action=kind<4u?0x40u+kind:(kind==4u?16u:0u);
-            alignas(8) u32 descriptor[8]={0,0,0,0,0,0,action,7};
+            alignas(8) u32 descriptor[8]={0,0,0,0,0,0,0x40u+kind,7};
             reinterpret_cast<void (*)(u32,u32,const void *)>(0x5E3D1C)(system,index,descriptor);
             const u32 word=Read(system+12u)+172u*index+8u;
             const u32 script[3]={0x904954,reinterpret_cast<u32>(kExtraText[kind]),0x3FFFFFFFu};
@@ -338,6 +319,13 @@ void FrameStep() {
     }
     // alphaは子へ継承されないペインがあるため、手紙のsubtreeを可視flagで止める。
     WB(letter+8664u+217u,0);DecorLayout::SetVisible(reinterpret_cast<void *>(s_hiddenPane),false);
+    // hidden subtreeはCalculateMtxも止まる。入場時の画面外座標を残さず、親の移動に追従させる。
+    const u32 background=actor+7908u,drawFlags=background+48u+136u;
+    const u8 savedFlags=B(drawFlags);
+    reinterpret_cast<void (*)(u32,u32)>(0x4B9718)(letter+600u+16u,Read(letter+600u+252u)&~1u);
+    WB(drawFlags,savedFlags|4u);
+    reinterpret_cast<void (*)(u32)>(0x568030)(background);
+    WB(drawFlags,savedFlags);
     // originが左寄せのHHDの部品も、native手紙ボタンの矩形中心へ合わせる。
     float nativeRect[4],trashRect[4],center[3],world[3];
     const u32 trashPane=reinterpret_cast<u32>(DecorLayout::Pane(s_layout,"B_Base_00"));
@@ -386,6 +374,17 @@ void SetTrash(int,bool enabled) {
 void SetExtra(int,s32 value) {
     const u32 mask=static_cast<u32>(value)&0x3Fu;
     if(mask && !Install()) {Error(u8"対象の持ち物処理を確認できません。");return;}
+    const u32 previous=Load(&s_extraOn);
+    for(u32 i=0;i<2u;++i) {
+        const u32 bit=1u<<(4u+i);
+        if((previous&bit)==(mask&bit))continue;
+        const auto &patch=kNativeOptions[i];
+        if(Read(patch.address)!=((previous&bit)?patch.onValue:patch.offValue)) {
+            Error(u8"持ち物の選択肢パッチが競合しています。");return;
+        }
+    }
+    for(u32 i=0;i<2u;++i)if((previous^(mask))&(1u<<(4u+i)))
+        GuiMenu::PatchListSetActive(kNativeOptions+i,1,(mask&(1u<<(4u+i)))!=0);
     Store(&s_extraOn,mask);
 }
 const GuiMenu::ToggleEffectFuncs kTrash={TrashActive,SetTrash};

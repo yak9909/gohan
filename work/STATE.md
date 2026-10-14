@@ -1,5 +1,11 @@
 # 現在地 — gohan入力修正版の実機確認待ち（2026-10-12）
 
+## 2026-10-13 ゴミ箱未表示の再訂正 / IDA-gpt-6-F014・T017（GPT-6）
+
+- 2026-10-14製品/PC完了: hidden座標更新と既存CHEATS2optionへの置換、57case/build・75anchor21CPP/font欠字0/linked/scroll/DBXML PASS。製品4+memo2fileを最後一括work枝保存/push、結果とSHAは解析側publication/manifest。修正版実機未確認/main/実機/SD/中断整理/正常旧15版保持。
+
+- T016実機のtrash未表示を再修正。追加2項目はnative選択肢生成/実行へ。source4349a83/work枝開始、正常旧15版/中断整理/main/実機/SD保持、全作業後一括保存。
+
 ## 2026-10-13 再実機報告修正 / IDA-gpt-6-F013・T016（GPT-6）
 
 - 製品/PC検証全完了: 60case/最新build3・71anchor21CPP・4334・font欠字0/linked・scroll・DB/XML PASS。chat2項目はゲーム/キーボードへ移動、旧path設定も復元。製品7+memo2fileを最後一括work枝へ保存/pushし、結果/SHAは解析側publication/manifest。新版実機未確認/main/実機/SD/中断整理保持、製品の次は利用者実機確認。

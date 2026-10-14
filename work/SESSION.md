@@ -1,5 +1,13 @@
 # 2026-10-10 参照チートソース集 / IDA-gpt-6.1-sol-F018、T005; 追加変換gpt-6
 
+## 2026-10-13 ゴミ箱未表示の再訂正 / IDA-gpt-6-F014・T017（GPT-6）
+
+- 2026-10-14製品/PC検証完了: hidden matrixの原ARM再現、製品FrameStep/native LayoutCalc/flag復元、既存CHEATS2branch/全64mask/OFF/競合/生成を含む57case、75anchor21CPP4334/font欠字0/build/linked/scroll/DB最新XML PASS。製品4file＋このwork2fileだけを最後一括work枝へ保存/push。正常旧15版と全source SHA/保存結果は解析側manifest/publicationを正とする。修正版実機未確認/main/SD/実機/中断整理保持、製品の次は利用者実機確認。
+
+- 2026-10-14再開/更新: CHEATSたべる19C150と配置19BFB0の元BEQ/正確なNOPを照合し可逆PatchListへ、自作2descriptorは撤去。trashは非表示letter子matrixの画面外残留を原ARMで再現、letterの評価＋DrawInfo一時forceで座標更新/flag復元を実装。設計とprobeは解析側pocket_trash_visibility_design.md/hidden_matrix_probe.json。製品2file＋仕様2file/欠字0、DB root/acnl_v2 open。次はprebuild→専用build/実native回帰/DBXML→最後一括Git、正常旧15版/main/実機/SD/中断整理保持。
+
+- T016/59e6d6c6実機で未表示。trashの入場/可視/位置を本物のnative layoutで調べ、食べる/じめんにおくは既存の選択肢生成/実行へ揃える。source4349a83/work枝開始、正常旧15版/中断整理保持、main/実機/SD未操作、Git最後一括。解析側gohan_pocket_trash_visibilityに根拠/別buildを保存。
+
 ## 2026-10-13 再実機訂正 / IDA-gpt-6-F013・T016（GPT-6）
 
 - 全製品検証完了: runtime6/60case（実A→native待ち/完了→青、取得一度/再A/移動、複数actor、音一度、全6checkbox mask/実PMF/旧path復元）、最新prebuild4334・71anchor21CPP/font667codes欠字0/build3/linked3/scroll2/DB最新XML PASS。製品7file＋このwork2fileだけを最後一括work/gohan-chat-and-portsへ保存/push。正常/旧14版保持と全source SHA・Git/送信結果は解析側manifest/publicationを正とする。新版実機未確認/main/SD/実機/中断整理不変、製品の次は利用者実機確認。
