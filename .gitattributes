@@ -1,0 +1,34 @@
+* text=auto eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.3gx binary
+*.elf binary
+*.arc binary
+*.bclim binary
+*.bflim binary
+*.bcfnt binary
+*.bclyt binary
+*.bflyt binary
+*.bclan binary
+*.bflan binary
+*.umsbt binary
+*.cro binary
+*.bin binary
+*.cia binary
+*.3ds binary
+*.cxi binary
