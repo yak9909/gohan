@@ -1,0 +1,13 @@
+/build/
+/out/
+/gohan.local.toml
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+.venv/
+venv/
+*.egg-info/
+.coverage
+htmlcov/
+/.task/

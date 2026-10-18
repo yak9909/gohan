@@ -1,0 +1,6 @@
+# 必要になった時だけ、規則とファイルを限定して例外を足す。
+# [[allow]]
+# path = "tests/fixtures/handmade.arc"
+# rule = "game-format"
+# reason = "試験用に自作した最小の見本。ゲームから抽出した物ではない。"
+# line = 1  # 内容の検査だけ、必要なら行番号も限定できる。

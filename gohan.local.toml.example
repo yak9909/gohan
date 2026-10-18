@@ -1,0 +1,7 @@
+# 値は架空の例です。実際の設定は gohan.local.toml に保存してください。
+[rom]
+acnl_update = "D:/game-inputs/acnl-jp-update"
+hhd = "D:/game-inputs/hhd-jp-v1.1"
+
+[analysis]
+symbols = "D:/symbol-inputs/symbols"
