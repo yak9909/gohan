@@ -1,0 +1,16 @@
+Author: yakuruto
+Version:
+    Major: 3
+    Minor: 0
+    Revision: 0
+Targets:
+    - 0x00086200 # 日本版の無印＋更新
+Title: gohan
+Summary: とびだせ どうぶつの森 日本版用プラグイン（作り直し中）
+Description: |
+  日本版の無印に更新データを適用したゲームに対応します。
+  CTRPF メニューの「gohan（作り直し中）」から版と骨格の状態を確認できます。
+  ゲーム側の毎フレーム処理は照合に通った場合だけ接続します。
+Compatibility: Console
+MemorySize: 10MiB
+UsePrivateMemory: false
