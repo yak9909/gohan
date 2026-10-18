@@ -53,6 +53,34 @@ CTRPF の機能を保ちつつ、実測とリンクマップでサイズを確�
 形式の読み書きは自前で実装する方針で、3DSkit は依存に加えません。
 第三者の物を導入するときは通知と変更点も一緒に追加します。
 
+## CTRPF のビルド
+
+同梱の CTRPF 0.8.0 と libcwav・libncsnd をソースからビルドできます。
+プラグイン全体のビルドは別途導入します。ROM やネットワーク接続は必要ありません。
+ソースの版・変更点は [PATCHES.md](../third_party/libctrpf/PATCHES.md)、
+ライセンスは [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) を参照してください。
+
+devkitPro の devkitARM、libctru、MSYS2 の make と基本コマンドを用意します。
+Windows の PowerShell では、プロジェクト直下で次を実行します。
+
+```powershell
+$env:DEVKITPRO = 'C:/devkitPro'
+$env:DEVKITARM = 'C:/devkitPro/devkitARM'
+$env:PATH = 'C:\devkitPro\msys2\usr\bin;C:\devkitPro\devkitARM\bin;' + $env:PATH
+& C:\devkitPro\msys2\usr\bin\make.exe -C third_party/libctrpf -j4 release
+```
+
+devkitPro のシェルで環境変数が設定済みなら、`make -C third_party/libctrpf -j4` でも同じです。
+`release`（既定）は `build/libctrpf/libctrpf.a`、`debug` は `build/libctrpf/libctrpfd.a` を作ります。
+どちらにも libcwav・libncsnd を結合するため、利用側はこの書庫と libctru 等をリンクします。
+ヘッダーは `third_party/libctrpf/include/` を参照します。devkitPro 内へのインストールは不要です。
+
+中間生成物は `build/libctrpf/release/`・`debug/`、音声ライブラリは
+`build/libctrpf/libcwav/`・`libncsnd/` に置きます。
+`make -C third_party/libctrpf clean` はこれらを含む `build/libctrpf/` だけを削除します。
+ソース側への生成や、依存ソースの自動取得・更新は行いません。
+`install` は開発環境のライブラリを上書きしないよう無効にしています。
+
 ## 検査
 
 ```sh
