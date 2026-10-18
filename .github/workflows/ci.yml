@@ -14,3 +14,4 @@ jobs:
       - run: python -m pip install pytest
       - run: python tools/check.py --all
       - run: python -m pytest tests/tools
+      - run: python tests/host/run.py --cxx g++

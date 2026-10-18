@@ -1,7 +1,7 @@
 # 開発の進め方
 
-G0 は文書と検査の土台です。実装のディレクトリや生成器は、使う段階で追加します。
-G1 で最小の起動とメニュー、G2 で機能、G3 で SD 資源の生成を整え、
+G1 前半として、CTRPF の起動と状態表示、ゲームの毎フレーム処理への接続を備えています。
+G1 後半でメニューの生成、G2 で機能、G3 で SD 資源の生成を整え、
 G4 で利用者向けの説明を実装と照合します。
 
 ## 層と置き場所
@@ -53,10 +53,46 @@ CTRPF の機能を保ちつつ、実測とリンクマップでサイズを確�
 形式の読み書きは自前で実装する方針で、3DSkit は依存に加えません。
 第三者の物を導入するときは通知と変更点も一緒に追加します。
 
-## CTRPF のビルド
+## プラグインのビルド
+
+Python 3.11 以上、devkitPro の devkitARM・libctru、MSYS2 の make と基本コマンド、
+3gxtool を用意します。ROM とネットワーク接続は不要です。
+`src/game/generated/api.hpp` は収録済みの物を使い、通常の make では再生成しません。
+
+PowerShell では devkitPro の MSYS2 を PATH の先頭に置き、プロジェクト直下で実行します。
+
+```powershell
+$env:DEVKITPRO = 'C:/devkitPro'
+$env:DEVKITARM = 'C:/devkitPro/devkitARM'
+$env:PATH = 'C:\devkitPro\msys2\usr\bin;C:\devkitPro\devkitARM\bin;' + $env:PATH
+make -j4
+make -j4 DEV=1
+```
+
+devkitPro のシェルで設定済みなら `make` だけで作れます。
+先に同梱 CTRPF をソースからビルドし、`src/` 以下のソースを再帰的にコンパイルします。
+出力は `out/gohan.elf` と `out/gohan.3gx`、リンクマップは `build/gohan.map` です。
+`make DEV=1` は `GOHAN_DEV` を定義し、状態表示にも開発版と出します。
+`make LTO=1` は LTO を試す設定です。既定では無効で、実機の動作確認は別途必要です。
+設定ごとのオブジェクトは `build/plugin-dev<DEV>-lto<LTO>/` に分けます。
+`make BUILD=build/<名前>` でプラグインの中間生成先を分けることもできます。
+CTRPF 書庫は共通の `build/libctrpf/`、配布物は共通の `out/` を使います。
+`make clean` は既定の `build/` と `out/` を削除します。
+
+毎回リンクし直し、3GX の変換成功後に `.text`・`.rodata`・`.data`・`.bss` の容量と
+前回からの差を表示します。前回値は `build/size_last.json` に保存し、初回は「初回」と表示します。
+BUILD を変えた場合はその中に map と前回値を置きます。
+これは指定した四つの ELF セクションの測定で、TLS・配列初期化などの付随セクションや
+3GX のファイル容量とは一致しません。
+
+対応するゲームで CTRPF のメニューを開くと「gohan（作り直し中）」が現れます。
+押すと 3.0.0、通常版／開発版、骨格と毎フレーム接続の状態を表示します。
+実機での起動・表示・終了と、更新が異なる場合の拒否は実機確認の対象です。
+
+## CTRPF 単体のビルド
 
 同梱の CTRPF 0.8.0 と libcwav・libncsnd をソースからビルドできます。
-プラグイン全体のビルドは別途導入します。ROM やネットワーク接続は必要ありません。
+ROM やネットワーク接続は必要ありません。
 ソースの版・変更点は [PATCHES.md](../third_party/libctrpf/PATCHES.md)、
 ライセンスは [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) を参照してください。
 
@@ -86,11 +122,20 @@ devkitPro のシェルで環境変数が設定済みなら、`make -C third_part
 ```sh
 python tools/check.py --all
 python -m pytest tests/tools
+python tests/host/run.py --cxx g++
 python tools/check.py --staged
 ```
 
 Python 3.11 以上を使います。check.py に追加パッケージは不要で、試験だけ pytest を使います。
 CI の必須チェック名は `audit` です。
+PC 試験は g++ または clang++ の C++20 対応版を使います。自動検出、`--cxx`、
+環境変数 `HOST_CXX` で指定でき、出力は `build/host/` に限ります。
+Windows で MSYS2 の g++ を使う場合は、そのコンパイラの bin を PATH の先頭に置き、
+依存 DLL も同じ環境から解決してください。CI は Ubuntu の g++ を指定します。
+試験は書式の境界、UTF の不正入力・容量不足・全スカラー値の往復、
+Mailbox・Request の別スレッド間の連続受け渡し、フレーム登録と終了順序を確かめます。
+ゲーム側の接続も、自作の入力と CTRPF の代役で、タイトル・読み取り・CRC の失敗時に
+導入しないことと、成功・終了時の呼び出しを確認します。実機の代わりにはなりません。
 `--all` は追跡中のファイルを、`--staged` は削除を除いたコミット予定の内容を検査します。
 後者は作業ツリーではなくインデックスから読み、許可リストも同じ状態を使います。
 
@@ -121,4 +166,36 @@ include は `src/層/`、`層/`、相対パスに対応します。
 
 解析に関する参照の持ち込みは作業場の別の検査が担当します。
 メニュー定義と生成出力の一致は、生成器を追加する G1 で検査に接続します。
-G0 にはその入力・出力がまだありません。
+その入力・出力は G1 後半で追加します。
+
+## 起動・フレーム・通信の契約
+
+`main.cpp` は構成の接続点です。CTRPF のメニューを作り、ゲーム側が公開する
+Feature を core の登録表に渡して Wire・Shutdown を呼びます。
+登録表はゲームを読み込まず、ID の重複・容量超過・起動後の追加を拒否します。
+Wire に失敗した機能は自分で原状に戻します。終了はゲームのフック、描画のフック、
+それ以外の順に、同じ段では登録と逆の順で一度ずつ呼びます。
+Wire・Shutdown から同じ登録表を呼び直すことはできません。
+
+ゲームの接続はタイトル ID と生成された CRC-32 を、ゲームを停止して照合します。
+不一致・読み取り失敗ではフックを入れません。元の命令は実行時に CTRPF が保存・復元します。
+ゲームのフック位置・型・メモリ操作・アセンブリは `src/game/` に限り、
+ゲーム側のコールバックは `core::frame::Dispatch()` を一つ呼びます。
+
+フレームの登録は小さい order が先、同値は登録した順、同じ関数は一枠だけです。
+Add・Remove の結果は Queued・Unchanged・Full・Busy・Invalid を返します。
+Queued は次のフレーム境界で反映し、Busy は呼び出し側で後の機会に再試行します。
+実行中に登録・解除しても現在のフレームの一覧は変わりません。
+Remove の返した世代について IsApplied が真になってから、その処理の資源を解放します。
+未確認の変更を約21億回以上ためないでください。Reset はフックを外し、ゲーム側から
+呼ばれない状態でのみ行います。
+
+Mailbox は固定長の二重バッファと世代で最新の状態を渡します。読み飛ばしを許す状態用です。
+TryPublish の false、ReadIfNew の Busy はコピーの競合を意味し、後で再試行します。
+読み取り先の世代は読み手ごとに保持します。約43億回の更新をまたぐ読み取り停止は避けます。
+Request は一枠の要求です。受理した値を一度だけ取り出し、満杯なら次の要求を拒否します。
+どちらも値は trivially copyable な固定長型とし、ポインタ先の寿命は自動管理しません。
+容量は `src/core/limits.hpp` で管理します。
+
+TextWriter の容量は終端を含み、切り詰めは Complete で検出します。
+UTF 変換は文字途中の切り詰めを避け、不正入力を置換文字にして valid を false にします。

@@ -1,0 +1,13 @@
+build = "acnl_jpn_v15"
+output = "src/game/generated/api.hpp"
+namespace = "gohan::game::generated"
+functions = []
+globals = []
+types = []
+
+# 描画パス中の待機後、追加の毎フレーム処理を呼ぶ位置。
+[[hooks]]
+name = "FrameDispatch"
+function = "Frame_DrawPass1024"
+offset = 88
+length = 16
