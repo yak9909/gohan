@@ -1,0 +1,100 @@
+# メニューの定義（唯一の元）。make が C++ の表と docs/menu.md を作る。
+# 階層はフォルダの [[item.item]] で書く。id は一意な名前で、階層とは関係しない。
+# ここに書く物は、枠組みを確かめるための見本（ゲームには触れない）。ゲームの項目は G2 で足す。
+
+[[item]]
+id      = "sample"
+label   = "見本"
+desc    = "メニューの枠組みを確かめるための見本です。ゲームには触れません。"
+control = "folder"
+
+# 状態: 効果が続く。ホットキーを付けて有効にすると待機になり、ホットキーで効果を切り替える。
+[[item.item]]
+id       = "sample.flag"
+label    = "見本の旗"
+desc     = "旗を立てます。ホットキーがあれば、ホットキーで立てる・下ろす。"
+control  = "toggle"
+behavior = "state"
+hotkey   = "L+Up"
+
+# 押下中: 有効にしてから、ホットキーを押している間だけ動く。
+[[item.item]]
+id       = "sample.hold"
+label    = "見本の押下中"
+desc     = "ホットキーを押している間だけ数を数えます。"
+control  = "toggle"
+behavior = "hold"
+hotkey   = "R+A"
+
+# 実行: 1 回実行する。適用で実行（予約）し、ホットキーでは確認する。
+[[item.item]]
+id       = "sample.stamp"
+label    = "見本のスタンプ"
+desc     = "押すと 1 回だけ数を増やします。メニューでは適用で実行します。"
+control  = "action"
+behavior = "trigger"
+menu     = "on_apply"
+confirm  = "hotkey"
+hotkey   = "L+Down"
+
+# 画面: 開いて閉じる。同じ group の画面は同時に 1 つだけ。
+[[item.item]]
+id       = "sample.editor_a"
+label    = "見本の画面 A"
+desc     = "画面を開きます。もう一度で閉じます。"
+control  = "action"
+behavior = "mode"
+group    = "editor"
+
+[[item.item]]
+id       = "sample.editor_b"
+label    = "見本の画面 B"
+desc     = "A と同時には開けません。後から開いた方が前の方を閉じます。"
+control  = "action"
+behavior = "mode"
+group    = "editor"
+
+[[item.item]]
+id      = "sample.values"
+label   = "見本の値"
+desc    = "値の出どころが 2 通りあることを示します。"
+control = "folder"
+
+# 値（設定）: gohan の変数。移動方法がマス単位の間は無効。
+[[item.item.item]]
+id       = "sample.mode"
+label    = "見本の方法"
+desc     = "移動量の有効・無効を切り替えます。"
+control  = "select"
+options  = ["自由", "マス単位"]
+default  = "自由"
+
+[[item.item.item]]
+id         = "sample.amount"
+label      = "見本の量"
+desc       = "自由な動きの量です。"
+control    = "number"
+format     = "decimal1"
+default    = 5.0
+range      = [0.1, 99.9]
+step       = 0.5
+source     = "setting"
+enabled_if = "sample.mode != 'マス単位'"
+
+# 値（ゲーム）: 開いた時に 1 回読み、適用で書く。固定できる。
+[[item.item.item]]
+id       = "sample.wallet"
+label    = "見本の所持金"
+desc     = "見本の値です。ゲームの値の代わりに見本の変数を読み書きします。"
+control  = "number"
+range    = [0, 99999]
+source   = "game"
+lockable = true
+
+# 開発用: 開発版だけに出る。
+[[item.item.item]]
+id      = "sample.dev_note"
+label   = "見本の開発用"
+control = "toggle"
+behavior = "state"
+dev     = true

@@ -17,7 +17,8 @@ THREEGXTOOL ?= 3gxtool
 # 設定を切り替えても古いオブジェクトを再利用しない。
 OBJDIR := $(BUILD)/plugin-dev$(DEV)-lto$(LTO)
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -marm
-CPPFLAGS := -D__3DS__ -Isrc -isystem third_party/libctrpf/include -isystem $(CTRULIB)/include
+GEN := build/gen
+CPPFLAGS := -D__3DS__ -Isrc -I$(GEN) -isystem third_party/libctrpf/include -isystem $(CTRULIB)/include
 CFLAGS := $(ARCH) -Os -Wall -Wextra -ffunction-sections -fdata-sections -mword-relocations
 CXXFLAGS := $(CFLAGS) -std=gnu++20 -fno-rtti -fno-exceptions
 LDFLAGS := $(ARCH) -Os -T plugin/3gx.ld -Wl,--gc-sections,-Map,$(BUILD)/gohan.map
@@ -33,7 +34,9 @@ CPP_SOURCES := $(shell find src -type f -name '*.cpp' | LC_ALL=C sort)
 C_SOURCES := $(shell find src -type f -name '*.c' | LC_ALL=C sort)
 ASM_SOURCES := $(shell find src -type f -name '*.S' | LC_ALL=C sort)
 ASM_RAW_SOURCES := $(shell find src -type f -name '*.s' | LC_ALL=C sort)
-OBJECTS := $(addprefix $(OBJDIR)/,$(CPP_SOURCES:.cpp=.o) $(C_SOURCES:.c=.o) $(ASM_SOURCES:.S=.o) $(ASM_RAW_SOURCES:.s=.o))
+# make が spec から作る C++（メニューの表）。
+GEN_SOURCES := $(GEN)/menu_table.cpp
+OBJECTS := $(addprefix $(OBJDIR)/,$(CPP_SOURCES:.cpp=.o) $(GEN_SOURCES:.cpp=.o) $(C_SOURCES:.c=.o) $(ASM_SOURCES:.S=.o) $(ASM_RAW_SOURCES:.s=.o))
 LIBRARY := build/libctrpf/libctrpf.a
 
 .PHONY: all libctrpf clean FORCE host-test
@@ -42,11 +45,16 @@ all: out/gohan.3gx
 libctrpf:
 	@$(MAKE) --no-print-directory -C third_party/libctrpf release
 
+# メニューの表と docs/menu.md を spec/menu.toml から作る。
+$(GEN)/menu_ids.hpp $(GEN)/menu_table.cpp docs/menu.md &: spec/menu.toml tools/gohan_tools/codegen/menu.py
+	@mkdir -p $(GEN)
+	$(PYTHON) tools/gohan_tools/codegen/menu.py --spec spec/menu.toml --out $(GEN) --docs docs/menu.md
+
 # サブ make 完了後に書庫の更新時刻を判定する。
 $(LIBRARY): libctrpf
 	@test -f $@
 
-$(OBJDIR)/%.o: %.cpp Makefile | libctrpf
+$(OBJDIR)/%.o: %.cpp Makefile | libctrpf $(GEN)/menu_ids.hpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
