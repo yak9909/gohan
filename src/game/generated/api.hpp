@@ -10,4 +10,12 @@ inline constexpr std::uintptr_t FrameDispatch_addr = 0x001B721C;
 inline constexpr std::uint32_t FrameDispatch_len = 16;
 inline constexpr std::uint32_t FrameDispatch_crc32 = 0x92DE8A91;
 
+inline constexpr std::uintptr_t LayoutTopEntry_addr = 0x00566DF8;
+inline constexpr std::uint32_t LayoutTopEntry_len = 16;
+inline constexpr std::uint32_t LayoutTopEntry_crc32 = 0xC0033266;
+
+inline constexpr std::uintptr_t LayoutBottomEntry_addr = 0x00568F98;
+inline constexpr std::uint32_t LayoutBottomEntry_len = 16;
+inline constexpr std::uint32_t LayoutBottomEntry_crc32 = 0x38F20DB7;
+
 } // namespace gohan::game::generated
