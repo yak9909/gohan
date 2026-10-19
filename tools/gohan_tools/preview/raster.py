@@ -76,4 +76,10 @@ class Raster:
                 elif started:
                     break
                 x += advance * scale
+        # Rosalina の実測に合わせた最終出力の色段階。途中の合成精度の断定ではない。
+        if self.settings.get('output_format', 'rgb888') == 'rgb565':
+            for i, value in enumerate(image.pixels):
+                shift = 2 if i % 3 == 1 else 3
+                value >>= shift
+                image.pixels[i] = (value << shift) | (value >> (8 - 2 * shift))
         return image

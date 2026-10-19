@@ -92,6 +92,40 @@
         {"at":1850,"name":"action-confirm-050","contains":["見本のスタンプ"]},
         {"at":2100,"name":"action-confirm","contains":["実行しますか？","キャンセル"]}
       ]
+    },
+    {
+      "name": "device-calibration",
+      "label": "実機撮影時の予約・選択と撮影入力",
+      "events": [
+        {"at":32,"buttons":["Select"]},
+        {"at":64,"buttons":[]},
+        {"at":500,"buttons":["A"]},
+        {"at":532,"buttons":[]},
+        {"at":700,"buttons":["Down"]},
+        {"at":732,"buttons":[]},
+        {"at":900,"buttons":["Down"]},
+        {"at":932,"buttons":[]},
+        {"at":1100,"buttons":["A"]},
+        {"at":1132,"buttons":[]}
+      ],
+      "captures": [
+        {"at":1400,"name":"stamp-reserved","contains":["予約"]}
+      ]
+    },
+    {
+      "name": "device-capture-input",
+      "label": "撮影操作による長押しと選択移動",
+      "events": [
+        {"at":32,"buttons":["Select"]},
+        {"at":64,"buttons":[]},
+        {"at":500,"buttons":["A"]},
+        {"at":532,"buttons":[]},
+        {"at":2100,"buttons":["L"]},
+        {"at":2120,"buttons":["L","Down"]}
+      ],
+      "captures": [
+        {"at":2120,"name":"flag-capture-input","contains":["全戻し"]}
+      ]
     }
   ]
 }

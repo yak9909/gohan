@@ -35,6 +35,8 @@ def validate_settings(settings: dict) -> None:
     if len(background) != 3 or any(type(x) is not int or not 0 <= x <= 255 for x in background):
         raise ValueError('background は RGB の 0〜255 の整数 3 個にしてください')
     model = settings['raster']
+    if model.get('output_format', 'rgb888') not in ('rgb888', 'rgb565'):
+        raise ValueError('output_format は rgb888 または rgb565 にしてください')
     if (len(model['offset']) != 2 or any(type(v) is not int for v in model['offset']) or
             model['rounding'] not in ('nearest', 'floor') or type(model['swap_red_blue']) is not bool or
             len(model['rgb_gain']) != 3 or

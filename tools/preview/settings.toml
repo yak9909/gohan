@@ -10,3 +10,6 @@ alpha_gain = 1.0
 rgb_gain = [1.0, 1.0, 1.0]
 swap_red_blue = false
 rounding = "nearest"
+# 400×480 BMP の4枚全てで確認した最終色段階。RGB は上位5/6/5 bitを展開する。
+output_format = "rgb565"
+# 位置・色順・透明度は補正なし。動く背景との差を係数に吸収しない。
