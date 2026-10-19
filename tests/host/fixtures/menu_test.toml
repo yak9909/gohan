@@ -1,0 +1,155 @@
+# エンジンの試験用のメニュー（試験のための自作の見本。ゲームの項目ではない）。
+
+[[item]]
+id       = "wall"
+label    = "壁抜け"
+control  = "toggle"
+behavior = "state"
+hotkey   = "L+Up"
+
+[[item]]
+id       = "plain"
+label    = "花"
+control  = "toggle"
+behavior = "state"
+
+[[item]]
+id       = "move"
+label    = "移動"
+control  = "toggle"
+behavior = "hold"
+hotkey   = "A"
+
+[[item]]
+id       = "once"
+label    = "解除"
+control  = "toggle"
+behavior = "trigger"
+hotkey   = "L+Down"
+
+[[item]]
+id       = "act"
+label    = "スタイル"
+control  = "action"
+behavior = "trigger"
+hotkey   = "R+Y"
+
+[[item]]
+id       = "faint"
+label    = "気絶"
+control  = "action"
+behavior = "trigger"
+menu     = "on_apply"
+confirm  = "hotkey"
+hotkey   = "R+B"
+
+[[item]]
+id       = "pocket"
+label    = "ポケット"
+control  = "action"
+behavior = "trigger"
+input    = "hex"
+hotkey   = "R+X"
+
+[[item]]
+id       = "ed_a"
+label    = "画面A"
+control  = "action"
+behavior = "mode"
+group    = "editor"
+hotkey   = "ZL+A"
+
+[[item]]
+id       = "ed_b"
+label    = "画面B"
+control  = "action"
+behavior = "mode"
+group    = "editor"
+
+[[item]]
+id       = "rad_a"
+label    = "排他A"
+control  = "toggle"
+behavior = "state"
+group    = "radio"
+
+[[item]]
+id       = "rad_b"
+label    = "排他B"
+control  = "toggle"
+behavior = "state"
+group    = "radio"
+
+[[item]]
+id      = "folder"
+label   = "フォルダ"
+control = "folder"
+
+[[item.item]]
+id      = "num"
+label   = "数"
+control = "number"
+default = 10
+range   = [0, 100]
+step    = 5
+hotkey  = "ZR+A"
+
+[[item.item]]
+id      = "how"
+label   = "方法"
+control = "select"
+options = ["Free", "Grid"]
+
+[[item.item]]
+id         = "amount"
+label      = "量"
+control    = "number"
+format     = "decimal1"
+default    = 5.0
+range      = [0.1, 99.9]
+step       = 0.5
+enabled_if = "how != 'Grid'"
+
+[[item.item]]
+id       = "wallet"
+label    = "所持金"
+control  = "number"
+range    = [0, 99999]
+source   = "game"
+lockable = true
+hotkey   = "ZR+B"
+
+[[item.item]]
+id      = "weather"
+label   = "天気"
+control = "select"
+options = ["晴れ", "雨", "雪"]
+source  = "game"
+
+[[item.item]]
+id       = "devx"
+label    = "開発"
+control  = "toggle"
+behavior = "state"
+dev      = true
+
+[[item.item]]
+id      = "keyc"
+label   = "操作キー"
+control = "key"
+default = "ZL+B"
+
+[[item.item]]
+id      = "hexv"
+label   = "十六進"
+control = "number"
+format  = "hex"
+range   = [0, 255]
+default = 255
+
+[[item]]
+id      = "multi"
+label   = "複数"
+control = "multiselect"
+options = ["a", "b", "c"]
+default = ["b"]
