@@ -1,19 +1,28 @@
 #include "game/lyt/renderer.hpp"
+#include "game/lyt/engine.hpp"
 #include "game/lyt/verification.hpp"
+#include <CTRPluginFramework.hpp>
 
 namespace gohan::game::lyt {
-InstallResult InstallRenderer(const FontResource &) {
+namespace {
+detail::Engine &Instance() {
+    static detail::Engine engine(detail::GameResourceApi());
+    return engine;
+}
+} // namespace
+
+InstallResult InstallRenderer(const FontResource &font) {
     const auto result = detail::VerifyRenderer();
     if (result != InstallResult::Ready)
         return result;
-    // 本体の型は公開済みだが、ノードの仮想表・有効フラグ、Material の
-    // 可変領域、フォントのシート記述子、文字バッチの可変部分が不足する。
-    // これらを unk_* や生オフセットへ書いて補わず、資源確保より前に拒否する。
-    return InstallResult::MissingBindings;
+    return Instance().Install(font);
 }
 
-bool Present(const Drawing &) { return false; }
-void DetachRenderer() {
-    // 導入に成功する経路はまだ無く、ゲーム側に所有する資源も無い。
+bool Present(const Drawing &drawing) { return Instance().Present(drawing); }
+
+bool DetachRenderer() { return Instance().Detach(); }
+
+void WaitMilliseconds(unsigned milliseconds) {
+    CTRPluginFramework::Sleep(CTRPluginFramework::Milliseconds(milliseconds));
 }
 } // namespace gohan::game::lyt

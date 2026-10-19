@@ -3,7 +3,7 @@
 
 namespace gohan::ui::renderer::detail {
 namespace {
-constexpr unsigned Capacities[] = {2, 2, 4, 4, 8, 8, 8, 8, 16, 16, 16, 16, 28, 28, 28, 28};
+constexpr const auto &Capacities = core::limits::RendererSlotChars;
 static_assert(std::size(Capacities) == core::limits::RendererTexts);
 constexpr std::size_t Estimate(bool text, std::size_t characters) {
     return text ? 552 + 48 * characters : 204;

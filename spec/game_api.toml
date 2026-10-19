@@ -6,14 +6,26 @@ functions = [
     "GpuCmd_AllocateListStorage", "GpuCmd_DestroyLists",
     "ssys_ma_Allocator_Alloc", "ssys_ma_Allocator_Free",
     "ssys_ma_lyt_Layout_RecordPaneTree", "ssys_ma_lyt_Layout_ReplayRecordedList",
-    "ssys_ma_lyt_LayoutMgr_AddLayout",
+    "ssys_ma_lyt_Layout_SetupProjectionMatrix", "ssys_ma_lyt_LayoutMgr_AddLayout",
+    "nwfont_TextBatch_Init", "nwlyt_TextBox_CalcDrawBufferBytes",
 ]
-globals = ["g_LayoutMgr", "g_LayoutAllocator"]
+# 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
+globals = [
+    "g_LayoutMgr", "g_LayoutAllocator",
+    "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
+    "vtbl_nw_lyt_Material", "vtbl_nw_lyt_DrawInfo", "vtbl_nw_font_ResFont",
+    "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
+]
 types = [
-    "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode",
+    "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode", "SsysMaLayoutNodeVtable",
     "SsysMaAllocator", "SeadExpHeapPrefix",
     "NwLytPane", "NwLytPicture", "NwLytTextBox", "NwLytMaterial", "NwLytDrawInfo",
+    "NwLytTexMap", "NwLytTexSrt", "NwLytTexCoordGen", "NwLytAlphaCompare", "NwLytBlendMode",
+    "NwLytTevStage", "NwLytMaterialCountMask", "NwLytAnimationLinkList",
     "NwFontResFont", "NwFontFinf", "NwFontTglp", "NwFontCwdh", "NwFontCmap",
+    "NwFontCharWidths", "NwFontCmapScanPrefix", "NwFontCmapScanPair",
+    "NwFontGlyphTextureDescriptor", "NwFontTextBatchPrefix", "NwFontTextBatchGlyph",
+    "NwFontTagProcessor",
 ]
 
 # 描画パス中の待機後、追加の毎フレーム処理を呼ぶ位置。
@@ -93,5 +105,23 @@ length = 16
 [[checks]]
 name = "LayoutAddEntry"
 function = "ssys_ma_lyt_LayoutMgr_AddLayout"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutProjectionEntry"
+function = "ssys_ma_lyt_Layout_SetupProjectionMatrix"
+offset = 0
+length = 16
+
+[[checks]]
+name = "TextBatchInitEntry"
+function = "nwfont_TextBatch_Init"
+offset = 0
+length = 16
+
+[[checks]]
+name = "TextBufferBytesEntry"
+function = "nwlyt_TextBox_CalcDrawBufferBytes"
 offset = 0
 length = 16

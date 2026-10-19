@@ -51,8 +51,11 @@ struct Rig {
         Tap(key::Select);
         Advance(400);
     }
+    // 描画の予算（文字・矩形の数）。既定は ui::renderer の予算。小さくすると帯の行数が減る。
+    int text_limit = static_cast<int>(gohan::core::limits::RendererTexts);
+    int rect_limit = static_cast<int>(gohan::core::limits::RendererRects);
     RecordingSurface Draw(int width = 320) {
-        RecordingSurface surface(width);
+        RecordingSurface surface(width, text_limit, rect_limit);
         shell.Draw(surface, now);
         return surface;
     }

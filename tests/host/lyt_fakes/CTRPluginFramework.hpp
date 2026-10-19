@@ -10,6 +10,8 @@ struct FakeLayout {
     static inline std::uint64_t title = 0x0004000000086200ULL;
     static inline bool readable = true;
     static inline int reads = 0;
+    static inline int sleeps = 0;
+    static inline unsigned slept = 0;
     static inline std::size_t unreadableCheck = std::size(gohan::game::lyt::detail::RendererChecks);
     static inline std::array<std::array<std::uint8_t, 64>,
                              std::size(gohan::game::lyt::detail::RendererChecks)> bytes{};
@@ -73,6 +75,15 @@ struct FakeLayout {
         }
     }
 };
+// 待機の代役（呼ばれた回数と合計だけを数える）。
+struct Milliseconds {
+    unsigned value;
+    explicit Milliseconds(unsigned ms) : value(ms) {}
+};
+inline void Sleep(Milliseconds time) {
+    ++FakeLayout::sleeps;
+    FakeLayout::slept += time.value;
+}
 // 読み取りだけを公開する。書き換えとフックの設置は利用できない。
 struct Process {
     static std::uint64_t GetTitleID() { return FakeLayout::title; }

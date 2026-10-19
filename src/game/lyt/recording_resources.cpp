@@ -5,7 +5,7 @@
 namespace gohan::game::lyt::detail {
 namespace {
 constexpr unsigned ListBinding = 519;
-constexpr int QueueEntries = 16;
+constexpr int AtlasAlignment = 128;
 
 class BindingGuard {
   public:
@@ -27,7 +27,17 @@ bool RecordingResources::Acquire(const FontResource &font) {
     allocator_ = api_.allocator();
     if (!allocator_)
         return false;
-    atlas_ = api_.allocate(allocator_, static_cast<unsigned>(font.atlasBytes), 128);
+    // 確保が失敗するとゲームは null を参照して止まるので、先に空きを確かめる。
+    // 導入後もゲームが大きな資源を取れるよう、空きを残す。
+    HeapSpace space;
+    const auto bytes = static_cast<unsigned>(font.atlasBytes);
+    if (!api_.heapSpace(allocator_, AtlasAlignment, &space) ||
+        space.largestBlock < bytes + AtlasAlignment ||
+        space.freeBytes < bytes + AtlasAlignment + core::limits::RendererHeapReserve) {
+        allocator_ = nullptr;
+        return false;
+    }
+    atlas_ = api_.allocate(allocator_, bytes, AtlasAlignment);
     if (!atlas_) {
         allocator_ = nullptr;
         return false;
@@ -47,7 +57,7 @@ bool RecordingResources::Acquire(const FontResource &font) {
                 break;
             }
             api_.select(list);
-            api_.storage(core::limits::RendererRecordBytes, QueueEntries);
+            api_.storage(core::limits::RendererRecordBytes, core::limits::RendererQueueEntries);
         }
     }
     if (!created)

@@ -8,34 +8,50 @@ namespace gohan::game::generated {
 
 struct NwFontCharWidths;
 struct NwFontCmap;
+struct NwFontCmapScanPair;
+struct NwFontCmapScanPrefix;
 struct NwFontCwdh;
 struct NwFontTglp;
 struct NwFontFinf;
-struct NwFontGlyph;
 struct NwFontResFontVtable;
 struct NwFontResFont;
+struct NwFontGlyphTextureDescriptor;
+struct NwFontGlyph;
 struct NwFontTagProcessorVtable;
 struct NwFontTagProcessor;
+struct NwFontTextBatchGlyph;
 struct NwFontTextBatchPrefix;
+struct NwLytAlphaCompare;
+struct NwLytAnimTransform;
+struct NwLytPaneLink;
+struct NwLytAnimationLink;
+struct NwLytAnimationLinkList;
+struct NwLytBlendMode;
 struct NwLytDrawContext;
 struct NwLytDrawInfoVtable;
 struct NwLytTextWork;
 struct NwLytDrawInfo;
 struct NwLytDrawer;
 struct NwLytMaterialVtable;
+struct NwLytTexMap;
 struct NwLytMaterial;
-struct NwLytPaneLink;
 struct NwLytPaneVtable;
 struct NwLytPane;
 struct NwLytTexCoordQuad;
 struct NwLytPicture;
+struct NwLytPictureVtable;
+struct NwLytTevStage;
+struct NwLytTexCoordGen;
+struct NwLytTexSrt;
 struct NwLytTextBox;
+struct NwLytTextBoxVtable;
 struct SeadExpHeapBlock;
 struct SeadExpHeapList;
 struct SeadExpHeapVtable;
 struct SeadExpHeapPrefix;
 struct SsysMaAllocatorVtable;
 struct SsysMaAllocator;
+struct SsysMaLayoutNodeVtable;
 struct SsysMaLayoutNode;
 struct SsysMaLayoutList;
 struct SsysMaLayoutMgr;
@@ -64,11 +80,32 @@ struct NwFontCmap
 
 #pragma pack(push, 1)
 
+struct NwFontCmapScanPair
+{
+  std::uint16_t character;
+  std::uint16_t glyph;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwFontCmapScanPrefix
+{
+  NwFontCmap cmap;
+  std::uint16_t pair_count;
+  NwFontCmapScanPair pairs[];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+
 struct NwFontCwdh
 {
   std::uint16_t first_glyph;         
   std::uint16_t last_glyph;
   NwFontCwdh *next;
+  NwFontCharWidths widths[];
 };
 #pragma pack(pop)
 
@@ -107,23 +144,6 @@ struct NwFontFinf
   std::uint8_t width;
   std::uint8_t ascent;
   std::uint8_t unk_17[1];
-};
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-
-struct NwFontGlyph
-{
-  void *sheet_data;                     
-  NwFontCharWidths widths;
-  std::uint8_t height;
-  std::uint16_t sheet_width;
-  std::uint16_t sheet_height;
-  std::uint16_t cell_x;
-  std::uint16_t cell_y;
-  std::uint16_t sheet_format;
-  std::uint8_t unk_12[2];
-  void *texture_descriptor;
 };
 #pragma pack(pop)
 
@@ -168,10 +188,41 @@ struct NwFontResFont
   NwFontResFontVtable *vptr;            
   void *resource;
   NwFontFinf *font_info;
-  void *glyph_texture_descriptors;
+  NwFontGlyphTextureDescriptor *glyph_texture_descriptors;
   unsigned int filter_flags;
   std::uint16_t cached_character;
   std::uint16_t cached_glyph;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwFontGlyphTextureDescriptor
+{
+  unsigned int texture_handle;
+  NwFontResFont *font;
+  unsigned int physical_address_div8;
+  std::uint16_t height;
+  std::uint16_t width;
+  std::uint8_t gpu_format;
+  std::uint8_t unk_11[3];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwFontGlyph
+{
+  void *sheet_data;                     
+  NwFontCharWidths widths;
+  std::uint8_t height;
+  std::uint16_t sheet_width;
+  std::uint16_t sheet_height;
+  std::uint16_t cell_x;
+  std::uint16_t cell_y;
+  std::uint16_t sheet_format;
+  std::uint8_t unk_12[2];
+  NwFontGlyphTextureDescriptor *texture_descriptor;
 };
 #pragma pack(pop)
 
@@ -196,10 +247,30 @@ struct NwFontTagProcessor
 
 #pragma pack(push, 1)
 
+struct NwFontTextBatchGlyph
+{
+  float width;
+  float height_delta;
+  float x;
+  float y;
+  unsigned int top_color;
+  unsigned int bottom_color;
+  float u0;
+  float v0;
+  float u1;
+  float v1;
+  NwFontGlyphTextureDescriptor *texture_descriptor;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+
 struct NwFontTextBatchPrefix
 {
   unsigned int max_chars;               
-  std::uint8_t unk_4[4];
+  std::uint16_t glyph_count;
+  std::uint16_t draw_glyph_limit;
   std::uint8_t built;
   std::uint8_t flags;
   std::uint8_t unk_A[2];
@@ -209,7 +280,61 @@ struct NwFontTextBatchPrefix
   unsigned int *aux_buffer;
   unsigned int command_words;
   unsigned int command_word_capacity;
-  std::uint8_t unk_24[4];
+  unsigned int first_color_command_word;
+  NwFontTextBatchGlyph glyphs[];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytAlphaCompare
+{
+  std::uint8_t compare_function;
+  std::uint8_t unk_1[3];
+  float reference;
+};
+#pragma pack(pop)
+
+struct NwLytAnimTransform;
+
+#pragma pack(push, 1)
+
+struct NwLytPaneLink
+{
+  NwLytPaneLink *next;                  
+  NwLytPaneLink *prev;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytAnimationLink
+{
+  NwLytPaneLink link;
+  NwLytAnimTransform *transform;
+  std::uint16_t target_index;
+  std::uint8_t disabled;
+  std::uint8_t unk_F;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytAnimationLinkList
+{
+  unsigned int count;
+  NwLytPaneLink sentinel;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytBlendMode
+{
+  std::uint8_t operation;
+  std::uint8_t source_factor;
+  std::uint8_t destination_factor;
+  std::uint8_t logical_operation;
 };
 #pragma pack(pop)
 
@@ -267,9 +392,9 @@ struct NwLytMaterialVtable
   void *unk_0;                          
   void *unk_4;
   void *unk_8;
-  void *unk_C;
+  void ( *unbind_animation)(NwLytMaterial *material, NwLytAnimTransform *transform);
   void *unk_10;
-  void *unk_14;
+  void ( *animate)(NwLytMaterial *material);
   void *unk_18;
   void *unk_1C;
   void *unk_20;
@@ -280,28 +405,47 @@ struct NwLytMaterialVtable
 
 #pragma pack(push, 1)
 
+struct NwLytTexMap
+{
+  std::uint8_t unk_0[4];
+  unsigned int texture_address;
+  std::uint16_t image_width;
+  std::uint16_t image_height;
+  std::uint16_t texture_width;
+  std::uint16_t texture_height;
+  unsigned int sampler_bits;
+  unsigned int gpu_sampler_bits;
+  unsigned int gpu_dimensions;
+  unsigned int gpu_format;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+
 struct NwLytMaterial
 {
   NwLytMaterialVtable *vptr;            
-  std::uint8_t unk_4[12];
+  NwLytAnimationLinkList animation_links;
   unsigned int colors[7];
   unsigned int capacity_bits;
   unsigned int count_bits;
-  void *variable_data;
+  NwLytTexMap *variable_data;
   std::uint8_t unk_38[21];
   std::uint8_t flags;
   std::uint8_t unk_4E[2];
 };
 #pragma pack(pop)
 
-#pragma pack(push, 1)
-
-struct NwLytPaneLink
+enum NwLytMaterialCountMask
 {
-  NwLytPaneLink *next;                  
-  NwLytPaneLink *prev;
+  NwLytMaterialCountMask_TexMaps = 0x3,
+  NwLytMaterialCountMask_TexSrts = 0xC,
+  NwLytMaterialCountMask_TexCoordGens = 0x30,
+  NwLytMaterialCountMask_TevStages = 0x1C0,
+  NwLytMaterialCountMask_AlphaCompare = 0x200,
+  NwLytMaterialCountMask_BlendMode = 0x400,
 };
-#pragma pack(pop)
 
 #pragma pack(push, 1)
 
@@ -320,13 +464,13 @@ struct NwLytPaneVtable
   void *unk_28;
   void *unk_2C;
   void *unk_30;
-  void *unk_34;
-  void *unk_38;
+  void ( *animate_recursive)(NwLytPane *pane, unsigned int flags);
+  void ( *animate_self)(NwLytPane *pane, unsigned int flags);
   void *unk_3C;
   void *unk_40;
   void *unk_44;
-  void *unk_48;
-  void *unk_4C;
+  void ( *unbind_own_animations)(NwLytPane *pane, NwLytAnimTransform *transform);
+  NwLytAnimationLink *( *find_animation_link)(NwLytPane *pane, NwLytAnimTransform *transform);
   void *unk_50;
   void *unk_54;
   void *unk_58;
@@ -347,7 +491,7 @@ struct NwLytPane
   NwLytPane *parent;
   std::uint8_t unk_10[4];
   NwLytPaneLink children;
-  std::uint8_t unk_1C[12];
+  NwLytAnimationLinkList animation_links;
   float translate[3];
   float rotate[3];
   float scale[2];
@@ -392,6 +536,46 @@ struct NwLytPicture
 
 #pragma pack(push, 1)
 
+struct NwLytPictureVtable
+{
+  NwLytPaneVtable pane;                 
+  void *unk_70;
+  void *unk_74;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytTevStage
+{
+  unsigned int unk_0;
+  unsigned int unk_4;
+  unsigned int unk_8;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytTexCoordGen
+{
+  std::uint8_t unk_0;
+  std::uint8_t coordinate_set;
+  std::uint8_t unk_2[2];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytTexSrt
+{
+  float translate[2];
+  float rotate;
+  float scale[2];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
 struct NwLytTextBox
 {
   NwLytPane pane;                       
@@ -412,6 +596,18 @@ struct NwLytTextBox
   std::uint8_t unk_FF[1];
   NwLytMaterial *material;
   NwFontTextBatchPrefix *batch;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct NwLytTextBoxVtable
+{
+  NwLytPaneVtable pane;                 
+  void ( *alloc_string_buffer)(NwLytTextBox *textbox, unsigned int max_chars, unsigned int flags);
+  void ( *free_string_buffer)(NwLytTextBox *textbox);
+  void *unk_78;
+  void *unk_7C;
 };
 #pragma pack(pop)
 
@@ -505,9 +701,24 @@ struct SsysMaAllocator
 
 #pragma pack(push, 1)
 
+struct SsysMaLayoutNodeVtable
+{
+  void *unk_0;
+  void *unk_4;
+  void ( *replay_recorded_list)(SsysMaLayoutNode *layout);
+  void ( *calculate)(SsysMaLayoutNode *layout);
+  bool ( *build)(SsysMaLayoutNode *layout, const char *name, void *resource_holder, unsigned int command_bytes);
+  void ( *record_pane_tree)(SsysMaLayoutNode *layout);
+  void ( *setup_projection_matrix)(SsysMaLayoutNode *layout);
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+
 struct SsysMaLayoutNode
 {
-  std::uint8_t unk_0[4];             
+  SsysMaLayoutNodeVtable *vptr;         
   SsysMaLayoutNode *prev;
   SsysMaLayoutNode *next;
   std::uint8_t priority;
@@ -517,13 +728,16 @@ struct SsysMaLayoutNode
   float width;
   float height;
   NwLytDrawInfo draw_info;
-  std::uint8_t unk_BC[68];
+  float inverse_view_mtx[3][4];
+  std::uint8_t unk_EC[4];
+  float view_eye[3];
+  unsigned int animation_flags;
   unsigned int command_list_id;
   unsigned int record_offset;
   unsigned int record_bytes;
   unsigned int record_gx_offset;
   unsigned int record_gx_count;
-  std::uint8_t unk_114[4];
+  unsigned int replay_state_mask;
   unsigned int command_capacity_bytes;
   std::uint8_t replay_option;
   std::uint8_t record_dirty;
@@ -587,14 +801,53 @@ inline constexpr std::uintptr_t ssys_ma_lyt_Layout_RecordPaneTree_addr = 0x00568
 using ssys_ma_lyt_Layout_ReplayRecordedList_t = void (*)(SsysMaLayoutNode *layout);
 inline constexpr std::uintptr_t ssys_ma_lyt_Layout_ReplayRecordedList_addr = 0x005682DC;
 
+using ssys_ma_lyt_Layout_SetupProjectionMatrix_t = void (*)(SsysMaLayoutNode *layout);
+inline constexpr std::uintptr_t ssys_ma_lyt_Layout_SetupProjectionMatrix_addr = 0x00567BC0;
+
 using ssys_ma_lyt_LayoutMgr_AddLayout_t = void (*)(SsysMaLayoutMgr *manager, SsysMaLayoutNode *layout, unsigned int screen);
 inline constexpr std::uintptr_t ssys_ma_lyt_LayoutMgr_AddLayout_addr = 0x0056928C;
+
+using nwfont_TextBatch_Init_t = NwFontTextBatchPrefix * (*)(NwFontTextBatchPrefix *batch, unsigned int max_chars);
+inline constexpr std::uintptr_t nwfont_TextBatch_Init_addr = 0x004D76BC;
+
+using nwlyt_TextBox_CalcDrawBufferBytes_t = unsigned int (*)(unsigned int max_chars);
+inline constexpr std::uintptr_t nwlyt_TextBox_CalcDrawBufferBytes_addr = 0x004D5480;
 
 using g_LayoutMgr_t = SsysMaLayoutMgr *;
 inline constexpr std::uintptr_t g_LayoutMgr_addr = 0x0096FC38;
 
 using g_LayoutAllocator_t = SsysMaAllocator *;
 inline constexpr std::uintptr_t g_LayoutAllocator_addr = 0x0096F150;
+
+using vtbl_ssys_ma_lyt_Layout_t = SsysMaLayoutNodeVtable;
+inline constexpr std::uintptr_t vtbl_ssys_ma_lyt_Layout_addr = 0x00900608;
+
+using vtbl_nw_lyt_Pane_t = NwLytPaneVtable;
+inline constexpr std::uintptr_t vtbl_nw_lyt_Pane_addr = 0x008FBE7C;
+
+using vtbl_nw_lyt_Picture_t = NwLytPictureVtable;
+inline constexpr std::uintptr_t vtbl_nw_lyt_Picture_addr = 0x008FBFFC;
+
+using vtbl_nw_lyt_TextBox_t = NwLytTextBoxVtable;
+inline constexpr std::uintptr_t vtbl_nw_lyt_TextBox_addr = 0x008FC07C;
+
+using vtbl_nw_lyt_Material_t = NwLytMaterialVtable;
+inline constexpr std::uintptr_t vtbl_nw_lyt_Material_addr = 0x008FC18C;
+
+using vtbl_nw_lyt_DrawInfo_t = NwLytDrawInfoVtable;
+inline constexpr std::uintptr_t vtbl_nw_lyt_DrawInfo_addr = 0x008FC17C;
+
+using vtbl_nw_font_ResFont_t = NwFontResFontVtable;
+inline constexpr std::uintptr_t vtbl_nw_font_ResFont_addr = 0x008FCAAC;
+
+using vtbl_nw_font_TagProcessorBase_wchar_t_t = NwFontTagProcessorVtable;
+inline constexpr std::uintptr_t vtbl_nw_font_TagProcessorBase_wchar_t_addr = 0x008FCA24;
+
+using g_DefaultWideTagProcessor_t = NwFontTagProcessor;
+inline constexpr std::uintptr_t g_DefaultWideTagProcessor_addr = 0x0097C0B4;
+
+using vtbl_sead_ExpHeap_t = SeadExpHeapVtable;
+inline constexpr std::uintptr_t vtbl_sead_ExpHeap_addr = 0x008FFEF8;
 
 inline constexpr std::uintptr_t FrameDispatch_addr = 0x001B721C;
 inline constexpr std::uint32_t FrameDispatch_len = 16;
@@ -647,5 +900,17 @@ inline constexpr std::uint32_t LayoutReplayEntry_crc32 = 0xC6C2DDE5;
 inline constexpr std::uintptr_t LayoutAddEntry_addr = 0x0056928C;
 inline constexpr std::uint32_t LayoutAddEntry_len = 16;
 inline constexpr std::uint32_t LayoutAddEntry_crc32 = 0xD672CD75;
+
+inline constexpr std::uintptr_t LayoutProjectionEntry_addr = 0x00567BC0;
+inline constexpr std::uint32_t LayoutProjectionEntry_len = 16;
+inline constexpr std::uint32_t LayoutProjectionEntry_crc32 = 0x16D02DC7;
+
+inline constexpr std::uintptr_t TextBatchInitEntry_addr = 0x004D76BC;
+inline constexpr std::uint32_t TextBatchInitEntry_len = 16;
+inline constexpr std::uint32_t TextBatchInitEntry_crc32 = 0x5E9A8CD3;
+
+inline constexpr std::uintptr_t TextBufferBytesEntry_addr = 0x004D5480;
+inline constexpr std::uint32_t TextBufferBytesEntry_len = 16;
+inline constexpr std::uint32_t TextBufferBytesEntry_crc32 = 0xEB17487B;
 
 } // namespace gohan::game::generated

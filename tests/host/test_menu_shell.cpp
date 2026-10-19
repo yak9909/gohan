@@ -1,5 +1,5 @@
 // メニューの画面（開閉・行の表示・タッチ・ダイアログ・通知）を、収録している見本の spec で試験する。
-// 描画先は代役で、描画指示（矩形・文字・色）と予算（矩形 32・文字 16）の中身を確かめる。
+// 描画先は代役で、描画指示（矩形・文字・色）と予算（矩形 48・文字 48）の中身を確かめる。
 #include "menu/layout.hpp"
 #include "menu/sample_items.hpp"
 #include "menu_ids.hpp"
@@ -73,10 +73,10 @@ void RowsAndStates() {
     EnterSample(rig);
     RecordingSurface s = rig.Draw();
     AssertBudget(s);
-    // 題に今のフォルダの名前が付く。帯の行数は予算（文字 16）から決まる。
+    // 題に今のフォルダの名前が付く。帯の行数は予算（文字 48）から決まり、上限の 10 行になる。
     assert(s.HasText("-* GOHAN *- 見本"));
-    assert(rig.shell.panel().Rows() == 5 && rig.shell.panel().Count() == 6);
-    assert(s.HasText("見本のフラグ") && s.HasText("見本の画面 B") && !s.HasText("見本の値"));
+    assert(rig.shell.panel().Rows() == 10 && rig.shell.panel().Count() == 6);
+    assert(s.HasText("見本のフラグ") && s.HasText("見本の画面 B") && s.HasText("見本の値")); // 6 項目が 10 行に収まる
     // 選択中の行は白、他は既定の色。OFF の値が右端にある。
     assert(s.FindText("見本のフラグ")->color == style::kWhite);
     assert(s.FindText("見本の押下中")->color == style::kText);
@@ -91,16 +91,16 @@ void RowsAndStates() {
         marked = marked || (c.kind == Command::Fill && c.bounds.w == 1 && c.bounds.h == 12 && c.bounds.x == 4);
     }
     assert(framed && marked);
-    // 行と選択の帯は行の領域（帯の幅 158 x 5 行）で切り抜く。題・足・説明は切り抜かない。
+    // 行と選択の帯は行の領域（帯の幅 158 x 10 行）で切り抜く。題・足・説明は切り抜かない。
     const Command *band = nullptr;
     for (const Command &c : s.commands)
         if (c.kind == Command::Fill && c.bounds.w == 150 && c.bounds.h == 15) band = &c;
-    assert(band && band->clipped && band->clip.x == 0 && band->clip.y == 25 && band->clip.w == 158 && band->clip.h == 5 * 18);
+    assert(band && band->clipped && band->clip.x == 0 && band->clip.y == 25 && band->clip.w == 158 && band->clip.h == 10 * 18);
     const Command *label = s.FindText("見本のフラグ");
-    assert(label->clipped && label->clip.y == 25 && label->clip.h == 90);
+    assert(label->clipped && label->clip.y == 25 && label->clip.h == 10 * 18);
     assert(!s.FindText("A決定")->clipped && !s.FindText("-* GOHAN *-")->clipped && !s.FindText("HOTKEY")->clipped);
-    // 説明は予算の残りで描く。ホットキー・本文の順に残す。
-    assert(s.HasText("HOTKEY:L+Up") && s.HasText("..."));
+    // 説明は予算の残りで描く。予算が十分なら、ホットキーと本文を省かずに描く。
+    assert(s.HasText("HOTKEY:L+Up") && !s.HasText("..."));
 
     // 状態の項目: 編集中の ON は黄色、適用すると待機（青）。ホットキーで効果が入ると ON（緑）。
     const u16 flag = Idx(MenuId::SampleFlag);
@@ -124,17 +124,23 @@ void ReservedButton() {
     rig.Advance(200);
     RecordingSurface s = rig.Draw();
     assert(rig.engine.Selected() == Idx(MenuId::SampleStamp));
-    const Command *border = nullptr;
-    for (const Command &c : s.commands)
-        if (c.kind == Command::Outline && c.bounds.h == 14) border = &c;
+    // 行が増えたので、選んだ行（スタンプ）の値の枠を、行の文字と重なる位置から探す。
+    auto stamp_border = [&s] {
+        const Command *label = s.FindText("見本のスタンプ");
+        const Command *found = nullptr;
+        for (const Command &c : s.commands)
+            if (c.kind == Command::Outline && c.bounds.h == 14 && c.bounds.y <= label->bounds.y + 4 &&
+                c.bounds.y + c.bounds.h >= label->bounds.y + 4)
+                found = &c;
+        return found;
+    };
+    const Command *border = stamp_border();
     assert(border && border->color == style::kAccent);
     // A で予約（黄色の「予約」。枠も黄色）。まだ実行しない。
     rig.Tap(key::A);
     s = rig.Draw();
     assert(s.FindText("予約")->color == style::kPending && s.FindText("見本のスタンプ")->color == style::kPending);
-    border = nullptr;
-    for (const Command &c : s.commands)
-        if (c.kind == Command::Outline && c.bounds.h == 14) border = &c;
+    border = stamp_border();
     assert(border && border->color == style::kPending);
     assert(sample::Get().stamps == 0 && s.HasText("1変更"));
 
@@ -157,6 +163,7 @@ void ReservedButton() {
 void TouchSelectAndScroll() {
     sample::Get() = sample::State{};
     Rig rig(kMenuItems, kMenuItemCount);
+    rig.text_limit = 16; // 6 項目が 5 行に収まらない予算（スクロールできる状態）で確かめる
     assert(rig.engine.BindAll(sample::kBindings, sample::kBindingCount));
     EnterSample(rig);
     // 選んでいない行に触れると選ぶだけ、選んだ行に触れると実行（画面 A は開く）。

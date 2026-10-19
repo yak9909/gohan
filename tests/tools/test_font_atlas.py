@@ -61,14 +61,15 @@ def test_tile_boundaries_and_layout():
 
 def test_adopted_fonts_are_reproducible(tmp_path):
     atlas, widths, main, numeric = font.build(ROOT)
-    assert (len(atlas), len(widths), len(main), len(numeric)) == (65536, 2085, 667, 27)
-    # 旧版との全要素照合で一致した出力のハッシュ。旧版のファイルは試験に不要。
+    assert (len(atlas), len(widths), len(main), len(numeric)) == (65536, 2094, 670, 27)
+    # 旧版との全要素照合で一致した出力に、メニューが使う「予」「約」「機」を足した後のハッシュ。
+    # 足した字は文字表の末尾に置くので、既存の字形の番号は変わらない（数字用の写像だけ字形番号がずれる）。
     payloads = [atlas, bytes(widths), b''.join(struct.pack('<HH', *p) for p in main),
                 b''.join(struct.pack('<HH', *p) for p in numeric)]
-    expected = ['8f8353059c2ec5dde6311a9d7a34afc309adf147e0e5b81e0e115c59b1cfd912',
-                'cb2de4e997354959cdfc265e79731e4df486ea3538c0904b8404164a00ccf6c4',
-                'a5d98ad670770c8339e1231954342f63cf911ba97bc138b53b1d1fc08a5ba376',
-                'c5fe15b9c13bf9241d61cec059beafe35288c221b85d4ade682c6be5707d1faa']
+    expected = ['e464d528539c4a1e39a9c46296965301aa0563b606a5e4f41d2ce0f30b880898',
+                'eba3b76820e7481669c08ab2cb59eaabb8ec9be67b42ef14dc3cf2b97f5dc208',
+                'b26ffe9dd09854f12d86857b9013abe09f963f5144faf8cf005f6a24de9004e7',
+                '877ad38556212e2ec345ad113c76c49cee449e0f2291fd5576a277ef89dbd5c2']
     assert [hashlib.sha256(data).hexdigest() for data in payloads] == expected
     a, b = tmp_path / 'first.hpp', tmp_path / 'second.hpp'
     font.generate(ROOT, a)

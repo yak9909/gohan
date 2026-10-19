@@ -14,10 +14,13 @@ void ToggleRenderer(CTRPluginFramework::MenuEntry *) {
     namespace renderer = gohan::ui::renderer;
     static bool requested = false;
     static renderer::Canvas canvas;
+    // 上画面だけを使う（下画面は gohan のメニューが使う）。切るときは空の上画面を確定する。
     canvas.Begin(renderer::Screen::Top);
-    canvas.FrameRect({20, 20, 120, 40}, 0xFFFFFFFFu);
-    canvas.Text(32, 32, "gohan", 0xFFFFFFFFu, 2);
-    if (renderer::Commit(canvas) && renderer::SetEnabled(!requested))
+    if (!requested) {
+        canvas.FrameRect({20, 20, 120, 40}, 0xFFFFFFFFu);
+        canvas.Text(32, 32, "gohan", 0xFFFFFFFFu, 2);
+    }
+    if (renderer::Commit(canvas, renderer::Screen::Top) && renderer::SetEnabled(!requested))
         requested = !requested;
 }
 
@@ -51,6 +54,7 @@ int main() {
     menu.SynchronizeWithFrame(true);
     menu +=
         new MenuEntry("gohan（作り直し中）", nullptr, ShowStatus, "版と骨格の状態を表示します。");
+    // 終了は同じ段で登録と逆の順。描画の部品は、毎フレームのフックを止める前に資源を排出する。
     features.Add(gohan::game::FrameHookFeature());
     features.Add(gohan::ui::renderer::RendererFeature());
     features.Add(gohan::features::menu_screen::Feature());

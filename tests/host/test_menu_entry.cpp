@@ -81,7 +81,7 @@ void NumberEntry() {
     const Command *value = Large(s, "10");
     assert(value && value->numeric && value->scale == 2 && value->color == style::kPending);
     assert(s.HasText("決定") && s.HasText("取消") && s.HasText("-") && s.HasText("+") && !s.HasText("HOTKEY"));
-    assert(s.dropped == 0 && s.texts <= 16 && s.rects <= 32);
+    assert(s.dropped == 0 && s.texts <= static_cast<int>(gohan::core::limits::RendererTexts) && s.rects <= static_cast<int>(gohan::core::limits::RendererRects));
     // 右で step（5）、上で 10 倍。A で編集値に入り、適用待ちになる。
     f.rig.Tap(key::Right);
     f.rig.Tap(key::Up);
@@ -154,7 +154,7 @@ void ListEntry() {
     assert(f.e().Ui().kind == UiKind::List);
     RecordingSurface s = f.Draw();
     assert(s.HasText("晴れ") && s.HasText("雨") && s.HasText("雪") && !s.HasText("HOTKEY"));
-    assert(s.dropped == 0 && s.texts <= 16);
+    assert(s.dropped == 0 && s.texts <= static_cast<int>(gohan::core::limits::RendererTexts));
     f.rig.Tap(key::Down);
     f.rig.Tap(key::A); // 雪
     assert(f.e().State(Idx(MenuId::Weather)).value == 2 && f.e().Ui().kind == UiKind::None);
