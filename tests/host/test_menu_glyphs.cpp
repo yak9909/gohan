@@ -11,11 +11,12 @@
 #include <set>
 #include <string>
 
-// 描画の部品を丸ごとリンクするので、ゲーム側の三つの関数を空で用意する（ここでは呼ばれない）。
+// 描画の部品を丸ごとリンクするので、ゲーム側の関数を空で用意する（ここでは呼ばれない）。
 namespace gohan::game::lyt {
 InstallResult InstallRenderer(const FontResource &) { return InstallResult::MissingBindings; }
 bool Present(const Drawing &) { return false; }
-void DetachRenderer() {}
+bool DetachRenderer() { return true; }
+void WaitMilliseconds(unsigned) {}
 } // namespace gohan::game::lyt
 
 using namespace menu_test;

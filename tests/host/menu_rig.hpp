@@ -1,6 +1,7 @@
 #pragma once
 // メニューの画面（Shell）を、時刻・ボタン・タッチを与えて動かす試験の道具。
 #include "menu/shell.hpp"
+#include "core/limits.hpp"
 #include "menu_surface.hpp"
 #include <cassert>
 

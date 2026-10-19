@@ -253,7 +253,7 @@ void HoldToApplyAll() {
     rig.Hold(key::X);
     rig.Advance(100);
     RecordingSurface s = rig.Draw();
-    assert(s.HasText("全適用") && s.rects <= 32 && s.dropped == 0);
+    assert(s.HasText("全適用") && s.rects <= static_cast<int>(gohan::core::limits::RendererRects) && s.dropped == 0);
     bool muted = false, yellow = false;
     for (const Command &c : s.commands) muted = muted || (c.kind == Command::Outline && c.bounds.y == 201 && c.color == style::Argb(0xFF, 0x74, 0x7B, 0x76));
     assert(muted);
