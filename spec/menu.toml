@@ -5,14 +5,14 @@
 [[item]]
 id      = "sample"
 label   = "見本"
-desc    = "メニューの枠組みを確かめるための見本です。ゲームには触れません。"
+desc    = "メニューの枠組みを確かめるための見本です。ゲームには関わりません。"
 control = "folder"
 
 # 状態: 効果が続く。ホットキーを付けて有効にすると待機になり、ホットキーで効果を切り替える。
 [[item.item]]
 id       = "sample.flag"
-label    = "見本の旗"
-desc     = "旗を立てます。ホットキーがあれば、ホットキーで立てる・下ろす。"
+label    = "見本のフラグ"
+desc     = "フラグを立てます。ホットキーがあれば、ホットキーで立てる・下ろす。"
 control  = "toggle"
 behavior = "state"
 hotkey   = "L+Up"
@@ -85,7 +85,7 @@ enabled_if = "sample.mode != 'マス単位'"
 [[item.item.item]]
 id       = "sample.wallet"
 label    = "見本の所持金"
-desc     = "見本の値です。ゲームの値の代わりに見本の変数を読み書きします。"
+desc     = "見本の値です。ゲームの値のかわりに見本の変数を読み書きします。"
 control  = "number"
 range    = [0, 99999]
 source   = "game"
@@ -94,7 +94,7 @@ lockable = true
 # 開発用: 開発版だけに出る。
 [[item.item.item]]
 id      = "sample.dev_note"
-label   = "見本の開発用"
+label   = "見本のテスト用"
 control = "toggle"
 behavior = "state"
 dev     = true

@@ -1,5 +1,6 @@
 #include "core/format.hpp"
 #include "menu/engine.hpp"
+#include "menu/value_text.hpp"
 
 // 行の表示。OFF／待機／ON の 3 つと、実行の項目の 実行／予約／OK を決める。
 namespace gohan::menu {
@@ -8,19 +9,6 @@ unsigned PopCount(u32 mask) {
     unsigned n = 0;
     for (; mask; mask >>= 1) n += mask & 1u;
     return n;
-}
-
-void Number(core::TextWriter &w, const ItemDef &d, s32 value) {
-    if (d.format == Format::Hex) {
-        w.Append("0x").Unsigned(static_cast<u32>(value), 16);
-    } else if (d.format == Format::Decimal1) {
-        const bool negative = value < 0;
-        const u32 magnitude = negative ? 0u - static_cast<u32>(value) : static_cast<u32>(value);
-        if (negative) w.Append("-");
-        w.Unsigned(magnitude / 10).Append(".").Unsigned(magnitude % 10);
-    } else {
-        w.Signed(value);
-    }
 }
 } // namespace
 
@@ -59,7 +47,7 @@ RowView Engine::View(u16 item) const {
     case Control::Number:
     case Control::Slider:
         if (!st.available) w.Append("---");
-        else Number(w, d, st.value);
+        else FormatNumber(d, st.value, view.value, sizeof(view.value));
         break;
     case Control::Select:
         if (!st.available) w.Append("---");

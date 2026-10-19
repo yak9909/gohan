@@ -1,10 +1,9 @@
 #include "core/feature.hpp"
 #include "core/format.hpp"
 #include "core/limits.hpp"
+#include "features/menu_screen/menu_screen.hpp"
 #include "game/frame_hook.hpp"
-#ifdef GOHAN_DEV
 #include "ui/renderer/renderer.hpp"
-#endif
 #include <CTRPluginFramework.hpp>
 
 namespace {
@@ -21,6 +20,11 @@ void ToggleRenderer(CTRPluginFramework::MenuEntry *) {
     if (renderer::Commit(canvas) && renderer::SetEnabled(!requested))
         requested = !requested;
 }
+
+void ToggleGohanMenu(CTRPluginFramework::MenuEntry *) {
+    // 次のフレームで開閉する。競合した時は、もう一度押す。
+    gohan::features::menu_screen::RequestToggle();
+}
 #endif
 
 void ShowStatus(CTRPluginFramework::MenuEntry *) {
@@ -34,9 +38,7 @@ void ShowStatus(CTRPluginFramework::MenuEntry *) {
 #endif
     writer.Append("骨格: 機能登録・毎フレーム処理・通信・文字処理\n")
         .Append(gohan::game::FrameHookStatus());
-#ifdef GOHAN_DEV
     writer.Append("\n").Append(gohan::ui::renderer::StatusText());
-#endif
     CTRPluginFramework::MessageBox("gohan（作り直し中）", text)();
 }
 } // namespace
@@ -50,10 +52,15 @@ int main() {
     menu +=
         new MenuEntry("gohan（作り直し中）", nullptr, ShowStatus, "版と骨格の状態を表示します。");
     features.Add(gohan::game::FrameHookFeature());
+    features.Add(gohan::ui::renderer::RendererFeature());
+    features.Add(gohan::features::menu_screen::Feature());
+    // Select 単独は自前のメニューに譲る。Select+十字上は従来どおり CTRPF のメニュー。
+    menu.OnOpening = gohan::features::menu_screen::ShouldOpenCtrpfMenu;
 #ifdef GOHAN_DEV
     menu += new MenuEntry("開発: 自前描画の入・切", nullptr, ToggleRenderer,
                           "上画面の枠と gohan を要求します。導入結果は状態表示で確認できます。");
-    features.Add(gohan::ui::renderer::RendererFeature());
+    menu += new MenuEntry("開発: gohan のメニューの開閉", nullptr, ToggleGohanMenu,
+                          "下画面の gohan のメニューを開閉します。Select 単独でも開閉できます。");
 #endif
     features.WireAll();
     menu.Run();
