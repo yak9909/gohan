@@ -66,10 +66,13 @@ class Engine {
     bool RequestClose(u32 now); // 適用待ちがあれば確認ダイアログを出して false
     void Frame(u32 now, u16 held);
     void Press(u16 key, u32 now, bool repeated = false);
+    // タッチで行を選ぶ。今のフォルダの見える項目で、ダイアログと入力 UI が無い時だけ。
+    bool Select(u16 item);
 
     // ---- 確認ダイアログ ----
     DialogKind Dialog() const { return dialog_; }
     bool DialogYes() const { return dialog_yes_; }
+    u16 DialogItem() const { return dialog_item_; } // Action の確認の対象（無ければ kNoItem）
     void Confirm(bool yes, u32 now);
 
     // ---- 入力 UI ----

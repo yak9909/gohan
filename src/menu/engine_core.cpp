@@ -164,6 +164,13 @@ bool Engine::RequestClose(u32 now) {
     return true;
 }
 
+bool Engine::Select(u16 item) {
+    if (!visible_ || dialog_ != DialogKind::None || ui_.kind != UiKind::None) return false;
+    if (!Has(item) || Hidden(item) || defs_[item].parent != Folder()) return false;
+    selection_[depth_] = item;
+    return true;
+}
+
 void Engine::Back(u32 now) {
     if (depth_ > 0) {
         --depth_;
