@@ -77,7 +77,7 @@ const char *StatusText() {
     case Status::WrongTitle: return "描画: 対応するタイトルではありません";
     case Status::Unreadable: return "描画: 照合するメモリを読めません";
     case Status::Mismatch: return "描画: 照合不一致のため導入しません";
-    case Status::MissingBindings: return "描画: 必要な型・大域変数が未公開のため導入しません";
+    case Status::MissingBindings: return "描画: ノード・描画資源の必要な欄が未公開のため導入しません";
     case Status::PresentFailed: return "描画: 確定できませんでした";
     }
     return "描画: 不明";

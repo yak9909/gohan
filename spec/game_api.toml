@@ -1,9 +1,20 @@
 build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
-functions = []
-globals = []
-types = []
+functions = [
+    "GpuCmd_GetProperty", "GpuCmd_CreateLists", "GpuCmd_SelectList",
+    "GpuCmd_AllocateListStorage", "GpuCmd_DestroyLists",
+    "ssys_ma_Allocator_Alloc", "ssys_ma_Allocator_Free",
+    "ssys_ma_lyt_Layout_RecordPaneTree", "ssys_ma_lyt_Layout_ReplayRecordedList",
+    "ssys_ma_lyt_LayoutMgr_AddLayout",
+]
+globals = ["g_LayoutMgr", "g_LayoutAllocator"]
+types = [
+    "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode",
+    "SsysMaAllocator", "SeadExpHeapPrefix",
+    "NwLytPane", "NwLytPicture", "NwLytTextBox", "NwLytMaterial", "NwLytDrawInfo",
+    "NwFontResFont", "NwFontFinf", "NwFontTglp", "NwFontCwdh", "NwFontCmap",
+]
 
 # 描画パス中の待機後、追加の毎フレーム処理を呼ぶ位置。
 [[hooks]]
@@ -22,5 +33,65 @@ length = 16
 [[checks]]
 name = "LayoutBottomEntry"
 function = "ssys_ma_lyt_LayoutMgr_RenderBottom"
+offset = 0
+length = 16
+
+[[checks]]
+name = "GpuPropertyEntry"
+function = "GpuCmd_GetProperty"
+offset = 0
+length = 16
+
+[[checks]]
+name = "GpuCreateEntry"
+function = "GpuCmd_CreateLists"
+offset = 0
+length = 16
+
+[[checks]]
+name = "GpuSelectEntry"
+function = "GpuCmd_SelectList"
+offset = 0
+length = 16
+
+[[checks]]
+name = "GpuStorageEntry"
+function = "GpuCmd_AllocateListStorage"
+offset = 0
+length = 16
+
+[[checks]]
+name = "GpuDestroyEntry"
+function = "GpuCmd_DestroyLists"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutAllocateEntry"
+function = "ssys_ma_Allocator_Alloc"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutFreeEntry"
+function = "ssys_ma_Allocator_Free"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutRecordEntry"
+function = "ssys_ma_lyt_Layout_RecordPaneTree"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutReplayEntry"
+function = "ssys_ma_lyt_Layout_ReplayRecordedList"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutAddEntry"
+function = "ssys_ma_lyt_LayoutMgr_AddLayout"
 offset = 0
 length = 16

@@ -36,8 +36,10 @@ def main() -> int:
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
     run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *renderer],
         'test_renderer', ('src', 'build/gen'))
-    run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp'],
+    run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp', 'src/game/lyt/verification.cpp'],
         'test_lyt_renderer', ('tests/host/lyt_fakes', 'src'))
+    run(['tests/host/test_lyt_resources.cpp', 'src/game/lyt/recording_resources.cpp'],
+        'test_lyt_resources')
 
     # メニュー: 試験用の spec と、収録している見本の spec から、それぞれ表を生成して試験する。
     codegen = root / 'tools/gohan_tools/codegen/menu.py'
@@ -52,6 +54,7 @@ def main() -> int:
         run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')], f'test_menu_{name}',
             ('src', str(gen.relative_to(root))))
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序・照合による導入の拒否・'
+          '記録用資源の失敗時巻き戻し・反復確保と解放・束縛中の解放拒否・'
           '描画指示の範囲・順序・文字枠・メニューのエンジンの規則と見本の結び付けを確認しました。')
     return 0
 
