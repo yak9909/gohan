@@ -17,7 +17,7 @@ THREEGXTOOL ?= 3gxtool
 # 設定を切り替えても古いオブジェクトを再利用しない。
 OBJDIR := $(BUILD)/plugin-dev$(DEV)-lto$(LTO)
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -marm
-GEN := build/gen
+GEN := $(BUILD)/gen
 CPPFLAGS := -D__3DS__ -Isrc -I$(GEN) -isystem third_party/libctrpf/include -isystem $(CTRULIB)/include
 CFLAGS := $(ARCH) -Os -Wall -Wextra -ffunction-sections -fdata-sections -mword-relocations
 CXXFLAGS := $(CFLAGS) -std=gnu++20 -fno-rtti -fno-exceptions
@@ -38,6 +38,9 @@ ASM_RAW_SOURCES := $(shell find src -type f -name '*.s' | LC_ALL=C sort)
 GEN_SOURCES := $(GEN)/menu_table.cpp
 OBJECTS := $(addprefix $(OBJDIR)/,$(CPP_SOURCES:.cpp=.o) $(GEN_SOURCES:.cpp=.o) $(C_SOURCES:.c=.o) $(ASM_SOURCES:.S=.o) $(ASM_RAW_SOURCES:.s=.o))
 LIBRARY := build/libctrpf/libctrpf.a
+FONT_HEADER := $(GEN)/font_atlas.hpp
+FONT_INPUTS := third_party/fonts/misaki/misaki_gothic_2nd.bdf third_party/fonts/pixelmplus/mplus_j10r-iso-W5.bdf
+FONT_CODEGEN := tools/gohan_tools/codegen/font_atlas.py
 
 .PHONY: all libctrpf clean FORCE host-test
 all: out/gohan.3gx
@@ -53,6 +56,11 @@ $(GEN)/menu_ids.hpp $(GEN)/menu_table.cpp docs/menu.md &: spec/menu.toml tools/g
 # サブ make 完了後に書庫の更新時刻を判定する。
 $(LIBRARY): libctrpf
 	@test -f $@
+
+$(FONT_HEADER): $(FONT_CODEGEN) $(FONT_INPUTS) tools/gohan_tools/codegen/misaki_characters.txt tools/gohan_tools/codegen/numeric_characters.txt
+	$(PYTHON) $(FONT_CODEGEN) --output $@
+
+$(OBJDIR)/src/ui/renderer/font_resource.o: $(FONT_HEADER)
 
 $(OBJDIR)/%.o: %.cpp Makefile | libctrpf $(GEN)/menu_ids.hpp
 	@mkdir -p $(@D)

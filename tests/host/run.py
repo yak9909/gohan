@@ -31,6 +31,14 @@ def main() -> int:
     run(['tests/host/test_frame_hook.cpp', 'src/game/frame_hook.cpp', 'src/core/frame.cpp'],
         'test_frame_hook', ('tests/host/fakes', 'src'))
 
+    # 描画: 字形の表を生成してから試験する。
+    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
+    renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
+    run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *renderer],
+        'test_renderer', ('src', 'build/gen'))
+    run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp'],
+        'test_lyt_renderer', ('tests/host/lyt_fakes', 'src'))
+
     # メニュー: 試験用の spec と、収録している見本の spec から、それぞれ表を生成して試験する。
     codegen = root / 'tools/gohan_tools/codegen/menu.py'
     engine = ['src/menu/engine_core.cpp', 'src/menu/engine_edit.cpp', 'src/menu/engine_action.cpp',
@@ -44,7 +52,7 @@ def main() -> int:
         run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')], f'test_menu_{name}',
             ('src', str(gen.relative_to(root))))
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序・照合による導入の拒否・'
-          'メニューのエンジンの規則と見本の結び付けを確認しました。')
+          '描画指示の範囲・順序・文字枠・メニューのエンジンの規則と見本の結び付けを確認しました。')
     return 0
 
 

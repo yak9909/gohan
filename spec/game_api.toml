@@ -11,3 +11,16 @@ name = "FrameDispatch"
 function = "Frame_DrawPass1024"
 offset = 88
 length = 16
+
+# 描画接続の前提の照合。型と大域変数の公開が揃うまでフックは設置しない。
+[[checks]]
+name = "LayoutTopEntry"
+function = "ssys_ma_lyt_LayoutMgr_RenderTop"
+offset = 0
+length = 16
+
+[[checks]]
+name = "LayoutBottomEntry"
+function = "ssys_ma_lyt_LayoutMgr_RenderBottom"
+offset = 0
+length = 16
