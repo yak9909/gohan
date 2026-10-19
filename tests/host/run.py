@@ -75,6 +75,9 @@ def main() -> int:
     run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
          'src/menu/sample_items.cpp', *renderer, 'build/host/gen-sample/menu_table.cpp'],
         'test_menu_glyphs', ('src', 'tests/host', 'build/gen', 'build/host/gen-sample'))
+    # プレビューも実際の feature・入力・Canvas を通し、全台本の描画内容を照合する。
+    subprocess.run([sys.executable, 'tools/preview.py', '--cxx', compiler,
+                    '--out', str(build / 'preview')], cwd=root, check=True)
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序（描画の排出はフックを止める前）・'
           '照合と前提の不足による導入の拒否・資源の失敗時巻き戻し・反復の確保と解放・束縛中の解放拒否・'
           'Pane の木と Layout ノードの組み立て・登録の取り下げと排出・画面ごとの確定・'
