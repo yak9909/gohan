@@ -119,6 +119,9 @@ devkitPro のシェルで環境変数が設定済みなら、`make -C third_part
 
 ## 検査
 
+メニューの見た目は、実際のコードを PC で動かす [プレビューと実機画像の比較](preview.md) で
+確認できます。時刻付きの入力台本から、上下画面の PNG と1ファイルの HTML を作ります。
+
 ```sh
 python tools/check.py --all
 python -m pytest tests/tools
