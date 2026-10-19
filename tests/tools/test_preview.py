@@ -116,6 +116,38 @@ def test_la4_channels_alpha_and_vertex_color(tmp_path):
     assert image.pixels[:3] == bytes([127, 0, 128])
 
 
+def test_rgb565_final_output_and_unpainted_background(tmp_path):
+    raster = atlas(tmp_path)
+    raster.settings['output_format'] = 'rgb565'
+    background = Image.solid(8, 8, (66, 247, 214))
+    assert raster.draw([], background) == background
+    image = raster.draw([command(kind=0, bounds=[0, 0, 1, 1], color=0xFFAEB9B1)], background)
+    assert image.pixels[:3] == bytes([173, 186, 181])
+    assert image.pixels[3:] == background.pixels[3:]
+    assert background.pixels[:3] == bytes([66, 247, 214])
+
+
+def test_compare_cli_accepts_rosalina_bmp_without_crop(tmp_path, monkeypatch):
+    import compare_preview
+    monkeypatch.setattr(compare_preview, 'ROOT', tmp_path)
+    # 左右の余白と上画面を別色にし、下の右下まで含めて自動抽出を検査する。
+    width, height = 400, 480
+    rows = []
+    for y in range(height):
+        rows.append(b''.join(bytes((3, 2, 1)) if y >= 240 and 40 <= x < 360 else bytes((9, 8, 7))
+                             for x in range(width)))
+    dib = struct.pack('<IiiHHIIiiII', 40, width, height, 1, 24, 0, width * height * 3, 0, 0, 0, 0)
+    capture = tmp_path / 'Rosalina.bmp'
+    capture.write_bytes(b'BM' + struct.pack('<IHHI', 54 + width * height * 3, 0, 0, 54) +
+                        dib + b''.join(reversed(rows)))
+    preview = tmp_path / 'preview.png'
+    Image.solid(320, 240, (1, 2, 3)).save(preview)
+    out = tmp_path / 'build' / 'compare'
+    assert compare_preview.main([str(preview), str(capture), '--search', '0', '--out', str(out)]) == 0
+    metrics = json.loads((out / 'metrics.json').read_text())
+    assert metrics['mean'] == 0 and metrics['pixels'] == 320 * 240
+
+
 def test_glyph_clipping_and_numeric_scale(tmp_path):
     raster = atlas(tmp_path)
     background = Image.solid(8, 8, (0, 0, 0))
@@ -175,3 +207,4 @@ def test_shipped_scenarios_are_valid():
     script = json.loads((ROOT / 'tools/preview/scenarios.json').read_text(encoding='utf-8'))
     for scenario in script['scenarios']:
         assert protocol(scenario, 16)
+
