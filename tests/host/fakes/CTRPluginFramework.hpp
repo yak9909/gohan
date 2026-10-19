@@ -18,6 +18,44 @@ struct Fake {
     static inline int disableCalls = 0;
     static inline bool readable = true;
     static inline HookResult enableResult = HookResult::Success;
+    // 入力と時刻（メニューの画面の試験用）。keys は CTRPF の Key のビット。
+    static inline std::uint32_t keys = 0;
+    static inline bool touching = false;
+    static inline unsigned touchX = 0, touchY = 0;
+    static inline int nowMs = 0;
+};
+enum Key {
+    A = 1,
+    B = 1 << 1,
+    Select = 1 << 2,
+    Start = 1 << 3,
+    DPadRight = 1 << 4,
+    DPadLeft = 1 << 5,
+    DPadUp = 1 << 6,
+    DPadDown = 1 << 7,
+    R = 1 << 8,
+    L = 1 << 9,
+    X = 1 << 10,
+    Y = 1 << 11,
+    ZL = 1 << 14,
+    ZR = 1 << 15,
+};
+struct Controller {
+    static std::uint32_t GetKeysDown(bool = true) { return Fake::keys; }
+};
+struct Point {
+    unsigned x, y;
+};
+struct Touch {
+    static bool IsDown() { return Fake::touching; }
+    static Point GetPosition() { return {Fake::touchX, Fake::touchY}; }
+};
+struct Time {
+    int ms;
+    int AsMilliseconds() const { return ms; }
+};
+struct Clock {
+    Time GetElapsedTime() const { return {Fake::nowMs}; }
 };
 struct Process {
     static bool IsPaused() { return Fake::paused; }

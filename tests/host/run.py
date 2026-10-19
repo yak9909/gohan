@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PC の C++20 コンパイラで core と menu をビルドして試験する。"""
+"""PC の C++20 コンパイラで core・menu・画面の接続をビルドして試験する。"""
 import argparse
 import os
 from pathlib import Path
@@ -43,16 +43,36 @@ def main() -> int:
     codegen = root / 'tools/gohan_tools/codegen/menu.py'
     engine = ['src/menu/engine_core.cpp', 'src/menu/engine_edit.cpp', 'src/menu/engine_action.cpp',
               'src/menu/engine_input.cpp', 'src/menu/engine_view.cpp', 'src/menu/hotkey.cpp',
-              'src/menu/notice.cpp', 'src/core/format.cpp']
-    for name, spec, test, extra in (
-            ('test', 'tests/host/fixtures/menu_test.toml', 'tests/host/test_menu.cpp', []),
-            ('sample', 'spec/menu.toml', 'tests/host/test_menu_sample.cpp', ['src/menu/sample_items.cpp'])):
+              'src/menu/notice.cpp', 'src/menu/value_text.cpp', 'src/core/format.cpp']
+    run(['tests/host/test_menu_motion.cpp'], 'test_menu_motion')
+    # 画面（帯・説明・ダイアログ・入力の枠・通知）。描画先は代役で受ける。
+    screen = ['src/menu/surface.cpp', 'src/menu/notices.cpp', 'src/menu/panel.cpp', 'src/menu/modal.cpp',
+              'src/menu/shell.cpp']
+    for name, spec, tests in (
+            ('test', 'tests/host/fixtures/menu_test.toml',
+             (('tests/host/test_menu.cpp', []), ('tests/host/test_menu_entry.cpp', screen))),
+            ('sample', 'spec/menu.toml',
+             (('tests/host/test_menu_sample.cpp', ['src/menu/sample_items.cpp']),
+              ('tests/host/test_menu_shell.cpp', ['src/menu/sample_items.cpp', *screen])))):
         gen = build / f'gen-{name}'
         subprocess.run([sys.executable, str(codegen), '--spec', spec, '--out', str(gen)], cwd=root, check=True)
-        run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')], f'test_menu_{name}',
-            ('src', str(gen.relative_to(root))))
+        for test, extra in tests:
+            run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')],
+                Path(test).stem, ('src', 'tests/host', str(gen.relative_to(root))))
+
+    # ゲーム中のメニュー: 毎フレームの処理から描画指示まで。入力・時計・ゲーム側の描画は代役。
+    run(['tests/host/test_menu_screen.cpp', 'src/features/menu_screen/menu_screen.cpp', 'src/ui/input/buttons.cpp',
+         'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen, 'src/menu/sample_items.cpp', *renderer,
+         'build/host/gen-sample/menu_table.cpp'],
+        'test_menu_screen', ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))
+    # 描く文字がすべて字形の表にあるか（無い文字は実機で何も出ない）。
+    run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
+         'src/menu/sample_items.cpp', *renderer, 'build/host/gen-sample/menu_table.cpp'],
+        'test_menu_glyphs', ('src', 'tests/host', 'build/gen', 'build/host/gen-sample'))
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序・照合による導入の拒否・'
-          '描画指示の範囲・順序・文字枠・メニューのエンジンの規則と見本の結び付けを確認しました。')
+          '描画指示の範囲・順序・文字枠・メニューのエンジンの規則と見本の結び付け・'
+          '動きの部品・タッチのスクロール・メニューの画面（開閉・行・タッチ・ダイアログ・入力の枠・通知）・'
+          '描く文字の字形と描画の予算・ゲーム中の入力から描画指示までを確認しました。')
     return 0
 
 
