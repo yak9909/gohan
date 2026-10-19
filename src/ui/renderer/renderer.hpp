@@ -37,10 +37,17 @@ int MeasureText(std::string_view text, unsigned scale = 1, Font font = Font::Mai
 const game::lyt::FontResource &Fonts();
 
 enum class Status { Stopped, Waiting, Ready, WrongTitle, Unreadable, Mismatch,
-                    MissingBindings, PresentFailed };
+                    MissingBindings, PresentFailed, ResourceFailed, Stopping };
+// 描画を使う側。どれか一つでも要求している間は導入し、全員が取り下げると取り外す。
+enum class Client : unsigned { Default, Menu, Count };
 // メニューのスレッドから。競合した場合は false を返すので次回再試行する。
+// 引数一つの版は Client::Default の要求。
 bool SetEnabled(bool enabled);
+bool SetEnabled(Client client, bool enabled);
+// 確定は画面ごとに置き換わる。両方を一度に確定する版と、一方だけを確定する版がある
+// （後者は、もう一方の画面を使う別の呼び出し元の確定に触れない）。
 bool Commit(const Canvas &canvas);
+bool Commit(const Canvas &canvas, Screen screen);
 Status ReadStatus();
 const char *StatusText();
 const core::Feature &RendererFeature();

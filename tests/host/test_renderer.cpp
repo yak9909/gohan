@@ -55,7 +55,7 @@ void BoundsAndOrder() {
     const auto &drawing = canvas.Data().screens[0];
     assert(drawing.commands[count].kind == gohan::game::lyt::Kind::Text);
     assert(drawing.commands[count + 1].kind == gohan::game::lyt::Kind::Rectangle);
-    assert(drawing.estimatedBytes == 31 * 204 + 552 + 5 * 48);
+    assert(drawing.estimatedBytes == (gohan::core::limits::RendererRects - 1) * 204 + 552 + 5 * 48);
 }
 
 void TextAndSlots() {
@@ -79,43 +79,188 @@ void TextAndSlots() {
     for (std::size_t i = 0; i < drawing.count; ++i)
         for (std::size_t j = i + 1; j < drawing.count; ++j)
             assert(drawing.commands[i].slot != drawing.commands[j].slot);
+    // 17 字以上の文字列を入れられる枠は 16 個（20 字・24 字・28 字）。28 字は 8 個。
     canvas.Begin(Screen::Top);
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 8; ++i)
         assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Added);
     assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Full);
     assert(canvas.Text(0, 0, "A", White) == Result::Added);
+    canvas.Begin(Screen::Top);
+    for (int i = 0; i < 16; ++i)
+        assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Added);
+    assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Full);
+    // 画面ごとに数える。下画面は上画面の枠を使わない。
+    canvas.Begin(Screen::Bottom);
+    assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Added);
+    assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == 16);
 }
+
+// 描画の部品が呼ぶゲーム側の入口の代役（実機に依らない要求の伝達だけを確かめる）。
+namespace stub {
+using gohan::game::lyt::InstallResult;
+InstallResult installResult = InstallResult::Ready;
+int installs = 0, presents = 0, detaches = 0, busyLeft = 0, sleeps = 0;
+bool presentOk = true;
+bool installed = false;
+gohan::game::lyt::Drawing lastPresented;
+} // namespace stub
+
+void Frame() { gohan::core::frame::Dispatch(); }
 
 void Dispatch() {
     const auto &feature = RendererFeature();
+    assert(feature.stage == gohan::core::ShutdownStage::GameHooks);
     assert(feature.Wire());
     assert(ReadStatus() == Status::Waiting);
     Canvas canvas;
     canvas.Begin(Screen::Top);
     canvas.FrameRect({20, 20, 120, 40}, White);
     canvas.Text(32, 32, "gohan", White, 2);
-    assert(Commit(canvas));
+    assert(Commit(canvas, Screen::Top));
     assert(SetEnabled(true));
     assert(ReadStatus() == Status::Waiting);
-    gohan::core::frame::Dispatch();
+    Frame();
+    assert(ReadStatus() == Status::Ready && stub::installs == 1 && stub::presents == 1);
+    // 上だけを確定した。下は空のまま。
+    assert(stub::lastPresented.screens[0].count == 5 && stub::lastPresented.screens[1].count == 0);
+    assert(stub::lastPresented.revisions[0] == 1 && stub::lastPresented.revisions[1] == 0);
+    // 下の画面は別に確定できる。上の確定は変わらない。
+    Canvas lower;
+    lower.Begin(Screen::Bottom);
+    lower.FillRect({0, 0, 160, 240}, White);
+    assert(Commit(lower, Screen::Bottom));
+    Frame();
+    assert(stub::lastPresented.screens[0].count == 5 && stub::lastPresented.screens[1].count == 1);
+    assert(stub::lastPresented.revisions[0] == 1 && stub::lastPresented.revisions[1] == 1);
+    // 両方を一度に置き換える呼び方は今までどおり。
+    canvas.Begin(Screen::Top);
+    lower.Begin(Screen::Bottom);
+    assert(Commit(canvas) && Commit(lower, Screen::Bottom));
+    Frame();
+    assert(stub::lastPresented.screens[0].count == 0 && stub::lastPresented.revisions[0] == 2);
+
+    // 利用者が二人: 片方が取り下げても、もう片方が求めている間は取り外さない。
+    assert(SetEnabled(Client::Menu, true));
+    Frame();
+    assert(SetEnabled(false));
+    Frame();
+    assert(ReadStatus() == Status::Ready && stub::detaches == 0 && stub::installs == 1);
+    // 全員が取り下げたら、排出が終わるまで取り外し中。済むまで描画しない。
+    stub::busyLeft = 3;
+    const int presents = stub::presents;
+    assert(SetEnabled(Client::Menu, false));
+    Frame();
+    assert(ReadStatus() == Status::Stopping && stub::detaches == 0);
+    Frame();
+    Frame();
+    Frame();
+    assert(ReadStatus() == Status::Stopping && stub::presents == presents && stub::detaches == 3);
+    Frame();
+    assert(ReadStatus() == Status::Stopped && stub::detaches == 4 && !stub::installed);
+    const int detaches = stub::detaches;
+    Frame();
+    assert(stub::detaches == detaches && ReadStatus() == Status::Stopped);
+
+    // 取り外しの最中に求められたら、排出が済んでから導入し直す。
+    assert(SetEnabled(true));
+    Frame();
+    assert(ReadStatus() == Status::Ready && stub::installs == 2);
+    stub::busyLeft = 2;
+    assert(SetEnabled(false));
+    Frame();
+    assert(SetEnabled(true));
+    Frame();
+    assert(ReadStatus() == Status::Stopping && stub::installs == 2);
+    Frame();
+    assert(ReadStatus() == Status::Stopping && stub::installs == 2);
+    Frame();
+    assert(ReadStatus() == Status::Ready && stub::installs == 3 && stub::installed);
+
+    // 描画の確定に失敗したら、排出してから失敗を知らせる。
+    stub::presentOk = false;
+    Frame();
+    assert(ReadStatus() == Status::Stopping);
+    Frame();
+    assert(ReadStatus() == Status::PresentFailed && !stub::installed);
+    stub::presentOk = true;
+    assert(SetEnabled(false));
+    Frame();
+    assert(ReadStatus() == Status::Stopped);
+
+    // 導入できなかった状態では、取り外す資源が無いので排出も呼ばない。
+    stub::installResult = stub::InstallResult::ResourceFailed;
+    assert(SetEnabled(true));
+    Frame();
+    assert(ReadStatus() == Status::ResourceFailed && !stub::installed);
+    assert(std::string(StatusText()).find("確保") != std::string::npos);
+    const int calls = stub::detaches;
+    assert(SetEnabled(false));
+    Frame();
+    assert(ReadStatus() == Status::Stopped && stub::detaches == calls);
+    stub::installResult = stub::InstallResult::MissingBindings;
+    assert(SetEnabled(true));
+    Frame();
     assert(ReadStatus() == Status::MissingBindings);
     assert(SetEnabled(false));
-    gohan::core::frame::Dispatch();
-    assert(ReadStatus() == Status::Stopped);
-    feature.Shutdown();
-    gohan::core::frame::Dispatch();
-    assert(ReadStatus() == Status::Stopped);
+    Frame();
+    stub::installResult = stub::InstallResult::Ready;
+}
+
+// 終了: 毎フレームのフックを止める前に、描画の部品が資源を排出して返す。
+bool frameHookStopped = false;
+bool drainedBeforeHook = false;
+void Shutdown() {
+    assert(SetEnabled(true));
+    Frame();
+    assert(ReadStatus() == Status::Ready);
+    gohan::core::FeatureRegistry registry;
+    static const gohan::core::Feature hook{
+        "game.frame", [] { return true; },
+        [] {
+            // 毎フレームのフックが止まる時には、描画の部品はもう取り外されている。
+            drainedBeforeHook = !stub::installed;
+            frameHookStopped = true;
+            gohan::core::frame::Global().Reset();
+        },
+        gohan::core::ShutdownStage::GameHooks};
+    assert(registry.Add(hook) && registry.Add(RendererFeature()) && registry.WireAll());
+    Frame(); // Wire は待機中と公開する。描画スレッドの代役が現在の状態を公開し直す。
+    assert(ReadStatus() == Status::Ready);
+    stub::busyLeft = 3;
+    stub::sleeps = 0;
+    registry.ShutdownAll();
+    assert(frameHookStopped && drainedBeforeHook);
+    // 待機のたびに描画スレッドの代役が 1 フレーム進む。
+    assert(stub::sleeps >= 4 && ReadStatus() == Status::Stopped);
 }
 } // namespace
 
-// 実機に依らない要求の伝達だけを確かめる。導入成功を仮定しない。
 namespace gohan::game::lyt {
 InstallResult InstallRenderer(const FontResource &font) {
-    assert(font.atlasBytes == 65536 && font.glyphs == 695);
-    return InstallResult::MissingBindings;
+    assert(font.atlasBytes == 65536 && font.glyphs == 698);
+    ++stub::installs;
+    stub::installed = stub::installResult == InstallResult::Ready;
+    return stub::installResult;
 }
-bool Present(const Drawing &) { assert(false); return false; }
-void DetachRenderer() {}
+bool Present(const Drawing &drawing) {
+    assert(stub::installed);
+    ++stub::presents;
+    stub::lastPresented = drawing;
+    return stub::presentOk;
+}
+bool DetachRenderer() {
+    ++stub::detaches;
+    if (stub::busyLeft > 0) {
+        --stub::busyLeft;
+        return false;
+    }
+    stub::installed = false;
+    return true;
+}
+void WaitMilliseconds(unsigned) {
+    ++stub::sleeps;
+    Frame();
+}
 } // namespace gohan::game::lyt
 
 int main() {
@@ -123,4 +268,5 @@ int main() {
     BoundsAndOrder();
     TextAndSlots();
     Dispatch();
+    Shutdown();
 }

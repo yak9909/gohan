@@ -34,10 +34,16 @@ def main() -> int:
     # 描画: 字形の表を生成してから試験する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
-    run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *renderer],
+    run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/feature.cpp', 'src/core/utf.cpp', *renderer],
         'test_renderer', ('src', 'build/gen'))
-    run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp'],
-        'test_lyt_renderer', ('tests/host/lyt_fakes', 'src'))
+    # ゲームの描画の層: 資源・Pane の木・ノード・導入と取り外し。ゲームの API は代役で受ける。
+    lyt = ['src/game/lyt/engine.cpp', 'src/game/lyt/scene.cpp', 'src/game/lyt/nodes.cpp',
+           'src/game/lyt/recording_resources.cpp']
+    run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp', 'src/game/lyt/verification.cpp', *lyt],
+        'test_lyt_renderer', ('tests/host/lyt_fakes', 'tests/host', 'src'))
+    run(['tests/host/test_lyt_resources.cpp', 'src/game/lyt/recording_resources.cpp'],
+        'test_lyt_resources', ('tests/host', 'src'))
+    run(['tests/host/test_lyt_engine.cpp', *lyt], 'test_lyt_engine', ('tests/host', 'src'))
 
     # メニュー: 試験用の spec と、収録している見本の spec から、それぞれ表を生成して試験する。
     codegen = root / 'tools/gohan_tools/codegen/menu.py'
@@ -69,7 +75,9 @@ def main() -> int:
     run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
          'src/menu/sample_items.cpp', *renderer, 'build/host/gen-sample/menu_table.cpp'],
         'test_menu_glyphs', ('src', 'tests/host', 'build/gen', 'build/host/gen-sample'))
-    print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序・照合による導入の拒否・'
+    print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序（描画の排出はフックを止める前）・'
+          '照合と前提の不足による導入の拒否・資源の失敗時巻き戻し・反復の確保と解放・束縛中の解放拒否・'
+          'Pane の木と Layout ノードの組み立て・登録の取り下げと排出・画面ごとの確定・'
           '描画指示の範囲・順序・文字枠・メニューのエンジンの規則と見本の結び付け・'
           '動きの部品・タッチのスクロール・メニューの画面（開閉・行・タッチ・ダイアログ・入力の枠・通知）・'
           '描く文字の字形と描画の予算・ゲーム中の入力から描画指示までを確認しました。')

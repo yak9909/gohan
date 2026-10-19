@@ -46,17 +46,17 @@ void FrameStep() {
     shell.Step(now, in, toggle);
 
     // 自前の描画は一度要求すれば足りる。競合した時は次のフレームで頼み直す。
-    if (!enable_requested) enable_requested = renderer::SetEnabled(true);
+    if (!enable_requested) enable_requested = renderer::SetEnabled(renderer::Client::Menu, true);
     const bool need = shell.NeedsDraw(now);
     if (!need && !drawn) return;
-    canvas.Begin(renderer::Screen::Top);
-    canvas.Begin(renderer::Screen::Bottom);
+    // 自分の画面だけを描いて確定する（もう一方の画面を使う別の呼び出し元に触れない）。
+    canvas.Begin(kScreen);
     if (need) {
         CanvasSurface surface(canvas, kScreen);
         shell.Draw(surface, now);
     }
     // 確定に失敗（競合）したら、次のフレームでもう一度描いて確定する。
-    if (renderer::Commit(canvas)) drawn = need;
+    if (renderer::Commit(canvas, kScreen)) drawn = need;
 }
 
 bool Wire() {
@@ -75,6 +75,8 @@ bool Wire() {
 void Shutdown() {
     core::frame::Global().Remove(FrameStep);
     active_box.TryPublish(false);
+    // 描画の部品が先に止まっていても、要求だけは取り下げておく（失敗しても部品側が止める）。
+    renderer::SetEnabled(renderer::Client::Menu, false);
 }
 
 const core::Feature feature{"menu.screen", Wire, Shutdown, core::ShutdownStage::Other};

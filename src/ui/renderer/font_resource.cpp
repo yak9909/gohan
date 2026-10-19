@@ -8,7 +8,9 @@ const game::lyt::FontResource &Fonts() {
         font_data::Atlas, std::size(font_data::Atlas), font_data::Widths,
         std::size(font_data::Widths) / 3,
         font_data::MisakiMap, std::size(font_data::MisakiMap) / 2,
-        font_data::NumericMap, std::size(font_data::NumericMap) / 2};
+        font_data::NumericMap, std::size(font_data::NumericMap) / 2,
+        font_data::SheetWidth, font_data::SheetHeight, font_data::CellWidth, font_data::CellHeight,
+        font_data::Columns, font_data::SolidIndex};
     return resource;
 }
 

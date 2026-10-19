@@ -22,7 +22,10 @@ struct Command {
 
 class RecordingSurface : public Surface {
   public:
-    explicit RecordingSurface(int width = 320) : width_(width) {}
+    // text_limit・rect_limit は、受け付ける描画の予算（既定は ui::renderer の予算）。
+    explicit RecordingSurface(int width = 320, int text_limit = static_cast<int>(gohan::core::limits::RendererTexts),
+                              int rect_limit = static_cast<int>(gohan::core::limits::RendererRects))
+        : width_(width), text_limit_(text_limit), rect_limit_(rect_limit) {}
 
     std::vector<Command> commands;
     int rects = 0, texts = 0, dropped = 0;
@@ -34,7 +37,7 @@ class RecordingSurface : public Surface {
     }
     void Text(int x, int y, std::string_view text, u32 color, bool numeric = false, unsigned scale = 1) override {
         const int width = Measure(text, numeric, scale);
-        if (texts >= static_cast<int>(gohan::core::limits::RendererTexts) || (color >> 24) == 0 || width == 0) {
+        if (texts >= text_limit_ || (color >> 24) == 0 || width == 0) {
             if (width != 0) ++dropped;
             return;
         }
@@ -60,8 +63,8 @@ class RecordingSurface : public Surface {
         return true;
     }
     void EndClip() override { clipped_ = false; }
-    int TextsLeft() const override { return static_cast<int>(gohan::core::limits::RendererTexts) - texts; }
-    int RectsLeft() const override { return static_cast<int>(gohan::core::limits::RendererRects) - rects; }
+    int TextsLeft() const override { return text_limit_ - texts; }
+    int RectsLeft() const override { return rect_limit_ - rects; }
 
     // ---- 試験の補助 ----
     const Command *FindText(const std::string &needle) const {
@@ -79,14 +82,14 @@ class RecordingSurface : public Surface {
   private:
     void Add(Command::Kind kind, Rect bounds, u32 color, std::string text, bool numeric, unsigned scale, int cost) {
         if ((color >> 24) == 0 || bounds.w <= 0 || bounds.h <= 0) return;
-        if (rects + cost > static_cast<int>(gohan::core::limits::RendererRects)) {
+        if (rects + cost > rect_limit_) {
             ++dropped;
             return;
         }
         rects += cost;
         commands.push_back({kind, bounds, color, std::move(text), numeric, scale, clip_, clipped_});
     }
-    int width_;
+    int width_, text_limit_, rect_limit_;
     Rect clip_{};
     bool clipped_ = false;
 };

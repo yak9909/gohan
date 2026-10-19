@@ -20,7 +20,8 @@ bool Present(const Drawing &drawing) {
     ++presents;
     return true;
 }
-void DetachRenderer() {}
+bool DetachRenderer() { return true; }
+void WaitMilliseconds(unsigned) {}
 Drawing &Last() { return presented; }
 int Presents() { return presents; }
 } // namespace gohan::game::lyt
@@ -110,8 +111,23 @@ int main() {
     // 行と帯の描画指示には、行の領域の切り抜きが付く。
     unsigned clipped = 0;
     for (std::size_t i = 0; i < folder.count; ++i)
-        clipped += folder.commands[i].clip.y == 25 && folder.commands[i].clip.height == 5 * 18 && folder.commands[i].clip.width == 158;
+        clipped += folder.commands[i].clip.y == 25 && folder.commands[i].clip.height == 10 * 18 && folder.commands[i].clip.width == 158;
     assert(clipped >= 10);
+
+    // 開発版の「自前描画の入・切」は上画面だけを使う。入れても下画面のメニューは消えず、
+    // 切っても描画の導入は（メニューが使うので）外れない。
+    const auto bottom_count = lyt::Last().screens[1].count;
+    renderer::Canvas dev;
+    dev.Begin(renderer::Screen::Top);
+    dev.FrameRect({20, 20, 120, 40}, 0xFFFFFFFFu);
+    assert(renderer::Commit(dev, renderer::Screen::Top) && renderer::SetEnabled(true));
+    Frames(3);
+    assert(lyt::Last().screens[0].count == 4 && lyt::Last().screens[1].count == bottom_count);
+    dev.Begin(renderer::Screen::Top);
+    assert(renderer::Commit(dev, renderer::Screen::Top) && renderer::SetEnabled(false));
+    Frames(3);
+    assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == bottom_count);
+    assert(renderer::ReadStatus() == renderer::Status::Ready);
 
     // 外（開発版の CTRPF の項目）からの要求で閉じる。閉じ切ったら空の描画を確定する。
     assert(menu_screen::RequestToggle());
