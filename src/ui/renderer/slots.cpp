@@ -12,7 +12,7 @@ constexpr std::size_t Estimate(bool text, std::size_t characters) {
 
 int FindSlot(const game::lyt::ScreenDrawing &drawing, std::size_t length) {
     for (unsigned slot = 0; slot < std::size(Capacities); ++slot) {
-        if (Capacities[slot] < length)
+        if (static_cast<std::size_t>(Capacities[slot]) < length)
             continue;
         bool used = false;
         for (std::size_t i = 0; i < drawing.count; ++i)

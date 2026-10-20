@@ -47,6 +47,37 @@ inline u32 WithAlpha(u32 color, float alpha) {
     return (color & kRgb) | (static_cast<u32>(motion::Clamp01(alpha) * 255.0f + 0.5f) << 24);
 }
 
+inline u32 MixColor(u32 from, u32 to, float amount) {
+    u32 result = 0;
+    for (unsigned shift = 0; shift < 32; shift += 8)
+        result |= static_cast<u32>(motion::Mix(float((from >> shift) & 255), float((to >> shift) & 255),
+                                               motion::Clamp01(amount)) + .5f) << shift;
+    return result;
+}
+
+// 印も含め、操作の帯の全要素へ同じ不透明度を掛ける。
+class FadedSurface final : public Surface {
+  public:
+    FadedSurface(Surface &surface, float alpha) : surface_(surface), alpha_(alpha) {}
+    int Width() const override { return surface_.Width(); }
+    void Fill(Rect r, u32 c) override { surface_.Fill(r, Fade(c, alpha_)); }
+    void Outline(Rect r, u32 c) override { surface_.Outline(r, Fade(c, alpha_)); }
+    void Text(int x, int y, std::string_view t, u32 c, bool n = false, unsigned scale = 1) override {
+        surface_.Text(x, y, t, Fade(c, alpha_), n, scale);
+    }
+    int Measure(std::string_view t, bool n = false, unsigned scale = 1) const override { return surface_.Measure(t, n, scale); }
+    bool BeginClip(Rect r) override { return surface_.BeginClip(r); }
+    void EndClip() override { surface_.EndClip(); }
+    int TextsLeft() const override { return surface_.TextsLeft(); }
+    int RectsLeft() const override { return surface_.RectsLeft(); }
+    void Sprite(int x, int y, std::string_view n, u32 c = 0xFFFFFFFFu) override { surface_.Sprite(x, y, n, Fade(c, alpha_)); }
+    void Box(Rect r, std::string_view n, u32 c = 0xFFFFFFFFu) override { surface_.Box(r, n, Fade(c, alpha_)); }
+    void Pattern(Rect r, std::string_view n, u32 c = 0xFFFFFFFFu) override { surface_.Pattern(r, n, Fade(c, alpha_)); }
+  private:
+    Surface &surface_;
+    float alpha_;
+};
+
 inline constexpr std::size_t kLineBytes = 96;
 // 設計表の表記を描画時に統一する。幅の測定にも同じ結果を使う。
 std::string DisplayText(std::string_view text);

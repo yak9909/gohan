@@ -16,6 +16,7 @@ core::Mailbox<bool> requests[ClientCount];
 core::Mailbox<ScreenDrawing> frames[2];
 core::Mailbox<Status> published;
 core::Mailbox<game::lyt::BackgroundAllocation> publishedBackground;
+core::Mailbox<game::lyt::RendererMemory> publishedMemory;
 game::lyt::BackgroundAllocation backgroundAllocation;
 // 以下はゲームの描画スレッド（毎フレームの処理）だけが触る。
 bool wanted[ClientCount];
@@ -81,6 +82,8 @@ void FrameStep() {
     StepTitleAnimation(animationFrame++, drawing);
     if (state == Status::Ready && !game::lyt::Present(drawing))
         BeginStop(Status::PresentFailed);
+    if (changed || animationFrame % core::limits::RendererHeapSampleFrames == 0 || state == Status::Stopping)
+        publishedMemory.TryPublish(game::lyt::ReadRendererMemory());
     published.TryPublish(state);
     publishedBackground.TryPublish(backgroundAllocation);
 }
@@ -159,6 +162,20 @@ const char *BackgroundAllocationStatusText() {
                       result, last.freeBytes, last.largestBlock);
     else
         std::snprintf(text, sizeof(text), "背景の確保: %s\n確保前の空き: 未計測", result);
+    return text;
+}
+const char *MemoryStatusText() {
+    static game::lyt::RendererMemory last;
+    static std::uint32_t generation = 0;
+    static char text[768];
+    publishedMemory.ReadIfNew(last, generation);
+    const auto &a = last.before, &b = last.after, &c = last.current;
+    std::snprintf(text, sizeof(text),
+                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\ngohan: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u\n別の描画命令用ヒープ: 記録列等 %u\n現在値は約30フレームごとに更新",
+                  a.freeBytes, a.largestBlock, a.measured ? "" : "未計測",
+                  b.freeBytes, b.largestBlock, b.measured ? "" : "未計測",
+                  c.freeBytes, c.largestBlock, c.measured ? "" : "未計測",
+                  last.gameBytes, last.gameUpperBytes, core::limits::RendererGameHeapLimit, last.pluginBytes, last.commandBytes);
     return text;
 }
 const char *StatusText() {

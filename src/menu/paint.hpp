@@ -9,8 +9,8 @@ namespace ca = core::design::ca2;
 inline Rect Bounds(const std::array<int, 4> &r, int x = 0, int y = 0, int width = 0) {
     return {x + r[0], y + r[1], r[2] < 0 ? width + r[2] : r[2], r[3]};
 }
-inline void Paper(Surface &s, Rect r, float alpha = 1) {
-    s.Box(r, "window", Fade(0xFFFFFFFFu, alpha));
+inline void Paper(Surface &s, Rect r, float alpha = 1, std::string_view part = "window") {
+    s.Box(r, part, Fade(0xFFFFFFFFu, alpha));
     const int inset = ca::Titlebg::Window::Inset;
     s.Pattern({r.x + inset, r.y + inset, r.w - inset * 2, r.h - inset * 2}, "window", Fade(0xFFFFFFFFu, alpha));
 }

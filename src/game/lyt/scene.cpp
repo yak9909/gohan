@@ -150,7 +150,7 @@ int TextWidth(const FontResource &font, const Command &command, unsigned first, 
 }
 } // namespace
 
-bool Scene::Prepare(const ResourceApi &api, const FontResource &font) const {
+bool Scene::Prepare(const ResourceApi &api, const FontResource &font) {
     if (!font.atlas || !font.widths || !font.mainMap || !font.numericMap || !font.mainCount ||
         !font.numericCount || font.glyphs == 0 || font.glyphs > MaxGlyphs ||
         font.mainCount > MaxGlyphs || font.numericCount > MaxGlyphs || font.solidGlyph >= font.glyphs ||

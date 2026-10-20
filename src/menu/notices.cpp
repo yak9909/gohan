@@ -2,6 +2,7 @@
 #include "menu/timing.hpp"
 #include "menu/paint.hpp"
 #include <cstring>
+#include <algorithm>
 
 namespace gohan::menu {
 namespace {
@@ -64,24 +65,34 @@ void NoticeQueue::Add(const Notice &notice, u32 now) {
         Copy(slot.title, sizeof(slot.title), notice.title);
         Copy(slot.message, sizeof(slot.message), notice.message);
         slot.created = at;
+        slot.placed = false;
         break;
     }
 }
 
 
-void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) const {
+void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
     int bottom = ca::Notice::Bottom[menu_open ? 0 : 1];
+    int count = 0;
+    for (const Slot &slot : slots_)
+        count += SlotAlive(slot, now) && static_cast<s32>(now - slot.created) >= 0;
+    if (!count) return;
+    const int room = (bottom - ca::Notice::Top - (count - 1) * ca::Notice::Gap) / count;
+    const int maxLines = std::clamp(1 + (room - ca::Notice::Height[0]) / ca::Notice::Height[1], 1, ca::Notice::Inner::Body[3]);
     for (int i = kCapacity - 1; i >= 0; --i) {
-        const Slot &slot = slots_[i];
+        Slot &slot = slots_[i];
         if (!SlotAlive(slot, now) || static_cast<s32>(now - slot.created) < 0) continue;
         char lines[ca::Notice::Inner::Body[3]][kLineBytes], title[kLineBytes];
-        const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, ca::Notice::Inner::Body[3], nullptr);
+        const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, maxLines, nullptr);
         const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
         const int x = Round(X(slot, s.Width(), now));
-        const int y = bottom - h;
+        const int target = bottom - h;
+        if (!slot.placed) { slot.y.Jump(float(target), now); slot.placed = true; }
+        else if (slot.y.to != float(target)) slot.y.Go(float(target), now, timing::kNoticeEnterMs);
+        const int y = std::clamp(Round(slot.y.At(now)), ca::Notice::Top, ca::Notice::Bottom[menu_open ? 0 : 1] - h);
         bottom -= h + ca::Notice::Gap;
         if (s.TextsLeft() < n + 1 || s.RectsLeft() < 13) continue;
-        Paper(s, {x, y, ca::Notice::Width, h});
+        Paper(s, {x, y, ca::Notice::Width, h}, 1, "notice.window");
         const u32 color = slot.red ? ca::Color::Red : ca::Color::Green;
         s.Fill({x + ca::Notice::Inner::Line[0], y + ca::Notice::Inner::Line[1], ca::Notice::Inner::Line[2], h + ca::Notice::Inner::Line[3]}, color);
         s.Sprite(x + (slot.red ? ca::Notice::Inner::Bang[0] : ca::Notice::Inner::Icon[0]),

@@ -67,7 +67,7 @@ class RecordingSurface : public Surface {
     int RectsLeft() const override { return rect_limit_ - rects; }
 
     void Sprite(int x, int y, std::string_view name, u32 color) override { Add(Command::Sprite, {x, y, 1, 1}, color, std::string(name), false, 1, 1); }
-    void Box(Rect r, std::string_view name, u32 color) override { Add(Command::Slice, r, color, std::string(name), false, 1, name == "window" || name == "band9" || name == "box" ? 9 : 3); }
+    void Box(Rect r, std::string_view name, u32 color) override { Add(Command::Slice, r, color, std::string(name), false, 1, name == "window" || name == "notice.window" || name == "band9" || name == "box" ? 9 : 3); }
     void Pattern(Rect r, std::string_view name, u32 color) override { Add(Command::Pattern, r, color, std::string(name), false, 1, 1); }
     // ---- 試験の補助 ----
     const Command *FindText(const std::string &needle) const {

@@ -8,7 +8,7 @@
 using namespace menu_test;
 namespace {
 u16 Idx(MenuId id) { return static_cast<u16>(id); }
-void Budget(const RecordingSurface &s) { assert(s.dropped == 0 && s.texts <= 48 && s.rects <= 144); }
+void Budget(const RecordingSurface &s) { assert(s.dropped == 0 && s.texts <= int(gohan::core::limits::RendererTexts) && s.rects <= int(gohan::core::limits::RendererRects)); }
 void Enter(Rig &r) { r.Open(); r.Tap(key::A); r.Advance(400); }
 bool Part(const RecordingSurface &s, const char *name, int x = -999, int y = -999) {
     for (const auto &c : s.commands) if (c.kind != Command::Text && c.text == name && (x == -999 || c.bounds.x == x) && (y == -999 || c.bounds.y == y)) return true;
@@ -25,12 +25,12 @@ void Scene() {
     r.TapAt(40, 40); assert(r.engine.Depth() == 0);
     r.Tap(key::A); r.Advance(400); s = r.Draw(); Budget(s);
     assert(r.engine.Depth() == 1 && r.shell.panel().Rows() == 10);
-    assert(Part(s, "pill.off") && Part(s, "hotkey.selected", 23, 27));
+    assert(Part(s, "switch.track") && Part(s, "hotkey.selected", 23, 27));
     assert(s.HasText("見本のフラグ") && s.HasText("OFF") && s.HasText("ホットキー"));
     const u16 flag = Idx(MenuId::SampleFlag);
     r.TapAt(40, 70); assert(r.engine.Selected() == flag);
-    r.Tap(key::A); s = r.Draw(); assert(Part(s, "pill.pending_on") && s.HasText("1変更"));
-    r.Tap(key::X); s = r.Draw(); assert(s.HasText("待機") && Part(s, "pill.wait"));
+    r.Tap(key::A); s = r.Draw(); assert(Part(s, "switch.track") && s.HasText("1変更"));
+    r.Tap(key::X); s = r.Draw(); assert(s.HasText("待機") && Part(s, "switch.track"));
     r.Tap(key::Down); r.Tap(key::Down); r.Advance(200); r.Tap(key::A);
     s = r.Draw(); Budget(s); assert(Part(s, "button.reserved") && s.HasText("予約"));
     assert(s.FindText("予約:")->color == ca::Color::Sub);
@@ -66,7 +66,7 @@ void Notification() {
     NoticeExecuted(a, "見本のスタンプ"); q.Add(a, 1200);
     q.Draw(s, 1800, false); Budget(s);
     int windows = 0, bottom = 0;
-    for (const auto &c : s.commands) if (c.kind == Command::Slice && c.text == "window") {
+    for (const auto &c : s.commands) if (c.kind == Command::Slice && c.text == "notice.window") {
         ++windows; assert(c.bounds.x == 246 && c.bounds.w == 150); bottom = std::max(bottom, c.bounds.y + c.bounds.h);
     }
     assert(windows == 3 && bottom == 236 && Part(s, "check") && Part(s, "bang"));
@@ -79,8 +79,8 @@ void Notification() {
     RecordingSurface early, settled;
     entering.Draw(early, 2048, false); entering.Draw(settled, 2400, false);
     std::vector<Rect> before, after;
-    for (const auto &c : early.commands) if (c.kind == Command::Slice && c.text == "window") before.push_back(c.bounds);
-    for (const auto &c : settled.commands) if (c.kind == Command::Slice && c.text == "window") after.push_back(c.bounds);
+    for (const auto &c : early.commands) if (c.kind == Command::Slice && c.text == "notice.window") before.push_back(c.bounds);
+    for (const auto &c : settled.commands) if (c.kind == Command::Slice && c.text == "notice.window") after.push_back(c.bounds);
     assert(before.size() == 3 && after.size() == 3 && before[0].x > after[0].x);
     for (unsigned n = 0; n < 3; ++n) {
         assert(before[n].y == after[n].y && before[n].h == after[n].h);
@@ -184,5 +184,72 @@ void ValueGap() {
     assert(label && value && Part(s, "arrow_l"));
     assert(label->bounds.x + label->bounds.w <= value->bounds.x + ca::Row::Value::ArrowLeft - ca::Row::Gap::Min);
 }
+
+void DeviceCorrections() {
+    Rig r(kMenuItems, kMenuItemCount); Enter(r);
+    const u16 flag = Idx(MenuId::SampleFlag);
+    auto knob = [](const RecordingSurface &s) {
+        for (const auto &c : s.commands) if (c.text == "switch.knob") return c.bounds.x;
+        return -1;
+    };
+    const int off = knob(r.Draw());
+    r.engine.SetValue(flag, 1); r.Frame(); const int start = knob(r.Draw());
+    r.Advance(32); const auto fading = r.Draw();
+    int wordAt = -1, knobAt = -1;
+    for (unsigned n = 0; n < fading.commands.size(); ++n) {
+        const auto &c = fading.commands[n];
+        if (c.kind == Command::Text && c.bounds.y == ca::Row::Top + ca::Row::Label[1] && c.text == "OFF") {
+            wordAt = n; assert((c.color >> 24) > 0 && (c.color >> 24) < 255);
+            assert(c.bounds.x == ca::Row::X + ca::Row::W + ca::Row::Value::Right - ca::Row::Pill::Size[0] + ca::Row::Pill::Text[0] + (ca::Row::Pill::Text[2] - c.bounds.w) / 2);
+        }
+        if (c.text == "switch.knob" && knobAt < 0) knobAt = n;
+    }
+    assert(wordAt >= 0 && knobAt > wordAt);
+    r.Advance(16); const auto middle = r.Draw(); const int mid = knob(middle);
+    r.Advance(160); const int on = knob(r.Draw());
+    assert(start == off && off < mid && mid < on);
+    r.engine.SetValue(flag, 0); r.Frame();
+    assert(knob(r.Draw()) == on); r.Advance(48);
+    assert(off < knob(r.Draw()) && knob(r.Draw()) < on);
+    r.engine.DiscardAll(); r.engine.RequestClose(r.now); r.Frame(0);
+    auto closing = r.Draw();
+    assert(Part(closing, "bar", ca::Bar::Rect[0], ca::Bar::Rect[1]));
+    r.Advance(48); closing = r.Draw();
+    for (const auto &c : closing.commands) if (c.text == "bar")
+        assert(c.bounds.x == ca::Bar::Rect[0] && (c.color >> 24) > 0 && (c.color >> 24) < 255);
+    r.Advance(256); closing = r.Draw();
+    for (const auto &c : closing.commands) if (c.text == "window" && c.bounds.w == ca::List::Rect[2])
+        assert(c.bounds.x + c.bounds.w <= 0);
+
+    // 閉じた入力状態でも、画面内を退場中の字は新しい状態へフェードする。
+    Rig leaving(kMenuItems, kMenuItemCount); Enter(leaving);
+    leaving.engine.RequestClose(leaving.now); leaving.Frame(0);
+    assert(leaving.engine.SetValue(flag, 1)); leaving.Frame(0);
+    assert(leaving.Draw().HasText("OFF") && !leaving.Draw().HasText("ON"));
+    leaving.Advance(80); const auto duringExit = leaving.Draw();
+    assert(duringExit.HasText("ON"));
+    const auto *newWord = duringExit.FindText("ON");
+    assert((newWord->color >> 24) > 0 && (newWord->color >> 24) < 255);
+
+    NoticeQueue q; Notice a{}; NoticeExecuted(a, "見本のスタンプ");
+    q.Add(a, 0); RecordingSurface initial; q.Draw(initial, 500);
+    const int oldY = initial.FindText("ACTION")->bounds.y;
+    q.Add(a, 600); RecordingSurface beginning, halfway, end;
+    q.Draw(beginning, 600); q.Draw(halfway, 780); q.Draw(end, 960);
+    // 新しい通知の次に、古い通知が描かれる。
+    auto lastY = [](const RecordingSurface &s) {
+        int y = 0;
+        for (const auto &c : s.commands) if (c.kind == Command::Text && c.text == "ACTION") y = c.bounds.y;
+        return y;
+    };
+    assert(lastY(beginning) == oldY && lastY(end) < lastY(halfway) && lastY(halfway) < oldY);
+    for (int i = 0; i < 8; ++i) q.Add(a, 1000 + i * 40);
+    RecordingSurface seven; q.Draw(seven, 1800); Budget(seven);
+    int windows = 0;
+    for (const auto &c : seven.commands) if (c.text == "notice.window" && c.kind == Command::Slice) {
+        ++windows; assert(c.bounds.y >= ca::Notice::Top && c.bounds.y + c.bounds.h <= ca::Notice::Bottom[0]);
+    }
+    assert(windows == 7);
 }
-int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); std::puts("menu shell: ok"); }
+}
+int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); std::puts("menu shell: ok"); }

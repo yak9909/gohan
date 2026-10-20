@@ -12,6 +12,8 @@ bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot
 // 登録をやめ、ゲームのリストから外れて GPU が使い終えるのを待ってから資源を返す。
 // 完全に返せたら true。false の間は毎フレーム呼ぶ。導入していなければ true。
 bool DetachRenderer();
+// 同じ描画資源のヒープを測る。初回確保の前後と、現在値を別に保つ。
+RendererMemory ReadRendererMemory();
 // 描画スレッド以外から、ミリ秒だけ待つ（終了の順序の待機用）。
 void WaitMilliseconds(unsigned milliseconds);
 } // namespace gohan::game::lyt

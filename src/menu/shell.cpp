@@ -62,7 +62,7 @@ void Shell::Draw(Surface &surface, u32 now) {
     if (!entry_.Active()) panel_.DrawDescription(surface, engine_, now);
     if (engine_.Dialog() != DialogKind::None) DrawDialog(surface, engine_, menu_amount, appear);
     else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
-    if (panel_.Visible(now) || modal) panel_.DrawBar(surface, engine_, now);
+    if (panel_.BarVisible(now)) panel_.DrawBar(surface, engine_, now);
     notices_.Draw(surface, now, panel_.Visible(now));
 }
 } // namespace gohan::menu
