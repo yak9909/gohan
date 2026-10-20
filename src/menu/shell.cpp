@@ -59,9 +59,9 @@ void Shell::Draw(Surface &surface, u32 now) {
     panel_.Draw(surface, engine_, now, modal);
     const float menu_amount = panel_.OpenAmount(now);
     const float appear = modal_.At(now);
+    if (!entry_.Active()) panel_.DrawDescription(surface, engine_, now);
     if (engine_.Dialog() != DialogKind::None) DrawDialog(surface, engine_, menu_amount, appear);
     else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
-    if (!modal) panel_.DrawDescription(surface, engine_, now);
     if (panel_.Visible(now) || modal) panel_.DrawBar(surface, engine_, now);
     notices_.Draw(surface, now, panel_.Visible(now));
 }

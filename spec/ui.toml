@@ -203,7 +203,7 @@ screen = [400, 240]
 "icon.button.shoulder" = [13, 11, 3]
 "icon.button.letter" = [5, 7]
 "icon.dpad" = [11, 11, 5, 1, 20]
-"icon.plus" = [5, 5, 1]
+"icon.plus" = [5, 5, 2]
 "icon.color.bar" = [0xFFF4F8EC, 0xFF243F28, 0xFF9FD59A, 0xFFE08A00]
 "icon.color.paper" = [0xFF3B7D3F, 0xFFFFFFFF, 0xFF2C5E30, 0xFFFFCF3A]
 "hotkey.mark.size" = [5, 5]
@@ -267,6 +267,8 @@ screen = [400, 240]
 "trim.notice" = "wrap_and_grow"
 "trim.ellipsis" = "…"
 "trim.open_brackets" = "（([「『【 "
+"trim.line_start_forbidden" = "、。，．・：；？！.,:;!?)]｝}〉》」』】〕〗〙〛’”ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
+"trim.hang" = 8 # 禁則文字は内側の余白へ 1 字までぶら下げる
 
 # D.8
 "time.open" = 320

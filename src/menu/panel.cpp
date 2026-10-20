@@ -103,7 +103,11 @@ void Panel::DrawFrame(Surface &s, const Engine &e, int dx, u32) {
     const int x = title.x + ca::List::Title::Text[0];
     const int room = right - s.Measure(pos, true) - ca::Row::Gap::Min - x;
     if (s.Measure(path) > room && depth) {
-        core::TextWriter(path, sizeof(path)).Append(ca::Trim::Ellipsis).Append(ca::Text::PathSeparator).Append(e.Def(e.Folder()).label);
+        for (int keep = depth; keep > 0; --keep) {
+            core::TextWriter tail(path, sizeof(path)); tail.Append(ca::Trim::Ellipsis);
+            for (int n = keep - 1; n >= 0; --n) tail.Append(ca::Text::PathSeparator).Append(e.Def(ancestors[n]).label);
+            if (s.Measure(path) <= room) break;
+        }
     }
     s.Text(x, py, Trim(s, path, room, trimmed, sizeof(trimmed)), ca::Color::Band::Text);
 }
@@ -113,7 +117,8 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
     const int action = Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f));
     const int value = Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f));
     const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
-    const int clipBottom = ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin;
+    const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
+                                    ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);
     const bool clipped = s.BeginClip({dx + ca::List::Rect[0], clipTop, ca::List::Rect[2], clipBottom - clipTop});
     if (count_) {
         const float row = std::clamp(selection_.At(now) - start, 0.f, float(rows_ - 1));
@@ -127,10 +132,12 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
     for (int n = first < 0 ? 0 : first; n <= first + rows_ && n < count_; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
-        const bool selected = items_[n] == e.Selected();
+        // 字の白と影は、帯が選択先へ着いてから切り替える。
+        const bool selected = items_[n] == e.Selected() && selection_.Done(now);
         DrawRow(s, e, items_[n], dx, y, selected ? action + value : 0, selected);
-        s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
-                   ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
+        if (n + 1 < count_ && y + ca::Row::Pitch < clipBottom)
+            s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
+                       ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
     }
     if (clipped) s.EndClip();
 }
@@ -148,7 +155,10 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const u32 ink = selected ? (v.disabled ? ca::Color::Disabled::Sel::Text : ca::Color::Sel::Text) :
                     v.disabled ? ca::Color::Disabled::Text : v.pending ? ca::Color::Pending::Text : ca::Color::Text;
     char trimmed[kLineBytes];
-    const auto label = Trim(s, d.label, (v.value[0] ? vx : right - ca::Mark::Other::Chevron[0]) - lx - ca::Row::Gap::Min -
+    int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
+    if (v.locked) valueLeft = std::min(valueLeft, vx + ca::Row::Lock::Mark[0]);
+    if (selected && !v.disabled && !pill && v.value[0]) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
+    const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
     Ink(s, lx, ly, label, selected, ink, false, v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow);
     if (v.pending) s.Sprite(lx + s.Measure(label) + ca::Row::Pending::Mark[0], y + ca::Row::Pending::Mark[1], "dot",
@@ -179,7 +189,7 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Text(tx, y + ca::Row::Pill::Y + ca::Row::Pill::Text[3], v.value, Fade(text, alpha));
     } else {
         Ink(s, vx, y + ca::Row::Value::Text[1], v.value, selected, v.locked ? ca::Color::Locked : ink, numeric, v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow);
-        if (selected) {
+        if (selected && !v.disabled) {
             s.Sprite(right + ca::Row::Value::ArrowRight[0], y + ca::Row::Value::ArrowRight[1], "arrow_r", ink);
             s.Sprite(vx + ca::Row::Value::ArrowLeft, y + ca::Row::Value::ArrowRight[1], "arrow_l", ink);
         }
@@ -231,15 +241,20 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx) {
         hint(key::B, "戻る"); hint(key::X, "適用"); hint(key::L, "戻し"); hint(key::Y, "キー");
     }
     int x = bar.x + ca::Bar::Hint::Icon[0];
-    int last = 0;
     for (int n = 0; n < count; ++n) {
         const auto &h = hints[n];
         x = KeyIcons(s, x, bar.y + ca::Bar::Hint::Icon[1], h.key, true) + ca::Bar::Hint::LabelGap;
-        const int align = ca::Bar::Hint::Alignment;
-        if (last) x += (align - (x - last) % align) % align;
         s.Text(x, bar.y + ca::Bar::Changed[1], h.label, ca::Color::Bar::Text);
-        last = x; x += s.Measure(h.label) + ca::Bar::Hint::NextGap;
+        const int end = x + s.Measure(h.label);
+        x = end + ca::Bar::Hint::NextGap;
+        if (n + 1 < count) {
+            // 次の語の位置を先に計算し、印と語をまとめて動かす。
+            const int width = hints[n + 1].key & (key::L | key::R) ? ca::Icon::Button::Shoulder[0] : ca::Icon::Button::Round[0];
+            const int align = ca::Bar::Hint::Alignment;
+            x += (align - (x + width + ca::Bar::Hint::LabelGap - end) % align) % align;
+        }
     }
+    if (kind != UiKind::None || e.Dialog() != DialogKind::None) return;
     char changed[24]; core::TextWriter(changed, sizeof(changed)).Unsigned(e.DirtyCount()).Append(ca::Text::ChangedSuffix);
     s.Text(bar.x + bar.w + ca::Bar::Changed[0] - s.Measure(changed), bar.y + ca::Bar::Changed[1], changed,
            e.DirtyCount() ? ca::Color::Bar::Changed : ca::Color::Bar::Unchanged);
@@ -301,7 +316,7 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
             else s.Text(box.x + ca::Desc::Hotkey::Icon[0], y + ca::Desc::Hotkey::Label[1], "--", Fade(ca::Color::Sub, alpha));
             y += ca::Desc::Hotkey::Pitch;
         }
-        const u32 stateColor = row.disabled ? ca::Color::Disabled::Text : row.locked ? ca::Color::Locked : row.pending ? ca::Color::Pending::Text : !std::strcmp(row.value, "ON") ? ca::Color::Green : ca::Color::Hotkey;
+        const u32 stateColor = row.disabled || !std::strcmp(row.value, "予約") ? ca::Color::Sub : row.locked ? ca::Color::Locked : row.pending ? ca::Color::Pending::Text : !std::strcmp(row.value, "ON") ? ca::Color::Green : ca::Color::Hotkey;
         for (int n = 0; n < ns; ++n) s.Text(box.x + ca::Desc::Body[0], y + n * ca::Desc::State[0], states[n], Fade(stateColor, alpha));
     }
 }

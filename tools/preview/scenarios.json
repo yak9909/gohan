@@ -1140,6 +1140,232 @@
           ]
         }
       ]
+    },
+    {
+      "name": "ca2-active",
+      "label": "CA2 の待機・ON・起動中と閉じる途中の動作中",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 1250,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1282,
+          "buttons": []
+        },
+        {
+          "at": 1450,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 1482,
+          "buttons": []
+        },
+        {
+          "at": 1550,
+          "buttons": [
+            "Up"
+          ]
+        },
+        {
+          "at": 1582,
+          "buttons": []
+        },
+        {
+          "at": 1800,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1832,
+          "buttons": []
+        },
+        {
+          "at": 1900,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1932,
+          "buttons": []
+        },
+        {
+          "at": 2000,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 2032,
+          "buttons": []
+        },
+        {
+          "at": 2150,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 2182,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 2390,
+          "buttons": [
+            "R",
+            "A"
+          ]
+        },
+        {
+          "at": 2400,
+          "buttons": [
+            "R",
+            "A",
+            "Select"
+          ]
+        },
+        {
+          "at": 2432,
+          "buttons": [
+            "R",
+            "A"
+          ]
+        },
+        {
+          "at": 2750,
+          "buttons": []
+        },
+        {
+          "at": 2800,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 2832,
+          "buttons": []
+        },
+        {
+          "at": 2950,
+          "buttons": [
+            "R",
+            "A"
+          ]
+        },
+        {
+          "at": 3100,
+          "buttons": [
+            "R",
+            "A",
+            "Select"
+          ]
+        },
+        {
+          "at": 3132,
+          "buttons": [
+            "R",
+            "A"
+          ]
+        },
+        {
+          "at": 3250,
+          "buttons": [
+            "R"
+          ]
+        },
+        {
+          "at": 3282,
+          "buttons": [
+            "R",
+            "A"
+          ]
+        }
+      ],
+      "captures": [
+        {
+          "at": 1700,
+          "name": "standby",
+          "contains": [
+            "待機"
+          ]
+        },
+        {
+          "at": 2448,
+          "name": "hold-while-closing",
+          "contains": [
+            "動作中",
+            "起動中"
+          ]
+        },
+        {
+          "at": 6500,
+          "name": "active",
+          "contains": [
+            "ON",
+            "待機",
+            "起動中"
+          ]
+        }
+      ]
     }
   ]
 }

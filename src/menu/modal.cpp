@@ -9,16 +9,17 @@ namespace {
 using namespace motion;
 
 
-constexpr int kMaxListRows = 10;
-constexpr int kMaxCheckRows = 10;
+constexpr int kMaxListRows = (ca::List::Rect[1] + ca::List::Rect[3] - ca::Entry::Rect[1] -
+                              ca::Entry::Heights[1] - ca::Entry::Heights[3]) / ca::Entry::Heights[2];
 Rect Place(int, int height, bool) { auto r = Bounds(ca::Entry::Rect); r.h = height; return r; }
 Rect Track(const Rect &b) { return Bounds(ca::Entry::Number::Track, b.x, b.y, b.w); }
 
 s32 Clamp(s32 v, s32 lo, s32 hi) { return v < lo ? lo : v > hi ? hi : v; }
 constexpr u16 kDirections[4] = {key::Up, key::Down, key::Left, key::Right};
-void Title(Surface &s, Rect b, const char *label, float alpha) {
+void Title(Surface &s, Rect b, const char *label, float alpha,
+           const std::array<int, 4> &band = ca::Entry::Title::Rect) {
     Paper(s, b, alpha);
-    s.Box(Bounds(ca::Entry::Title::Rect, b.x, b.y, b.w), "band3", Fade(0xFFFFFFFFu, alpha));
+    s.Box(Bounds(band, b.x, b.y, b.w), "band3", Fade(0xFFFFFFFFu, alpha));
     char text[kLineBytes];
     s.Text(b.x + ca::Entry::Title::Text[0], b.y + ca::Entry::Title::Text[1],
            Trim(s, label, b.w - 2 * ca::Entry::Title::Text[0], text, sizeof(text)), Fade(ca::Color::Band::Text, alpha));
@@ -33,7 +34,7 @@ void DrawDialog(Surface &s, const Engine &e, float, float appear) {
     if (appear <= 0 || e.Dialog() == DialogKind::None) return;
     s.Fill({0, 0, ca::Screen[0], ca::Screen[1]}, Fade(ca::Color::Dim, appear));
     Rect b = Bounds(ca::Dialog::Rect); b.y += Round((1 - appear) * ca::Time::Dialog[1]);
-    Title(s, b, ca::Text::DialogTitle, appear);
+    Title(s, b, ca::Text::DialogTitle, appear, ca::Dialog::Title);
     const char *yes = "適用";
     char question[kLineBytes]; core::TextWriter w(question, sizeof(question));
     switch (e.Dialog()) {
@@ -53,15 +54,16 @@ void DrawDialog(Surface &s, const Engine &e, float, float appear) {
         if (selected) {
             Selected(s, {option.x, option.y - 1, option.w, ca::Row::H}, false, appear);
             s.Sprite(option.x + ca::Cursor::Offset[0], option.y + ca::Cursor::Offset[1] - 1, "finger", Fade(0xFFFFFFFFu, appear));
-        }
-        s.Text(option.x + (option.w - s.Measure(labels[i])) / 2, option.y + ca::Row::Pill::Text[3], labels[i], Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, appear));
+        } else s.Box(option, "button.normal", Fade(0xFFFFFFFFu, appear));
+        Ink(s, option.x + (option.w - s.Measure(labels[i])) / 2, option.y + ca::Row::Pill::Text[3], labels[i], selected,
+            Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, appear), false, Fade(ca::Color::Sel::Shadow, appear));
     }
 }
 Rect Entry::Box(bool menu_open) const {
     const auto &h = ca::Entry::Heights;
     return Place(screen_width_, kind_ == UiKind::Key ? h[4] : kind_ == UiKind::List || kind_ == UiKind::CheckList ? h[1] + h[2] * Rows() + h[3] : h[0], menu_open);
 }
-int Entry::Rows() const { const int max = kind_ == UiKind::CheckList ? kMaxCheckRows : kMaxListRows; return count_ < max ? count_ : max; }
+int Entry::Rows() const { return count_ < kMaxListRows ? count_ : kMaxListRows; }
 
 void Entry::Begin(const Engine &engine, const Input &input, int screen_width) {
     const UiRequest request = engine.Ui();
@@ -273,7 +275,9 @@ void Entry::DrawList(Surface &s, const Rect &b, float alpha) const {
         char text[kLineBytes], trimmed[kLineBytes]; core::TextWriter w(text, sizeof(text));
         if (kind_ == UiKind::CheckList) w.Append((mask_ >> option) & 1 ? "[X] " : "[ ] ");
         w.Append(def_->options[option]);
-        s.Text(b.x + ca::Entry::List::Text[0], y + ca::Entry::List::Text[1], Trim(s, text, b.w - ca::Entry::List::Text[0] - ca::Margin, trimmed, sizeof(trimmed)), Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, alpha));
+        Ink(s, b.x + ca::Entry::List::Text[0], y + ca::Entry::List::Text[1],
+            Trim(s, text, b.w - ca::Entry::List::Text[0] - ca::Margin, trimmed, sizeof(trimmed)), selected,
+            Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, alpha), false, Fade(ca::Color::Sel::Shadow, alpha));
     }
 }
 void Entry::DrawKey(Surface &s, const Rect &b, float alpha) const {

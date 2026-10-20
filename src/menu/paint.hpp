@@ -28,14 +28,16 @@ inline void Ink(Surface &s, int x, int y, std::string_view text, bool selected, 
                          shadow, numeric);
     s.Text(x, y, text, color, numeric);
 }
-// 影を含めても文字枠を増やさない描画先が実装する。代役では通常の字だけを記録する。
+// 組み合わせの印を、中央をそろえて並べる。
 inline int KeyIcons(Surface &s, int x, int y, u16 mask, bool bar = false) {
     constexpr u16 keys[] = {key::L, key::R, key::Up, key::Down, key::Left, key::Right, key::A, key::B, key::X, key::Y};
     constexpr const char *names[] = {"l", "r", "up", "down", "left", "right", "a", "b", "x", "y"};
     const std::string prefix = bar ? "key.bar." : "key.paper.";
     const int start = x;
+    const int gap = ca::Icon::Plus[2];
+    const int plusY = (ca::Icon::Button::Round[1] - ca::Icon::Plus[1]) / 2;
     auto icon = [&](const char *name, int width) {
-        if (x != start) { s.Sprite(x + 1, y + 3, prefix + "plus"); x += ca::Icon::Plus[0] + 2; }
+        if (x != start) { s.Sprite(x + gap, y + plusY, prefix + "plus"); x += ca::Icon::Plus[0] + 2 * gap; }
         s.Sprite(x, y, prefix + name); x += width;
     };
     if ((mask & (key::Up | key::Down)) == (key::Up | key::Down)) { icon("ud", ca::Icon::Dpad[0]); mask &= ~(key::Up | key::Down); }
@@ -43,7 +45,7 @@ inline int KeyIcons(Surface &s, int x, int y, u16 mask, bool bar = false) {
     for (unsigned n = 0; n < 10; ++n) if (mask & keys[n]) icon(names[n], n < 2 ? ca::Icon::Button::Shoulder[0] : ca::Icon::Button::Round[0]);
     if (mask & (key::ZL | key::ZR | key::Start | key::Select)) {
         char text[64]; FormatHotkey(mask & (key::ZL | key::ZR | key::Start | key::Select), text, sizeof(text));
-        if (x != start) { s.Sprite(x + 1, y + 3, prefix + "plus"); x += ca::Icon::Plus[0] + 2; }
+        if (x != start) { s.Sprite(x + gap, y + plusY, prefix + "plus"); x += ca::Icon::Plus[0] + 2 * gap; }
         s.Text(x, y + 2, text, bar ? ca::Color::Bar::Text : ca::Color::Text); x += s.Measure(text);
     }
     return x;

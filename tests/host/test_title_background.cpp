@@ -266,11 +266,13 @@ int main() {
         Sources source;
         for (unsigned i = 0; i < 256; ++i) { source.alpha[i] = i; source.luminance[i] = 255 - i; }
         std::array<std::uint8_t, 2050> a{}, b{}, loop{};
+        a.fill(0xFF); // 再利用した作業画像の余白も初期化されること。
         a.front() = a.back() = 0xAD;
         assert(BakeSelectionL4(&source, 256, 16, 182, 11, a.data() + 1, 0));
         assert(BakeSelectionL4(&source, 256, 16, 182, 11, b.data() + 1, 74));
         assert(BakeSelectionL4(&source, 256, 16, 182, 11, loop.data() + 1, 150));
         assert(a.front() == 0xAD && a.back() == 0xAD);
+        assert(a[2048] == 0);
         assert(std::memcmp(a.data() + 1, loop.data() + 1, 2048) == 0);
         assert(std::memcmp(a.data() + 1, b.data() + 1, 2048) != 0);
         assert(!BakeSelectionL4(&source, 256, 16, 257, 11, a.data() + 1, 0));

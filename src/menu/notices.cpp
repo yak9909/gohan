@@ -6,7 +6,6 @@
 namespace gohan::menu {
 namespace {
 using namespace motion;
-constexpr float kHeight = static_cast<float>(style::kNoticeHeight);
 
 void Copy(char *to, std::size_t capacity, const char *from) {
     const std::size_t n = std::strlen(from);
@@ -29,14 +28,9 @@ float NoticeQueue::X(const Slot &slot, int screen_width, u32 now) const {
                        static_cast<float>(timing::kNoticeExitMs)));
 }
 
-float NoticeQueue::Y(const Slot &slot, u32 now) const {
-    return Mix(slot.from_y, slot.target_y, EaseOut(Progress(slot.moved_at, now, timing::kNoticeEnterMs)));
-}
-
 bool NoticeQueue::SlotAlive(const Slot &slot, u32 now) const {
     if (!slot.active) return false;
     const s32 age = static_cast<s32>(now - slot.created);
-    if (age >= 0 && Y(slot, now) + kHeight <= 0.0f) return false; // 画面の上へ出切った
     return age < static_cast<s32>(timing::kNoticeEnterMs + timing::kNoticeHoldMs + timing::kNoticeExitMs);
 }
 
@@ -64,20 +58,12 @@ void NoticeQueue::Add(const Notice &notice, u32 now) {
         slots_[kCapacity - 1].active = false;
     }
     for (Slot &slot : slots_) {
-        if (!slot.active) continue;
-        slot.from_y = Y(slot, at);
-        slot.target_y -= kHeight + static_cast<float>(style::kNoticeGap);
-        slot.moved_at = at;
-    }
-    for (Slot &slot : slots_) {
         if (slot.active) continue;
         slot.active = true;
         slot.red = notice.red;
         Copy(slot.title, sizeof(slot.title), notice.title);
         Copy(slot.message, sizeof(slot.message), notice.message);
         slot.created = at;
-        slot.from_y = slot.target_y = static_cast<float>(kScreenHeight - style::kNoticeMargin) - kHeight;
-        slot.moved_at = at;
         break;
     }
 }
@@ -85,7 +71,6 @@ void NoticeQueue::Add(const Notice &notice, u32 now) {
 
 void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) const {
     int bottom = ca::Notice::Bottom[menu_open ? 0 : 1];
-    float drift = 0;
     for (int i = kCapacity - 1; i >= 0; --i) {
         const Slot &slot = slots_[i];
         if (!SlotAlive(slot, now) || static_cast<s32>(now - slot.created) < 0) continue;
@@ -93,18 +78,16 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) const {
         const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, ca::Notice::Inner::Body[3], nullptr);
         const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
         const int x = Round(X(slot, s.Width(), now));
-        const int y = bottom - h + Round(drift);
+        const int y = bottom - h;
         bottom -= h + ca::Notice::Gap;
-        const float enter = EaseOut(Progress(slot.created, now, timing::kNoticeEnterMs));
-        drift += (h + ca::Notice::Gap) * (1 - enter);
         if (s.TextsLeft() < n + 1 || s.RectsLeft() < 13) continue;
         Paper(s, {x, y, ca::Notice::Width, h});
         const u32 color = slot.red ? ca::Color::Red : ca::Color::Green;
         s.Fill({x + ca::Notice::Inner::Line[0], y + ca::Notice::Inner::Line[1], ca::Notice::Inner::Line[2], h + ca::Notice::Inner::Line[3]}, color);
         s.Sprite(x + (slot.red ? ca::Notice::Inner::Bang[0] : ca::Notice::Inner::Icon[0]),
                  y + (slot.red ? ca::Notice::Inner::Bang[1] : ca::Notice::Inner::Icon[1]), slot.red ? "bang" : "check", color);
-        s.Text(x + ca::Notice::Inner::Title[0], y + ca::Notice::Inner::Title[1], Trim(s, slot.title, ca::Notice::Width - ca::Notice::Inner::Title[0] - ca::Margin, title, sizeof(title)), color);
-        for (int j = 0; j < n; ++j) s.Text(x + ca::Notice::Inner::Body[0], y + ca::Notice::Inner::Body[1] + j * ca::Notice::Inner::Body[2], lines[j], ca::Color::Text);
+        s.Text(x + ca::Notice::Inner::Title[0], y + ca::Notice::Inner::Title[1], Trim(s, slot.title, ca::Notice::Width - ca::Notice::Inner::Title[0] - ca::Margin, title, sizeof(title)), ca::Color::Text);
+        for (int j = 0; j < n; ++j) s.Text(x + ca::Notice::Inner::Body[0], y + ca::Notice::Inner::Body[1] + j * ca::Notice::Inner::Body[2], lines[j], slot.red ? ca::Color::Red : ca::Color::Text);
     }
 }
 } // namespace gohan::menu

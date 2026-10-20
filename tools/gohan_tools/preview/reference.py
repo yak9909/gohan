@@ -18,6 +18,8 @@ def reference_for(label):
     scenario, capture = label.split(' / ', 1)
     if scenario == 'ca2-scroll':
         return '10_scroll'
+    if scenario == 'ca2-active':
+        return '03a_wait' if capture == 'standby' else '03b_on'
     if scenario == 'ca2-key':
         return '06c_key' if capture in ('waiting', 'recording') else '02_folder'
     if scenario == 'ca2-notices':
@@ -73,6 +75,7 @@ def compare_all(frames, source: Path, output: Path):
         return Image(800, 240 * len(images), bytearray().join(im.pixels for im in images))
     strip(comparisons).save(output / 'all-scenarios.png')
     preferred = {'01_open': 'states / opened', '02_folder': 'states / folder-off',
+                 '03a_wait': 'ca2-active / standby', '03b_on': 'ca2-active / active',
                  '04a_reserve': 'ca2-reserved / reserved', '05a_values': 'ca2-disabled / values',
                  '06a_number': 'entries / number', '06b_list': 'entries / selection',
                  '06c_key': 'ca2-key / recording', '07a_dialog': 'ca2-reserved / close-confirm',
