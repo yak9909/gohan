@@ -28,7 +28,7 @@ int FindSlot(const game::lyt::ScreenDrawing &drawing, std::size_t length) {
 Result Reserve(const game::lyt::ScreenDrawing &drawing, bool text, std::size_t characters) {
     if (drawing.count == core::limits::RendererCommands ||
         (text ? drawing.texts == core::limits::RendererTexts :
-                drawing.rectangles == core::limits::RendererRects))
+                drawing.rectangles == drawing.pictureLimit))
         return Result::Full;
     constexpr auto limit = core::limits::RendererRecordBytes *
                            core::limits::RendererRecordPercent / 100;

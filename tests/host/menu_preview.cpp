@@ -50,7 +50,20 @@ bool Resources(const std::filesystem::path &directory) {
     out << ",\"numeric\":";
     Array(out, f.numericMap, f.numericCount * 2);
     out << "}\n";
-    return atlas.good() && out.good();
+    std::ofstream textures(directory / "textures.json");
+    textures << '[';
+    for (std::size_t i = 0; i < f.textureCount; ++i) {
+        if (i) textures << ',';
+        const auto &t = f.textures[i];
+        const auto filename = "texture-" + std::to_string(i) + ".rgba8";
+        textures << "{\"width\":" << t.width << ",\"height\":" << t.height
+                 << ",\"file\":\"" << filename << "\"}";
+        std::ofstream data(directory / filename, std::ios::binary);
+        data.write(reinterpret_cast<const char *>(t.data), static_cast<std::streamsize>(t.bytes));
+        if (!data.good()) return false;
+    }
+    textures << "]\n";
+    return atlas.good() && out.good() && textures.good();
 }
 bool Capture(const std::filesystem::path &directory, int index, int now) {
     std::ofstream out(directory / ("frame-" + std::to_string(index) + ".json"));
@@ -69,6 +82,9 @@ bool Capture(const std::filesystem::path &directory, int index, int now) {
             out << ",\"color\":" << c.color << ",\"font\":" << static_cast<unsigned>(c.font)
                 << ",\"scale\":" << c.scale << ",\"slot\":" << c.slot << ",\"text\":";
             Array(out, c.text, c.length);
+            out << ",\"source\":";
+            Rect(out, c.source);
+            out << ",\"texture\":" << static_cast<unsigned>(c.texture);
             out << '}';
         }
         out << ']';
@@ -76,11 +92,57 @@ bool Capture(const std::filesystem::path &directory, int index, int now) {
     out << "]}\n";
     return out.good();
 }
+
+bool PartsCatalog(const std::filesystem::path &directory) {
+    using renderer::Part;
+    using renderer::Result;
+    constexpr unsigned PerPage = 12;
+    const auto total = static_cast<unsigned>(Part::Count);
+    unsigned page = 0;
+    for (unsigned start = 0; start < total; start += PerPage, ++page) {
+        renderer::Canvas canvas;
+        canvas.Begin(lyt::Screen::Top);
+        canvas.Text(4, 4, "CA2 UI / 1x 2x stretch", 0xFFEAF5E4u);
+        for (unsigned i = start; i < total && i < start + PerPage; ++i) {
+            const int x = 4 + static_cast<int>((i - start) % 3) * 132;
+            const int y = 20 + static_cast<int>((i - start) / 3) * 54;
+            const auto part = static_cast<Part>(i);
+            if (canvas.Image(x, y, part) != Result::Added ||
+                canvas.Image(x + 28, y, part, 2) != Result::Added)
+                return false;
+            const auto &p = renderer::ui_data::Parts[i];
+            if (p.mode) {
+                const int w = p.mode == 4 ? p.width : 48;
+                const int h = p.mode == 3 ? p.height : 30;
+                if (canvas.PartBox({x + 76, y, w, h}, part) != Result::Added) return false;
+            }
+            if (canvas.Text(x, y + 38, renderer::ui_data::PartNames[i], 0xFFEAF5E4u) != Result::Added)
+                return false;
+        }
+        lyt::Present(canvas.Data());
+        if (!Capture(directory, static_cast<int>(page), 0)) return false;
+    }
+    renderer::Canvas canvas;
+    canvas.Begin(lyt::Screen::Top);
+    canvas.Text(4, 4, "repeat / phase / tint / clip", 0xFFEAF5E4u);
+    for (int phase = 0; phase < 8; ++phase) {
+        canvas.Repeat({8, 24 + phase * 12, 180, 4}, lyt::Texture::DashHorizontal, phase, 0, 1, 0xFF4F9A52u);
+        canvas.Repeat({204 + phase * 12, 24, 4, 96}, lyt::Texture::DashVertical, 0, -phase, 1, 0xFF2B8FD8u);
+    }
+    canvas.Repeat({8, 128, 180, 8}, lyt::Texture::DashHorizontal, -3, 0, 2, 0x809A6B00u);
+    canvas.BeginClip({20, 150, 80, 16});
+    canvas.Image(12, 144, Part::Finger, 8, 0xFF88FFAAu);
+    canvas.EndClip();
+    lyt::Present(canvas.Data());
+    return Capture(directory, static_cast<int>(page), 0);
+}
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 2) return 2;
+    if (argc != 2 && argc != 3) return 2;
     const std::filesystem::path directory(argv[1]);
+    if (argc == 3 && std::string(argv[2]) == "--parts")
+        return Resources(directory) && PartsCatalog(directory) ? 0 : 7;
     if (!Resources(directory) || !renderer::RendererFeature().Wire() ||
         !gohan::features::menu_screen::Feature().Wire()) return 3;
     using CTRPluginFramework::Fake;

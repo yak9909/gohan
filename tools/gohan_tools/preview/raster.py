@@ -13,6 +13,35 @@ class Raster:
         self.atlas = (directory / 'atlas.la4').read_bytes()
         self.maps = [dict(zip(self.font[name][::2], self.font[name][1::2])) for name in ('main', 'numeric')]
         self.settings = settings
+        self.textures = []
+        if (directory / 'textures.json').exists():
+            for item in json.loads((directory / 'textures.json').read_text(encoding='utf-8')):
+                self.textures.append((item, (directory / item['file']).read_bytes()))
+
+    def image(self, output, command, dx, dy):
+        x, y, w, h = command['bounds']
+        cx, cy, cw, ch = command['clip']
+        sx, sy, sw, sh = command['source']
+        texture, data = self.textures[command['texture']]
+        tw, th = texture['width'], texture['height']
+        for yy in range(max(y, cy, -dy), min(y + h, cy + ch, output.height - dy)):
+            for xx in range(max(x, cx, -dx), min(x + w, cx + cw, output.width - dx)):
+                if command['kind'] == 3:
+                    tx = (sx + (xx - x) // command['scale']) % tw
+                    ty = (sy + (yy - y) // command['scale']) % th
+                else:
+                    tx = sx + (xx - x) * sw // w
+                    ty = sy + (yy - y) * sh // h
+                morton = sum(((tx >> i) & 1) << (2 * i) | ((ty >> i) & 1) << (2 * i + 1) for i in range(3))
+                offset = (((ty // 8) * (tw // 8) + tx // 8) * 64 + morton) * 4
+                channels = data[offset:offset + 4][::-1]
+                tint = command['color']
+                # RGBA8 の各色と頂点色を掛ける。最終合成の較正は字と共通。
+                color = ((channels[3] * (tint >> 24) // 255) << 24 |
+                         (channels[0] * (tint >> 16 & 255) // 255) << 16 |
+                         (channels[1] * (tint >> 8 & 255) // 255) << 8 |
+                         channels[2] * (tint & 255) // 255)
+                self.blend(output, xx + dx, yy + dy, color)
 
     def texel(self, x: int, y: int) -> tuple[int, int]:
         morton = sum(((x >> i) & 1) << (2 * i) | ((y >> i) & 1) << (2 * i + 1) for i in range(3))
@@ -39,6 +68,9 @@ class Raster:
         image = Image(background.width, background.height, background.pixels.copy())
         dx, dy = self.settings['offset']
         for command in commands:
+            if command['kind'] in (2, 3):
+                self.image(image, command, dx, dy)
+                continue
             x, y, width, height = command['bounds']
             x += dx
             y += dy

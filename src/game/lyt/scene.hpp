@@ -66,7 +66,7 @@ struct FontObjects {
 };
 struct ScreenObjects {
     Aligned<generated::NwLytPane> root;
-    Aligned<generated::NwLytPicture> pictures[core::limits::RendererRects];
+    Aligned<generated::NwLytPicture> *pictures;
     alignas(16) unsigned char texts[Plan.bytes];
     unsigned items;
 };
@@ -94,6 +94,11 @@ class Scene {
     const FontResource *font_ = nullptr;
     Aligned<generated::NwLytMaterial> material_;
     Aligned<SharedVariable> shared_;
+    Aligned<generated::NwLytMaterial> imageMaterials_[static_cast<unsigned>(Texture::Count)];
+    Aligned<SharedVariable> imageShared_[static_cast<unsigned>(Texture::Count)];
+    float solidUv_[4]{};
+    Aligned<generated::NwLytPicture> topPictures_[core::limits::RendererRects];
+    Aligned<generated::NwLytPicture> bottomPictures_[core::limits::RendererBottomRects];
     FontObjects fonts_;
     ScreenObjects screens_[2];
 };

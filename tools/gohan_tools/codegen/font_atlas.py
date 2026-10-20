@@ -5,6 +5,11 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
+if __package__:
+    from .glyph_overrides import pixels as override_pixels
+else:
+    from glyph_overrides import pixels as override_pixels
+
 
 @dataclass(frozen=True)
 class Glyph:
@@ -94,10 +99,15 @@ def build(root: Path) -> tuple[bytes, list[int], list[tuple[int, int]], list[tup
         for char in characters:
             glyph = bdf[ord(char)]
             pixels, right = raster(glyph, baseline)
+            fixed = override_pixels(char) if name == 'misaki' else None
+            advance = glyph.advance
+            if fixed:
+                pixels, advance = fixed
+                right = advance - 1
             mapping.append((ord(char), len(cells)))
             cells.append(pixels)
             # 数値用は字形の輪郭によらず 5px の等幅セルを指定する。
-            widths.extend((0, 5 if name == 'numeric' else right, glyph.advance))
+            widths.extend((0, 5 if name == 'numeric' else right, advance))
         maps.append(sorted(mapping))
     cells.append([[255] * 7 for _ in range(8)])
     widths.extend((0, 7, 7))

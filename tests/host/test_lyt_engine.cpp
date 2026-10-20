@@ -325,6 +325,82 @@ void Cycles(Engine &engine) {
     }
     assert(Fake::allocations == Fake::frees && Fake::Balanced());
 }
+
+void Images(Engine &engine) {
+    TestFont font;
+    std::vector<std::uint8_t> ui(256 * 32 * 4, 0xF1), dash(8 * 8 * 4, 0xAB);
+    const TextureResource textures[] = {{ui.data(), ui.size(), 256, 32},
+                                        {dash.data(), dash.size(), 8, 8},
+                                        {dash.data(), dash.size(), 8, 8}};
+    font.resource.textures = textures;
+    font.resource.textureCount = 3;
+    Fake::Reset();
+    // UI を含む総量を見積もってから確保する。残す空きの量は減らさない。
+    Fake::freeBytes = limits::RendererHeapReserve + 65536 + 128;
+    assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
+    Fake::Reset();
+    constexpr unsigned totalBytes = 65536 + limits::RendererUiTextureBytes;
+    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + 128 - 1;
+    assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
+    Fake::Reset();
+    Fake::largestBlock = totalBytes + 128 - 1;
+    assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
+    Fake::Reset();
+    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + 128;
+    Fake::largestBlock = totalBytes + 128;
+    assert(engine.Install(font.resource) == InstallResult::Ready);
+    assert(Fake::blocks.at(engine.Resources().Atlas()) == 65536 + limits::RendererUiTextureBytes);
+    const auto *data = static_cast<const unsigned char *>(engine.Resources().Atlas());
+    assert(std::memcmp(data + TextureOffset(font.resource, 0), ui.data(), ui.size()) == 0);
+    assert(std::memcmp(data + TextureOffset(font.resource, 2), dash.data(), dash.size()) == 0);
+    Drawing drawing;
+    drawing.revisions[0] = 1;
+    auto &screen = drawing.screens[0];
+    Command image;
+    image.kind = Kind::Image;
+    image.bounds = {-2, 10, 26, 16};
+    image.clip = {0, 11, 10, 6};
+    image.source = {7, 3, 13, 8};
+    image.scale = 2;
+    image.color = 0x8044AAFFu;
+    Add(screen, image);
+    Command repeat;
+    repeat.kind = Kind::Repeat;
+    repeat.bounds = {20, 30, 100, 2};
+    repeat.clip = FullTop;
+    repeat.source = {7, 0, 8, 8};
+    repeat.texture = Texture::DashHorizontal;
+    repeat.scale = 1;
+    repeat.color = 0xFFFFFFFFu;
+    Add(screen, repeat);
+    assert(engine.Present(drawing));
+    auto children = Children(engine.Nodes().Node(Screen::Top).root);
+    assert(children.size() == 2);
+    auto *picture = reinterpret_cast<generated::NwLytPicture *>(children[0]);
+    assert(picture->pane.width == 10 && picture->pane.height == 6);
+    assert(picture->vertex_colors[0] == 0x80FFAA44u);
+    assert(picture->uv_output[0][0] == 8.0f / 256 && picture->uv_output[0][1] == 1.0f - 3.5f / 32);
+    assert(picture->uv_output[0][2] == 13.0f / 256 && picture->uv_output[0][3] == 1.0f - 6.5f / 32);
+    auto *map = picture->material->variable_data;
+    assert(map->gpu_format == 0 && map->sampler_bits == 0 && map->gpu_sampler_bits == 0);
+    assert(map->gpu_dimensions == (256u << 16 | 32u));
+    assert(map->texture_address == Fake::Physical(data + 65536));
+    auto *pattern = reinterpret_cast<generated::NwLytPicture *>(children[1]);
+    assert(pattern->uv_output[0][0] == 7.0f / 8 && pattern->uv_output[0][2] == 107.0f / 8);
+    assert(pattern->material->variable_data->gpu_sampler_bits == 0x2200u);
+    Fake::EndPasses();
+    // 同じ Picture を単色に戻す際、UI の UV と Material が残らない。
+    drawing.revisions[0] = 2;
+    screen.commands[0] = Rectangle({0, 0, 10, 10}, 0xFFFFFFFFu, FullTop);
+    screen.count = 1;
+    assert(engine.Present(drawing));
+    assert(picture->material->variable_data->gpu_format == 9);
+    assert(picture->uv_output[0][0] != 8.0f / 256);
+    Fake::EndPasses();
+    for (unsigned i = 1; i < Engine::DrainFrames; ++i)
+        assert(!engine.Detach());
+    assert(engine.Detach() && Fake::Balanced());
+}
 } // namespace
 
 int main() {
@@ -337,6 +413,7 @@ int main() {
     Clipping(engine);
     Drain(engine);
     Cycles(engine);
+    Images(engine);
     assert(Fake::Balanced());
     std::puts("lyt engine: ok");
 }

@@ -51,6 +51,7 @@ def main(argv=None) -> int:
     parser.add_argument('--out', type=Path, default=ROOT / 'build/preview')
     parser.add_argument('--cxx')
     parser.add_argument('--dev', action='store_true')
+    parser.add_argument('--parts', action='store_true', help='CA2 の全 UI 部品・整数倍・分割・繰り返しの一覧を出す')
     parser.add_argument('--scenario', action='append', help='指定した名前だけ実行（複数指定可）')
     parser.add_argument('--background-top', type=Path)
     parser.add_argument('--background-bottom', type=Path)
@@ -72,6 +73,25 @@ def main(argv=None) -> int:
         protocols = [protocol(s, settings['frame_ms']) for s in scenarios]
         directory = output_directory(args.out)
         executable, manifest = build(ROOT, directory, settings['screen'], args.cxx, args.dev)
+        if args.parts:
+            target = output_directory(directory / 'parts')
+            subprocess.run([str(executable), str(target), '--parts'], cwd=ROOT, check=True)
+            raster = Raster(target, settings['raster'])
+            frames = []
+            for path in sorted(target.glob('frame-*.json'), key=lambda p: int(p.stem.split('-')[1])):
+                drawing = json.loads(path.read_text(encoding='utf-8'))
+                frame = {'label': 'CA2 部品 / ' + path.stem, 'at': 0}
+                for i, screen in enumerate(('top', 'bottom')):
+                    frame[screen] = raster.draw(drawing['screens'][i], Image.solid(
+                        400 if i == 0 else 320, 240, tuple(settings['background'])))
+                    frame[screen].save(target / f'{path.stem}-{screen}.png')
+                frames.append(frame)
+            (directory / 'index.html').write_text(gallery(frames, 'top'), encoding='utf-8')
+            manifest['parts'] = True
+            manifest['settings'] = settings
+            (directory / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(f'CA2 部品: {len(frames)} 枚、{directory / "index.html"}')
+            return 0
         backgrounds, background_hashes = {}, {}
         for screen, path in (('top', args.background_top), ('bottom', args.background_bottom)):
             backgrounds[screen] = (screen_image(read(path), screen) if path else

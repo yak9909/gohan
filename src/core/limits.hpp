@@ -9,8 +9,10 @@ inline constexpr std::size_t StatusText = 512;
 inline constexpr std::size_t MenuItems = 192;
 inline constexpr std::size_t MenuText = 96;
 
-// 自前描画の予算（1 画面あたり）。ゲーム側の構造体やヒープの大きさとは独立。
-inline constexpr std::size_t RendererRects = 48;
+// 自前描画の予算。板は上画面 144・下画面 48、文字は各画面 48。
+// ゲーム側の構造体やヒープの大きさとは独立。
+inline constexpr std::size_t RendererRects = 144;
+inline constexpr std::size_t RendererBottomRects = 48;
 inline constexpr std::size_t RendererTexts = 48;
 inline constexpr std::size_t RendererChars = 28;
 inline constexpr std::size_t RendererCommands = RendererRects + RendererTexts;
@@ -27,5 +29,7 @@ inline constexpr unsigned RendererSlotChars[RendererTexts] = {
     20, 20, 20, 20, 24, 24, 24, 24, 28, 28, 28, 28, 28, 28, 28, 28};
 // 自前の資源を置くゲームのヒープに、導入後も残す空き（バイト）。
 // 場面によっては、ゲーム自身が同じヒープから大きな資源を取るため。
+// UI は RGBA8 の 256×32 と 8×8 が 2 枚。字形 65,536 と合わせて 98,816 バイト。
+inline constexpr std::size_t RendererUiTextureBytes = 33280;
 inline constexpr unsigned RendererHeapReserve = 400000;
 } // namespace gohan::core::limits

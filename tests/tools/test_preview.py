@@ -160,6 +160,34 @@ def test_glyph_clipping_and_numeric_scale(tmp_path):
     assert image.pixels[8 * 3:8 * 3 + 12] == bytes([136, 0, 0] * 4)
 
 
+def test_rgba8_image_repeat_phase_tint_and_clip(tmp_path):
+    from gohan_tools.codegen.ui import encode
+    raster = atlas(tmp_path)
+    # 非対称な 8×8 の元画像。赤・緑・青の向きと透明な余白を区別する。
+    pixels = [[(0, 0, 0, 0)] * 8 for _ in range(8)]
+    pixels[1][1] = (255, 0, 0, 255)
+    pixels[1][2] = (0, 255, 0, 255)
+    pixels[2][1] = (0, 0, 255, 255)
+    raster.textures = [({'width': 8, 'height': 8}, encode(pixels))]
+    background = Image.solid(24, 24, (0, 0, 0))
+    c = command(kind=2, bounds=[2, 4, 4, 4], clip=[0, 0, 24, 24], source=[1, 1, 2, 2],
+                texture=0, scale=2, color=0xFFFFFFFF)
+    image = raster.draw([c], background)
+    def pixel(x, y):
+        return bytes(image.pixels[(y * 24 + x) * 3:(y * 24 + x) * 3 + 3])
+    assert pixel(2, 4) == pixel(3, 5) == bytes([255, 0, 0])
+    assert pixel(4, 4) == bytes([0, 255, 0])
+    assert pixel(2, 6) == bytes([0, 0, 255])
+    c.update(clip=[3, 5, 2, 2], color=0x80808080)
+    image = raster.draw([c], background)
+    assert pixel(2, 4) == bytes(3) and pixel(3, 5) == bytes([64, 0, 0])
+    c.update(kind=3, bounds=[0, 0, 24, 4], clip=[0, 0, 24, 24], source=[7, 1, 8, 8],
+             scale=1, color=0xFFFFFFFF)
+    image = raster.draw([c], background)
+    assert pixel(2, 0) == pixel(10, 0) == pixel(18, 0) == bytes([255, 0, 0])
+    assert pixel(3, 0) == bytes([0, 255, 0])
+
+
 def test_shift_and_luminance_metrics():
     a = Image.solid(12, 12, (0, 0, 0))
     b = Image.solid(12, 12, (0, 0, 0))
@@ -207,4 +235,3 @@ def test_shipped_scenarios_are_valid():
     script = json.loads((ROOT / 'tools/preview/scenarios.json').read_text(encoding='utf-8'))
     for scenario in script['scenarios']:
         assert protocol(scenario, 16)
-

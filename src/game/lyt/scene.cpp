@@ -1,5 +1,6 @@
 #include "game/lyt/scene.hpp"
 #include <bit>
+#include <algorithm>
 #include <cstring>
 
 namespace gohan::game::lyt::detail {
@@ -25,6 +26,8 @@ constexpr std::uint8_t MaterialUvDone = 0x04;
 // 画像の書式。ゲームの Layout の番号と GPU の番号は別。
 constexpr unsigned SamplerFormatLa4 = 2;
 constexpr unsigned GpuFormatLa4 = 9;
+constexpr unsigned SamplerFormatRgba8 = 0;
+constexpr unsigned GpuFormatRgba8 = 0;
 // 文字ストリームの読み出し方。この値以外ではゲームが止まる。
 constexpr std::uint8_t FontStreamUtf16 = 1;
 constexpr std::uint16_t NoCachedCharacter = 0xFFFF;
@@ -152,6 +155,15 @@ bool Scene::Prepare(const ResourceApi &api, const FontResource &font) const {
         !font.sheetWidth || !font.sheetHeight || !font.cellWidth || !font.cellHeight || !font.columns ||
         font.sheetWidth > 0xFFFF || font.sheetHeight > 0xFFFF)
         return false;
+    if (font.textureCount > static_cast<unsigned>(Texture::Count) || (font.textureCount && !font.textures))
+        return false;
+    for (std::size_t i = 0; i < font.textureCount; ++i) {
+        const auto &t = font.textures[i];
+        if (!t.data || t.width < 8 || t.height < 8 || t.width > 1024 || t.height > 1024 ||
+            !std::has_single_bit(t.width) || !std::has_single_bit(t.height) ||
+            t.bytes != std::size_t(t.width) * t.height * 4)
+            return false;
+    }
     // ゲームが求める文字バッファが、ここで用意する大きさに収まること。
     for (unsigned i = 0; i < core::limits::RendererTexts; ++i) {
         const unsigned chars = core::limits::RendererSlotChars[i];
@@ -185,6 +197,25 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     map.gpu_dimensions = (font.sheetWidth << 16) | font.sheetHeight;
     map.gpu_format = GpuFormatLa4;
     shared_.value.srt.scale[0] = shared_.value.srt.scale[1] = 1.0f;
+
+    for (std::size_t i = 0; i < font.textureCount; ++i) {
+        auto &own = imageMaterials_[i].value;
+        own = material;
+        own.animation_links.sentinel.next = own.animation_links.sentinel.prev = &own.animation_links.sentinel;
+        auto &variable = imageShared_[i].value;
+        variable = shared_.value;
+        own.variable_data = &variable.map;
+        const auto &t = font.textures[i];
+        auto &texture = variable.map;
+        texture.texture_address = api.physical(static_cast<const unsigned char *>(atlas) + TextureOffset(font, i));
+        texture.image_width = texture.texture_width = static_cast<std::uint16_t>(t.width);
+        texture.image_height = texture.texture_height = static_cast<std::uint16_t>(t.height);
+        // RGBA8。UI はクランプ、独立した模様だけ繰り返す。フィルタは両方ニアレスト。
+        texture.sampler_bits = (SamplerFormatRgba8 << 8) | (i ? 5u : 0u);
+        texture.gpu_sampler_bits = i ? 0x2200u : 0u;
+        texture.gpu_dimensions = (t.width << 16) | t.height;
+        texture.gpu_format = GpuFormatRgba8;
+    }
 
     // 字形の幅と、文字コードから字形を引く表（方式 2）。主と数字の 2 組が 1 枚のアトラスを共有する。
     std::memset(&fonts_, 0, sizeof(fonts_));
@@ -249,14 +280,20 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     const float u1 = static_cast<float>((font.cellWidth + 1) * column + font.cellWidth) / font.sheetWidth;
     const float v0 = static_cast<float>(font.sheetHeight - ((font.cellHeight + 1) * row + 2)) / font.sheetHeight;
     const float v1 = static_cast<float>(font.sheetHeight - ((font.cellHeight + 1) * row + font.cellHeight)) / font.sheetHeight;
+    solidUv_[0] = u0;
+    solidUv_[1] = v0;
+    solidUv_[2] = u1;
+    solidUv_[3] = v1;
 
     for (unsigned s = 0; s < 2; ++s) {
         const Screen which = static_cast<Screen>(s);
         auto &screen = screens_[s];
         std::memset(&screen, 0, sizeof(screen));
+        screen.pictures = s ? bottomPictures_ : topPictures_;
         InitPane(screen.root.value, vtbl_nw_lyt_Pane_addr, static_cast<float>(ScreenWidth(which)),
                  static_cast<float>(ScreenHeight));
-        for (unsigned i = 0; i < core::limits::RendererRects; ++i) {
+        const auto pictureLimit = s ? core::limits::RendererBottomRects : core::limits::RendererRects;
+        for (unsigned i = 0; i < pictureLimit; ++i) {
             auto &picture = screen.pictures[i].value;
             InitPane(picture.pane, vtbl_nw_lyt_Picture_addr, 1.0f, 1.0f);
             picture.uv_calculated = 1;
@@ -349,22 +386,56 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
                                                                             : core::limits::RendererCommands;
     for (std::size_t i = 0; i < total; ++i) {
         const Command &command = drawing.commands[i];
-        if (command.kind == Kind::Rectangle) {
-            if (rectangles >= core::limits::RendererRects || command.bounds.width <= 0 ||
+        if (command.kind == Kind::Rectangle || command.kind == Kind::Image || command.kind == Kind::Repeat) {
+            const bool image = command.kind != Kind::Rectangle;
+            const auto textureIndex = static_cast<unsigned>(command.texture);
+            if (image && (textureIndex >= font_->textureCount || command.source.width <= 0 ||
+                          command.source.height <= 0 || command.scale < 1 || command.scale > 8))
+                continue;
+            const auto pictureLimit = which == Screen::Bottom ? core::limits::RendererBottomRects : core::limits::RendererRects;
+            if (rectangles >= pictureLimit || command.bounds.width <= 0 ||
                 command.bounds.height <= 0)
                 continue;
+            Rect bounds = command.bounds;
+            if (image) {
+                const auto right = std::min(std::int64_t(bounds.x) + bounds.width, std::int64_t(command.clip.x) + command.clip.width);
+                const auto bottom = std::min(std::int64_t(bounds.y) + bounds.height, std::int64_t(command.clip.y) + command.clip.height);
+                bounds.x = std::max(bounds.x, command.clip.x);
+                bounds.y = std::max(bounds.y, command.clip.y);
+                if (right <= bounds.x || bottom <= bounds.y)
+                    continue;
+                bounds.width = static_cast<int>(right - bounds.x);
+                bounds.height = static_cast<int>(bottom - bounds.y);
+            }
             auto *picture = Picture(screen, rectangles++);
-            const float w = static_cast<float>(command.bounds.width);
-            const float h = static_cast<float>(command.bounds.height);
-            const float x = static_cast<float>(command.bounds.x) + w / 2.0f -
+            const float w = static_cast<float>(bounds.width);
+            const float h = static_cast<float>(bounds.height);
+            const float x = static_cast<float>(bounds.x) + w / 2.0f -
                             static_cast<float>(ScreenWidth(which)) / 2.0f;
             const float y = static_cast<float>(ScreenHeight) / 2.0f -
-                            (static_cast<float>(command.bounds.y) + h / 2.0f);
+                            (static_cast<float>(bounds.y) + h / 2.0f);
             Place(picture->pane, w, h, x, y, TextDepth);
+            picture->material = image ? &imageMaterials_[textureIndex].value : &material_.value;
+            if (image) {
+                const auto &t = font_->textures[textureIndex];
+                const auto &src = command.source;
+                const float factorX = command.kind == Kind::Repeat ? 1.0f / command.scale :
+                    static_cast<float>(src.width) / command.bounds.width;
+                const float factorY = command.kind == Kind::Repeat ? 1.0f / command.scale :
+                    static_cast<float>(src.height) / command.bounds.height;
+                const float sx = src.x + (static_cast<float>(bounds.x) - command.bounds.x) * factorX;
+                const float sy = src.y + (static_cast<float>(bounds.y) - command.bounds.y) * factorY;
+                picture->uv_output[0][0] = sx / t.width;
+                picture->uv_output[0][1] = 1.0f - sy / t.height;
+                picture->uv_output[0][2] = (sx + w * factorX) / t.width;
+                picture->uv_output[0][3] = 1.0f - (sy + h * factorY) / t.height;
+            } else {
+                std::memcpy(picture->uv_output[0], solidUv_, sizeof(solidUv_));
+            }
             picture->vertex_colors[0] = picture->vertex_colors[1] = picture->vertex_colors[2] =
                 picture->vertex_colors[3] = GameColor(command.color);
             panes[count++] = &picture->pane;
-        } else if (command.slot < core::limits::RendererTexts && !used[command.slot]) {
+        } else if (command.kind == Kind::Text && command.slot < core::limits::RendererTexts && !used[command.slot]) {
             NwLytTextBox *box = nullptr;
             if (SetText(screen, which, command, &box)) {
                 used[command.slot] = true;
