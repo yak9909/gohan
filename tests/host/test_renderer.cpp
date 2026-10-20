@@ -95,6 +95,49 @@ void TextAndSlots() {
     assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == 16);
 }
 
+void ImagesAndSlices() {
+    Canvas canvas;
+    canvas.Begin(Screen::Top);
+    assert(canvas.Image(10, 20, Part::Finger, 2, 0x80FFAA88u) == Result::Added);
+    const auto &image = canvas.Data().screens[0].commands[0];
+    assert(image.kind == gohan::game::lyt::Kind::Image && image.bounds.width == 26 && image.bounds.height == 16);
+    assert(image.color == 0x80FFAA88u);
+    assert(canvas.Image(0, 0, {-1, 0, 1, 1}) == Result::Invalid);
+    assert(canvas.Image(0, 0, {255, 31, 2, 1}) == Result::Invalid);
+    assert(canvas.Image(0, 0, Part::Finger, 0) == Result::Invalid);
+    assert(canvas.Image(0, 0, Part::Count) == Result::Invalid);
+    assert(canvas.Image(400, 0, Part::Finger) == Result::Empty);
+    canvas.Begin(Screen::Top);
+    assert(canvas.PartBox({4, 4, 228, 210}, Part::Window) == Result::Added);
+    assert(canvas.Data().screens[0].count == 9);
+    const auto &corner = canvas.Data().screens[0].commands[0];
+    const auto &middle = canvas.Data().screens[0].commands[4];
+    assert(corner.bounds.width == 4 && corner.bounds.height == 4);
+    assert(middle.bounds.width == 220 && middle.bounds.height == 202);
+    assert(middle.source.width == 1 && middle.source.height == 1);
+    assert(canvas.PartBox({4, 4, 7, 7}, Part::Window) == Result::Invalid);
+    assert(canvas.PartBox({4, 4, 40, 12}, Part::Band3) == Result::Invalid);
+    assert(canvas.PartBox({4, 4, 40, 13}, Part::Band3) == Result::Added);
+    assert(canvas.PartBox({4, 4, 5, 40}, Part::ScrollThumb) == Result::Added);
+    assert(canvas.PartBox({4, 4, 10, 80}, Part::ScrollThumb, 2) == Result::Added);
+    assert(canvas.Repeat({4, 4, 100, 1}, Texture::Ui) == Result::Invalid);
+    assert(canvas.Repeat({4, 4, 100, 1}, Texture::DashHorizontal, -1, 9) == Result::Added);
+    const auto &repeat = canvas.Data().screens[0].commands[canvas.Data().screens[0].count - 1];
+    assert(repeat.kind == gohan::game::lyt::Kind::Repeat && repeat.source.x == 7 && repeat.source.y == 1);
+    // 複数枚の部品は、途中で足りなくなったら全体を取り消す。
+    canvas.Begin(Screen::Top);
+    for (unsigned i = 0; i < gohan::core::limits::RendererRects - 8; ++i)
+        assert(canvas.FillRect({0, 0, 1, 1}, White) == Result::Added);
+    const auto count = canvas.Data().screens[0].count, bytes = canvas.Data().screens[0].estimatedBytes;
+    assert(canvas.PartBox({0, 0, 100, 100}, Part::Window) == Result::Full);
+    assert(canvas.Data().screens[0].count == count && canvas.Data().screens[0].estimatedBytes == bytes);
+    canvas.Begin(Screen::Bottom);
+    for (unsigned i = 0; i < gohan::core::limits::RendererBottomRects; ++i)
+        assert(canvas.Image(0, 0, Part::Finger) == Result::Added);
+    assert(canvas.Image(0, 0, Part::Finger) == Result::Full);
+    assert(MeasureText("N") == 5 && MeasureText("/", 1, Font::Numeric) == 5);
+}
+
 // 描画の部品が呼ぶゲーム側の入口の代役（実機に依らない要求の伝達だけを確かめる）。
 namespace stub {
 using gohan::game::lyt::InstallResult;
@@ -237,7 +280,7 @@ void Shutdown() {
 
 namespace gohan::game::lyt {
 InstallResult InstallRenderer(const FontResource &font) {
-    assert(font.atlasBytes == 65536 && font.glyphs == 698);
+    assert(font.atlasBytes == 65536 && font.glyphs == 703);
     ++stub::installs;
     stub::installed = stub::installResult == InstallResult::Ready;
     return stub::installResult;
@@ -267,6 +310,7 @@ int main() {
     Geometry();
     BoundsAndOrder();
     TextAndSlots();
+    ImagesAndSlices();
     Dispatch();
     Shutdown();
 }

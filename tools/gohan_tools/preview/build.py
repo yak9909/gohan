@@ -17,6 +17,7 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
     menu_gen = directory / 'gen'
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py', '--output', str(gen / 'font_atlas.hpp')],
                    cwd=root, check=True)
+    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py', '--out', str(gen)], cwd=root, check=True)
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/menu.py', '--spec', 'spec/menu.toml',
                     '--out', str(menu_gen)], cwd=root, check=True)
     feature_path = root / 'src/features/menu_screen/menu_screen.cpp'
@@ -49,7 +50,8 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
     # ソース・ヘッダー・定義・字形表も含む。手動の較正時に使った版を追える。
     inputs = [*sorted((root / 'src').rglob('*.cpp')), *sorted((root / 'src').rglob('*.hpp')),
               root / 'tests/host/menu_preview.cpp', root / 'tests/host/fakes/CTRPluginFramework.hpp',
-              root / 'spec/menu.toml', gen / 'font_atlas.hpp', menu_gen / 'menu_table.cpp', menu_gen / 'menu_ids.hpp']
+              root / 'spec/menu.toml', root / 'spec/ui.toml', gen / 'font_atlas.hpp', gen / 'ui_atlas.hpp',
+              gen / 'ui_parts.hpp', gen / 'ui_values.hpp', menu_gen / 'menu_table.cpp', menu_gen / 'menu_ids.hpp']
     hashes = {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
     version = subprocess.run([compiler, '--version'], capture_output=True, text=True, check=True).stdout.splitlines()[0]
     return executable, {'compiler': version, 'flags': flags, 'screen_adaptation': adaptation, 'inputs_sha256': hashes}

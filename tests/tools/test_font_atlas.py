@@ -9,6 +9,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gohan_tools/codegen'))
 SPEC = importlib.util.spec_from_file_location(
     'gohan_font_atlas', ROOT / 'tools/gohan_tools/codegen/font_atlas.py')
 font = importlib.util.module_from_spec(SPEC)
@@ -61,17 +62,33 @@ def test_tile_boundaries_and_layout():
 
 def test_adopted_fonts_are_reproducible(tmp_path):
     atlas, widths, main, numeric = font.build(ROOT)
-    assert (len(atlas), len(widths), len(main), len(numeric)) == (65536, 2094, 670, 27)
-    # 旧版との全要素照合で一致した出力に、メニューが使う「予」「約」「機」を足した後のハッシュ。
-    # 足した字は文字表の末尾に置くので、既存の字形の番号は変わらない（数字用の写像だけ字形番号がずれる）。
+    assert (len(atlas), len(widths), len(main), len(numeric)) == (65536, 2109, 674, 28)
+    # CA2 の 23 字の上書きと追加の字を含む、採用した出力。
     payloads = [atlas, bytes(widths), b''.join(struct.pack('<HH', *p) for p in main),
                 b''.join(struct.pack('<HH', *p) for p in numeric)]
-    expected = ['e464d528539c4a1e39a9c46296965301aa0563b606a5e4f41d2ce0f30b880898',
-                'eba3b76820e7481669c08ab2cb59eaabb8ec9be67b42ef14dc3cf2b97f5dc208',
-                'b26ffe9dd09854f12d86857b9013abe09f963f5144faf8cf005f6a24de9004e7',
-                '877ad38556212e2ec345ad113c76c49cee449e0f2291fd5576a277ef89dbd5c2']
+    expected = ['351971e45bcec98e931db89d8f0506d5f1209ef5104a5a158c921fe29945ed3b',
+                '29b08546080d19e2e0c0e647fd748fd3f904def058338ab1c41425fd6d0ac4a8',
+                'd6fe2bc0559ada7d7add5461f2cade3b9bf69ea411b888870529a9b17e68b65a',
+                'bb968ac4507c5e7a7ee99de5d8863e0d36db0d5c4c49daf401abee9b7d77a7c2']
     assert [hashlib.sha256(data).hexdigest() for data in payloads] == expected
     a, b = tmp_path / 'first.hpp', tmp_path / 'second.hpp'
     font.generate(ROOT, a)
     font.generate(ROOT, b)
     assert a.read_bytes() == b.read_bytes()
+
+
+def test_ca2_overrides_are_in_the_atlas():
+    from glyph_overrides import OVERRIDES, pixels
+    atlas, widths, main, numeric = font.build(ROOT)
+    mapping = dict(main)
+    assert len(OVERRIDES) == 23
+    for char in OVERRIDES:
+        glyph = mapping[ord(char)]
+        expected, advance = pixels(char)
+        assert widths[glyph * 3:glyph * 3 + 3] == [0, advance - 1, advance]
+        x0, y0 = glyph % 32 * 8 + 1, glyph // 32 * 9 + 1
+        assert [[atlas[font.pixel_offset(x0 + x, y0 + y)] for x in range(7)]
+                for y in range(8)] == expected
+    assert all(ord(c) in mapping for c in '±棒発省')
+    slash = dict(numeric)[ord('/')]
+    assert widths[slash * 3 + 2] == 5

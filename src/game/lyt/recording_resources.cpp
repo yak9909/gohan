@@ -22,7 +22,21 @@ class BindingGuard {
 
 bool RecordingResources::Acquire(const FontResource &font) {
     if (!Empty() || !font.atlas || !font.atlasBytes ||
-        font.atlasBytes > std::numeric_limits<unsigned>::max())
+        font.atlasBytes > std::numeric_limits<unsigned>::max() ||
+        font.textureCount > static_cast<unsigned>(Texture::Count) ||
+        (font.textureCount && !font.textures))
+        return false;
+    for (std::size_t i = 0; i < font.textureCount; ++i)
+        if (!font.textures[i].data || !font.textures[i].bytes ||
+            font.textures[i].bytes > std::numeric_limits<unsigned>::max())
+            return false;
+    std::uint64_t total = font.atlasBytes;
+    if (font.textureCount) {
+        total = (total + 127) / 128 * 128;
+        for (std::size_t i = 0; i < font.textureCount; ++i)
+            total += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
+    }
+    if (total > std::numeric_limits<unsigned>::max() - AtlasAlignment - core::limits::RendererHeapReserve)
         return false;
     allocator_ = api_.allocator();
     if (!allocator_)
@@ -30,7 +44,7 @@ bool RecordingResources::Acquire(const FontResource &font) {
     // 確保が失敗するとゲームは null を参照して止まるので、先に空きを確かめる。
     // 導入後もゲームが大きな資源を取れるよう、空きを残す。
     HeapSpace space;
-    const auto bytes = static_cast<unsigned>(font.atlasBytes);
+    const auto bytes = static_cast<unsigned>(total);
     if (!api_.heapSpace(allocator_, AtlasAlignment, &space) ||
         space.largestBlock < bytes + AtlasAlignment ||
         space.freeBytes < bytes + AtlasAlignment + core::limits::RendererHeapReserve) {
@@ -43,7 +57,10 @@ bool RecordingResources::Acquire(const FontResource &font) {
         return false;
     }
     std::memcpy(atlas_, font.atlas, font.atlasBytes);
-    if (!api_.flush(atlas_, font.atlasBytes)) {
+    for (std::size_t i = 0; i < font.textureCount; ++i)
+        std::memcpy(static_cast<unsigned char *>(atlas_) + TextureOffset(font, i),
+                    font.textures[i].data, font.textures[i].bytes);
+    if (!api_.flush(atlas_, bytes)) {
         ReleaseIdle();
         return false;
     }

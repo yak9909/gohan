@@ -23,7 +23,7 @@ def main() -> int:
 
     def run(sources, output, includes=('src',)):
         out = build / (output + exe)
-        subprocess.run([compiler, *flags, *(f'-I{i}' for i in includes), *sources, '-o', str(out)], cwd=root, check=True)
+        subprocess.run([compiler, *flags, '-Ibuild/gen', *(f'-I{i}' for i in includes), *sources, '-o', str(out)], cwd=root, check=True)
         subprocess.run([str(out)], cwd=root, check=True)
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
@@ -33,6 +33,7 @@ def main() -> int:
 
     # 描画: 字形の表を生成してから試験する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
+    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
     run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/feature.cpp', 'src/core/utf.cpp', *renderer],
         'test_renderer', ('src', 'build/gen'))

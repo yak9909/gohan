@@ -28,6 +28,8 @@ void Canvas::Begin(Screen screen) {
     screen_ = screen;
     auto &current = Current();
     current.count = current.rectangles = current.texts = current.characters = current.estimatedBytes = 0;
+    current.pictureLimit = screen == Screen::Bottom ? core::limits::RendererBottomRects
+                                                   : core::limits::RendererRects;
     clip_ = detail::ScreenBounds(screen);
     clipped_ = false;
 }

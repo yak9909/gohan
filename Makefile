@@ -41,6 +41,8 @@ LIBRARY := build/libctrpf/libctrpf.a
 FONT_HEADER := $(GEN)/font_atlas.hpp
 FONT_INPUTS := third_party/fonts/misaki/misaki_gothic_2nd.bdf third_party/fonts/pixelmplus/mplus_j10r-iso-W5.bdf
 FONT_CODEGEN := tools/gohan_tools/codegen/font_atlas.py
+UI_HEADERS := $(GEN)/ui_values.hpp $(GEN)/ui_parts.hpp $(GEN)/ui_atlas.hpp
+UI_CODEGEN := tools/gohan_tools/codegen/ui.py tools/gohan_tools/codegen/ui_shapes.py
 
 .PHONY: all libctrpf clean FORCE host-test
 all: out/gohan.3gx
@@ -57,12 +59,16 @@ $(GEN)/menu_ids.hpp $(GEN)/menu_table.cpp docs/menu.md &: spec/menu.toml tools/g
 $(LIBRARY): libctrpf
 	@test -f $@
 
-$(FONT_HEADER): $(FONT_CODEGEN) $(FONT_INPUTS) tools/gohan_tools/codegen/misaki_characters.txt tools/gohan_tools/codegen/numeric_characters.txt
+$(FONT_HEADER): $(FONT_CODEGEN) $(FONT_INPUTS) tools/gohan_tools/codegen/glyph_overrides.py tools/gohan_tools/codegen/misaki_characters.txt tools/gohan_tools/codegen/numeric_characters.txt
 	$(PYTHON) $(FONT_CODEGEN) --output $@
 
-$(OBJDIR)/src/ui/renderer/font_resource.o: $(FONT_HEADER)
+$(UI_HEADERS) &: spec/ui.toml $(UI_CODEGEN) $(FONT_CODEGEN)
+	$(PYTHON) tools/gohan_tools/codegen/ui.py --spec spec/ui.toml --out $(GEN)
 
-$(OBJDIR)/%.o: %.cpp Makefile | libctrpf $(GEN)/menu_ids.hpp
+$(OBJDIR)/src/ui/renderer/font_resource.o: $(FONT_HEADER)
+$(OBJDIR)/src/ui/renderer/font_resource.o: $(UI_HEADERS)
+
+$(OBJDIR)/%.o: %.cpp Makefile | libctrpf $(GEN)/menu_ids.hpp $(UI_HEADERS)
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 

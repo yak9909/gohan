@@ -24,6 +24,16 @@ HTML は PNG・CSS を埋め込んだ1ファイルで、これだけを別の PC
 `--dev` は開発版の項目を表示します。`--cxx` または `HOST_CXX` でコンパイラを選べます。
 `--out build/preview-test` で別の出力先にできます。
 
+`python tools/preview.py --parts --out build/preview-parts` で CA2 の自作 UI 部品の一覧を
+出せます。全ボタンと全方向を含む画像を等倍・2 倍・分割で伸ばした形で並べ、
+破線の繰り返し・位相・頂点色・切り抜きも描きます。実際の Canvas の描画指示と、
+make と同じ生成器が作る RGBA8 の資源を使います。メニューの配置の移行は含みません。
+資源の各チャンネルと設計表の色・不透明度は Python 試験で ±2 以内か検査します。
+PNG は背景との合成後の色です。既定では実機の取得画像に合わせて RGB565 にも変換するため、
+資源の色そのものを調べる時は `.rgba8` を復号し、PNG とは区別してください。
+設計値は `spec/ui.toml`、自作の形は `tools/gohan_tools/codegen/ui_shapes.py` と
+`ui.py`、字形の上書きは `glyph_overrides.py` を編集してください。
+
 ## 台本とフレーム
 
 既定の台本は `tools/preview/scenarios.json` です。開閉の途中、フォルダ、OFF／待機／ON、
