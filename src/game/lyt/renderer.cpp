@@ -11,11 +11,14 @@ detail::Engine &Instance() {
 }
 } // namespace
 
-InstallResult InstallRenderer(const FontResource &font) {
+InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
+    if (background) *background = {};
     const auto result = detail::VerifyRenderer();
     if (result != InstallResult::Ready)
         return result;
-    return Instance().Install(font);
+    const auto installed = Instance().Install(font);
+    if (background) *background = Instance().Resources().BackgroundStatus();
+    return installed;
 }
 
 bool Present(const Drawing &drawing) { return Instance().Present(drawing); }

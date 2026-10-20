@@ -1,6 +1,7 @@
 #pragma once
 #include "core/feature.hpp"
 #include "game/lyt/drawing.hpp"
+#include "game/title_background.hpp"
 #include "ui_parts.hpp"
 #include <string_view>
 
@@ -55,6 +56,12 @@ class Canvas {
 // UTF-8 の先頭から最大 RendererChars 字。非対応の字は幅にも含めない。
 int MeasureText(std::string_view text, unsigned scale = 1, Font font = Font::Main);
 const game::lyt::FontResource &Fonts();
+// プラグインのスレッドで、フック登録より前に一度だけ呼ぶ。Fonts() 自体は I/O しない。
+void PrepareTitleBackground();
+const game::titlebg::Sources *TitleBackgroundSources();
+const game::lyt::TextureResource &TitleBackgroundImage(unsigned index);
+const char *TitleBackgroundStatusText();
+const char *BackgroundAllocationStatusText();
 
 enum class Status { Stopped, Waiting, Ready, WrongTitle, Unreadable, Mismatch,
                     MissingBindings, PresentFailed, ResourceFailed, Stopping };

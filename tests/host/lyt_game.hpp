@@ -24,6 +24,8 @@ struct Game {
     static inline unsigned bound = 7, next = 20;
     static inline int allocations = 0, frees = 0, attempts = 0, failCreate = 0, storages = 0;
     static inline int batchInits = 0, addCalls = 0;
+    static inline int allocateCalls = 0, flushCalls = 0, spaceCalls = 0;
+    static inline int failAllocate = 0, failFlush = 0, failSpace = 0;
     static inline std::map<void *, unsigned> blocks;
     static inline std::set<unsigned> lists;
     static inline std::string releases;
@@ -38,6 +40,7 @@ struct Game {
         bound = 7;
         next = 20;
         allocations = frees = attempts = failCreate = storages = batchInits = addCalls = 0;
+        allocateCalls = flushCalls = spaceCalls = failAllocate = failFlush = failSpace = 0;
         releases.clear();
         manager = {};
     }
@@ -46,7 +49,7 @@ struct Game {
     static generated::SsysMaAllocator *Allocator() { return haveAllocator ? &allocator : nullptr; }
     static void *Allocate(generated::SsysMaAllocator *owner, unsigned bytes, int alignment) {
         assert(owner == &allocator && alignment == 128);
-        if (allocateFails)
+        if (++allocateCalls == failAllocate || allocateFails)
             return nullptr;
         void *data = ::operator new(bytes, std::align_val_t{128});
         assert(data);
@@ -88,15 +91,18 @@ struct Game {
     }
     static bool Flush(void *data, std::size_t size) {
         assert(blocks.contains(data) && size == blocks[data]);
-        return !flushFails;
+        return ++flushCalls != failFlush && !flushFails;
     }
     static std::uint32_t Physical(const void *data) {
         return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(data) & 0x0FFFFFFFu);
     }
     static bool Space(generated::SsysMaAllocator *owner, int alignment, detail::HeapSpace *out) {
         assert(owner == &allocator && alignment == 128);
-        out->freeBytes = freeBytes;
-        out->largestBlock = largestBlock;
+        if (++spaceCalls == failSpace) return false;
+        unsigned used = 0;
+        for (const auto &[data, bytes] : blocks) { (void)data; used += bytes; }
+        out->freeBytes = freeBytes > used ? freeBytes - used : 0;
+        out->largestBlock = largestBlock > used ? largestBlock - used : 0;
         return true;
     }
     static generated::SsysMaLayoutMgr *Manager() { return haveManager ? &manager : nullptr; }

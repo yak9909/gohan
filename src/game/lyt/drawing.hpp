@@ -8,7 +8,7 @@ namespace gohan::game::lyt {
 enum class Screen : unsigned { Top, Bottom };
 enum class Font : unsigned { Main, Numeric };
 enum class Kind : unsigned { Rectangle, Text, Image, Repeat };
-enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, Count };
+enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, TitleAlpha, TitleLuminance, TitleWindow, TitleSelection, Count };
 struct Rect {
     int x = 0, y = 0, width = 0, height = 0;
 };
@@ -44,10 +44,15 @@ struct Drawing {
 };
 // 字形のアトラス（1 枚の LA4 画像）と、その字形表。マップは (文字コード, 字形番号) の組を
 // 文字コードの昇順に並べた物。widths は字形ごとの 3 バイト（左, 字形幅, 送り幅）。
+enum class TextureFormat { Rgba8, L4 };
 struct TextureResource {
     const std::uint8_t *data = nullptr;
     std::size_t bytes = 0;
     unsigned width = 0, height = 0;
+    TextureFormat format = TextureFormat::Rgba8;
+    // 輝度の黒→白の色（0xAARRGGBB）。不透明度は画像に含めず Pane に渡す。
+    std::uint32_t black = 0, white = 0xFFFFFFFFu;
+    unsigned opacity = 255;
 };
 struct FontResource {
     const std::uint8_t *atlas = nullptr;
@@ -62,14 +67,22 @@ struct FontResource {
     unsigned sheetWidth = 0, sheetHeight = 0;
     unsigned cellWidth = 0, cellHeight = 0, columns = 0;
     unsigned solidGlyph = 0;
-    // 同じ寿命で確保・排出する自作 UI の RGBA8 画像。
+    // UI と任意の背景画像。背景は別枠で確保し、失敗しても字形・UI を使える。
     const TextureResource *textures = nullptr;
     std::size_t textureCount = 0;
+    std::size_t requiredTextureCount = static_cast<unsigned>(Texture::Count);
 };
-// 各画像の開始を GPU 用の 128 バイト境界に揃える。まとめて一度だけ確保する。
+enum class BackgroundResult { NotAttempted, NotNeeded, Ready, HeapUnavailable, InsufficientSpace, AllocateFailed, FlushFailed };
+struct BackgroundAllocation {
+    BackgroundResult result = BackgroundResult::NotAttempted;
+    unsigned freeBytes = 0, largestBlock = 0;
+    bool measured = false;
+};
+// 各画像の開始を GPU 用の 128 バイト境界に揃える。必須と背景は別の確保の先頭から。
 inline std::size_t TextureOffset(const FontResource &font, std::size_t index) {
-    std::size_t bytes = (font.atlasBytes + 127) / 128 * 128;
-    for (std::size_t i = 0; i < index; ++i)
+    const bool background = index >= font.requiredTextureCount;
+    std::size_t bytes = background ? 0 : (font.atlasBytes + 127) / 128 * 128;
+    for (std::size_t i = background ? font.requiredTextureCount : 0; i < index; ++i)
         bytes += (font.textures[i].bytes + 127) / 128 * 128;
     return bytes;
 }

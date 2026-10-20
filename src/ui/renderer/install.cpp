@@ -2,6 +2,7 @@
 #include "core/frame.hpp"
 #include "core/mailbox.hpp"
 #include "game/lyt/renderer.hpp"
+#include <cstdio>
 
 namespace gohan::ui::renderer {
 namespace {
@@ -14,6 +15,8 @@ constexpr unsigned ShutdownPollMs = 10;
 core::Mailbox<bool> requests[ClientCount];
 core::Mailbox<ScreenDrawing> frames[2];
 core::Mailbox<Status> published;
+core::Mailbox<game::lyt::BackgroundAllocation> publishedBackground;
+game::lyt::BackgroundAllocation backgroundAllocation;
 // 以下はゲームの描画スレッド（毎フレームの処理）だけが触る。
 bool wanted[ClientCount];
 std::uint32_t requestGeneration[ClientCount], frameGeneration[2];
@@ -60,7 +63,7 @@ void FrameStep() {
     if (state == Status::Stopping && game::lyt::DetachRenderer()) {
         state = afterStop;
         if (state == Status::Stopped && AnyWanted())
-            state = Convert(game::lyt::InstallRenderer(Fonts()));
+            state = Convert(game::lyt::InstallRenderer(Fonts(), &backgroundAllocation));
     } else if (state != Status::Stopping && changed) {
         if (!AnyWanted()) {
             if (state == Status::Ready)
@@ -68,7 +71,7 @@ void FrameStep() {
             else
                 state = Status::Stopped;
         } else if (state != Status::Ready) {
-            state = Convert(game::lyt::InstallRenderer(Fonts()));
+            state = Convert(game::lyt::InstallRenderer(Fonts(), &backgroundAllocation));
         }
     }
     for (unsigned i = 0; i < 2; ++i)
@@ -77,9 +80,11 @@ void FrameStep() {
     if (state == Status::Ready && !game::lyt::Present(drawing))
         BeginStop(Status::PresentFailed);
     published.TryPublish(state);
+    publishedBackground.TryPublish(backgroundAllocation);
 }
 
 bool Wire() {
+    PrepareTitleBackground();
     const auto change = core::frame::Global().Add(FrameStep, 100);
     if (change.result != core::frame::Result::Queued &&
         change.result != core::frame::Result::Unchanged)
@@ -128,6 +133,29 @@ Status ReadStatus() {
     static std::uint32_t generation = 0;
     published.ReadIfNew(last, generation);
     return last;
+}
+const char *BackgroundAllocationStatusText() {
+    static game::lyt::BackgroundAllocation last;
+    static std::uint32_t generation = 0;
+    static char text[256];
+    publishedBackground.ReadIfNew(last, generation);
+    using game::lyt::BackgroundResult;
+    const char *result = "未試行";
+    switch (last.result) {
+    case BackgroundResult::NotAttempted: break;
+    case BackgroundResult::NotNeeded: result = "不要（代わりの色）"; break;
+    case BackgroundResult::Ready: result = "成功"; break;
+    case BackgroundResult::HeapUnavailable: result = "ヒープを確認できない（代わりの色）"; break;
+    case BackgroundResult::InsufficientSpace: result = "空き不足（代わりの色）"; break;
+    case BackgroundResult::AllocateFailed: result = "失敗（代わりの色）"; break;
+    case BackgroundResult::FlushFailed: result = "排出失敗（代わりの色）"; break;
+    }
+    if (last.measured)
+        std::snprintf(text, sizeof(text), "背景の確保: %s\n確保前の空き: 合計 %u / 最大の塊 %u バイト",
+                      result, last.freeBytes, last.largestBlock);
+    else
+        std::snprintf(text, sizeof(text), "背景の確保: %s\n確保前の空き: 未計測", result);
+    return text;
 }
 const char *StatusText() {
     switch (ReadStatus()) {

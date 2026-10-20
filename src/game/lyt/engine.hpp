@@ -16,7 +16,7 @@ class Engine {
     Engine(const Engine &) = delete;
     Engine &operator=(const Engine &) = delete;
 
-    // 前提が揃わなければ何も確保せず拒否し、確保に失敗しても何も残さない。
+    // 必須資源の確保に失敗したら拒否する。背景だけの失敗時は代わりの色で導入する。
     InstallResult Install(const FontResource &font);
     // 登録が必要なノードをゲームのリストに載せる。導入済みでなければ false。
     bool Present(const Drawing &drawing);

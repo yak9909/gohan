@@ -1,4 +1,5 @@
 #include "game/lyt/recording_resources.hpp"
+#include <algorithm>
 #include <cstring>
 #include <limits>
 
@@ -30,10 +31,12 @@ bool RecordingResources::Acquire(const FontResource &font) {
         if (!font.textures[i].data || !font.textures[i].bytes ||
             font.textures[i].bytes > std::numeric_limits<unsigned>::max())
             return false;
+    backgroundStatus_ = {};
+    const auto required = std::min(font.textureCount, font.requiredTextureCount);
     std::uint64_t total = font.atlasBytes;
-    if (font.textureCount) {
+    if (required) {
         total = (total + 127) / 128 * 128;
-        for (std::size_t i = 0; i < font.textureCount; ++i)
+        for (std::size_t i = 0; i < required; ++i)
             total += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
     }
     if (total > std::numeric_limits<unsigned>::max() - AtlasAlignment - core::limits::RendererHeapReserve)
@@ -57,12 +60,43 @@ bool RecordingResources::Acquire(const FontResource &font) {
         return false;
     }
     std::memcpy(atlas_, font.atlas, font.atlasBytes);
-    for (std::size_t i = 0; i < font.textureCount; ++i)
+    for (std::size_t i = 0; i < required; ++i)
         std::memcpy(static_cast<unsigned char *>(atlas_) + TextureOffset(font, i),
                     font.textures[i].data, font.textures[i].bytes);
     if (!api_.flush(atlas_, bytes)) {
         ReleaseIdle();
         return false;
+    }
+    // 必須画像が確保できた後の空きを改めて測る。背景を取れなくても導入を続ける。
+    backgroundStatus_.result = BackgroundResult::NotNeeded;
+    if (required < font.textureCount) {
+        std::uint64_t backgroundBytes = 0;
+        for (std::size_t i = required; i < font.textureCount; ++i)
+            backgroundBytes += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
+        space = {};
+        backgroundStatus_.measured = api_.heapSpace(allocator_, AtlasAlignment, &space);
+        backgroundStatus_.freeBytes = space.freeBytes;
+        backgroundStatus_.largestBlock = space.largestBlock;
+        if (!backgroundStatus_.measured) {
+            backgroundStatus_.result = BackgroundResult::HeapUnavailable;
+        } else if (backgroundBytes > std::numeric_limits<unsigned>::max() - AtlasAlignment - core::limits::RendererHeapReserve ||
+                   space.largestBlock < backgroundBytes + AtlasAlignment ||
+                   space.freeBytes < backgroundBytes + AtlasAlignment + core::limits::RendererHeapReserve) {
+            backgroundStatus_.result = BackgroundResult::InsufficientSpace;
+        } else {
+            background_ = api_.allocate(allocator_, static_cast<unsigned>(backgroundBytes), AtlasAlignment);
+            backgroundStatus_.result = background_ ? BackgroundResult::Ready : BackgroundResult::AllocateFailed;
+            if (background_) {
+                for (std::size_t i = required; i < font.textureCount; ++i)
+                    std::memcpy(static_cast<unsigned char *>(background_) + TextureOffset(font, i),
+                                font.textures[i].data, font.textures[i].bytes);
+                if (!api_.flush(background_, static_cast<unsigned>(backgroundBytes))) {
+                    api_.free(allocator_, background_);
+                    background_ = nullptr;
+                    backgroundStatus_.result = BackgroundResult::FlushFailed;
+                }
+            }
+        }
     }
     bool created = true;
     {
@@ -94,6 +128,10 @@ bool RecordingResources::ReleaseIdle() {
             api_.destroy(1, &list);
             list = 0;
         }
+    }
+    if (background_) {
+        api_.free(allocator_, background_);
+        background_ = nullptr;
     }
     if (atlas_) {
         api_.free(allocator_, atlas_);

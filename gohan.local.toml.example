@@ -2,6 +2,10 @@
 [rom]
 acnl_update = "D:/game-inputs/acnl-jp-update"
 hhd = "D:/game-inputs/hhd-jp-v1.1"
+# 任意。Layout/ が直下にある展開済み RomFS。プレビューだけが参照する。
+# 未指定・読み出し失敗時は、窓の重ね無し・帯 #6DBB4B。
+# acnl_update_romfs = "D:/game-inputs/acnl-jp-update/romfs"
+# acnl_base_romfs = "D:/game-inputs/acnl-jp-base/romfs"
 
 [analysis]
 symbols = "D:/symbol-inputs/symbols"

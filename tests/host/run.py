@@ -21,9 +21,9 @@ def main() -> int:
     exe = '.exe' if os.name == 'nt' else ''
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
 
-    def run(sources, output, includes=('src',)):
+    def run(sources, output, includes=('src',), defines=()):
         out = build / (output + exe)
-        subprocess.run([compiler, *flags, '-Ibuild/gen', *(f'-I{i}' for i in includes), *sources, '-o', str(out)], cwd=root, check=True)
+        subprocess.run([compiler, *flags, *defines, *(f'-I{i}' for i in includes), '-Ibuild/gen', *sources, '-o', str(out)], cwd=root, check=True)
         subprocess.run([str(out)], cwd=root, check=True)
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
@@ -35,6 +35,11 @@ def main() -> int:
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
+    background = ['src/game/title_background.cpp', 'src/game/title_background_io.cpp', 'src/game/title_background_self.cpp']
+    renderer += background
+    run(['tests/host/test_title_background.cpp', *background], 'test_title_background')
+    run(['tests/host/test_title_background.cpp', *background], 'test_title_background_self',
+        ('tests/host/romfs_fakes', 'src'), ('-D__3DS__',))
     run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/feature.cpp', 'src/core/utf.cpp', *renderer],
         'test_renderer', ('src', 'build/gen'))
     # ゲームの描画の層: 資源・Pane の木・ノード・導入と取り外し。ゲームの API は代役で受ける。
@@ -78,7 +83,7 @@ def main() -> int:
         'test_menu_glyphs', ('src', 'tests/host', 'build/gen', 'build/host/gen-sample'))
     # プレビューも実際の feature・入力・Canvas を通し、全台本の描画内容を照合する。
     subprocess.run([sys.executable, 'tools/preview.py', '--cxx', compiler,
-                    '--out', str(build / 'preview')], cwd=root, check=True)
+                    '--no-rom', '--out', str(build / 'preview')], cwd=root, check=True)
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序（描画の排出はフックを止める前）・'
           '照合と前提の不足による導入の拒否・資源の失敗時巻き戻し・反復の確保と解放・束縛中の解放拒否・'
           'Pane の木と Layout ノードの組み立て・登録の取り下げと排出・画面ごとの確定・'

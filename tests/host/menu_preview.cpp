@@ -12,7 +12,7 @@ namespace gohan::game::lyt {
 namespace {
 Drawing presented;
 }
-InstallResult InstallRenderer(const FontResource &) { return InstallResult::Ready; }
+InstallResult InstallRenderer(const FontResource &, BackgroundAllocation *) { return InstallResult::Ready; }
 bool Present(const Drawing &drawing) {
     presented = drawing;
     return true;
@@ -38,6 +38,9 @@ void Rect(std::ostream &out, const lyt::Rect &r) {
     out << '[' << r.x << ',' << r.y << ',' << r.width << ',' << r.height << ']';
 }
 bool Resources(const std::filesystem::path &directory) {
+    renderer::PrepareTitleBackground();
+    std::ofstream status(directory / "background-status.txt");
+    status << renderer::TitleBackgroundStatusText() << '\n';
     const auto &f = renderer::Fonts();
     std::ofstream atlas(directory / "atlas.la4", std::ios::binary);
     atlas.write(reinterpret_cast<const char *>(f.atlas), static_cast<std::streamsize>(f.atlasBytes));
@@ -59,7 +62,20 @@ bool Resources(const std::filesystem::path &directory) {
         textures << "{\"width\":" << t.width << ",\"height\":" << t.height
                  << ",\"file\":\"" << filename << "\"}";
         std::ofstream data(directory / filename, std::ios::binary);
-        data.write(reinterpret_cast<const char *>(t.data), static_cast<std::streamsize>(t.bytes));
+        if (t.format == lyt::TextureFormat::L4) {
+            for (std::size_t pixel = 0; pixel < std::size_t(t.width) * t.height; ++pixel) {
+                const unsigned level = (t.data[pixel / 2] >> ((pixel & 1) * 4)) & 15;
+                const char alpha = static_cast<char>(t.opacity);
+                data.write(&alpha, 1);
+                for (unsigned shift : {0u, 8u, 16u}) {
+                    const unsigned black = (t.black >> shift) & 255, white = (t.white >> shift) & 255;
+                    const char channel = static_cast<char>((black * (15 - level) + white * level + 7) / 15);
+                    data.write(&channel, 1);
+                }
+            }
+        } else {
+            data.write(reinterpret_cast<const char *>(t.data), static_cast<std::streamsize>(t.bytes));
+        }
         if (!data.good()) return false;
     }
     textures << "]\n";
@@ -133,6 +149,15 @@ bool PartsCatalog(const std::filesystem::path &directory) {
     canvas.BeginClip({20, 150, 80, 16});
     canvas.Image(12, 144, Part::Finger, 8, 0xFF88FFAAu);
     canvas.EndClip();
+    lyt::Present(canvas.Data());
+    if (!Capture(directory, static_cast<int>(page++), 0)) return false;
+    canvas.Begin(lyt::Screen::Top);
+    canvas.Text(4, 4, "CA2 title background / frame 0", 0xFFEAF5E4u);
+    canvas.FillRect({4, 20, 228, 210}, 0xFFF8F4E6u);
+    canvas.Repeat({7, 23, 222, 204}, lyt::Texture::TitleWindow);
+    canvas.Repeat({238, 24, 156, 13}, lyt::Texture::TitleSelection);
+    canvas.Repeat({238, 48, 64, 64}, lyt::Texture::TitleAlpha, 0, 0, 4);
+    canvas.Repeat({308, 48, 64, 64}, lyt::Texture::TitleLuminance, 0, 0, 4);
     lyt::Present(canvas.Data());
     return Capture(directory, static_cast<int>(page), 0);
 }

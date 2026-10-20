@@ -15,6 +15,7 @@ from gohan_tools.preview.gallery import gallery
 from gohan_tools.preview.images import Image, read, screen_image
 from gohan_tools.preview.raster import Raster
 from gohan_tools.preview.script import name, protocol
+from gohan_tools.preview.romfs import environment
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def output_directory(path: Path) -> Path:
     path = path.resolve()
-    if not path.is_relative_to(ROOT / 'build') or path == ROOT / 'build':
-        raise ValueError('生成先は作業ツリーの build/ 以下のフォルダにしてください')
+    if path.is_relative_to(ROOT) and (not path.is_relative_to(ROOT / 'build') or path == ROOT / 'build'):
+        raise ValueError('生成先は build/ 以下のフォルダ、または作業ツリー外にしてください')
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -52,6 +53,8 @@ def main(argv=None) -> int:
     parser.add_argument('--cxx')
     parser.add_argument('--dev', action='store_true')
     parser.add_argument('--parts', action='store_true', help='CA2 の全 UI 部品・整数倍・分割・繰り返しの一覧を出す')
+    parser.add_argument('--local', type=Path, default=ROOT / 'gohan.local.toml', help='任意の RomFS 設定')
+    parser.add_argument('--no-rom', action='store_true', help='ローカル設定に関わらず代わりの絵を使う')
     parser.add_argument('--scenario', action='append', help='指定した名前だけ実行（複数指定可）')
     parser.add_argument('--background-top', type=Path)
     parser.add_argument('--background-bottom', type=Path)
@@ -71,11 +74,15 @@ def main(argv=None) -> int:
         if not scenarios:
             raise ValueError('台本がありません')
         protocols = [protocol(s, settings['frame_ms']) for s in scenarios]
+        env, configured = environment(ROOT, None if args.no_rom else args.local.resolve(), args.out)
         directory = output_directory(args.out)
-        executable, manifest = build(ROOT, directory, settings['screen'], args.cxx, args.dev)
+        # 実行ファイルは常にビルド出力先。ROM 由来の画像・プレビューは外部の --out へ。
+        binary_directory = output_directory(ROOT / 'build/preview-runtime')
+        executable, manifest = build(ROOT, binary_directory, settings['screen'], args.cxx, args.dev)
+        manifest['title_background_romfs_configured'] = configured
         if args.parts:
             target = output_directory(directory / 'parts')
-            subprocess.run([str(executable), str(target), '--parts'], cwd=ROOT, check=True)
+            subprocess.run([str(executable), str(target), '--parts'], cwd=ROOT, check=True, env=env)
             raster = Raster(target, settings['raster'])
             frames = []
             for path in sorted(target.glob('frame-*.json'), key=lambda p: int(p.stem.split('-')[1])):
@@ -102,7 +109,7 @@ def main(argv=None) -> int:
         for scenario, inputs in zip(scenarios, protocols):
             target = output_directory(directory / scenario['name'])
             (target / 'inputs.txt').write_text(inputs, encoding='utf-8')
-            subprocess.run([str(executable), str(target)], input=inputs, text=True, check=True, cwd=ROOT)
+            subprocess.run([str(executable), str(target)], input=inputs, text=True, check=True, cwd=ROOT, env=env)
             raster = Raster(target, settings['raster'])
             for i, capture in enumerate(scenario['captures']):
                 drawing = json.loads((target / f'frame-{i}.json').read_text(encoding='utf-8'))

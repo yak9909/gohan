@@ -28,6 +28,8 @@ constexpr unsigned SamplerFormatLa4 = 2;
 constexpr unsigned GpuFormatLa4 = 9;
 constexpr unsigned SamplerFormatRgba8 = 0;
 constexpr unsigned GpuFormatRgba8 = 0;
+constexpr unsigned SamplerFormatL4 = 3; // 輝度のみ（RGBA=0、RGB=1、輝度と不透明度=2）。
+constexpr unsigned GpuFormatL4 = 10;
 // 文字ストリームの読み出し方。この値以外ではゲームが止まる。
 constexpr std::uint8_t FontStreamUtf16 = 1;
 constexpr std::uint16_t NoCachedCharacter = 0xFFFF;
@@ -161,7 +163,7 @@ bool Scene::Prepare(const ResourceApi &api, const FontResource &font) const {
         const auto &t = font.textures[i];
         if (!t.data || t.width < 8 || t.height < 8 || t.width > 1024 || t.height > 1024 ||
             !std::has_single_bit(t.width) || !std::has_single_bit(t.height) ||
-            t.bytes != std::size_t(t.width) * t.height * 4)
+            t.bytes != std::size_t(t.width) * t.height * (t.format == TextureFormat::L4 ? 1 : 8) / 2)
             return false;
     }
     // ゲームが求める文字バッファが、ここで用意する大きさに収まること。
@@ -173,9 +175,10 @@ bool Scene::Prepare(const ResourceApi &api, const FontResource &font) const {
     return true;
 }
 
-void Scene::Build(const ResourceApi &api, const FontResource &font, const void *atlas) {
+void Scene::Build(const ResourceApi &api, const FontResource &font, const void *atlas, const void *background) {
     api_ = &api;
     font_ = &font;
+    haveBackground_ = background != nullptr;
     const std::uint32_t physical = api.physical(atlas);
 
     // 共有の Material。可変領域は TexMap・TexSrt・TexCoordGen を 1 つずつ。
@@ -199,6 +202,8 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     shared_.value.srt.scale[0] = shared_.value.srt.scale[1] = 1.0f;
 
     for (std::size_t i = 0; i < font.textureCount; ++i) {
+        if (i >= font.requiredTextureCount && !background)
+            continue;
         auto &own = imageMaterials_[i].value;
         own = material;
         own.animation_links.sentinel.next = own.animation_links.sentinel.prev = &own.animation_links.sentinel;
@@ -207,14 +212,16 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
         own.variable_data = &variable.map;
         const auto &t = font.textures[i];
         auto &texture = variable.map;
-        texture.texture_address = api.physical(static_cast<const unsigned char *>(atlas) + TextureOffset(font, i));
+        texture.texture_address = api.physical(static_cast<const unsigned char *>(i >= font.requiredTextureCount ? background : atlas) + TextureOffset(font, i));
         texture.image_width = texture.texture_width = static_cast<std::uint16_t>(t.width);
         texture.image_height = texture.texture_height = static_cast<std::uint16_t>(t.height);
-        // RGBA8。UI はクランプ、独立した模様だけ繰り返す。フィルタは両方ニアレスト。
-        texture.sampler_bits = (SamplerFormatRgba8 << 8) | (i ? 5u : 0u);
+        // UI はクランプ、独立した模様だけ繰り返す。フィルタは両方ニアレスト。
+        own.colors[0] = GameColor(t.black);
+        own.colors[1] = GameColor(t.white);
+        texture.sampler_bits = ((t.format == TextureFormat::L4 ? SamplerFormatL4 : SamplerFormatRgba8) << 8) | (i ? 5u : 0u);
         texture.gpu_sampler_bits = i ? 0x2200u : 0u;
         texture.gpu_dimensions = (t.width << 16) | t.height;
-        texture.gpu_format = GpuFormatRgba8;
+        texture.gpu_format = t.format == TextureFormat::L4 ? GpuFormatL4 : GpuFormatRgba8;
     }
 
     // 字形の幅と、文字コードから字形を引く表（方式 2）。主と数字の 2 組が 1 枚のアトラスを共有する。
@@ -389,6 +396,9 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
         if (command.kind == Kind::Rectangle || command.kind == Kind::Image || command.kind == Kind::Repeat) {
             const bool image = command.kind != Kind::Rectangle;
             const auto textureIndex = static_cast<unsigned>(command.texture);
+            // 背景の未確保時は窓の重ねを省く。帯の単色の地は呼び出し側が先に描く。
+            if (image && textureIndex >= font_->requiredTextureCount && !haveBackground_)
+                continue;
             if (image && (textureIndex >= font_->textureCount || command.source.width <= 0 ||
                           command.source.height <= 0 || command.scale < 1 || command.scale > 8))
                 continue;
@@ -415,6 +425,8 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
             const float y = static_cast<float>(ScreenHeight) / 2.0f -
                             (static_cast<float>(bounds.y) + h / 2.0f);
             Place(picture->pane, w, h, x, y, TextDepth);
+            picture->pane.alpha = picture->pane.global_alpha =
+                image ? font_->textures[textureIndex].opacity : 255;
             picture->material = image ? &imageMaterials_[textureIndex].value : &material_.value;
             if (image) {
                 const auto &t = font_->textures[textureIndex];

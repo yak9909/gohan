@@ -39,7 +39,8 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
         'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'shell', 'sample_items')]
     sources = [root / 'tests/host/menu_preview.cpp', feature, root / 'src/ui/input/buttons.cpp',
                *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format')],
-               *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')), menu_gen / 'menu_table.cpp']
+               *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')),
+               *sorted((root / 'src/game').glob('title_background*.cpp')), menu_gen / 'menu_table.cpp']
     executable = directory / ('menu-preview.exe' if os.name == 'nt' else 'menu-preview')
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
     if dev:
