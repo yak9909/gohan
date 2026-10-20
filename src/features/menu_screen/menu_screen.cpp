@@ -15,7 +15,7 @@ namespace {
 namespace renderer = ui::renderer;
 namespace input = ui::input;
 
-constexpr renderer::Screen kScreen = renderer::Screen::Bottom;
+constexpr renderer::Screen kScreen = renderer::Screen::Top;
 // 入力の順序（menu の key）と ui の button が同じであること。
 static_assert(menu::key::ZL == input::button::ZL && menu::key::L == input::button::L &&
               menu::key::R == input::button::R && menu::key::ZR == input::button::ZR &&
@@ -27,7 +27,7 @@ static_assert(menu::key::ZL == input::button::ZL && menu::key::L == input::butto
 
 // 中身はゲームの描画スレッド（毎フレームの処理）だけが触る。
 menu::Engine engine(menu::kMenuItems, menu::kMenuItemCount);
-menu::Shell shell(engine, {kScreen == renderer::Screen::Bottom ? 320 : 400, kScreen == renderer::Screen::Bottom});
+menu::Shell shell(engine, {400});
 renderer::Canvas canvas;
 bool enable_requested = false;
 bool drawn = false;
@@ -39,7 +39,6 @@ void FrameStep() {
     const input::Snapshot pad = input::Read();
     menu::Input in;
     in.held = pad.buttons;
-    in.touch = {pad.touching, pad.x, pad.y};
     bool toggle = false;
     toggle_request.TryTake(toggle);
     const std::uint32_t now = input::NowMs();

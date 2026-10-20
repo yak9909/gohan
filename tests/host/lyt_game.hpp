@@ -90,7 +90,14 @@ struct Game {
         releases += 'L';
     }
     static bool Flush(void *data, std::size_t size) {
-        assert(blocks.contains(data) && size == blocks[data]);
+        // 動く帯は確保全体ではなく、使用していない画像の範囲だけを排出する。
+        bool contained = false;
+        const auto at = reinterpret_cast<std::uintptr_t>(data);
+        for (const auto &[base, bytes] : blocks) {
+            const auto begin = reinterpret_cast<std::uintptr_t>(base);
+            if (at >= begin && at - begin <= bytes && size <= bytes - (at - begin)) contained = true;
+        }
+        assert(contained && size > 0);
         return ++flushCalls != failFlush && !flushFails;
     }
     static std::uint32_t Physical(const void *data) {

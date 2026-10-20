@@ -2,6 +2,7 @@
 #include "ui_values.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace gohan::game::titlebg {
 namespace {
@@ -112,6 +113,19 @@ void BakeWindowL4(const Sources *sources, unsigned width, unsigned height, std::
             else out[n / 2] |= value << 4;
         }
     }
+}
+bool BakeSelectionL4(const Sources *sources, unsigned width, unsigned height, unsigned usedWidth,
+                     unsigned usedHeight, std::uint8_t *out, std::uint64_t frame) {
+    if (!out || !width || !height || width % 8 || height % 8 || usedWidth > width || usedHeight > height) return false;
+    std::memset(out, 0, width * height / 2);
+    const auto boards = Assemble(frame);
+    for (unsigned y = 0; y < usedHeight; ++y) for (unsigned x = 0; x < usedWidth; ++x) {
+        const auto n = Morton(x, y, width);
+        const unsigned value = sources ? unsigned(Tone(Sample(*sources, boards,
+            x + .5 - v::Screen[0] / 2., y + .5 - v::Screen[1] / 2.), Palette::Green) * 15 + .5) : 0;
+        out[n / 2] |= value << ((n & 1) * 4);
+    }
+    return true;
 }
 const char *FailureText(Failure failure) {
     switch (failure) {

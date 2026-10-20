@@ -2,7 +2,7 @@
 #include "menu/engine.hpp"
 #include "menu/surface.hpp"
 
-// 確認のダイアログと、値・選択・ボタンの割り当ての入力の枠。どちらも右の領域（メニューが閉じていれば中央）に出る。
+// 確認は上画面の中央、値・選択・ボタンの割り当ての枠は右上に出す。
 namespace gohan::menu {
 struct Pointer {
     bool down = false;
@@ -15,10 +15,10 @@ struct Input {
 };
 
 // ---- 確認のダイアログ ----
-// 位置と大きさは行数に依らず一定（タッチの判定を描画と切り離すため）。
+// 確認の位置と大きさは一定。
 Rect DialogBox(int screen_width, bool menu_open);
 Rect DialogOption(const Rect &box, int index);
-// タッチした所の選択肢（無ければ -1）。
+// 互換用。上画面のタッチは常に無視する。
 int DialogOptionAt(int screen_width, bool menu_open, int x, int y);
 // menu_amount: メニューの出現量（位置の補間）。appear: ダイアログ自身の出現量。
 void DrawDialog(Surface &surface, const Engine &engine, float menu_amount, float appear);
@@ -29,7 +29,7 @@ class Entry {
   public:
     bool Active() const { return active_; }
     // 要求が出たフレームに呼ぶ。held はその時に押されているボタン（押したままの物は新しい入力にしない）。
-    void Begin(const Engine &engine, const Input &input, int screen_width, bool touch_enabled);
+    void Begin(const Engine &engine, const Input &input, int screen_width);
     void End() { active_ = false; }
     // 以後、毎フレーム。結果は engine.SubmitUi / CancelUi で返す。
     void Step(Engine &engine, u32 now, const Input &input, bool menu_open);
@@ -42,9 +42,9 @@ class Entry {
     void Cancel(Engine &engine);
     // 十字キーの押した瞬間とリピート。発火した方向を上・下・左・右の順のビットで返す。
     unsigned Fired(u16 held, u16 pressed, u32 now, bool *repeated);
-    void StepNumber(Engine &engine, u32 now, const Input &input, u16 pressed, bool touch_down, bool menu_open);
-    void StepList(Engine &engine, u32 now, const Input &input, u16 pressed, bool touch_down, bool menu_open);
-    void StepKey(Engine &engine, u32 now, const Input &input, bool touch_down, bool menu_open);
+    void StepNumber(Engine &engine, u32 now, const Input &input, u16 pressed);
+    void StepList(Engine &engine, u32 now, const Input &input, u16 pressed);
+    void StepKey(Engine &engine, u32 now, const Input &input);
     void SetValue(s32 value);
     Format DisplayFormat() const; // 実行の入力が 16 進なら 16 進で出す
     void KeepVisible();
@@ -54,14 +54,13 @@ class Entry {
     void DrawKey(Surface &surface, const Rect &box, float appear) const;
 
     bool active_ = false;
-    bool touch_ = false;
     int screen_width_ = 400;
     UiKind kind_ = UiKind::None;
     const ItemDef *def_ = nullptr;
     u16 item_ = kNoItem;
     u16 prev_held_ = 0;
-    bool prev_touch_ = false;
     u32 repeat_at_[4]{};
+    u32 select_at_ = 0;
     // 数値
     s32 value_ = 0, min_ = 0, max_ = 0, step_ = 1;
     // 選択

@@ -168,7 +168,7 @@ screen = [400, 240]
 "selection.luminance" = [0.62, 1.0]
 "selection.color" = [0xFF468C3E, 0xFF84CC66]
 
-# D.4: 書体と表記。置換はメニューを移す次段で適用する。
+# D.4: 書体と表記。描画と幅の測定に同じ置換を使う。
 "font.main.name" = "美咲ゴシック第2"
 "font.main.metrics" = [8, 8, 4]
 "font.number.name" = "PixelMplus"
@@ -191,13 +191,19 @@ screen = [400, 240]
 "text.dialog_title" = "確認"
 "text.changed_suffix" = "変更"
 "text.hold_cancel" = "はなすと取消"
+"text.state.disabled" = "無効: 今は使えません"
+"text.state.pending" = "適用で反映"
+"text.state.wait" = "待機: ホットキーで切り替えます"
+"text.state.reserved" = "予約: X か閉じる時の適用で実行します"
+"text.state.on" = "ON: 効果が入っています"
+"text.state.locked" = "値を固定中"
 
 # D.5
 "icon.button.round" = [11, 11, 5]
 "icon.button.shoulder" = [13, 11, 3]
 "icon.button.letter" = [5, 7]
 "icon.dpad" = [11, 11, 5, 1, 20]
-"icon.plus" = [5, 5, 1]
+"icon.plus" = [5, 5, 2]
 "icon.color.bar" = [0xFFF4F8EC, 0xFF243F28, 0xFF9FD59A, 0xFFE08A00]
 "icon.color.paper" = [0xFF3B7D3F, 0xFFFFFFFF, 0xFF2C5E30, 0xFFFFCF3A]
 "hotkey.mark.size" = [5, 5]
@@ -249,7 +255,8 @@ screen = [400, 240]
 "titlebg.window.image_size" = [256, 256] # 最大の窓 228×210 を覆う最小の2の冪。L4、32,768バイト
 "titlebg.selection.inset" = [2, 1, -4, -2]
 "titlebg.selection.boards" = 6
-"titlebg.selection.image_size" = [256, 16] # プレビュー専用の緑の停止見本。実機には登録しない
+"titlebg.selection.image_size" = [256, 16] # 帯の二重 L4 画像。各 2,048 バイト
+"titlebg.selection.update_frames" = 2
 "titlebg.fallback.window_overlay" = false
 "titlebg.fallback.selection" = 0xFF6DBB4B
 
@@ -260,6 +267,8 @@ screen = [400, 240]
 "trim.notice" = "wrap_and_grow"
 "trim.ellipsis" = "…"
 "trim.open_brackets" = "（([「『【 "
+"trim.line_start_forbidden" = "、。，．・：；？！.,:;!?)]｝}〉》」』】〕〗〙〛’”ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
+"trim.hang" = 8 # 禁則文字は内側の余白へ 1 字までぶら下げる
 
 # D.8
 "time.open" = 320

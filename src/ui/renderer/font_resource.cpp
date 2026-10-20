@@ -14,9 +14,7 @@ const game::lyt::FontResource &Fonts() {
         {ui_data::DashH, std::size(ui_data::DashH), core::design::ca2::Part::Dash[0], core::design::ca2::Part::Dash[1]},
         {ui_data::DashV, std::size(ui_data::DashV), core::design::ca2::Part::Dash[1], core::design::ca2::Part::Dash[0]},
         TitleBackgroundImage(0), TitleBackgroundImage(1), TitleBackgroundImage(2),
-#ifndef __3DS__
-        TitleBackgroundImage(3),
-#endif
+        TitleBackgroundImage(3), TitleBackgroundImage(4),
     };
     static const game::lyt::FontResource resource{
         font_data::Atlas, std::size(font_data::Atlas), font_data::Widths,

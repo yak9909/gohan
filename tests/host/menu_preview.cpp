@@ -3,10 +3,13 @@
 #include "features/menu_screen/menu_screen.hpp"
 #include "game/lyt/renderer.hpp"
 #include "ui/renderer/renderer.hpp"
+#include "features/menu_screen/canvas_surface.hpp"
+#include "menu/shell.hpp"
 #include <CTRPluginFramework.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cstdio>
 
 namespace gohan::game::lyt {
 namespace {
@@ -82,6 +85,9 @@ bool Resources(const std::filesystem::path &directory) {
     return atlas.good() && out.good() && textures.good();
 }
 bool Capture(const std::filesystem::path &directory, int index, int now) {
+    const auto resources = directory / ("resources-" + std::to_string(index));
+    std::filesystem::create_directories(resources);
+    if (!Resources(resources)) return false;
     std::ofstream out(directory / ("frame-" + std::to_string(index) + ".json"));
     out << "{\"at\":" << now << ",\"screens\":[";
     for (unsigned s = 0; s < 2; ++s) {
@@ -161,6 +167,39 @@ bool PartsCatalog(const std::filesystem::path &directory) {
     lyt::Present(canvas.Data());
     return Capture(directory, static_cast<int>(page), 0);
 }
+// 項目数の多い画面だけは PC 専用の定義を渡す。Shell・省略・描画は製品と同じ物。
+bool ScrollCatalog(const std::filesystem::path &directory) {
+    namespace menu = gohan::menu;
+    menu::ItemDef defs[25]{};
+    std::string labels[25];
+    labels[0] = "スクロールの見本";
+    for (unsigned n = 0; n < 25; ++n) {
+        auto &d = defs[n];
+        if (n) {
+            char text[96];
+            std::snprintf(text, sizeof(text), n == 12 || n == 14 ? "とても長い名前の見本の項目 %02u" : "見本の項目 %02u", n);
+            labels[n] = text;
+        }
+        d.key = "preview"; d.label = labels[n].c_str();
+        d.desc = "項目が多い時のスクロールの棒と、長い名前の省き方を見るための仮の項目です。";
+        d.control = n ? menu::Control::Toggle : menu::Control::Folder;
+        d.behavior = n ? menu::Behavior::Value : menu::Behavior::None;
+        d.source = n ? menu::Source::Setting : menu::Source::None;
+        d.parent = n ? 0 : menu::kNoItem;
+        d.first_child = n ? menu::kNoItem : 1;
+        d.next = n && n < 24 ? n + 1 : menu::kNoItem;
+        d.def = n % 3 == 0; d.min = 0; d.max = 1; d.step = 1;
+    }
+    menu::Engine engine(defs, 25); menu::Shell shell(engine, {});
+    engine.Open(0); engine.Press(menu::key::A, 0); engine.Select(14);
+    shell.Step(0, {}, false); shell.Step(400, {}, false);
+    renderer::Canvas canvas; canvas.Begin(lyt::Screen::Top);
+    gohan::features::menu_screen::CanvasSurface surface(canvas, lyt::Screen::Top);
+    shell.Draw(surface, 400);
+    if (surface.dropped() || surface.truncated()) return false;
+    lyt::Present(canvas.Data());
+    return Capture(directory, 0, 400);
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -168,6 +207,8 @@ int main(int argc, char **argv) {
     const std::filesystem::path directory(argv[1]);
     if (argc == 3 && std::string(argv[2]) == "--parts")
         return Resources(directory) && PartsCatalog(directory) ? 0 : 7;
+    if (argc == 3 && std::string(argv[2]) == "--scroll")
+        return Resources(directory) && ScrollCatalog(directory) ? 0 : 8;
     if (!Resources(directory) || !renderer::RendererFeature().Wire() ||
         !gohan::features::menu_screen::Feature().Wire()) return 3;
     using CTRPluginFramework::Fake;

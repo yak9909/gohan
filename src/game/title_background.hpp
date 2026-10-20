@@ -48,6 +48,9 @@ void Bake(const Sources *sources, Palette palette, unsigned width, unsigned heig
           std::uint8_t *out, std::uint64_t frame = 0);
 // クリーム色の黒→白へ写す係数だけを L4 の Morton 順（下位ニブルが先）で返す。
 void BakeWindowL4(const Sources *sources, unsigned width, unsigned height, std::uint8_t *out);
+// 帯の実寸だけ合成し、残りを 0 で初期化する。範囲外は拒否する。
+bool BakeSelectionL4(const Sources *sources, unsigned width, unsigned height, unsigned usedWidth,
+                     unsigned usedHeight, std::uint8_t *out, std::uint64_t frame);
 Status LoadSelf(Sources &out);
 const char *FailureText(Failure failure);
 } // namespace gohan::game::titlebg

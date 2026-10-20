@@ -4,16 +4,16 @@
 #include "menu/surface.hpp"
 
 namespace gohan::menu {
-// 通知の列。右から入り、一定時間おいて右へ出る。新しいものが入ると古いものは上へ押し上げられる。
-// 題と本文は 1 行ずつ（長い時は "..." で切る）。高さは一定。
+// 通知の列。右から入り、一定時間おいて右へ出る。積む位置は入りの間も固定する。
+// 題は 1 行、本文は 3 行まで折り返し、高さを増やす。
 class NoticeQueue {
   public:
-    static constexpr int kCapacity = 4;
+    static constexpr int kCapacity = 3;
 
     void Add(const Notice &notice, u32 now);
     bool Alive(u32 now) const;
-    // 描画の予算が足りない通知は描かない（文字の枠が 2 つ要る）。
-    void Draw(Surface &surface, u32 now) const;
+    // 本文を含む描画の予算が足りない通知は描かない。
+    void Draw(Surface &surface, u32 now, bool menu_open = true) const;
 
   private:
     struct Slot {
@@ -22,11 +22,8 @@ class NoticeQueue {
         char title[core::limits::MenuText]{};
         char message[core::limits::MenuText]{};
         u32 created = 0;
-        float from_y = 0.0f, target_y = 0.0f;
-        u32 moved_at = 0;
     };
     float X(const Slot &slot, int screen_width, u32 now) const;
-    float Y(const Slot &slot, u32 now) const;
     bool SlotAlive(const Slot &slot, u32 now) const;
 
     Slot slots_[kCapacity]{};

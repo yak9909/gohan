@@ -56,8 +56,8 @@ std::string Utf8(const char16_t *text, unsigned length) {
     return out;
 }
 
-bool BottomHasText(const std::string &needle) {
-    const auto &screen = lyt::Last().screens[1];
+bool TopHasText(const std::string &needle) {
+    const auto &screen = lyt::Last().screens[0];
     for (std::size_t i = 0; i < screen.count; ++i)
         if (screen.commands[i].kind == lyt::Kind::Text &&
             Utf8(screen.commands[i].text, screen.commands[i].length).find(needle) != std::string::npos)
@@ -81,59 +81,37 @@ int main() {
     Fake::keys = 0;
     assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == 0);
 
-    // Select で開く。下画面に帯が出て、上画面には何も出さない。
-    Press(CTRPluginFramework::Key::Select);
-    Frames(30);
-    const auto &bottom = lyt::Last().screens[1];
-    assert(bottom.count > 0 && lyt::Last().screens[0].count == 0);
-    assert(bottom.commands[0].kind == lyt::Kind::Rectangle && bottom.commands[0].bounds.x == 0 &&
-           bottom.commands[0].bounds.width == 160 && bottom.commands[0].bounds.height == 240);
-    assert(bottom.texts <= gohan::core::limits::RendererTexts && bottom.rectangles <= gohan::core::limits::RendererRects);
-    assert(BottomHasText("-* GOHAN *-") && BottomHasText(">見本"));
-
-    // A でフォルダに入る（ボタン）。行に触れて選ぶ（タッチ）。
-    Press(CTRPluginFramework::Key::A);
-    Frames(15);
-    assert(BottomHasText("-* GOHAN *- 見本"));
-    Fake::touching = true;
-    Fake::touchX = 40;
-    Fake::touchY = 25 + 2 * 18 + 6;
-    Frames(2);
-    Fake::touching = false;
-    Frames(15);
-    const auto &folder = lyt::Last().screens[1];
-    bool moved = false; // 選択の帯が 3 行目へ動いた
-    for (std::size_t i = 0; i < folder.count; ++i)
-        moved = moved || (folder.commands[i].kind == lyt::Kind::Rectangle && folder.commands[i].bounds.width == 150 &&
-                          folder.commands[i].bounds.y == 25 + 2 * 18);
-    assert(moved);
-    assert(folder.texts <= gohan::core::limits::RendererTexts);
-    // 行と帯の描画指示には、行の領域の切り抜きが付く。
-    unsigned clipped = 0;
-    for (std::size_t i = 0; i < folder.count; ++i)
-        clipped += folder.commands[i].clip.y == 25 && folder.commands[i].clip.height == 10 * 18 && folder.commands[i].clip.width == 158;
-    assert(clipped >= 10);
-
-    // 開発版の「自前描画の入・切」は上画面だけを使う。入れても下画面のメニューは消えず、
-    // 切っても描画の導入は（メニューが使うので）外れない。
-    const auto bottom_count = lyt::Last().screens[1].count;
-    renderer::Canvas dev;
-    dev.Begin(renderer::Screen::Top);
+    // 上画面にだけ描き、下画面へのタッチは何も変えない。
+    Press(CTRPluginFramework::Key::Select); Frames(30);
+    const auto &top = lyt::Last().screens[0];
+    assert(top.count > 0 && lyt::Last().screens[1].count == 0);
+    assert(top.commands[0].kind == lyt::Kind::Image && top.commands[0].bounds.x == 4);
+    assert(TopHasText("GOHAN") && TopHasText("見本"));
+    Press(CTRPluginFramework::Key::A); Frames(15);
+    assert(TopHasText("見本のフラグ") && TopHasText("OFF"));
+    Fake::touching = true; Fake::touchX = 40; Fake::touchY = 70; Frames(3);
+    Fake::touching = false; Frames(15);
+    bool selectedFirst = false;
+    for (std::size_t n = 0; n < top.count; ++n) {
+        const auto &c = top.commands[n];
+        selectedFirst |= c.kind == lyt::Kind::Rectangle && c.bounds.x == 26 && c.bounds.y == 29;
+    }
+    assert(selectedFirst && lyt::Last().screens[1].count == 0);
+    // 下画面の別の描画元を使っても、メニューの上画面を上書きしない。
+    const auto count = top.count;
+    renderer::Canvas dev; dev.Begin(renderer::Screen::Bottom);
     dev.FrameRect({20, 20, 120, 40}, 0xFFFFFFFFu);
-    assert(renderer::Commit(dev, renderer::Screen::Top) && renderer::SetEnabled(true));
-    Frames(3);
-    assert(lyt::Last().screens[0].count == 4 && lyt::Last().screens[1].count == bottom_count);
-    dev.Begin(renderer::Screen::Top);
-    assert(renderer::Commit(dev, renderer::Screen::Top) && renderer::SetEnabled(false));
-    Frames(3);
-    assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == bottom_count);
-    assert(renderer::ReadStatus() == renderer::Status::Ready);
+    assert(renderer::Commit(dev, renderer::Screen::Bottom) && renderer::SetEnabled(true)); Frames(3);
+    assert(lyt::Last().screens[1].count == 4 && lyt::Last().screens[0].count == count);
+    dev.Begin(renderer::Screen::Bottom);
+    assert(renderer::Commit(dev, renderer::Screen::Bottom) && renderer::SetEnabled(false)); Frames(3);
+    assert(lyt::Last().screens[1].count == 0 && renderer::ReadStatus() == renderer::Status::Ready);
 
     // 外（開発版の CTRPF の項目）からの要求で閉じる。閉じ切ったら空の描画を確定する。
     assert(menu_screen::RequestToggle());
     Frames(2);
     Frames(40);
-    assert(lyt::Last().screens[1].count == 0);
+    assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == 0);
     const int presents_after_close = lyt::Presents();
     Frames(5);
     assert(lyt::Presents() == presents_after_close + 5); // 描画の部品は毎フレーム、最新の確定を渡す
