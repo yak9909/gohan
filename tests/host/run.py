@@ -50,6 +50,7 @@ def main() -> int:
     run(['tests/host/test_lyt_resources.cpp', 'src/game/lyt/recording_resources.cpp'],
         'test_lyt_resources', ('tests/host', 'src'))
     run(['tests/host/test_lyt_engine.cpp', *lyt], 'test_lyt_engine', ('tests/host', 'src'))
+    run(['tests/host/test_lyt_selection.cpp', *lyt], 'test_lyt_selection', ('tests/host', 'src'))
 
     # メニュー: 試験用の spec と、収録している見本の spec から、それぞれ表を生成して試験する。
     codegen = root / 'tools/gohan_tools/codegen/menu.py'

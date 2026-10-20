@@ -3,15 +3,13 @@
 #include "menu/modal.hpp"
 #include "menu/notices.hpp"
 #include "menu/panel.hpp"
-#include "menu/touch_scroll.hpp"
 
-// メニューの画面。エンジンに入力（ボタンとタッチ）を渡し、帯・説明・ダイアログ・入力の枠・通知を描く。
+// 上画面のメニュー。エンジンにボタンを渡し、一覧・説明・確認・入力の枠・通知を描く。
 // 描画先は Surface、時刻はミリ秒で、どちらも引数で受ける（CTRPF にもゲームにも依存しない）。
 // 呼び出しは毎フレーム 1 つのスレッドから（Step → Draw の順）。
 namespace gohan::menu {
 struct ShellConfig {
-    int screen_width = 320; // 描く画面の幅（下画面 320、上画面 400）
-    bool touch = true;      // その画面がタッチできるか
+    int screen_width = 400;
 };
 
 class Shell {
@@ -33,21 +31,15 @@ class Shell {
 
   private:
     static void OnNotice(void *self, const Notice &notice);
-    void Touch(u32 now, const Input &input, bool down, bool up);
-    void TapRow(int row, u32 now);
 
     Engine &engine_;
     ShellConfig config_;
     Panel panel_;
     Entry entry_;
     NoticeQueue notices_;
-    TouchScroll scroll_;
     motion::Tween modal_;
     u32 now_ = 0;
     u16 prev_held_ = 0;
-    bool prev_touch_ = false;
     bool was_modal_ = false;
-    bool dragging_list_ = false;
-    int press_row_ = -1;
 };
 } // namespace gohan::menu

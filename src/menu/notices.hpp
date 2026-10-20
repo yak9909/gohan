@@ -5,15 +5,15 @@
 
 namespace gohan::menu {
 // 通知の列。右から入り、一定時間おいて右へ出る。新しいものが入ると古いものは上へ押し上げられる。
-// 題と本文は 1 行ずつ（長い時は "..." で切る）。高さは一定。
+// 題は 1 行、本文は 3 行まで折り返し、高さを増やす。
 class NoticeQueue {
   public:
-    static constexpr int kCapacity = 4;
+    static constexpr int kCapacity = 3;
 
     void Add(const Notice &notice, u32 now);
     bool Alive(u32 now) const;
-    // 描画の予算が足りない通知は描かない（文字の枠が 2 つ要る）。
-    void Draw(Surface &surface, u32 now) const;
+    // 本文を含む描画の予算が足りない通知は描かない。
+    void Draw(Surface &surface, u32 now, bool menu_open = true) const;
 
   private:
     struct Slot {

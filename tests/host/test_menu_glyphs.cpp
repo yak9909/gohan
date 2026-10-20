@@ -51,8 +51,8 @@ void Audit(Rig &rig) {
     rig.shell.Draw(surface, rig.now);
     // 同じ場面を本物の描画の部品へ渡し、文字の枠（長さごとの枠の数）や予算で捨てられないことも確かめる。
     gohan::ui::renderer::Canvas canvas;
-    canvas.Begin(gohan::ui::renderer::Screen::Bottom);
-    gohan::features::menu_screen::CanvasSurface real(canvas, gohan::ui::renderer::Screen::Bottom);
+    canvas.Begin(gohan::ui::renderer::Screen::Top);
+    gohan::features::menu_screen::CanvasSurface real(canvas, gohan::ui::renderer::Screen::Top);
     rig.shell.Draw(real, rig.now);
     if (real.dropped() != 0 || real.truncated() != 0) std::fprintf(stderr, "場面 %d: 捨てた %d、切った %d\n", scenes, real.dropped(), real.truncated());
     assert(real.dropped() == 0 && real.truncated() == 0);
@@ -157,19 +157,16 @@ void Scenes() {
 int main() {
     Scenes();
     // 狙いの場面が描かれたこと（描かれていない場面の文字は確かめられない）。
-    for (const char *marker : {"-* GOHAN *-", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",
-                               "全てのボタンを離す", "ボタンを押す", "変更を適用しますか？", "を実行しますか？", "キャンセル",
-                               "を有効にしました", "を実行しました", "A決定", "HOTKEY:"}) {
+    for (const char *marker : {"GOHAN", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",
+                               "ボタンを押す", "変更を適用しますか？", "を実行しますか？", "キャンセル",
+                               "を有効にしました", "を実行しました", "決定", "ホットキー"}) {
         if (seen.find(marker) == std::string::npos) std::fprintf(stderr, "描かれていない場面: %s\n", marker);
         assert(seen.find(marker) != std::string::npos);
     }
-    // 字形の表に無い文字のうち、報告済みの物（「予約」「待機」の予・約・機）だけは許す。
-    // ここに無い文字が増えたら、メニューの文言か字形の表を直す。
-    const std::set<std::string> known = {"予", "約", "機"};
     for (const std::string &one : missing) {
-        std::printf("字形が無い文字: %s%s\n", one.c_str(), known.count(one) ? "（報告済み）" : "");
-        assert(known.count(one));
+        std::printf("字形が無い文字: %s\n", one.c_str());
     }
+    assert(missing.empty());
     std::puts("menu glyphs: ok");
     return 0;
 }

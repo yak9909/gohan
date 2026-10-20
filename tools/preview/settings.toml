@@ -1,5 +1,5 @@
-# メニューを描く画面の選択はここだけ。実機向けのコードは変更しない。
-screen = "bottom"
+# 製品と同じ上画面で確認する。
+screen = "top"
 frame_ms = 16
 background = [32, 40, 48]
 

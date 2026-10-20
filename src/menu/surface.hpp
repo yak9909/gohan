@@ -1,6 +1,7 @@
 #pragma once
 #include "menu/motion.hpp"
 #include <string_view>
+#include <string>
 
 // メニューが描く先。描画の部品（ui）には依存せず、組み立て側が実装を渡す。
 // 色は 0xAARRGGBB。座標は画面の左上が原点の画素。
@@ -23,6 +24,10 @@ class Surface {
     // この画面で、あと何個描けるか（描画の予算）。優先度の低い物から省くのに使う。
     virtual int TextsLeft() const = 0;
     virtual int RectsLeft() const = 0;
+    // 名前は描画先との契約。menu は UI の型やアトラスに依存しない。
+    virtual void Sprite(int, int, std::string_view, u32 = 0xFFFFFFFFu) {}
+    virtual void Box(Rect bounds, std::string_view, u32 color = 0xFFFFFFFFu) { Fill(bounds, color); }
+    virtual void Pattern(Rect, std::string_view, u32 = 0xFFFFFFFFu) {}
 
   protected:
     ~Surface() = default;
@@ -43,13 +48,16 @@ inline u32 WithAlpha(u32 color, float alpha) {
 }
 
 inline constexpr std::size_t kLineBytes = 96;
+// 設計表の表記を描画時に統一する。幅の測定にも同じ結果を使う。
+std::string DisplayText(std::string_view text);
 
-// 幅に収まらなければ "..." を付けて切る。収まる時は text をそのまま返す。buffer は容量 capacity（終端を含む）。
+// 幅に収まらなければ末尾の開き括弧と空白を落とし、設計表の省略記号を付ける。
+// 収まる時は text をそのまま返す。buffer は容量 capacity（終端を含む）。
 // 1 つの文字列の最大字数（描画の 1 枠）も超えないようにする。
 std::string_view Trim(const Surface &surface, std::string_view text, int max_width, char *buffer,
                       std::size_t capacity, bool numeric = false);
 // 幅で折り返して lines（各 kLineBytes）に入れ、行数を返す。max_lines に入りきらなければ truncated を立て、
-// 最後の行を "..." 付きで切る。
+// 最後の行を省略記号付きで切る。
 int Wrap(const Surface &surface, std::string_view text, int max_width, char (*lines)[kLineBytes], int max_lines,
          bool *truncated);
 } // namespace gohan::menu

@@ -24,6 +24,7 @@ Drawing drawing;
 Status state = Status::Stopped;
 // 取り外しの排出が終わったあとの状態。
 Status afterStop = Status::Stopped;
+std::uint32_t animationFrame = 0;
 
 Status Convert(game::lyt::InstallResult result) {
     using game::lyt::InstallResult;
@@ -77,6 +78,7 @@ void FrameStep() {
     for (unsigned i = 0; i < 2; ++i)
         if (frames[i].ReadIfNew(drawing.screens[i], frameGeneration[i]) == core::MailRead::Updated)
             ++drawing.revisions[i];
+    StepTitleAnimation(animationFrame++, drawing);
     if (state == Status::Ready && !game::lyt::Present(drawing))
         BeginStop(Status::PresentFailed);
     published.TryPublish(state);
@@ -89,6 +91,7 @@ bool Wire() {
     if (change.result != core::frame::Result::Queued &&
         change.result != core::frame::Result::Unchanged)
         return false;
+    StartTitleAnimation();
     published.TryPublish(Status::Waiting);
     return true;
 }
@@ -96,6 +99,7 @@ bool Wire() {
 // ゲームの毎フレームのフックを止める前に、資源を排出して返す。
 // そのため、この機能の終了の段は「ゲームのフック」とし、フックの機能より後に登録する。
 void Shutdown() {
+    StopTitleAnimation();
     for (unsigned i = 0; i < ClientCount; ++i)
         for (unsigned tries = 0; tries < 100 && !requests[i].TryPublish(false); ++tries)
             game::lyt::WaitMilliseconds(1);

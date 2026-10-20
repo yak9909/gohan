@@ -22,18 +22,9 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
                     '--out', str(menu_gen)], cwd=root, check=True)
     feature_path = root / 'src/features/menu_screen/menu_screen.cpp'
     feature = feature_path
-    # 上画面の予行だけ、画面定数を変えた生成ソースを使う。既存のロジックや座標は変更しない。
-    # 置換対象が変わったら黙って別のコードを描かず、ビルドを止める。
     adaptation = None
-    if screen == 'top':
-        original = feature_path.read_text(encoding='utf-8')
-        before = 'constexpr renderer::Screen kScreen = renderer::Screen::Bottom;'
-        after = 'constexpr renderer::Screen kScreen = renderer::Screen::Top;'
-        if original.count(before) != 1:
-            raise ValueError('画面定数が変更されています。PC 用の画面切り替えを確認してください')
-        feature = directory / 'menu_screen_top.cpp'
-        feature.write_text(original.replace(before, after), encoding='utf-8')
-        adaptation = {'before': before, 'after': after}
+    if screen != 'top':
+        raise ValueError('CA2 のメニューは上画面だけに描きます')
     engine = [root / 'src/menu' / (name + '.cpp') for name in (
         'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'hotkey',
         'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'shell', 'sample_items')]

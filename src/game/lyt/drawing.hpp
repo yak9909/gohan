@@ -8,7 +8,7 @@ namespace gohan::game::lyt {
 enum class Screen : unsigned { Top, Bottom };
 enum class Font : unsigned { Main, Numeric };
 enum class Kind : unsigned { Rectangle, Text, Image, Repeat };
-enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, TitleAlpha, TitleLuminance, TitleWindow, TitleSelection, Count };
+enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, TitleAlpha, TitleLuminance, TitleWindow, TitleSelection, TitleSelectionBack, Count };
 struct Rect {
     int x = 0, y = 0, width = 0, height = 0;
 };

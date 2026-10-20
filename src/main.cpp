@@ -14,13 +14,13 @@ void ToggleRenderer(CTRPluginFramework::MenuEntry *) {
     namespace renderer = gohan::ui::renderer;
     static bool requested = false;
     static renderer::Canvas canvas;
-    // 上画面だけを使う（下画面は gohan のメニューが使う）。切るときは空の上画面を確定する。
-    canvas.Begin(renderer::Screen::Top);
+    // 下画面だけを使う（上画面は gohan のメニューが使う）。切るときは空の下画面を確定する。
+    canvas.Begin(renderer::Screen::Bottom);
     if (!requested) {
         canvas.FrameRect({20, 20, 120, 40}, 0xFFFFFFFFu);
         canvas.Text(32, 32, "gohan", 0xFFFFFFFFu, 2);
     }
-    if (renderer::Commit(canvas, renderer::Screen::Top) && renderer::SetEnabled(!requested))
+    if (renderer::Commit(canvas, renderer::Screen::Bottom) && renderer::SetEnabled(!requested))
         requested = !requested;
 }
 
@@ -63,9 +63,9 @@ int main() {
     menu.OnOpening = gohan::features::menu_screen::ShouldOpenCtrpfMenu;
 #ifdef GOHAN_DEV
     menu += new MenuEntry("開発: 自前描画の入・切", nullptr, ToggleRenderer,
-                          "上画面の枠と gohan を要求します。導入結果は状態表示で確認できます。");
+                          "下画面の枠と gohan を要求します。導入結果は状態表示で確認できます。");
     menu += new MenuEntry("開発: gohan のメニューの開閉", nullptr, ToggleGohanMenu,
-                          "下画面の gohan のメニューを開閉します。Select 単独でも開閉できます。");
+                          "上画面の gohan のメニューを開閉します。Select 単独でも開閉できます。");
 #endif
     features.WireAll();
     menu.Run();

@@ -4,127 +4,1141 @@
       "name": "states",
       "label": "開閉・フォルダ・行の状態・予約と実行・通知",
       "events": [
-        {"at":32,"buttons":["Select"]}, {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]}, {"at":532,"buttons":[]},
-        {"at":800,"buttons":["A"]}, {"at":832,"buttons":[]},
-        {"at":960,"buttons":["X"]}, {"at":992,"buttons":[]},
-        {"at":1264,"buttons":["Select"]}, {"at":1296,"buttons":[]},
-        {"at":1760,"buttons":["L","Up"]}, {"at":1792,"buttons":[]},
-        {"at":2208,"buttons":["Select"]}, {"at":2240,"buttons":[]},
-        {"at":2450,"buttons":["A"]}, {"at":2482,"buttons":[]},
-        {"at":2700,"buttons":["Down"]}, {"at":2732,"buttons":[]},
-        {"at":2800,"buttons":["Down"]}, {"at":2832,"buttons":[]},
-        {"at":2900,"buttons":["A"]}, {"at":2932,"buttons":[]},
-        {"at":3152,"buttons":["X"]}, {"at":3184,"buttons":[]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 800,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 832,
+          "buttons": []
+        },
+        {
+          "at": 960,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 992,
+          "buttons": []
+        },
+        {
+          "at": 1264,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1296,
+          "buttons": []
+        },
+        {
+          "at": 1760,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 1792,
+          "buttons": []
+        },
+        {
+          "at": 2208,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 2240,
+          "buttons": []
+        },
+        {
+          "at": 2450,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 2482,
+          "buttons": []
+        },
+        {
+          "at": 2700,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 2732,
+          "buttons": []
+        },
+        {
+          "at": 2800,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 2832,
+          "buttons": []
+        },
+        {
+          "at": 2900,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 2932,
+          "buttons": []
+        },
+        {
+          "at": 3152,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 3184,
+          "buttons": []
+        }
       ],
       "captures": [
-        {"at":0,"name":"closed","empty":true},
-        {"at":80,"name":"opening-048"},
-        {"at":160,"name":"opening-128"},
-        {"at":240,"name":"opening-208"},
-        {"at":400,"name":"opened","contains":["GOHAN",">見本"]},
-        {"at":760,"name":"folder-off","contains":["見本のフラグ","OFF"]},
-        {"at":900,"name":"pending-on","contains":["ON"]},
-        {"at":1200,"name":"standby","contains":["待機"]},
-        {"at":1340,"name":"closing-076"},
-        {"at":1450,"name":"closing-186"},
-        {"at":1700,"name":"closed-again","empty":true},
-        {"at":1792,"name":"notice-032","contains":["有効にしました"]},
-        {"at":1900,"name":"notice-140","contains":["有効にしました"]},
-        {"at":2150,"name":"notice","contains":["有効にしました"]},
-        {"at":2650,"name":"active-on","contains":["ON"]},
-        {"at":3100,"name":"reserved","contains":["予約"]},
-        {"at":3300,"name":"ok","contains":["OK"]}
+        {
+          "at": 0,
+          "name": "closed",
+          "empty": true
+        },
+        {
+          "at": 80,
+          "name": "opening-048"
+        },
+        {
+          "at": 160,
+          "name": "opening-128"
+        },
+        {
+          "at": 240,
+          "name": "opening-208"
+        },
+        {
+          "at": 400,
+          "name": "opened",
+          "contains": [
+            "GOHAN",
+            "見本"
+          ]
+        },
+        {
+          "at": 760,
+          "name": "folder-off",
+          "contains": [
+            "見本のフラグ",
+            "OFF"
+          ]
+        },
+        {
+          "at": 900,
+          "name": "pending-on",
+          "contains": [
+            "ON"
+          ]
+        },
+        {
+          "at": 1200,
+          "name": "standby",
+          "contains": [
+            "待機"
+          ]
+        },
+        {
+          "at": 1340,
+          "name": "closing-076"
+        },
+        {
+          "at": 1450,
+          "name": "closing-186"
+        },
+        {
+          "at": 1700,
+          "name": "closed-again",
+          "empty": true
+        },
+        {
+          "at": 1792,
+          "name": "notice-032",
+          "contains": [
+            "有効にしました"
+          ]
+        },
+        {
+          "at": 1900,
+          "name": "notice-140",
+          "contains": [
+            "有効にしました"
+          ]
+        },
+        {
+          "at": 2150,
+          "name": "notice",
+          "contains": [
+            "有効にしました"
+          ]
+        },
+        {
+          "at": 2650,
+          "name": "active-on",
+          "contains": [
+            "ON"
+          ]
+        },
+        {
+          "at": 3100,
+          "name": "reserved",
+          "contains": [
+            "予約"
+          ]
+        },
+        {
+          "at": 3300,
+          "name": "ok",
+          "contains": [
+            "OK"
+          ]
+        }
       ]
     },
     {
       "name": "entries",
       "label": "選択と数値の入力",
       "events": [
-        {"at":32,"buttons":["Select"]}, {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]}, {"at":532,"buttons":[]},
-        {"at":700,"buttons":["Up"]}, {"at":732,"buttons":[]},
-        {"at":900,"buttons":["A"]}, {"at":932,"buttons":[]},
-        {"at":1200,"buttons":["A"]}, {"at":1232,"buttons":[]},
-        {"at":1552,"buttons":["B"]}, {"at":1584,"buttons":[]},
-        {"at":1700,"buttons":["Down"]}, {"at":1732,"buttons":[]},
-        {"at":1850,"buttons":["A"]}, {"at":1882,"buttons":[]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Up"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1200,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1232,
+          "buttons": []
+        },
+        {
+          "at": 1300,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1332,
+          "buttons": []
+        },
+        {
+          "at": 1552,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "at": 1584,
+          "buttons": []
+        },
+        {
+          "at": 1700,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1732,
+          "buttons": []
+        },
+        {
+          "at": 1850,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1882,
+          "buttons": []
+        },
+        {
+          "at": 1900,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1916,
+          "buttons": []
+        },
+        {
+          "at": 1940,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1956,
+          "buttons": []
+        },
+        {
+          "at": 1980,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1996,
+          "buttons": []
+        },
+        {
+          "at": 2020,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 2036,
+          "buttons": []
+        },
+        {
+          "at": 2060,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 2076,
+          "buttons": []
+        }
       ],
       "captures": [
-        {"at":1100,"name":"values-folder","contains":["見本の方法","見本の量"]},
-        {"at":1248,"name":"selection-048","contains":["自由","マス単位"]},
-        {"at":1450,"name":"selection","contains":["自由","マス単位"]},
-        {"at":1898,"name":"number-048","contains":["決定","取消"]},
-        {"at":2100,"name":"number","contains":["決定","取消"]}
+        {
+          "at": 1100,
+          "name": "values-folder",
+          "contains": [
+            "見本の方法",
+            "見本の量"
+          ]
+        },
+        {
+          "at": 1248,
+          "name": "selection-048",
+          "contains": [
+            "自由",
+            "マス単位"
+          ]
+        },
+        {
+          "at": 1450,
+          "name": "selection",
+          "contains": [
+            "自由",
+            "マス単位"
+          ]
+        },
+        {
+          "at": 1898,
+          "name": "number-048",
+          "contains": [
+            "見本の量",
+            "適用で反映"
+          ]
+        },
+        {
+          "at": 2100,
+          "name": "number",
+          "contains": [
+            "見本の量",
+            "適用で反映"
+          ]
+        }
       ]
     },
     {
       "name": "hold",
       "label": "長押しの進み棒と全適用の確認",
       "events": [
-        {"at":32,"buttons":["Select"]}, {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]}, {"at":532,"buttons":[]},
-        {"at":700,"buttons":["A"]}, {"at":732,"buttons":[]},
-        {"at":900,"buttons":["X"]}, {"at":1650,"buttons":[]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 1650,
+          "buttons": []
+        }
       ],
       "captures": [
-        {"at":1000,"name":"progress-100","contains":["全適用"]},
-        {"at":1200,"name":"progress-300","contains":["全適用"]},
-        {"at":1400,"name":"progress-500","contains":["全適用"]},
-        {"at":1660,"name":"confirm-early","contains":["全ての変更を"]},
-        {"at":1900,"name":"confirm","contains":["全ての変更を","キャンセル"]}
+        {
+          "at": 1000,
+          "name": "progress-100",
+          "contains": [
+            "全適用"
+          ]
+        },
+        {
+          "at": 1200,
+          "name": "progress-300",
+          "contains": [
+            "全適用"
+          ]
+        },
+        {
+          "at": 1272,
+          "name": "progress-372",
+          "contains": [
+            "全適用"
+          ]
+        },
+        {
+          "at": 1400,
+          "name": "progress-500",
+          "contains": [
+            "全適用"
+          ]
+        },
+        {
+          "at": 1660,
+          "name": "confirm-early",
+          "contains": [
+            "全ての変更を"
+          ]
+        },
+        {
+          "at": 1900,
+          "name": "confirm",
+          "contains": [
+            "全ての変更を",
+            "キャンセル"
+          ]
+        }
       ]
     },
     {
       "name": "dialogs",
       "label": "閉じる前とホットキー実行前の確認",
       "events": [
-        {"at":32,"buttons":["Select"]}, {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]}, {"at":532,"buttons":[]},
-        {"at":700,"buttons":["A"]}, {"at":732,"buttons":[]},
-        {"at":900,"buttons":["Select"]}, {"at":932,"buttons":[]},
-        {"at":1250,"buttons":["A"]}, {"at":1282,"buttons":[]},
-        {"at":1800,"buttons":["L","Down"]}, {"at":1832,"buttons":[]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1250,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1282,
+          "buttons": []
+        },
+        {
+          "at": 1800,
+          "buttons": [
+            "L",
+            "Down"
+          ]
+        },
+        {
+          "at": 1832,
+          "buttons": []
+        }
       ],
       "captures": [
-        {"at":950,"name":"close-confirm-050","contains":["変更を適用しますか？"]},
-        {"at":1150,"name":"close-confirm","contains":["変更を適用しますか？","キャンセル"]},
-        {"at":1850,"name":"action-confirm-050","contains":["見本のスタンプ"]},
-        {"at":2100,"name":"action-confirm","contains":["実行しますか？","キャンセル"]}
+        {
+          "at": 950,
+          "name": "close-confirm-050",
+          "contains": [
+            "変更を適用しますか？"
+          ]
+        },
+        {
+          "at": 1150,
+          "name": "close-confirm",
+          "contains": [
+            "変更を適用しますか？",
+            "キャンセル"
+          ]
+        },
+        {
+          "at": 1850,
+          "name": "action-confirm-050",
+          "contains": [
+            "見本のスタンプ"
+          ]
+        },
+        {
+          "at": 2100,
+          "name": "action-confirm",
+          "contains": [
+            "実行しますか？",
+            "キャンセル"
+          ]
+        }
       ]
     },
     {
       "name": "device-calibration",
       "label": "実機撮影時の予約・選択と撮影入力",
       "events": [
-        {"at":32,"buttons":["Select"]},
-        {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]},
-        {"at":532,"buttons":[]},
-        {"at":700,"buttons":["Down"]},
-        {"at":732,"buttons":[]},
-        {"at":900,"buttons":["Down"]},
-        {"at":932,"buttons":[]},
-        {"at":1100,"buttons":["A"]},
-        {"at":1132,"buttons":[]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        }
       ],
       "captures": [
-        {"at":1400,"name":"stamp-reserved","contains":["予約"]}
+        {
+          "at": 1400,
+          "name": "stamp-reserved",
+          "contains": [
+            "予約"
+          ]
+        }
       ]
     },
     {
       "name": "device-capture-input",
       "label": "撮影操作による長押しと選択移動",
       "events": [
-        {"at":32,"buttons":["Select"]},
-        {"at":64,"buttons":[]},
-        {"at":500,"buttons":["A"]},
-        {"at":532,"buttons":[]},
-        {"at":2100,"buttons":["L"]},
-        {"at":2120,"buttons":["L","Down"]}
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 2100,
+          "buttons": [
+            "L"
+          ]
+        },
+        {
+          "at": 2120,
+          "buttons": [
+            "L",
+            "Down"
+          ]
+        }
       ],
       "captures": [
-        {"at":2120,"name":"flag-capture-input","contains":["全戻し"]}
+        {
+          "at": 2120,
+          "name": "flag-capture-input",
+          "contains": [
+            "全戻し"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ca2-key",
+      "label": "CA2 の割り当てと SELECT の取消・無効",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Y"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 1000,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 1200,
+          "buttons": []
+        },
+        {
+          "at": 1400,
+          "buttons": [
+            "Y"
+          ]
+        },
+        {
+          "at": 1432,
+          "buttons": []
+        },
+        {
+          "at": 1700,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1732,
+          "buttons": []
+        },
+        {
+          "at": 1900,
+          "buttons": [
+            "Y"
+          ]
+        },
+        {
+          "at": 1932,
+          "buttons": []
+        },
+        {
+          "at": 2200,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 2850,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 960,
+          "name": "waiting",
+          "contains": [
+            "ボタンを押す",
+            "SELECT: 取消"
+          ]
+        },
+        {
+          "at": 1100,
+          "name": "recording",
+          "contains": [
+            "押してはなすと決定"
+          ]
+        },
+        {
+          "at": 1260,
+          "name": "assigned",
+          "contains": [
+            "見本のフラグ"
+          ]
+        },
+        {
+          "at": 1800,
+          "name": "cancelled",
+          "contains": [
+            "見本のフラグ"
+          ]
+        },
+        {
+          "at": 2900,
+          "name": "disabled",
+          "contains": [
+            "見本のフラグ"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ca2-disabled",
+      "label": "CA2 の値・無効な選択帯",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Up"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1300,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1332,
+          "buttons": []
+        },
+        {
+          "at": 1500,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1532,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1200,
+          "name": "values",
+          "contains": [
+            "見本の方法",
+            "見本の量"
+          ]
+        },
+        {
+          "at": 1800,
+          "name": "disabled-row",
+          "contains": [
+            "マス単位",
+            "今は使えません"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ca2-notices",
+      "label": "CA2 の通知の折り返しと 3 件の並び",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 1600,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 1632,
+          "buttons": []
+        },
+        {
+          "at": 1750,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 1782,
+          "buttons": []
+        },
+        {
+          "at": 1900,
+          "buttons": [
+            "L",
+            "Down"
+          ]
+        },
+        {
+          "at": 1932,
+          "buttons": []
+        },
+        {
+          "at": 2150,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 2182,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 2220,
+          "name": "entering",
+          "contains": [
+            "ACTION"
+          ]
+        },
+        {
+          "at": 2600,
+          "name": "settled",
+          "contains": [
+            "ACTION",
+            "無効にしました"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ca2-reserved",
+      "label": "CA2 の 2 件の適用待ちと閉じる前の確認",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1000,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1032,
+          "buttons": []
+        },
+        {
+          "at": 1200,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1232,
+          "buttons": []
+        },
+        {
+          "at": 1600,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1632,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1500,
+          "name": "reserved",
+          "contains": [
+            "予約",
+            "2変更"
+          ]
+        },
+        {
+          "at": 1900,
+          "name": "close-confirm",
+          "contains": [
+            "確認",
+            "変更を適用しますか？"
+          ]
+        }
       ]
     }
   ]

@@ -1,11 +1,12 @@
 #include "menu/surface.hpp"
 #include "core/limits.hpp"
+#include "ui_values.hpp"
 #include <cstring>
 #include <initializer_list>
 
 namespace gohan::menu {
 namespace {
-// 1 つの文字列は最大 RendererChars 字。省略の "..." を付けても収まるよう、折り返す行は 3 字少なくする。
+// 1 つの文字列は最大 RendererChars 字。折り返しには省略記号の余裕を残す。
 constexpr std::size_t kMaxChars = core::limits::RendererChars;
 constexpr std::size_t kLineChars = kMaxChars - 3;
 
@@ -40,13 +41,34 @@ std::size_t FitPrefix(const Surface &surface, std::string_view text, int width, 
 }
 } // namespace
 
+std::string DisplayText(std::string_view text) {
+    std::string result(text);
+    const auto &from = core::design::ca2::Text::Replace::From;
+    const auto &to = core::design::ca2::Text::Replace::To;
+    for (std::size_t n = 0; n < from.size(); ++n) {
+        const std::size_t len = std::strlen(from[n]);
+        if (!len) continue;
+        for (std::size_t at = 0; (at = result.find(from[n], at)) != std::string::npos;) {
+            result.replace(at, len, to[n]); at += std::strlen(to[n]);
+        }
+    }
+    return result;
+}
+
 std::string_view Trim(const Surface &surface, std::string_view text, int max_width, char *buffer,
                       std::size_t capacity, bool numeric) {
     std::size_t chars = 0;
     for (std::size_t at = 0; at < text.size(); at += CharBytes(text, at)) ++chars;
     if (chars <= kMaxChars && surface.Measure(text, numeric) <= max_width) return text;
-    const std::size_t fit = FitPrefix(surface, text, max_width - surface.Measure("...", numeric), kLineChars, numeric);
-    return Store(buffer, capacity, text.substr(0, fit), "...");
+    std::size_t fit = FitPrefix(surface, text, max_width - surface.Measure(core::design::ca2::Trim::Ellipsis, numeric), kLineChars, numeric);
+    const std::string_view brackets = core::design::ca2::Trim::OpenBrackets;
+    while (fit) {
+        std::size_t at = fit - 1;
+        while (at && (static_cast<unsigned char>(text[at]) & 0xC0) == 0x80) --at;
+        if (brackets.find(text.substr(at, fit - at)) == std::string_view::npos) break;
+        fit = at;
+    }
+    return Store(buffer, capacity, text.substr(0, fit), core::design::ca2::Trim::Ellipsis);
 }
 
 int Wrap(const Surface &surface, std::string_view text, int max_width, char (*lines)[kLineBytes], int max_lines,
@@ -69,9 +91,9 @@ int Wrap(const Surface &surface, std::string_view text, int max_width, char (*li
             if (truncated) *truncated = true;
             char* const last = lines[count - 1];
             const std::size_t fit =
-                FitPrefix(surface, std::string_view(last), max_width - surface.Measure("..."), kLineChars, false);
+                FitPrefix(surface, std::string_view(last), max_width - surface.Measure(core::design::ca2::Trim::Ellipsis), kLineChars, false);
             last[fit] = '\0';
-            std::strcat(last, "...");
+            std::strcat(last, core::design::ca2::Trim::Ellipsis);
             return count;
         }
         start = at;

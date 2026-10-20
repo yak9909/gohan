@@ -10,7 +10,7 @@ namespace menu_test {
 using namespace gohan::menu;
 
 struct Command {
-    enum Kind { Fill, Outline, Text } kind;
+    enum Kind { Fill, Outline, Text, Sprite, Slice, Pattern } kind;
     Rect bounds;
     u32 color;
     std::string text;
@@ -23,7 +23,7 @@ struct Command {
 class RecordingSurface : public Surface {
   public:
     // text_limit・rect_limit は、受け付ける描画の予算（既定は ui::renderer の予算）。
-    explicit RecordingSurface(int width = 320, int text_limit = static_cast<int>(gohan::core::limits::RendererTexts),
+    explicit RecordingSurface(int width = 400, int text_limit = static_cast<int>(gohan::core::limits::RendererTexts),
                               int rect_limit = static_cast<int>(gohan::core::limits::RendererRects))
         : width_(width), text_limit_(text_limit), rect_limit_(rect_limit) {}
 
@@ -66,6 +66,9 @@ class RecordingSurface : public Surface {
     int TextsLeft() const override { return text_limit_ - texts; }
     int RectsLeft() const override { return rect_limit_ - rects; }
 
+    void Sprite(int x, int y, std::string_view name, u32 color) override { Add(Command::Sprite, {x, y, 1, 1}, color, std::string(name), false, 1, 1); }
+    void Box(Rect r, std::string_view name, u32 color) override { Add(Command::Slice, r, color, std::string(name), false, 1, name == "window" || name == "band9" || name == "box" ? 9 : 3); }
+    void Pattern(Rect r, std::string_view name, u32 color) override { Add(Command::Pattern, r, color, std::string(name), false, 1, 1); }
     // ---- 試験の補助 ----
     const Command *FindText(const std::string &needle) const {
         for (const Command &c : commands)

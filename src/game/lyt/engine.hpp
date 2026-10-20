@@ -20,6 +20,8 @@ class Engine {
     InstallResult Install(const FontResource &font);
     // 登録が必要なノードをゲームのリストに載せる。導入済みでなければ false。
     bool Present(const Drawing &drawing);
+    // プラグインのスレッドから。公開済み・記録中・排出待ちの画像は拒否する。
+    bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot);
     // ノードの登録をやめ、リストから外れ GPU が使い終えるのを待って資源を返す。
     // 完全に返せたら true。false の間は毎フレーム呼ぶ。導入していなければ true。
     bool Detach();
@@ -30,6 +32,9 @@ class Engine {
 
   private:
     const ResourceApi &api_;
+    unsigned selectionIdle_[2] = {};
+    unsigned protectedSelection_ = 2;
+    unsigned selectionReferences_[2] = {};
     RecordingResources resources_;
     Scene scene_;
     LayoutNodes nodes_;

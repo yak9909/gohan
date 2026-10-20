@@ -58,6 +58,7 @@ def main(argv=None) -> int:
     parser.add_argument('--scenario', action='append', help='指定した名前だけ実行（複数指定可）')
     parser.add_argument('--background-top', type=Path)
     parser.add_argument('--background-bottom', type=Path)
+    parser.add_argument('--ca2-reference', type=Path, help='作業ツリー外の CA2 の見本 17 場面と全台本を並べる')
     args = parser.parse_args(argv)
     try:
         settings = tomllib.loads(args.settings.read_text(encoding='utf-8'))
@@ -76,8 +77,10 @@ def main(argv=None) -> int:
         protocols = [protocol(s, settings['frame_ms']) for s in scenarios]
         env, configured = environment(ROOT, None if args.no_rom else args.local.resolve(), args.out)
         directory = output_directory(args.out)
+        if args.ca2_reference and (args.ca2_reference.resolve().is_relative_to(ROOT) or directory.resolve().is_relative_to(ROOT)):
+            raise ValueError('CA2 の見本と比較の出力先は作業ツリー外にしてください')
         # 実行ファイルは常にビルド出力先。ROM 由来の画像・プレビューは外部の --out へ。
-        binary_directory = output_directory(ROOT / 'build/preview-runtime')
+        binary_directory = output_directory(ROOT / 'build/preview-runtime' / ('dev1' if args.dev else 'dev0'))
         executable, manifest = build(ROOT, binary_directory, settings['screen'], args.cxx, args.dev)
         manifest['title_background_romfs_configured'] = configured
         if args.parts:
@@ -112,6 +115,9 @@ def main(argv=None) -> int:
             subprocess.run([str(executable), str(target)], input=inputs, text=True, check=True, cwd=ROOT, env=env)
             raster = Raster(target, settings['raster'])
             for i, capture in enumerate(scenario['captures']):
+                resources = target / f'resources-{i}'
+                if resources.exists():
+                    raster = Raster(resources, settings['raster'])
                 drawing = json.loads((target / f'frame-{i}.json').read_text(encoding='utf-8'))
                 inactive = 1 if settings['screen'] == 'top' else 0
                 if drawing['screens'][inactive]:
@@ -123,11 +129,24 @@ def main(argv=None) -> int:
                 for expected in capture.get('contains', []):
                     if not any(expected in text for text in texts):
                         raise ValueError(f'{scenario["name"]}/{capture["name"]}: 必要な文字がありません: {expected}')
-                frame = {'label': scenario.get('label', scenario['name']) + ' / ' + capture['name'], 'at': drawing['at']}
+                frame = {'label': scenario.get('label', scenario['name']) + ' / ' + capture['name'], 'at': drawing['at'],
+                         'scenario': scenario['name'], 'capture': capture['name']}
                 for s, screen in enumerate(('top', 'bottom')):
                     frame[screen] = raster.draw(drawing['screens'][s], backgrounds[screen])
                     frame[screen].save(target / f'{capture["name"]}-{screen}.png')
                 frames.append(frame)
+        if args.ca2_reference:
+            from gohan_tools.preview.reference import compare_all
+            target = output_directory(directory / 'ca2-scroll')
+            subprocess.run([str(executable), str(target), '--scroll'], cwd=ROOT, check=True, env=env)
+            drawing = json.loads((target / 'frame-0.json').read_text(encoding='utf-8'))
+            raster = Raster(target / 'resources-0', settings['raster'])
+            frame = dict(label='CA2 スクロール / 24 項目', at=400, scenario='ca2-scroll', capture='scroll')
+            for s, screen in enumerate(('top', 'bottom')):
+                frame[screen] = raster.draw(drawing['screens'][s], backgrounds[screen])
+                frame[screen].save(target / f'scroll-{screen}.png')
+            frames.append(frame)
+            compare_all(frames, args.ca2_reference, directory / 'comparison')
         (directory / 'index.html').write_text(gallery(frames, settings['screen']), encoding='utf-8')
         manifest.update(settings=settings, scenarios=scenarios, background_sha256=background_hashes,
                         script_sha256=hashlib.sha256(args.script.read_bytes()).hexdigest(), dev=args.dev)

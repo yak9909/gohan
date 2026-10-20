@@ -1,5 +1,6 @@
 #include "menu/notices.hpp"
 #include "menu/timing.hpp"
+#include "menu/paint.hpp"
 #include <cstring>
 
 namespace gohan::menu {
@@ -16,7 +17,7 @@ void Copy(char *to, std::size_t capacity, const char *from) {
 } // namespace
 
 float NoticeQueue::X(const Slot &slot, int screen_width, u32 now) const {
-    const float target = static_cast<float>(screen_width - style::kNoticeMargin - style::kNoticeWidth);
+    const float target = static_cast<float>(screen_width + ca::Notice::Right - ca::Notice::Width);
     const float off = static_cast<float>(screen_width);
     const s32 age = static_cast<s32>(now - slot.created);
     if (age < 0) return off;
@@ -81,22 +82,29 @@ void NoticeQueue::Add(const Notice &notice, u32 now) {
     }
 }
 
-void NoticeQueue::Draw(Surface &surface, u32 now) const {
-    const int width = surface.Width();
-    char buffer[kLineBytes];
-    for (const Slot &slot : slots_) {
+
+void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) const {
+    int bottom = ca::Notice::Bottom[menu_open ? 0 : 1];
+    float drift = 0;
+    for (int i = kCapacity - 1; i >= 0; --i) {
+        const Slot &slot = slots_[i];
         if (!SlotAlive(slot, now) || static_cast<s32>(now - slot.created) < 0) continue;
-        if (surface.TextsLeft() < 2 || surface.RectsLeft() < 2) return;
-        const int x = Round(X(slot, width, now));
-        const int y = Round(Y(slot, now));
-        const Rect box{x, y, style::kNoticeWidth, style::kNoticeHeight};
-        surface.Fill(box, style::kNoticeBackground);
-        if (surface.RectsLeft() >= 5) surface.Outline(box, slot.red ? style::kDangerEdge : style::kPanelEdge);
-        surface.Fill({x + 1, y + 1, 2, box.h - 2}, slot.red ? style::kDanger : style::kAccent);
-        const int text_width = style::kNoticeWidth - 14;
-        surface.Text(x + 7, y + 4, Trim(surface, slot.title, text_width, buffer, sizeof(buffer)), style::kWhite);
-        surface.Text(x + 7, y + 4 + style::kNoticeLineHeight,
-                     Trim(surface, slot.message, text_width, buffer, sizeof(buffer)), style::kNoticeMessage);
+        char lines[ca::Notice::Inner::Body[3]][kLineBytes], title[kLineBytes];
+        const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, ca::Notice::Inner::Body[3], nullptr);
+        const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
+        const int x = Round(X(slot, s.Width(), now));
+        const int y = bottom - h + Round(drift);
+        bottom -= h + ca::Notice::Gap;
+        const float enter = EaseOut(Progress(slot.created, now, timing::kNoticeEnterMs));
+        drift += (h + ca::Notice::Gap) * (1 - enter);
+        if (s.TextsLeft() < n + 1 || s.RectsLeft() < 13) continue;
+        Paper(s, {x, y, ca::Notice::Width, h});
+        const u32 color = slot.red ? ca::Color::Red : ca::Color::Green;
+        s.Fill({x + ca::Notice::Inner::Line[0], y + ca::Notice::Inner::Line[1], ca::Notice::Inner::Line[2], h + ca::Notice::Inner::Line[3]}, color);
+        s.Sprite(x + (slot.red ? ca::Notice::Inner::Bang[0] : ca::Notice::Inner::Icon[0]),
+                 y + (slot.red ? ca::Notice::Inner::Bang[1] : ca::Notice::Inner::Icon[1]), slot.red ? "bang" : "check", color);
+        s.Text(x + ca::Notice::Inner::Title[0], y + ca::Notice::Inner::Title[1], Trim(s, slot.title, ca::Notice::Width - ca::Notice::Inner::Title[0] - ca::Margin, title, sizeof(title)), color);
+        for (int j = 0; j < n; ++j) s.Text(x + ca::Notice::Inner::Body[0], y + ca::Notice::Inner::Body[1] + j * ca::Notice::Inner::Body[2], lines[j], ca::Color::Text);
     }
 }
 } // namespace gohan::menu

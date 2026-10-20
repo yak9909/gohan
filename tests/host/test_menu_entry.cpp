@@ -39,7 +39,7 @@ const Bound kBinds[] = {
 // 入力の枠の大きい数字（倍率 2）。行の値と区別する。
 const Command *Large(const RecordingSurface &s, const std::string &text) {
     for (const Command &c : s.commands)
-        if (c.kind == Command::Text && c.scale == 2 && c.text == text) return &c;
+        if (c.kind == Command::Text && c.scale == 1 && c.numeric && c.bounds.x >= 236 && c.text == text) return &c;
     return nullptr;
 }
 
@@ -79,8 +79,8 @@ void NumberEntry() {
     RecordingSurface s = f.Draw();
     // 数字用の書体で大きく出し、ボタンの枠と決定・取消がある。説明や足は出さない。
     const Command *value = Large(s, "10");
-    assert(value && value->numeric && value->scale == 2 && value->color == style::kPending);
-    assert(s.HasText("決定") && s.HasText("取消") && s.HasText("-") && s.HasText("+") && !s.HasText("HOTKEY"));
+    assert(value && value->numeric && value->scale == 1 && value->color == gohan::core::design::ca2::Color::Text);
+    assert(s.HasText("決定") && s.HasText("取消") && !s.HasText("HOTKEY"));
     assert(s.dropped == 0 && s.texts <= static_cast<int>(gohan::core::limits::RendererTexts) && s.rects <= static_cast<int>(gohan::core::limits::RendererRects));
     // 右で step（5）、上で 10 倍。A で編集値に入り、適用待ちになる。
     f.rig.Tap(key::Right);
@@ -103,29 +103,12 @@ void NumberEntry() {
     assert(f.e().State(Idx(MenuId::Num)).value == 100);
 }
 
-void NumberByTouch() {
-    Fixture f;
-    f.EnterFolder();
-    f.Select(MenuId::Num);
+void NumberIgnoresTouch() {
+    Fixture f; f.EnterFolder(); f.Select(MenuId::Num); f.rig.Tap(key::A);
+    f.rig.TapAt(280, 60); f.rig.TapAt(360, 30);
+    assert(f.e().Ui().kind == UiKind::Number);
     f.rig.Tap(key::A);
-    f.rig.Advance(300);
-    const Rect box = {168, (240 - 112) / 2, 144, 112};
-    // 棒の中ほどに触れると半分（50）。棒の上でなぞると追う。
-    f.rig.TouchAt(box.x + 8 + 64, box.y + 42);
-    f.rig.TouchAt(box.x + 8 + 96, box.y + 42);
-    f.rig.Untouch();
-    RecordingSurface s = f.Draw();
-    assert(Large(s, "75"));
-    // 「+」で 1 刻み、「決定」で確定。
-    const int width = (box.w - 16 - 4) / 2;
-    f.rig.TapAt(box.x + 8 + width + 4 + 5, box.y + 60 + 5);
-    f.rig.TapAt(box.x + 8 + 5, box.y + 84 + 5);
-    assert(f.e().Ui().kind == UiKind::None && f.e().State(Idx(MenuId::Num)).value == 80);
-    // 取消に触れると何も変えず閉じる。
-    f.rig.Tap(key::A);
-    f.rig.Advance(300);
-    f.rig.TapAt(box.x + 8 + width + 4 + 5, box.y + 84 + 5);
-    assert(f.e().Ui().kind == UiKind::None && f.e().State(Idx(MenuId::Num)).value == 80);
+    assert(f.e().State(Idx(MenuId::Num)).value == 10);
 }
 
 void DecimalAndHex() {
@@ -158,13 +141,10 @@ void ListEntry() {
     f.rig.Tap(key::Down);
     f.rig.Tap(key::A); // 雪
     assert(f.e().State(Idx(MenuId::Weather)).value == 2 && f.e().Ui().kind == UiKind::None);
-    // 触れた行を選び、選んだ行にもう一度触れて決める。
     f.rig.Tap(key::A);
-    f.rig.Advance(300);
-    const Rect box = {168, (240 - 76) / 2, 144, 76};
-    f.rig.TapAt(box.x + 20, box.y + 6 + 0 * 20 + 5);
+    f.rig.TapAt(260, 30);
     assert(f.e().Ui().kind == UiKind::List);
-    f.rig.TapAt(box.x + 20, box.y + 6 + 0 * 20 + 5);
+    f.rig.Tap(key::Up); f.rig.Tap(key::Up); f.rig.Tap(key::A);
     assert(f.e().State(Idx(MenuId::Weather)).value == 0);
     assert(f.e().Commit(Idx(MenuId::Weather), f.rig.now) && g.weather == 0 && g.weather_writes == 1);
 }
@@ -184,33 +164,14 @@ void CheckListEntry() {
 }
 
 void KeyCapture() {
-    Fixture f;
-    f.EnterFolder();
-    f.Select(MenuId::Keyc);
-    f.rig.Hold(key::A);
+    Fixture f; f.EnterFolder(); f.Select(MenuId::Keyc); f.rig.Hold(key::A);
     assert(f.e().Ui().kind == UiKind::Key);
-    // A を押したまま入ったので、まず全て離すのを待つ。
-    f.rig.Hold(key::A);
-    RecordingSurface s = f.rig.Draw();
-    assert(s.HasText("全てのボタンを離す") && s.HasText("無効") && s.HasText("取消"));
-    f.rig.Release();
-    s = f.rig.Draw();
-    assert(s.HasText("ボタンを押す") && s.HasText("--"));
-    f.rig.Hold(key::L);
-    f.rig.Hold(key::L | key::R);
-    s = f.rig.Draw();
-    assert(s.HasText("離すと決定") && s.HasText("L+R"));
-    // メニューの開閉のボタンは割り当てに含めない。
-    f.rig.Hold(key::L | key::R | key::Select);
-    assert(f.e().Ui().kind == UiKind::Key);
-    f.rig.Release();
+    f.rig.Hold(key::A); f.rig.Release();
+    assert(f.Draw().HasText("ボタンを押す"));
+    f.rig.Hold(key::L); f.rig.Hold(key::L | key::R); f.rig.Release();
     assert(f.e().Ui().kind == UiKind::None && f.e().State(Idx(MenuId::Keyc)).value == (key::L | key::R));
-    // 「無効」に触れると 0。
-    f.rig.Tap(key::A);
-    f.rig.Release();
-    f.rig.Advance(300);
-    const Rect box = {168, (240 - 106) / 2, 144, 106};
-    f.rig.TapAt(box.x + 8 + 5, box.y + 70 + 5);
+    f.rig.Tap(key::A); f.rig.Release();
+    f.rig.Hold(key::Select); f.rig.Advance(650); f.rig.Release();
     assert(f.e().Ui().kind == UiKind::None && f.e().State(Idx(MenuId::Keyc)).value == 0);
 }
 
@@ -224,12 +185,7 @@ void HotkeyOfItem() {
     f.rig.Hold(key::ZL | key::X);
     f.rig.Release();
     assert(f.e().State(Idx(MenuId::How)).hotkey == (key::ZL | key::X));
-    // 取消に触れると変えない。
-    f.rig.Tap(key::Y);
-    f.rig.Advance(300);
-    const Rect box = {168, (240 - 106) / 2, 144, 106};
-    const int width = (box.w - 16 - 4) / 2;
-    f.rig.TapAt(box.x + 8 + width + 4 + 5, box.y + 70 + 5);
+    f.rig.Tap(key::Y); f.rig.Tap(key::Select);
     assert(f.e().Ui().kind == UiKind::None && f.e().State(Idx(MenuId::How)).hotkey == (key::ZL | key::X));
 }
 
@@ -245,7 +201,7 @@ void TriggerInputWhileClosed() {
     RecordingSurface s = f.Draw();
     assert(Large(s, "0x0") && s.dropped == 0);
     bool centered = false;
-    for (const Command &c : s.commands) centered = centered || (c.kind == Command::Fill && c.bounds.x == 88 && c.bounds.w == 144);
+    for (const Command &c : s.commands) centered = centered || (c.kind == Command::Slice && c.bounds.x == 236 && c.bounds.w == 160);
     assert(centered);
     f.rig.Tap(key::Up); // 十六進は 16 ずつ
     f.rig.Tap(key::Right);
@@ -257,7 +213,7 @@ void TriggerInputWhileClosed() {
 
 int main() {
     NumberEntry();
-    NumberByTouch();
+    NumberIgnoresTouch();
     DecimalAndHex();
     ListEntry();
     CheckListEntry();
