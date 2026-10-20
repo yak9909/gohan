@@ -208,6 +208,9 @@ void Dispatch() {
     assert(SetEnabled(true));
     Frame();
     assert(ReadStatus() == Status::Ready && stub::installs == 2);
+    const std::string background = TitleBackgroundStatusText();
+    assert(background.find("空き不足（代わりの色）") != std::string::npos);
+    assert(background.find("合計 401184 / 最大の塊 399000 バイト") != std::string::npos);
     stub::busyLeft = 2;
     assert(SetEnabled(false));
     Frame();
@@ -279,7 +282,8 @@ void Shutdown() {
 } // namespace
 
 namespace gohan::game::lyt {
-InstallResult InstallRenderer(const FontResource &font) {
+InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
+    if (background) *background = {BackgroundResult::InsufficientSpace, 401184, 399000, true};
     assert(font.atlasBytes == 65536 && font.glyphs == 703);
     ++stub::installs;
     stub::installed = stub::installResult == InstallResult::Ready;

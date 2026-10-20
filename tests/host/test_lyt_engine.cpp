@@ -401,6 +401,96 @@ void Images(Engine &engine) {
         assert(!engine.Detach());
     assert(engine.Detach() && Fake::Balanced());
 }
+void OptionalBackground(Engine &engine) {
+    TestFont font;
+    std::vector<std::uint8_t> ui(256 * 32 * 4, 0xF1), dash(8 * 8 * 4, 0xAB);
+    std::vector<std::uint8_t> source(16 * 16 * 4, 0xCD), window(256 * 256 / 2, 0x31);
+    constexpr unsigned backgroundBytes = 2 * 16 * 16 * 4 + 256 * 256 / 2;
+    static_assert(backgroundBytes == 34816 && backgroundBytes <= 40000);
+    const TextureResource textures[] = {
+        {ui.data(), ui.size(), 256, 32}, {dash.data(), dash.size(), 8, 8}, {dash.data(), dash.size(), 8, 8},
+        {source.data(), source.size(), 16, 16}, {source.data(), source.size(), 16, 16},
+        {window.data(), window.size(), 256, 256, TextureFormat::L4, 0xFFF4E6C9u, 0xFFFFFBEFu, 36}};
+    font.resource.textures = textures;
+    font.resource.textureCount = 6;
+    font.resource.requiredTextureCount = 3;
+    constexpr unsigned essentialBytes = 65536 + limits::RendererUiTextureBytes;
+    // 合計の空き不足・最大の塊の不足・確認/確保/排出失敗を背景だけに起こす。
+    for (unsigned mode = 0; mode < 7; ++mode) {
+        Fake::Reset();
+        if (mode == 0) Fake::freeBytes = 500000;
+        if (mode == 1) Fake::largestBlock = essentialBytes + backgroundBytes + 127;
+        if (mode == 2) Fake::failSpace = 2;
+        if (mode == 3) Fake::failAllocate = 2;
+        if (mode == 4) Fake::failFlush = 2;
+        if (mode == 5) {
+            Fake::freeBytes = limits::RendererHeapReserve + essentialBytes + backgroundBytes + 128;
+            Fake::largestBlock = essentialBytes + backgroundBytes + 128;
+        }
+        const unsigned beforeFree = Fake::freeBytes - essentialBytes;
+        const unsigned beforeLargest = Fake::largestBlock - essentialBytes;
+        assert(engine.Install(font.resource) == InstallResult::Ready && engine.Installed());
+        const bool ready = mode >= 5;
+        const auto &status = engine.Resources().BackgroundStatus();
+        const BackgroundResult results[] = {BackgroundResult::InsufficientSpace, BackgroundResult::InsufficientSpace,
+            BackgroundResult::HeapUnavailable, BackgroundResult::AllocateFailed, BackgroundResult::FlushFailed,
+            BackgroundResult::Ready, BackgroundResult::Ready};
+        assert(status.result == results[mode] && status.measured == (mode != 2));
+        if (status.measured) assert(status.freeBytes == beforeFree && status.largestBlock == beforeLargest);
+        assert((engine.Resources().Background() != nullptr) == ready);
+        assert(Fake::blocks.size() == (ready ? 2 : 1));
+        assert(Fake::blocks.at(engine.Resources().Atlas()) == essentialBytes && Fake::lists.size() == 2);
+        if (ready) {
+            const auto *data = static_cast<const unsigned char *>(engine.Resources().Background());
+            assert(Fake::blocks.at(engine.Resources().Background()) == backgroundBytes);
+            assert(std::memcmp(data + TextureOffset(font.resource, 5), window.data(), window.size()) == 0);
+        } else if (mode < 3) {
+            assert(Fake::allocateCalls == 1); // 安全でないゲームの確保関数は呼ばない。
+        }
+        Drawing drawing;
+        drawing.revisions[0] = 1;
+        auto &screen = drawing.screens[0];
+        Command image;
+        image.kind = Kind::Image;
+        image.bounds = {4, 4, 8, 8}; image.clip = FullTop; image.source = {0, 0, 8, 8};
+        image.scale = 1; image.color = 0xFFFFFFFFu;
+        Add(screen, image); // 自作 UI
+        Add(screen, Text(screen, 20, 4, u"ABC", 0xFFFFFFFFu, 1, FullTop));
+        Add(screen, Rectangle({10, 20, 186, 13}, 0xFF6DBB4Bu, FullTop)); // 帯の地
+        image.texture = Texture::TitleWindow;
+        Add(screen, image);
+        assert(engine.Present(drawing));
+        auto children = Children(engine.Nodes().Node(Screen::Top).root);
+        assert(children.size() == (ready ? 4 : 3));
+        assert(IsPicture(children[0]) && IsTextBox(children[1]));
+        assert(StringOf(reinterpret_cast<generated::NwLytTextBox *>(children[1])) == u"ABC");
+        auto *band = reinterpret_cast<generated::NwLytPicture *>(children[2]);
+        assert(band->vertex_colors[0] == 0xFF4BBB6Du);
+        if (ready) {
+            auto *picture = reinterpret_cast<generated::NwLytPicture *>(children[3]);
+            const auto *map = picture->material->variable_data;
+            assert(map->gpu_format == 10 && map->sampler_bits == (3u << 8 | 5u));
+            assert(map->texture_address == Fake::Physical(static_cast<const unsigned char *>(engine.Resources().Background()) + 2048));
+            assert(picture->material->colors[0] == 0xFFC9E6F4u && picture->material->colors[1] == 0xFFEFFBFFu);
+            assert(picture->pane.alpha == 36 && picture->pane.global_alpha == 36);
+            // 同じ板を再利用するとき、窓の不透明度を UI に残さない。
+            Fake::EndPasses();
+            drawing.revisions[0] = 2;
+            screen.commands[3].texture = Texture::Ui;
+            assert(engine.Present(drawing));
+            assert(picture->pane.alpha == 255 && picture->pane.global_alpha == 255);
+        }
+        Fake::EndPasses();
+        for (unsigned i = 1; i < Engine::DrainFrames; ++i) assert(!engine.Detach());
+        assert(engine.Detach() && Fake::Balanced());
+    }
+    // 背景も取得した後のリスト作成失敗で、両方の画像を巻き戻す。
+    Fake::Reset();
+    Fake::failCreate = 2;
+    assert(engine.Install(font.resource) == InstallResult::ResourceFailed);
+    assert(engine.Resources().Empty() && Fake::Balanced() && Fake::allocations == 2);
+    Fake::Reset();
+}
 } // namespace
 
 int main() {
@@ -414,6 +504,7 @@ int main() {
     Drain(engine);
     Cycles(engine);
     Images(engine);
+    OptionalBackground(engine);
     assert(Fake::Balanced());
     std::puts("lyt engine: ok");
 }

@@ -13,7 +13,7 @@
 
 // 描画の部品を丸ごとリンクするので、ゲーム側の関数を空で用意する（ここでは呼ばれない）。
 namespace gohan::game::lyt {
-InstallResult InstallRenderer(const FontResource &) { return InstallResult::MissingBindings; }
+InstallResult InstallRenderer(const FontResource &, BackgroundAllocation *) { return InstallResult::MissingBindings; }
 bool Present(const Drawing &) { return false; }
 bool DetachRenderer() { return true; }
 void WaitMilliseconds(unsigned) {}

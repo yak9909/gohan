@@ -18,7 +18,7 @@ uv run --python 3.12 python tools/preview.py
 `build/preview/index.html` をブラウザーで開きます。上400×240、下320×240 の PNG を
 等倍と2倍で縦に並べ、各時刻を一覧にします。表示倍率は100%にしてください。
 HTML は PNG・CSS を埋め込んだ1ファイルで、これだけを別の PC へ移しても見られます。
-生成物は全て `build/` 以下に置き、収録しません。
+ROM を指定しない場合、生成物は `build/` 以下に置き、収録しません。
 
 `--scenario entries` のように台本を絞れます。複数指定もできます。
 `--dev` は開発版の項目を表示します。`--cxx` または `HOST_CXX` でコンパイラを選べます。
@@ -33,6 +33,22 @@ PNG は背景との合成後の色です。既定では実機の取得画像に�
 資源の色そのものを調べる時は `.rgba8` を復号し、PNG とは区別してください。
 設計値は `spec/ui.toml`、自作の形は `tools/gohan_tools/codegen/ui_shapes.py` と
 `ui.py`、字形の上書きは `glyph_overrides.py` を編集してください。
+
+タイトル画面の背景も確認する場合は、作業ツリー外の展開済み RomFS（直下に `Layout/` がある場所）を
+`gohan.local.toml` の `[rom] acnl_update_romfs`・`acnl_base_romfs` に指定します（任意、設定例は
+`gohan.local.toml.example`）。更新を優先し、読み出しや形式の検査が失敗したら本体を試します。
+未指定・両方とも失敗なら、窓の背景の重ね無し・一様な緑の帯です。
+
+```powershell
+python tools/preview.py --parts --out D:/gohan-preview/title-background
+```
+
+`--parts` の最後のページに、窓用のクリーム色の停止画像・帯用の緑の停止画像と元の 2 枚を出します。
+実機と同じ C++ の復号・6 枚の合成を通します。窓は実機と同じ L4 を黒→白の色とペインの不透明度に相当する値で展開し、帯の RGBA8 の停止見本はプレビューだけで作ります。実機には停止見本を含めません。設定は `--local <設定ファイル>` でも指定できます。
+読み込み結果は出力先の `parts/background-status.txt` にあります。ROM の設定がある場合は入力・出力とも
+作業ツリー内を拒否します。ゲームの資源・派生画像を gohan や SD に保存しないためです。
+実行ファイルは常に `build/preview-runtime/` に置きます。帯のアニメーションの描画への結線は次の段です。
+`--no-rom` はローカル設定があっても代わりの絵を使います。PC 試験はこの指定で個人の ROM に依存させません。
 
 ## 台本とフレーム
 

@@ -214,7 +214,7 @@ screen = [400, 240]
 "mark.other.lock" = [5, 7]
 "mark.other.dot" = [4, 4]
 
-# D.6: 次段の SD 資源用の値のみ。ROM を読む処理は通常の生成には無い。
+# D.6: 実行時の RomFS 読み込みと CPU 合成に使う。通常の生成では ROM を読まない。
 "titlebg.source.archive" = "Layout/Title/opng_titl.arc"
 "titlebg.source.layout" = "blyt/opng_titl_bg.bclyt"
 "titlebg.source.animation" = "anim/opng_titl_bg_loop.bclan"
@@ -246,8 +246,10 @@ screen = [400, 240]
 "titlebg.window.inset" = 3
 "titlebg.window.frame" = 0
 "titlebg.window.boards" = 1
+"titlebg.window.image_size" = [256, 256] # 最大の窓 228×210 を覆う最小の2の冪。L4、32,768バイト
 "titlebg.selection.inset" = [2, 1, -4, -2]
 "titlebg.selection.boards" = 6
+"titlebg.selection.image_size" = [256, 16] # プレビュー専用の緑の停止見本。実機には登録しない
 "titlebg.fallback.window_overlay" = false
 "titlebg.fallback.selection" = 0xFF6DBB4B
 

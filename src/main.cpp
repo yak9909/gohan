@@ -42,6 +42,7 @@ void ShowStatus(CTRPluginFramework::MenuEntry *) {
     writer.Append("骨格: 機能登録・毎フレーム処理・通信・文字処理\n")
         .Append(gohan::game::FrameHookStatus());
     writer.Append("\n").Append(gohan::ui::renderer::StatusText());
+    writer.Append("\n").Append(gohan::ui::renderer::TitleBackgroundStatusText());
     CTRPluginFramework::MessageBox("gohan（作り直し中）", text)();
 }
 } // namespace

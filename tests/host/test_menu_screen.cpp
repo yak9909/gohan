@@ -14,7 +14,7 @@ namespace {
 Drawing presented;
 int presents = 0;
 } // namespace
-InstallResult InstallRenderer(const FontResource &) { return InstallResult::Ready; }
+InstallResult InstallRenderer(const FontResource &, BackgroundAllocation *) { return InstallResult::Ready; }
 bool Present(const Drawing &drawing) {
     presented = drawing;
     ++presents;

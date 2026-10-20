@@ -9,7 +9,7 @@ InstallResult Engine::Install(const FontResource &font) {
         return InstallResult::ResourceFailed;
     if (!resources_.Acquire(font))
         return InstallResult::ResourceFailed;
-    scene_.Build(api_, font, resources_.Atlas());
+    scene_.Build(api_, font, resources_.Atlas(), resources_.Background());
     generated::NwLytPane *roots[2] = {scene_.Root(Screen::Top), scene_.Root(Screen::Bottom)};
     const unsigned lists[2] = {resources_.List(Screen::Top), resources_.List(Screen::Bottom)};
     nodes_.Build(api_, roots, lists);

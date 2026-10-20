@@ -9,17 +9,28 @@ static_assert(std::size(ui_data::Atlas) == core::design::ca2::Atlas::Bytes);
 static_assert(std::size(ui_data::Atlas) + std::size(ui_data::DashH) + std::size(ui_data::DashV) ==
               core::limits::RendererUiTextureBytes);
 const game::lyt::FontResource &Fonts() {
-    static constexpr game::lyt::TextureResource textures[] = {
+    static const game::lyt::TextureResource textures[] = {
         {ui_data::Atlas, std::size(ui_data::Atlas), core::design::ca2::Atlas::Size[0], core::design::ca2::Atlas::Size[1]},
         {ui_data::DashH, std::size(ui_data::DashH), core::design::ca2::Part::Dash[0], core::design::ca2::Part::Dash[1]},
-        {ui_data::DashV, std::size(ui_data::DashV), core::design::ca2::Part::Dash[1], core::design::ca2::Part::Dash[0]}};
-    static constexpr game::lyt::FontResource resource{
+        {ui_data::DashV, std::size(ui_data::DashV), core::design::ca2::Part::Dash[1], core::design::ca2::Part::Dash[0]},
+        TitleBackgroundImage(0), TitleBackgroundImage(1), TitleBackgroundImage(2),
+#ifndef __3DS__
+        TitleBackgroundImage(3),
+#endif
+    };
+    static const game::lyt::FontResource resource{
         font_data::Atlas, std::size(font_data::Atlas), font_data::Widths,
         std::size(font_data::Widths) / 3,
         font_data::MisakiMap, std::size(font_data::MisakiMap) / 2,
         font_data::NumericMap, std::size(font_data::NumericMap) / 2,
         font_data::SheetWidth, font_data::SheetHeight, font_data::CellWidth, font_data::CellHeight,
-        font_data::Columns, font_data::SolidIndex, textures, std::size(textures)};
+        font_data::Columns, font_data::SolidIndex, textures,
+#ifdef __3DS__
+        TitleBackgroundSources() ? std::size(textures) : 3,
+#else
+        std::size(textures),
+#endif
+        3};
     return resource;
 }
 
