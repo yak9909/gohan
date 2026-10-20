@@ -7,6 +7,7 @@
 #include "game/lyt/renderer.hpp"
 #include "ui/renderer/renderer.hpp"
 #include <cstdio>
+#include <algorithm>
 #include <initializer_list>
 #include <set>
 #include <string>
@@ -155,7 +156,49 @@ void Scenes() {
 } // namespace
 
 int main() {
+    namespace ca = gohan::core::design::ca2;
     Scenes();
+    // スイッチ10行・長い説明・7通知・選択とスクロール途中を同時に実際の文字枠へ通す。
+    {
+        ItemDef defs[24]{};
+        for (unsigned n = 0; n < 24; ++n) {
+            auto &d = defs[n];
+            d.key = "stress"; d.label = "見本の長い名前のフラグ見本の長い名前のフラグ見本の長い名前のフラグ";
+            d.desc = "見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。見本の長い説明です。";
+            d.control = Control::Toggle; d.behavior = Behavior::Value; d.source = Source::Setting;
+            d.parent = d.first_child = kNoItem; d.next = n < 23 ? n + 1 : kNoItem;
+            d.min = 0; d.max = d.step = 1; d.hotkey = key::L | key::Up;
+        }
+        Rig r(defs, 24); r.Open();
+        NoticeQueue notices; Notice notice{}; NoticeFailed(notice, "GOHANGOHANGOHANGOHANGOHANGOHAN", Result::NotReady);
+        const u32 born = r.now;
+        for (unsigned n = 0; n < 7; ++n) notices.Add(notice, r.now);
+        std::size_t maxRects = 0, maxTexts = 0, maxBytes = 0;
+        for (unsigned t = 0; t < 4000; t += 16) {
+            if (t % 64 == 0) { r.engine.Select((t / 64) % 24); r.engine.SetValue((t / 64) % 24, (t / 64) % 2); }
+            r.Frame();
+            gohan::ui::renderer::Canvas canvas; canvas.Begin(gohan::ui::renderer::Screen::Top);
+            gohan::features::menu_screen::CanvasSurface surface(canvas, gohan::ui::renderer::Screen::Top);
+            r.shell.Draw(surface, r.now); notices.Draw(surface, r.now);
+            assert(surface.dropped() == 0 && surface.truncated() == 0);
+            const auto &d = canvas.Data().screens[0];
+            unsigned actual = 0, expected = 0;
+            for (unsigned n = 0; n < 7; ++n) {
+                const s32 age = static_cast<s32>(r.now - (born + n * ca::Time::Notice[3]));
+                expected += age >= ca::Time::Notice[0] && age < ca::Time::Notice[0] + ca::Time::Notice[1];
+            }
+            for (std::size_t n = 0; n < d.count; ++n) {
+                const auto &c = d.commands[n];
+                actual += c.kind == gohan::game::lyt::Kind::Text && c.length > 5 &&
+                          std::u16string_view(c.text, 5) == u"GOHAN";
+            }
+            // 予算不足で通知そのものを省いた場合も、欠落として検出する。
+            if (actual < expected) std::fprintf(stderr, "通知の欠落: %u/%u 時刻=%u 文字枠=%zu\n", actual, expected, t, d.texts);
+            assert(actual >= expected);
+            maxRects = std::max(maxRects, d.rectangles); maxTexts = std::max(maxTexts, d.texts); maxBytes = std::max(maxBytes, d.estimatedBytes);
+        }
+        std::printf("最大重なり: 板=%zu 文字枠=%zu 記録=%zu\n", maxRects, maxTexts, maxBytes);
+    }
     // 狙いの場面が描かれたこと（描かれていない場面の文字は確かめられない）。
     for (const char *marker : {"GOHAN", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",
                                "ボタンを押す", "変更を適用しますか？", "を実行しますか？", "キャンセル",

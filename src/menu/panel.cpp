@@ -30,8 +30,10 @@ void Panel::Sync(const Engine &engine, u32 now) {
     if (index >= count_) index = 0;
 
     const bool visible = engine.Visible();
+    const bool showBar = visible || engine.Ui().kind != UiKind::None || engine.Dialog() != DialogKind::None;
+    if (showBar != (bar_.to > 0.f)) bar_.Go(showBar ? 1.f : 0.f, now, ca::Time::BarFade);
     if (visible != was_visible_) {
-        open_.Go(visible ? 1.0f : 0.0f, now, timing::kEnterMs);
+        open_.Go(visible ? 1.0f : 0.0f, now, visible ? ca::Time::Open : ca::Time::Close);
         was_visible_ = visible;
         if (visible) {
             selection_.Jump(static_cast<float>(index), now);
@@ -41,6 +43,41 @@ void Panel::Sync(const Engine &engine, u32 now) {
         }
     }
     if (!visible) return;
+    for (int n = 0; n < count_; ++n) {
+        const u16 item = items_[n];
+        const auto v = engine.View(item);
+        if (!v.def || v.def->control != Control::Toggle) continue;
+        auto &sw = switches_[item];
+        const bool off = !std::strcmp(v.value, "OFF");
+        const bool wait = !std::strcmp(v.value, "待機"), run = !std::strcmp(v.value, "動作中");
+        const unsigned label = off ? 0 : wait ? 2 : run ? 3 : 1;
+        const u32 fill = off ? ca::Color::Switch::Off : wait ? ca::Color::Switch::Wait : run ? ca::Color::Switch::Run : ca::Color::Switch::On;
+        const u32 edge = v.pending ? ca::Color::Pending::Edge : off ? ca::Color::Switch::OffEdge : wait ? ca::Color::Switch::WaitEdge : run ? ca::Color::Switch::RunEdge : ca::Color::Switch::OnEdge;
+        const u32 knob = run ? ca::Color::Switch::RunKnob : ca::Color::Switch::Knob;
+        const float target = off ? 0.f : 1.f;
+        if (!sw.ready || engine.Folder() != folder_ || !was_visible_) {
+            sw.ready = true; sw.from = sw.to = target;
+            sw.fill = sw.next_fill = fill; sw.edge = sw.next_edge = edge; sw.knob = sw.next_knob = knob;
+            sw.phase.Jump(1, now);
+            sw.label_from = sw.label_to = label; sw.label_alpha = 1.f; sw.label_phase.Jump(1, now);
+        } else if (sw.to != target || sw.next_fill != fill || sw.next_edge != edge || sw.next_knob != knob) {
+            const float p = sw.phase.At(now);
+            sw.from = Mix(sw.from, sw.to, p); sw.to = target;
+            sw.fill = MixColor(sw.fill, sw.next_fill, p); sw.next_fill = fill;
+            sw.edge = MixColor(sw.edge, sw.next_edge, p); sw.next_edge = edge;
+            sw.knob = MixColor(sw.knob, sw.next_knob, p); sw.next_knob = knob;
+            sw.phase.Jump(0, now); sw.phase.Go(1, now, ca::Time::Switch);
+        }
+        if (sw.label_to != label) {
+            const float p = sw.label_phase.At(now), split = ca::Time::SwitchTextSplit;
+            // 急な反転でも、今見えている字と不透明度から続ける。
+            if (sw.label_from == sw.label_to) sw.label_alpha = Mix(sw.label_alpha, 1.f, p);
+            else if (p < split) sw.label_alpha *= Clamp01(1.f - p / split);
+            else { sw.label_from = sw.label_to; sw.label_alpha = Clamp01((p - split) / (1.f - split)); }
+            sw.label_to = label;
+            sw.label_phase.Jump(0, now); sw.label_phase.Go(1, now, ca::Time::Switch);
+        }
+    }
     if (engine.Folder() != folder_) {
         // フォルダの出入りは、動かさずに新しい一覧の選択へ合わせる。
         selection_.Jump(static_cast<float>(index), now);
@@ -66,12 +103,13 @@ void Panel::SetRows(int rows, u32 now) {
 }
 
 bool Panel::Animating(u32 now) const {
-    return !open_.Done(now) || !selection_.Done(now) || !view_.Done(now) || value_.Active(now, timing::kValueBounceMs) ||
+    for (const auto &sw : switches_) if (sw.ready && (!sw.phase.Done(now) || !sw.label_phase.Done(now))) return true;
+    return !bar_.Done(now) || !open_.Done(now) || !selection_.Done(now) || !view_.Done(now) || value_.Active(now, timing::kValueBounceMs) ||
            action_.Active(now, timing::kActivationBounceMs);
 }
 
 int Panel::MenuX(u32 now) const {
-    return Round(-static_cast<float>(style::kMenuWidth) + static_cast<float>(style::kMenuWidth) * open_.At(now));
+    return Round(ca::Time::ExitX * (1.f - open_.At(now)));
 }
 
 void Panel::Draw(Surface &surface, const Engine &engine, u32 now, bool modal) {
@@ -132,9 +170,9 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
     for (int n = first < 0 ? 0 : first; n <= first + rows_ && n < count_; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
-        // 字の白と影は、帯が選択先へ着いてから切り替える。
+        const float weight = Clamp01(1.f - std::abs(selection_.At(now) - float(n)));
         const bool selected = items_[n] == e.Selected() && selection_.Done(now);
-        DrawRow(s, e, items_[n], dx, y, selected ? action + value : 0, selected);
+        DrawRow(s, e, items_[n], dx, y, selected ? action + value : 0, selected, weight, now);
         if (n + 1 < count_ && y + ca::Row::Pitch < clipBottom)
             s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                        ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
@@ -142,7 +180,7 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
     if (clipped) s.EndClip();
 }
 
-void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected) {
+void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now) {
     const RowView v = e.View(item); if (!v.def) return;
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
@@ -152,15 +190,16 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const int vw = pill ? ca::Row::Pill::Size[0] : s.Measure(v.value, numeric);
     const int vx = pill ? right - vw : right + ca::Row::Value::Text[0] - vw;
     const int lx = x + ca::Row::Label[0], ly = y + ca::Row::Label[1];
-    const u32 ink = selected ? (v.disabled ? ca::Color::Disabled::Sel::Text : ca::Color::Sel::Text) :
-                    v.disabled ? ca::Color::Disabled::Text : v.pending ? ca::Color::Pending::Text : ca::Color::Text;
+    const u32 normal = v.disabled ? ca::Color::Disabled::Text : v.pending ? ca::Color::Pending::Text : ca::Color::Text;
+    const u32 ink = MixColor(normal, v.disabled ? ca::Color::Disabled::Sel::Text : ca::Color::Sel::Text, weight);
+    const u32 shadow = Fade(v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow, weight);
     char trimmed[kLineBytes];
     int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
     if (v.locked) valueLeft = std::min(valueLeft, vx + ca::Row::Lock::Mark[0]);
     if (selected && !v.disabled && !pill && v.value[0]) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
     const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
-    Ink(s, lx, ly, label, selected, ink, false, v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow);
+    Ink(s, lx, ly, label, (shadow >> 24) != 0, ink, false, shadow);
     if (v.pending) s.Sprite(lx + s.Measure(label) + ca::Row::Pending::Mark[0], y + ca::Row::Pending::Mark[1], "dot",
                              selected ? ca::Color::Pending::SelectedDot : ca::Color::Pending::Dot);
     if (e.State(item).hotkey && d.control != Control::Folder)
@@ -178,17 +217,41 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
             part = state == 1 ? "button.reserved" : state == 2 ? "button.ok" : "button.normal";
             text = state == 1 ? ca::Color::Button::Reserved[2] : state == 2 ? ca::Color::Button::Ok[2] : ca::Color::Button::Normal[2];
             tx += (vw - s.Measure(v.value)) / 2;
-        } else {
-            const bool off = !std::strcmp(v.value, "OFF");
-            part = !std::strcmp(v.value, "待機") ? "pill.wait" : !std::strcmp(v.value, "動作中") ? "pill.run" :
-                   v.pending ? (off ? "pill.pending_off" : "pill.pending_on") : off ? "pill.off" : "pill.on";
-            tx += ca::Row::Pill::Text[off ? 0 : 1] + (ca::Row::Pill::Text[2] - s.Measure(v.value)) / 2;
         }
         const float alpha = v.disabled && !selected ? ca::Color::Disabled::Alpha : 1.f;
-        s.Box({vx, y + ca::Row::Pill::Y, vw, ca::Row::Pill::Size[1]}, part, Fade(0xFFFFFFFFu, alpha));
-        s.Text(tx, y + ca::Row::Pill::Y + ca::Row::Pill::Text[3], v.value, Fade(text, alpha));
+        if (v.button) {
+            s.Box({vx, y + ca::Row::Pill::Y, vw, ca::Row::Pill::Size[1]}, part, Fade(0xFFFFFFFFu, alpha));
+            s.Text(tx, y + ca::Row::Pill::Y + ca::Row::Pill::Text[3], v.value, Fade(text, alpha));
+        }
+        else {
+            const auto &sw = switches_[item]; const float p = sw.phase.At(now);
+            const float position = Mix(sw.from, sw.to, p);
+            const int inset = ca::Row::Switch::Inset, knob = ca::Row::Switch::Knob;
+            const int py = y + ca::Row::Pill::Y, h = ca::Row::Pill::Size[1];
+            const u32 edge = Fade(MixColor(sw.edge, sw.next_edge, p), alpha);
+            s.Box({vx, py, vw, h}, "switch.track", edge);
+            s.Box({vx + inset, py + inset, vw - inset * 2, h - inset * 2}, "switch.inner", Fade(MixColor(sw.fill, sw.next_fill, p), alpha));
+            const float lp = sw.label_phase.At(now), split = ca::Time::SwitchTextSplit;
+            const char *labels[] = {"OFF", "ON", "待機", "動作中"};
+            auto label = [&](unsigned kind, float opacity) {
+                if (opacity <= 0) return;
+                const char *word = labels[kind];
+                const int x = vx + ca::Row::Pill::Text[kind == 0 ? 0 : 1] + (ca::Row::Pill::Text[2] - s.Measure(word)) / 2;
+                s.Text(x, py + ca::Row::Pill::Text[3], word, Fade(text, alpha * opacity));
+            };
+            if (sw.label_from == sw.label_to) label(sw.label_to, Mix(sw.label_alpha, 1.f, lp));
+            else {
+                label(sw.label_from, sw.label_alpha * Clamp01(1.f - lp / split));
+                label(sw.label_to, Clamp01((lp - split) / (1.f - split)));
+            }
+            // 字より後に置き、つまみを最前面にする。
+            const int kx = vx + inset + Round((vw - inset * 2 - knob) * position);
+            s.Sprite(kx, py + inset, "switch.knob", edge);
+            s.Sprite(kx + inset, py + inset * 2, "switch.knob_inner", Fade(MixColor(sw.knob, sw.next_knob, p), alpha));
+        }
     } else {
-        Ink(s, vx, y + ca::Row::Value::Text[1], v.value, selected, v.locked ? ca::Color::Locked : ink, numeric, v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow);
+        Ink(s, vx, y + ca::Row::Value::Text[1], v.value, (shadow >> 24) != 0,
+            v.locked ? MixColor(ca::Color::Locked, ca::Color::Sel::Text, weight) : ink, numeric, shadow);
         if (selected && !v.disabled) {
             s.Sprite(right + ca::Row::Value::ArrowRight[0], y + ca::Row::Value::ArrowRight[1], "arrow_r", ink);
             s.Sprite(vx + ca::Row::Value::ArrowLeft, y + ca::Row::Value::ArrowRight[1], "arrow_l", ink);
@@ -261,10 +324,12 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx) {
 }
 
 void Panel::DrawBar(Surface &s, const Engine &e, u32 now) {
-    const int dx = Visible(now) ? MenuX(now) : 0;
+    if (bar_.At(now) <= 0.f) return;
+    FadedSurface faded(s, bar_.At(now));
+    const int dx = 0;
     u32 progress; bool muted; u16 key;
-    if (e.HoldProgress(now, &progress, &muted, &key)) DrawHoldBar(s, e, dx, now);
-    else DrawFooter(s, e, dx);
+    if (e.HoldProgress(now, &progress, &muted, &key)) DrawHoldBar(faded, e, dx, now);
+    else DrawFooter(faded, e, dx);
 }
 
 void Panel::DrawHoldBar(Surface &s, const Engine &e, int dx, u32 now) {
@@ -300,9 +365,9 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
     const int height = h[0] + th + h[1] + h[2] * nb + (extra ? h[3] + (hotkey ? h[4] : 0) + ns * h[5] : 0) + h[6];
     Rect box = Bounds(ca::Desc::Rect); box.h = height;
     box.x += Round((1 - alpha) * (ca::Screen[0] - box.x));
-    Paper(s, box, alpha);
+    Paper(s, box);
     Rect band = Bounds(ca::Desc::Title::Rect, box.x, box.y, box.w); band.h = th;
-    s.Box(band, "band9", Fade(0xFFFFFFFFu, alpha));
+    s.Box(band, "band9");
     for (int n = 0; n < nt; ++n) s.Text(box.x + ca::Desc::Title::Text[0], box.y + ca::Desc::Title::Text[1] + n * ca::Desc::Title::Line, title[n], Fade(ca::Color::Band::Text, alpha));
     int y = box.y + ca::Desc::Body[1] + th + ca::Desc::Body[2];
     for (int n = 0; n < nb; ++n) s.Text(box.x + ca::Desc::Body[0], y + n * ca::Desc::Body[3], body[n], Fade(ca::Color::Text, alpha));

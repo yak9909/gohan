@@ -20,7 +20,7 @@ def test_design_covers_all_ca2_tables():
             name = re.match(r'\| `ca2\.([^`]+)`', line)[1]
             assert name in values or any(k.startswith(name + '.') for k in values), name
     assert values['list.rect'] == [4, 4, 228, 210]
-    assert values['budget.plan'] == [141, 144, 33024, 48, 35, 61044, 78643]
+    assert values['budget.plan'] == [256, 256, 71552, 56, 56, 117312, 117964]
     assert len(values['glyph.override']) == 23
 
 
@@ -69,6 +69,7 @@ def part_color_keys(name):
     """型紙の実装とは別に、部品が使う設計表の色を列挙する。"""
     fixed = {
         'window': ['color.paper.edge', 'color.paper.inner', 'color.paper.fill'],
+        'notice.window': ['color.paper.edge', 'color.paper.inner', 'color.notice.paper'],
         'band3': ['color.band.edge', 'color.band.fill'],
         'band9': ['color.band.edge', 'color.band.fill'],
         'selrim': ['color.sel.band.edge', 'color.sel.band.inner', 'color.sel.band.fill'],

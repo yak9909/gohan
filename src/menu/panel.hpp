@@ -17,6 +17,7 @@ class Panel {
     void NudgeValue(u32 now, int direction) { value_.Fire(now, direction); }
     void NudgeAction(u32 now) { action_.Fire(now, 1); }
     bool Visible(u32 now) const { return open_.At(now) > 0.0f || open_.to > 0.0f; }
+    bool BarVisible(u32 now) const { return bar_.At(now) > 0.f || bar_.to > 0.f; }
     float OpenAmount(u32 now) const { return open_.At(now); }
     bool Animating(u32 now) const;
     float ViewStart(u32 now) const { return view_.At(now); }
@@ -34,13 +35,24 @@ class Panel {
     int MenuX(u32 now) const;
     void DrawFrame(Surface &surface, const Engine &engine, int menu_x, u32 now);
     void DrawRows(Surface &surface, const Engine &engine, int menu_x, u32 now);
-    void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected);
+    void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now);
     void DrawScrollBar(Surface &surface, int menu_x, u32 now);
     void DrawFooter(Surface &surface, const Engine &engine, int menu_x);
     void DrawHoldBar(Surface &surface, const Engine &engine, int menu_x, u32 now);
     float TargetFor(int index) const;
 
     motion::Tween open_;
+    motion::Tween bar_;
+    struct SwitchMotion {
+        motion::Tween phase;
+        motion::Tween label_phase;
+        unsigned label_from = 0, label_to = 0;
+        float label_alpha = 1.f;
+        float from = 0, to = 0;
+        u32 fill = 0, edge = 0, knob = 0;
+        u32 next_fill = 0, next_edge = 0, next_knob = 0;
+        bool ready = false;
+    } switches_[core::limits::MenuItems];
     motion::Tween selection_;
     motion::Tween view_;
     motion::Bounce value_;

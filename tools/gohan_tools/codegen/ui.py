@@ -102,6 +102,7 @@ def sprites(v):
         add(name, image, mode, cap)
         return image
     part('window', 'window', color('paper.fill'), [color('paper.edge'), color('paper.inner')], 9)
+    part('notice.window', 'window', color('notice.paper'), [color('paper.edge'), color('paper.inner')], 9)
     for name, mode in [('band3', 3), ('band9', 9)]:
         part(name, name, color('band.fill'), [color('band.edge')], mode)
     rim = part('selrim', 'selrim', color('sel.band.fill'),
@@ -109,18 +110,10 @@ def sprites(v):
     for y in range(2, len(rim) - 2):
         rim[y][len(rim[0]) // 2] = (0, 0, 0, 0)
     part('disband', 'disband', color('disabled.sel.fill'), [color('disabled.sel.edge')], 3)
-    for state, knob, pending in [('on', 'r', False), ('off', 'l', False), ('wait', 'r', False),
-                                  ('run', 'r', False), ('on', 'r', True), ('off', 'l', True)]:
-        edge = color('pending.edge' if pending else f'switch.{state}_edge')
-        image = part('pill.' + ('pending_' if pending else '') + state, 'pill',
-                     color('switch.' + state), [edge] + ([color('pending.inner')] if pending else []), 3, v['part.pill'][1] // 2)
-        d = len(image) - 2
-        knob_image = box(d, d, d // 2, [edge], color('switch.run_knob' if state == 'run' else 'switch.knob'))
-        kx = 1 if knob == 'l' else len(image[0]) - 1 - d
-        for y, row in enumerate(knob_image):
-            for x, pixel in enumerate(row):
-                if pixel[3]:
-                    image[y + 1][kx + x] = pixel
+    part('switch.track', 'switch_track', white, [], 3)
+    part('switch.inner', 'switch_inner', white, [], 3)
+    for name, size in [('switch.knob', v['row.switch.knob']), ('switch.knob_inner', v['row.switch.knob_inner'])]:
+        add(name, box(size, size, size // 2, [], white))
     for state in ('normal', 'reserved', 'ok'):
         fill, edge, _ = map(rgba, v['color.button.' + state])
         part('button.' + state, 'button', fill, [edge], 3)

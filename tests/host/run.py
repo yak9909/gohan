@@ -20,6 +20,8 @@ def main() -> int:
     build.mkdir(parents=True, exist_ok=True)
     exe = '.exe' if os.name == 'nt' else ''
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
+    # core の描画予算も設計表から取るため、最初のコンパイルより前に生成する。
+    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
 
     def run(sources, output, includes=('src',), defines=()):
         out = build / (output + exe)

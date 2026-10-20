@@ -15,9 +15,7 @@ template <class T> class Mailbox {
     bool TryPublish(const T &value) {
         if (!mutex_.TryLock())
             return false;
-        const unsigned next = published_ ^ 1u;
-        slots_[next] = value;
-        published_ = next;
+        value_ = value;
         if (++generation_ == 0)
             ++generation_;
         mutex_.Unlock();
@@ -31,7 +29,7 @@ template <class T> class Mailbox {
             mutex_.Unlock();
             return MailRead::Unchanged;
         }
-        value = slots_[published_];
+        value = value_;
         generation = generation_;
         mutex_.Unlock();
         return MailRead::Updated;
@@ -39,8 +37,8 @@ template <class T> class Mailbox {
 
   private:
     SpinMutex mutex_;
-    T slots_[2]{};
-    unsigned published_ = 0;
+    // 読み出しのコピーも同じロック内なので、値の置き場は一つで足りる。
+    T value_{};
     std::uint32_t generation_ = 0;
 };
 } // namespace gohan::core

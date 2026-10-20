@@ -1,5 +1,6 @@
 // 照合 → 導入 → 描画 → 取り外しの入口（game::lyt の公開関数）を、ゲームの代役で通して試験する。
 #include "game/lyt/renderer.hpp"
+#include "game/lyt/engine.hpp"
 #include "lyt_font.hpp"
 #include "lyt_game.hpp"
 #include <CTRPluginFramework.hpp>
@@ -48,6 +49,28 @@ int main() {
     assert(Fake::allocations == 0 && !Present(Drawing{}));
     Fake::Reset();
 
+    // CPU側の木も空き容量を検査し、導入途中の失敗では必ず返す。
+    Fake::largestBlock = sizeof(detail::Engine) + 127;
+    assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
+    assert(Fake::allocations == 0);
+    Fake::Reset();
+    Fake::freeBytes = sizeof(detail::Engine) + 128 + gohan::core::limits::RendererHeapReserve - 1;
+    assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
+    assert(Fake::allocations == 0);
+    Fake::Reset();
+    for (int fail : {1, 2}) {
+        Fake::failAllocate = fail;
+        assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
+        assert(!Present(Drawing{}) && DetachRenderer());
+        Fake::Reset();
+        Fake::failCreate = fail;
+        assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
+        Fake::Reset();
+    }
+    Fake::flushFails = true;
+    assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
+    Fake::Reset();
+
     // 導入 → 描画 → 取り外し。
     FakeLayout::Reset();
     assert(InstallRenderer(font.resource) == InstallResult::Ready);
@@ -66,6 +89,15 @@ int main() {
     while (!DetachRenderer())
         assert(++calls < 20);
     assert(Fake::Balanced() && !Present(drawing));
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        assert(InstallRenderer(font.resource) == InstallResult::Ready);
+        assert(Present(drawing));
+        assert(!DetachRenderer());
+        Fake::EndPasses();
+        int drain = 0;
+        while (!DetachRenderer()) assert(++drain < 20);
+        assert(Fake::Balanced() && !Present(drawing));
+    }
     WaitMilliseconds(5);
     assert(FakeLayout::sleeps == 1 && FakeLayout::slept == 5);
     std::puts("lyt renderer: ok");

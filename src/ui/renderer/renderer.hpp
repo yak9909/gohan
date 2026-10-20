@@ -60,7 +60,7 @@ const game::lyt::FontResource &Fonts();
 void PrepareTitleBackground();
 void StartTitleAnimation();
 void StopTitleAnimation();
-// 描画スレッドはコマ番号を通知し、完成世代だけ受け取る。合成・転送は行わない。
+// 不変のアトラスからコマ番号に対応する参照範囲を選ぶ。合成・転送は行わない。
 void StepTitleAnimation(std::uint32_t frame, Drawing &drawing);
 const game::titlebg::Sources *TitleBackgroundSources();
 const game::lyt::TextureResource &TitleBackgroundImage(unsigned index);

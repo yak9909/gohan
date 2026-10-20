@@ -74,7 +74,7 @@ struct ScreenObjects {
 class Scene {
   public:
     // 確保の前に、字形の表の大きさとゲームの文字バッファの必要量を確かめる。
-    bool Prepare(const ResourceApi &api, const FontResource &font) const;
+    static bool Prepare(const ResourceApi &api, const FontResource &font);
     // Prepare に成功した後、アトラス（GPU が読める確保済みの領域）が決まってから組む。
     void Build(const ResourceApi &api, const FontResource &font, const void *atlas, const void *background = nullptr);
     // 1 画面の描画指示から Pane の木を組み直す。呼び出し側は、その画面のノードが

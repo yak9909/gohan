@@ -4,6 +4,8 @@
 #include <cassert>
 #include <limits>
 #include <string>
+#include <vector>
+#include <cstring>
 
 namespace {
 using namespace gohan::ui::renderer;
@@ -58,6 +60,39 @@ void BoundsAndOrder() {
     assert(drawing.estimatedBytes == (gohan::core::limits::RendererRects - 1) * 204 + 552 + 5 * 48);
 }
 
+void TitleFrames() {
+    PrepareTitleBackground();
+    namespace ca = gohan::core::design::ca2;
+    const auto &atlas = TitleBackgroundImage(3);
+    const std::vector<std::uint8_t> before(atlas.data, atlas.data + atlas.bytes);
+    const auto *sources = TitleBackgroundSources();
+    std::vector<std::uint8_t> work(2048);
+    Drawing drawing;
+    for (auto &s : drawing.screens) {
+        s.count = 1; s.commands[0].texture = Texture::TitleSelection;
+        s.commands[0].bounds = {26, 29, 182, 11};
+    }
+    auto pixel = [](const std::uint8_t *data, unsigned x, unsigned y, unsigned width) {
+        unsigned n = (y / 8 * (width / 8) + x / 8) * 64;
+        for (unsigned b = 0; b < 3; ++b) n += ((x >> b & 1) << (2*b)) + ((y >> b & 1) << (2*b+1));
+        return (data[n / 2] >> ((n & 1) * 4)) & 15;
+    };
+    for (unsigned f = 0; f <= unsigned(ca::Titlebg::Loop); ++f) {
+        StepTitleAnimation(f, drawing);
+        const auto &a = drawing.screens[0].commands[0], &b = drawing.screens[1].commands[0];
+        assert(a.kind == gohan::game::lyt::Kind::Image && a.texture == Texture::TitleSelection);
+        assert(a.source.x == b.source.x && a.source.y == b.source.y);
+        assert(a.source.x >= 0 && a.source.y >= 0 && unsigned(a.source.x + 182) <= atlas.width && unsigned(a.source.y + 11) <= atlas.height);
+        if (sources) {
+            assert(gohan::game::titlebg::BakeSelectionL4(sources, 256, 16, 182, 11, work.data(), f));
+            for (unsigned y = 0; y < 11; ++y) for (unsigned x = 0; x < 182; ++x)
+                assert(pixel(work.data(), x, y, 256) == pixel(atlas.data, a.source.x+x, a.source.y+y, atlas.width));
+        }
+    }
+    assert(drawing.screens[0].commands[0].source.x == 0 && drawing.screens[0].commands[0].source.y == 0);
+    assert(std::memcmp(before.data(), atlas.data, atlas.bytes) == 0);
+}
+
 void TextAndSlots() {
     Canvas canvas;
     canvas.Begin(Screen::Top);
@@ -86,13 +121,13 @@ void TextAndSlots() {
     assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Full);
     assert(canvas.Text(0, 0, "A", White) == Result::Added);
     canvas.Begin(Screen::Top);
-    for (int i = 0; i < 16; ++i)
+    for (int i = 0; i < 24; ++i)
         assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Added);
     assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Full);
     // 画面ごとに数える。下画面は上画面の枠を使わない。
     canvas.Begin(Screen::Bottom);
     assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Added);
-    assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == 16);
+    assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == 24);
 }
 
 void ImagesAndSlices() {
@@ -314,6 +349,7 @@ int main() {
     Geometry();
     BoundsAndOrder();
     TextAndSlots();
+    TitleFrames();
     ImagesAndSlices();
     Dispatch();
     Shutdown();
