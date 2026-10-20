@@ -10,6 +10,7 @@
 #include <string>
 
 namespace gohan::game::lyt {
+RendererMemory ReadRendererMemory() { return {}; }
 namespace {
 Drawing presented;
 int presents = 0;

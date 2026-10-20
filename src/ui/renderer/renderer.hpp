@@ -66,6 +66,7 @@ const game::titlebg::Sources *TitleBackgroundSources();
 const game::lyt::TextureResource &TitleBackgroundImage(unsigned index);
 const char *TitleBackgroundStatusText();
 const char *BackgroundAllocationStatusText();
+const char *MemoryStatusText();
 
 enum class Status { Stopped, Waiting, Ready, WrongTitle, Unreadable, Mismatch,
                     MissingBindings, PresentFailed, ResourceFailed, Stopping };

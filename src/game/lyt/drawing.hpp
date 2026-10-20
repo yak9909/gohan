@@ -78,6 +78,14 @@ struct BackgroundAllocation {
     unsigned freeBytes = 0, largestBlock = 0;
     bool measured = false;
 };
+struct HeapMeasurement {
+    unsigned freeBytes = 0, largestBlock = 0;
+    bool measured = false;
+};
+struct RendererMemory {
+    HeapMeasurement before, after, current;
+    unsigned gameBytes = 0, gameUpperBytes = 0, pluginBytes = 0, commandBytes = 0;
+};
 // 各画像の開始を GPU 用の 128 バイト境界に揃える。必須と背景は別の確保の先頭から。
 inline std::size_t TextureOffset(const FontResource &font, std::size_t index) {
     const bool background = index >= font.requiredTextureCount;

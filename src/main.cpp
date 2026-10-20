@@ -43,6 +43,9 @@ void ShowStatus(CTRPluginFramework::MenuEntry *) {
         .Append(gohan::game::FrameHookStatus());
     writer.Append("\n").Append(gohan::ui::renderer::StatusText());
     writer.Append("\n").Append(gohan::ui::renderer::TitleBackgroundStatusText());
+#ifdef GOHAN_DEV
+    writer.Append("\n").Append(gohan::ui::renderer::MemoryStatusText());
+#endif
     CTRPluginFramework::MessageBox("gohan（作り直し中）", text)();
 }
 } // namespace

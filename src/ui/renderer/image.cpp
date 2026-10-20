@@ -1,4 +1,5 @@
 #include "ui/renderer/internal.hpp"
+#include "ui/renderer/selection_frames.hpp"
 #include <limits>
 
 namespace gohan::ui::renderer {
@@ -36,6 +37,7 @@ Result Canvas::AddImage(Rect bounds, Rect source, Texture texture, unsigned scal
     command.texture = texture;
     command.scale = scale;
     command.length = 0;
+    command.slot = 0;
     detail::Account(current, false, 0);
     return Result::Added;
 }
@@ -59,6 +61,25 @@ Result Canvas::Repeat(Rect bounds, Texture texture, int phaseX, int phaseY, unsi
     const auto index = static_cast<unsigned>(texture);
     if (texture == Texture::Ui || index >= Fonts().textureCount)
         return Result::Invalid;
+    if (texture == Texture::TitleSelection) {
+        namespace s = core::design::ca2::Titlebg::Selection;
+        if (bounds.width > s::CellSize[0] || bounds.height > s::CellSize[1] || scale != 1)
+            return Result::Invalid;
+        auto &current = Current();
+        const auto count = current.count, rects = current.rectangles, bytes = current.estimatedBytes;
+        const auto first = AddImage(bounds, {0, 0, bounds.width, bounds.height}, texture, 1, color, false);
+        if (first != Result::Added) return first;
+        const auto second = AddImage(bounds, {0, 0, bounds.width, bounds.height}, texture, 1, color, false);
+        if (second != Result::Added) {
+            current.count = count; current.rectangles = rects; current.estimatedBytes = bytes;
+            return second;
+        }
+        current.commands[count].slot = detail::SelectionFirst;
+        current.commands[count + 1].slot = detail::SelectionSecond;
+        current.commands[count + 1].bounds.x += bounds.width;
+        current.commands[count + 1].bounds.width = 0;
+        return Result::Added;
+    }
     const auto &t = Fonts().textures[index];
     const int w = static_cast<int>(t.width), h = static_cast<int>(t.height);
     return AddImage(bounds, {(phaseX % w + w) % w, (phaseY % h + h) % h, w, h},

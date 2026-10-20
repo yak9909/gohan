@@ -21,6 +21,7 @@ bool Present(const Drawing &drawing) {
     return true;
 }
 bool DetachRenderer() { return true; }
+RendererMemory ReadRendererMemory() { return {}; }
 void WaitMilliseconds(unsigned) { gohan::core::frame::Dispatch(); }
 const Drawing &Last() { return presented; }
 } // namespace gohan::game::lyt

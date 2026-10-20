@@ -18,6 +18,7 @@ class RecordingResources {
     void *Atlas() const { return atlas_; }
     void *Background() const { return background_; }
     const BackgroundAllocation &BackgroundStatus() const { return backgroundStatus_; }
+    const RendererMemory &MemoryStatus() const { return memoryStatus_; }
     unsigned List(Screen screen) const { return lists_[static_cast<unsigned>(screen)]; }
     bool Empty() const { return !atlas_ && !background_ && !lists_[0] && !lists_[1]; }
 
@@ -27,6 +28,7 @@ class RecordingResources {
     void *atlas_ = nullptr;
     void *background_ = nullptr;
     BackgroundAllocation backgroundStatus_{};
+    RendererMemory memoryStatus_{};
     unsigned lists_[2]{};
 };
 } // namespace gohan::game::lyt::detail

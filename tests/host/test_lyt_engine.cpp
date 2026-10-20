@@ -340,13 +340,13 @@ void Images(Engine &engine) {
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
     Fake::Reset();
     constexpr unsigned totalBytes = 65536 + limits::RendererUiTextureBytes;
-    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + 128 - 1;
+    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + limits::RendererGameAllocationSlack - 1;
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
     Fake::Reset();
     Fake::largestBlock = totalBytes + 128 - 1;
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
     Fake::Reset();
-    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + 128;
+    Fake::freeBytes = limits::RendererHeapReserve + totalBytes + limits::RendererGameAllocationSlack;
     Fake::largestBlock = totalBytes + 128;
     assert(engine.Install(font.resource) == InstallResult::Ready);
     assert(Fake::blocks.at(engine.Resources().Atlas()) == 65536 + limits::RendererUiTextureBytes);
@@ -424,7 +424,7 @@ void OptionalBackground(Engine &engine) {
         if (mode == 3) Fake::failAllocate = 2;
         if (mode == 4) Fake::failFlush = 2;
         if (mode == 5) {
-            Fake::freeBytes = limits::RendererHeapReserve + essentialBytes + backgroundBytes + 128;
+            Fake::freeBytes = limits::RendererHeapReserve + essentialBytes + backgroundBytes + limits::RendererGameAllocationSlack;
             Fake::largestBlock = essentialBytes + backgroundBytes + 128;
         }
         const unsigned beforeFree = Fake::freeBytes - essentialBytes;

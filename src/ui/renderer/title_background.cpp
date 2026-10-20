@@ -1,5 +1,6 @@
 #include "ui/renderer/renderer.hpp"
 #include "ui_values.hpp"
+#include "ui/renderer/selection_frames.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -23,9 +24,20 @@ static_assert(sizeof(window) + sizeof(alpha) + sizeof(luminance) <= 40000);
 constexpr int AtlasWidth = v::Titlebg::Selection::AtlasSize[0];
 constexpr int AtlasHeight = v::Titlebg::Selection::AtlasSize[1];
 std::uint8_t selectionAtlas[AtlasWidth * AtlasHeight / 2];
+constexpr int TailWidth = v::Titlebg::Selection::TailAtlasSize[0], TailHeight = v::Titlebg::Selection::TailAtlasSize[1];
+std::uint8_t selectionTail[TailWidth * TailHeight / 2];
 std::uint8_t selection[v::Titlebg::Selection::ImageSize[0] * v::Titlebg::Selection::ImageSize[1] / 2];
-static_assert(v::Titlebg::Selection::Columns * v::Titlebg::Selection::CellSize[0] <= AtlasWidth);
-static_assert(((v::Titlebg::Loop - 1) / v::Titlebg::Selection::Columns + 1) * v::Titlebg::Selection::CellSize[1] <= AtlasHeight);
+static_assert(AtlasWidth == TailWidth);
+static_assert(v::Titlebg::Selection::CellSize[0] == v::Row::W + v::Titlebg::Selection::Inset[2]);
+static_assert(v::Titlebg::Selection::CellSize[1] == v::Row::H + v::Titlebg::Selection::Inset[3]);
+static_assert((AtlasHeight / v::Titlebg::Selection::CellSize[1] + TailHeight / v::Titlebg::Selection::CellSize[1]) * AtlasWidth >= v::Titlebg::Loop * v::Titlebg::Selection::CellSize[0]);
+static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) + sizeof(alpha) + sizeof(luminance) + 98816 + 2 * core::limits::RendererGameAllocationSlack <= core::limits::RendererGameHeapLimit);
+
+unsigned PixelOffset(unsigned x, unsigned y, unsigned width) {
+    unsigned n = (y / 8 * (width / 8) + x / 8) * 64;
+    for (unsigned b = 0; b < 3; ++b) n += ((x >> b & 1) << (2 * b)) + ((y >> b & 1) << (2 * b + 1));
+    return n;
+}
 game::lyt::TextureResource images[] = {
     {alpha, sizeof(alpha), 16, 16}, {luminance, sizeof(luminance), 16, 16},
     {window, sizeof(window), WindowWidth, WindowHeight, game::lyt::TextureFormat::L4,
@@ -33,7 +45,7 @@ game::lyt::TextureResource images[] = {
      unsigned(v::Window::Overlay::Alpha * 255 + .5)},
     {selectionAtlas, sizeof(selectionAtlas), AtlasWidth, AtlasHeight, game::lyt::TextureFormat::L4,
      v::Selection::Color[0], v::Selection::Color[1]},
-    {selection, sizeof(selection), v::Titlebg::Selection::ImageSize[0], v::Titlebg::Selection::ImageSize[1], game::lyt::TextureFormat::L4,
+    {selectionTail, sizeof(selectionTail), TailWidth, TailHeight, game::lyt::TextureFormat::L4,
      v::Selection::Color[0], v::Selection::Color[1]},
 };
 }
@@ -43,21 +55,23 @@ void PrepareTitleBackground() {
     game::titlebg::BakeWindowL4(backgroundStatus.ready ? &sources : nullptr, WindowWidth, WindowHeight, window);
     if (!backgroundStatus.ready) images[2].opacity = 0;
     if (backgroundStatus.ready) {
-        // L4 の 8×8 タイルをコマのセルへ配置する。元の小画像と同じ標本位置・階調。
+        // 実際の182×11画素だけを連続して詰める。8画素境界に丸めず、元のL4値を保つ。
         for (unsigned frame = 0; frame < unsigned(v::Titlebg::Loop); ++frame) {
             game::titlebg::BakeSelectionL4(&sources, v::Titlebg::Selection::ImageSize[0],
                 v::Titlebg::Selection::ImageSize[1], v::Row::W + v::Titlebg::Selection::Inset[2],
                 v::Row::H + v::Titlebg::Selection::Inset[3], selection, frame);
-            const unsigned ox = frame % v::Titlebg::Selection::Columns * v::Titlebg::Selection::CellSize[0] / 8;
-            const unsigned oy = frame / v::Titlebg::Selection::Columns * v::Titlebg::Selection::CellSize[1] / 8;
-            for (unsigned y = 0; y < unsigned(v::Titlebg::Selection::CellSize[1] / 8); ++y)
-                for (unsigned x = 0; x < unsigned(v::Titlebg::Selection::CellSize[0] / 8); ++x)
-                    std::memcpy(selectionAtlas + ((oy + y) * (AtlasWidth / 8) + ox + x) * 32,
-                        selection + (y * (v::Titlebg::Selection::ImageSize[0] / 8) + x) * 32, 32);
+            for (unsigned x = 0; x < unsigned(v::Titlebg::Selection::CellSize[0]); ++x) {
+                const auto to = detail::SelectionAt(frame * v::Titlebg::Selection::CellSize[0] + x);
+                auto *target = to.page ? selectionTail : selectionAtlas;
+                for (unsigned y = 0; y < unsigned(v::Titlebg::Selection::CellSize[1]); ++y) {
+                    const unsigned src = PixelOffset(x, y, v::Titlebg::Selection::ImageSize[0]);
+                    const unsigned dst = PixelOffset(to.x, to.y + y, AtlasWidth);
+                    const unsigned value = (selection[src / 2] >> ((src & 1) * 4)) & 15;
+                    target[dst / 2] = (target[dst / 2] & ~(15 << ((dst & 1) * 4))) | (value << ((dst & 1) * 4));
+                }
+            }
         }
-    } else images[3].opacity = 0;
-    // 旧二重画像の予備枠は互換用。参照も転送もしない。
-    images[4].opacity = 0;
+    } else images[3].opacity = images[4].opacity = 0;
     // A4 は形の不透明度、L4 は不透明の輝度。CPU の上から順を GPU の順に登録する。
     for (unsigned y = 0; y < 16; ++y) {
         for (unsigned x = 0; x < 16; ++x) {

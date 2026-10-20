@@ -20,7 +20,7 @@ def test_design_covers_all_ca2_tables():
             name = re.match(r'\| `ca2\.([^`]+)`', line)[1]
             assert name in values or any(k.startswith(name + '.') for k in values), name
     assert values['list.rect'] == [4, 4, 228, 210]
-    assert values['budget.plan'] == [256, 256, 71552, 56, 56, 117312, 117964]
+    assert values['budget.plan'] == [257, 257, 71896, 56, 56, 117516, 117964]
     assert len(values['glyph.override']) == 23
 
 

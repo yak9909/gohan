@@ -221,6 +221,16 @@ void DeviceCorrections() {
     for (const auto &c : closing.commands) if (c.text == "window" && c.bounds.w == ca::List::Rect[2])
         assert(c.bounds.x + c.bounds.w <= 0);
 
+    // 閉じた入力状態でも、画面内を退場中の字は新しい状態へフェードする。
+    Rig leaving(kMenuItems, kMenuItemCount); Enter(leaving);
+    leaving.engine.RequestClose(leaving.now); leaving.Frame(0);
+    assert(leaving.engine.SetValue(flag, 1)); leaving.Frame(0);
+    assert(leaving.Draw().HasText("OFF") && !leaving.Draw().HasText("ON"));
+    leaving.Advance(80); const auto duringExit = leaving.Draw();
+    assert(duringExit.HasText("ON"));
+    const auto *newWord = duringExit.FindText("ON");
+    assert((newWord->color >> 24) > 0 && (newWord->color >> 24) < 255);
+
     NoticeQueue q; Notice a{}; NoticeExecuted(a, "見本のスタンプ");
     q.Add(a, 0); RecordingSurface initial; q.Draw(initial, 500);
     const int oldY = initial.FindText("ACTION")->bounds.y;

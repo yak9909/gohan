@@ -42,7 +42,8 @@ void Panel::Sync(const Engine &engine, u32 now) {
             selected_ = engine.Selected();
         }
     }
-    if (!visible) return;
+    // 退場中も、実行状態と字のフェードを画面外へ出るまで更新する。
+    if (!visible && open_.At(now) <= 0.f) return;
     for (int n = 0; n < count_; ++n) {
         const u16 item = items_[n];
         const auto v = engine.View(item);
@@ -55,7 +56,7 @@ void Panel::Sync(const Engine &engine, u32 now) {
         const u32 edge = v.pending ? ca::Color::Pending::Edge : off ? ca::Color::Switch::OffEdge : wait ? ca::Color::Switch::WaitEdge : run ? ca::Color::Switch::RunEdge : ca::Color::Switch::OnEdge;
         const u32 knob = run ? ca::Color::Switch::RunKnob : ca::Color::Switch::Knob;
         const float target = off ? 0.f : 1.f;
-        if (!sw.ready || engine.Folder() != folder_ || !was_visible_) {
+        if (!sw.ready || engine.Folder() != folder_) {
             sw.ready = true; sw.from = sw.to = target;
             sw.fill = sw.next_fill = fill; sw.edge = sw.next_edge = edge; sw.knob = sw.next_knob = knob;
             sw.phase.Jump(1, now);

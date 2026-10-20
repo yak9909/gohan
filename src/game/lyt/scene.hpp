@@ -4,7 +4,7 @@
 
 namespace gohan::game::lyt::detail {
 // プラグインのメモリに置く、ゲームの Layout の部品（Pane・Picture・TextBox・Material・ResFont）。
-// GPU が読むのは字形のアトラスの画素だけで、ほかは CPU（コマンドの記録）しか読まない。
+// GPU が読む画像は別の確保。ここはCPU（コマンドの記録）しか読まない。
 template <class T> struct alignas(16) Aligned {
     T value;
 };
