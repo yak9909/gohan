@@ -21,6 +21,25 @@ float Panel::TargetFor(int index) const {
 }
 
 void Panel::Sync(const Engine &engine, u32 now) {
+    const bool folder_change = engine.Visible() && was_visible_ && engine.Folder() != folder_;
+    const bool reversing = folder_change && !folder_phase_.Done(now) && engine.Folder() == old_folder_;
+    const float previous_phase = folder_phase_.At(now);
+    const float previous_row = selection_.At(now) - view_.At(now);
+    const float previous_view = view_.At(now);
+    const float return_view = old_view_;
+    if (folder_change) {
+        old_count_ = count_;
+        std::copy(items_, items_ + count_, old_items_);
+        old_folder_ = folder_;
+        old_selected_ = selected_;
+        old_view_ = previous_view;
+        old_selection_ = selection_.At(now);
+        folder_direction_ = reversing ? -folder_direction_ :
+            (engine.Folder() != kNoItem && engine.Def(engine.Folder()).parent == folder_ ? 1 : -1);
+        const float start = reversing ? 1.f - previous_phase : 0.f;
+        folder_phase_.Jump(start, now);
+        folder_phase_.Go(1.f, now, reversing ? static_cast<u32>(timing::kFolderMs * previous_phase) : timing::kFolderMs);
+    }
     count_ = 0;
     for (u16 item = engine.FirstVisible(engine.Folder()); item != kNoItem && count_ < static_cast<int>(core::limits::MenuItems);
          item = engine.NextVisible(item))
@@ -79,10 +98,11 @@ void Panel::Sync(const Engine &engine, u32 now) {
             sw.label_phase.Jump(0, now); sw.label_phase.Go(1, now, ca::Time::Switch);
         }
     }
-    if (engine.Folder() != folder_) {
-        // フォルダの出入りは、動かさずに新しい一覧の選択へ合わせる。
-        selection_.Jump(static_cast<float>(index), now);
-        view_.Jump(TargetFor(index), now);
+    if (folder_change) {
+        const float next_view = reversing ? return_view : TargetFor(index);
+        view_.Jump(next_view, now);
+        selection_.Jump(previous_row + next_view, now);
+        selection_.Go(static_cast<float>(index), now, timing::kFolderMs);
     } else if (engine.Selected() != selected_) {
         selection_.Go(static_cast<float>(index), now, timing::kSelectionMoveMs);
         const float start = view_.to;
@@ -105,7 +125,7 @@ void Panel::SetRows(int rows, u32 now) {
 
 bool Panel::Animating(u32 now) const {
     for (const auto &sw : switches_) if (sw.ready && (!sw.phase.Done(now) || !sw.label_phase.Done(now))) return true;
-    return !bar_.Done(now) || !open_.Done(now) || !selection_.Done(now) || !view_.Done(now) || value_.Active(now, timing::kValueBounceMs) ||
+    return !bar_.Done(now) || !open_.Done(now) || !selection_.Done(now) || !view_.Done(now) || !folder_phase_.Done(now) || value_.Active(now, timing::kValueBounceMs) ||
            action_.Active(now, timing::kActivationBounceMs);
 }
 
@@ -124,18 +144,34 @@ void Panel::Draw(Surface &surface, const Engine &engine, u32 now, bool modal) {
 }
 
 
-void Panel::DrawFrame(Surface &s, const Engine &e, int dx, u32) {
+void Panel::DrawFrame(Surface &s, const Engine &e, int dx, u32 now) {
     Paper(s, Bounds(ca::List::Rect, dx));
     const Rect title = Bounds(ca::List::Title::Rect, dx + ca::List::Rect[0], ca::List::Rect[1], ca::List::Rect[2]);
     s.Box(title, "band3");
-    int index = 0;
-    while (index < count_ && items_[index] != e.Selected()) ++index;
-    char pos[24]; core::TextWriter(pos, sizeof(pos)).Unsigned(count_ ? index + 1 : 0).Append("/").Unsigned(count_);
+    if (old_count_ && !folder_phase_.Done(now)) {
+        const float p = folder_phase_.At(now);
+        int old_index = 0;
+        while (old_index < old_count_ && old_items_[old_index] != old_selected_) ++old_index;
+        FadedSurface old(s, 1.f - p), next(s, p);
+        if (p < 1.f) DrawHeading(old, e, dx, old_folder_, old_count_, old_index);
+        int index = 0;
+        while (index < count_ && items_[index] != e.Selected()) ++index;
+        if (p > 0.f) DrawHeading(next, e, dx, e.Folder(), count_, index);
+    } else {
+        int index = 0;
+        while (index < count_ && items_[index] != e.Selected()) ++index;
+        DrawHeading(s, e, dx, e.Folder(), count_, index);
+    }
+}
+
+void Panel::DrawHeading(Surface &s, const Engine &e, int dx, u16 folder, int count, int index) {
+    const Rect title = Bounds(ca::List::Title::Rect, dx + ca::List::Rect[0], ca::List::Rect[1], ca::List::Rect[2]);
+    char pos[24]; core::TextWriter(pos, sizeof(pos)).Unsigned(count ? index + 1 : 0).Append("/").Unsigned(count);
     const int right = dx + ca::List::Rect[0] + ca::List::Rect[2] + ca::List::Title::Pos::Right;
     const int py = title.y + ca::List::Title::Text[1];
     s.Text(right - s.Measure(pos, true), py, pos, ca::Color::Band::Text, true);
     u16 ancestors[timing::kMaxDepth]{}; int depth = 0;
-    for (u16 at = e.Folder(); at != kNoItem && depth < static_cast<int>(timing::kMaxDepth); at = e.Def(at).parent) ancestors[depth++] = at;
+    for (u16 at = folder; at != kNoItem && depth < static_cast<int>(timing::kMaxDepth); at = e.Def(at).parent) ancestors[depth++] = at;
     char path[kLineBytes], trimmed[kLineBytes];
     core::TextWriter w(path, sizeof(path)); w.Append(ca::Text::Title);
     for (int n = depth - 1; n >= 0; --n) w.Append(ca::Text::PathSeparator).Append(e.Def(ancestors[n]).label);
@@ -167,18 +203,38 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
         s.Sprite(band.x + ca::Cursor::Offset[0] + ca::Cursor::Sway[(now % ca::Time::Cursor) >= unsigned(ca::Time::Cursor / 2)],
                  band.y + ca::Cursor::Offset[1], "finger");
     }
+    if (old_count_ && !folder_phase_.Done(now)) {
+        const float p = folder_phase_.At(now);
+        FadedSurface old(s, 1.f - p), next(s, p);
+        if (p < 1.f) DrawRowLayer(old, e, dx - folder_direction_ * Round(timing::kFolderDistance * p), now,
+                                  old_items_, old_count_, old_view_, old_selection_, old_selected_);
+        if (p > 0.f) DrawRowLayer(next, e, dx + folder_direction_ * Round(timing::kFolderDistance * (1.f - p)), now,
+                                  items_, count_, start, selection_.At(now), e.Selected());
+    } else {
+        DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected());
+    }
+    if (clipped) s.EndClip();
+}
+
+void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
+                         const u16 *items, int count, float start, float selected_index, u16 selected_item) {
+    const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
+    const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
+                                    ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);
     const int first = int(std::floor(start));
-    for (int n = first < 0 ? 0 : first; n <= first + rows_ && n < count_; ++n) {
+    for (int n = first < 0 ? 0 : first; n <= first + rows_ && n < count; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
-        const float weight = Clamp01(1.f - std::abs(selection_.At(now) - float(n)));
-        const bool selected = items_[n] == e.Selected() && selection_.Done(now);
-        DrawRow(s, e, items_[n], dx, y, selected ? action + value : 0, selected, weight, now);
-        if (n + 1 < count_ && y + ca::Row::Pitch < clipBottom)
+        const float weight = Clamp01(1.f - std::abs(selected_index - float(n)));
+        const bool selected = items[n] == selected_item && (items != items_ || selection_.Done(now));
+        const int offset = selected && items == items_ ?
+            Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
+            Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
+        DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
+        if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
             s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                        ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
     }
-    if (clipped) s.EndClip();
 }
 
 void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now) {

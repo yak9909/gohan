@@ -27,6 +27,8 @@ inline constexpr std::uint32_t kNoticeEnterMs = core::design::ca2::Time::Notice[
 inline constexpr std::uint32_t kNoticeHoldMs = core::design::ca2::Time::Notice[1];
 inline constexpr std::uint32_t kNoticeExitMs = core::design::ca2::Time::Notice[2];
 inline constexpr std::uint32_t kNoticeSpawnMs = core::design::ca2::Time::Notice[3];
+inline constexpr std::uint32_t kFolderMs = core::design::ca2::Time::Folder[0];
+inline constexpr int kFolderDistance = core::design::ca2::Time::Folder[1];
 } // namespace gohan::menu::timing
 
 namespace gohan::menu::style {

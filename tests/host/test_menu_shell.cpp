@@ -249,7 +249,43 @@ void DeviceCorrections() {
     for (const auto &c : seven.commands) if (c.text == "notice.window" && c.kind == Command::Slice) {
         ++windows; assert(c.bounds.y >= ca::Notice::Top && c.bounds.y + c.bounds.h <= ca::Notice::Bottom[0]);
     }
-    assert(windows == 7);
+    assert(windows == 8); // 7件の積み上げと退場中の1件
+
+    NoticeQueue overflow;
+    for (int i = 0; i < 7; ++i) {
+        Notice numbered{};
+        std::snprintf(numbered.title, sizeof(numbered.title), "N%d", i + 1);
+        std::snprintf(numbered.message, sizeof(numbered.message), "message %d", i + 1);
+        overflow.Add(numbered, i * 200);
+        RecordingSurface placed; overflow.Draw(placed, i * 200);
+    }
+    Notice eighth{}; std::snprintf(eighth.title, sizeof(eighth.title), "N8");
+    std::snprintf(eighth.message, sizeof(eighth.message), "message 8");
+    overflow.Add(eighth, 1400);
+    RecordingSurface early, midway, finished;
+    overflow.Draw(early, 1440); overflow.Draw(midway, 1520); overflow.Draw(finished, 1760);
+    Budget(early); Budget(midway); Budget(finished);
+    assert(early.FindText("N1") && midway.FindText("N1") && !finished.FindText("N1"));
+    assert(early.FindText("N1")->bounds.x < midway.FindText("N1")->bounds.x);
+    assert((early.FindText("N1")->color >> 24) > (midway.FindText("N1")->color >> 24));
+    assert(early.FindText("N2")->bounds.y > midway.FindText("N2")->bounds.y);
+
+    NoticeQueue timed; timed.Add(eighth, 0);
+    RecordingSurface normalEarly, normalLate;
+    timed.Draw(normalEarly, 3000); timed.Draw(normalLate, 3120);
+    assert(normalEarly.FindText("N8") && normalLate.FindText("N8"));
+    assert(normalEarly.FindText("N8")->bounds.x < normalLate.FindText("N8")->bounds.x);
+    assert((normalEarly.FindText("N8")->color >> 24) > (normalLate.FindText("N8")->color >> 24));
+
+    Rig folders(kMenuItems, kMenuItemCount);
+    assert(folders.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    folders.Open(); folders.Hold(key::A); folders.Release();
+    auto enteringFolder = folders.Draw(); Budget(enteringFolder);
+    assert(enteringFolder.HasText("見本のフラグ") && enteringFolder.HasText("見本"));
+    folders.Advance(64); folders.Hold(key::B); folders.Release();
+    auto reversingFolder = folders.Draw(); Budget(reversingFolder);
+    assert(reversingFolder.HasText("見本のフラグ") && reversingFolder.HasText("見本"));
+    folders.Advance(240); assert(folders.engine.Depth() == 0 && !folders.Draw().HasText("見本のフラグ"));
 }
 }
 int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); std::puts("menu shell: ok"); }

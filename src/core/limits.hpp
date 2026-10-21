@@ -23,7 +23,7 @@ inline constexpr std::size_t RendererRecordPercent = 80;
 // コマンドリストが持つ GPU 提出の項目数。
 inline constexpr int RendererQueueEntries = 16;
 // 文字の枠（TextBox）の最大字数。昇順に並べ、文字列は入る中で最小の空き枠を使う。
-// 17字以上は24枠（28字は8枠）。総数56で7通知と長い行・説明・影を収める。
+// 17字以上は32枠（28字は16枠）。総数64で退場中を含む8通知・切り替え中の行・説明・影を収める。
 inline constexpr auto RendererSlotChars = [] {
     std::array<unsigned, RendererTexts> result{};
     for (std::size_t i = 0; i < result.size(); ++i) result[i] = design::ca2::Budget::SlotChars[i];

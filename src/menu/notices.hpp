@@ -25,11 +25,22 @@ class NoticeQueue {
         u32 created = 0;
         motion::Tween y;
         bool placed = false;
+        bool forced_exit = false;
+        u32 exit_at = 0;
+        float exit_x = 0.f;
+        float exit_y = 0.f;
     };
     float X(const Slot &slot, int screen_width, u32 now) const;
+    float Alpha(const Slot &slot, u32 now) const;
     bool SlotAlive(const Slot &slot, u32 now) const;
+    void Insert(const Notice &notice, u32 now);
+    void Flush(u32 now);
 
     Slot slots_[kCapacity]{};
+    Slot leaving_{};
+    static constexpr int kPendingCapacity = core::design::ca2::Notice::PendingCapacity;
+    Notice pending_[kPendingCapacity]{};
+    int pending_count_ = 0;
     u32 last_at_ = 0;
     bool ever_ = false;
 };

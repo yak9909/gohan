@@ -34,7 +34,10 @@ class Panel {
   private:
     int MenuX(u32 now) const;
     void DrawFrame(Surface &surface, const Engine &engine, int menu_x, u32 now);
+    void DrawHeading(Surface &surface, const Engine &engine, int menu_x, u16 folder, int count, int selected_index);
     void DrawRows(Surface &surface, const Engine &engine, int menu_x, u32 now);
+    void DrawRowLayer(Surface &surface, const Engine &engine, int menu_x, u32 now,
+                      const u16 *items, int count, float start, float selected, u16 selected_item);
     void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now);
     void DrawScrollBar(Surface &surface, int menu_x, u32 now);
     void DrawFooter(Surface &surface, const Engine &engine, int menu_x);
@@ -55,6 +58,7 @@ class Panel {
     } switches_[core::limits::MenuItems];
     motion::Tween selection_;
     motion::Tween view_;
+    motion::Tween folder_phase_;
     motion::Bounce value_;
     motion::Bounce action_;
     bool was_visible_ = false;
@@ -64,5 +68,12 @@ class Panel {
     int rows_ = style::kVisibleRows;
     int count_ = 0;
     u16 items_[core::limits::MenuItems]{};
+    u16 old_items_[core::limits::MenuItems]{};
+    u16 old_folder_ = kNoItem;
+    u16 old_selected_ = kNoItem;
+    int old_count_ = 0;
+    float old_view_ = 0.f;
+    float old_selection_ = 0.f;
+    int folder_direction_ = 1;
 };
 } // namespace gohan::menu

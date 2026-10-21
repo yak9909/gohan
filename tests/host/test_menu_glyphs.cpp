@@ -159,7 +159,7 @@ void Scenes() {
 int main() {
     namespace ca = gohan::core::design::ca2;
     Scenes();
-    // スイッチ10行・長い説明・7通知・選択とスクロール途中を同時に実際の文字枠へ通す。
+    // スイッチ10行・長い説明・7通知と退場中1件・選択とスクロール途中を実際の文字枠へ通す。
     {
         ItemDef defs[24]{};
         for (unsigned n = 0; n < 24; ++n) {
@@ -178,6 +178,7 @@ int main() {
         for (unsigned t = 0; t < 4000; t += 16) {
             if (t % 64 == 0) { r.engine.Select((t / 64) % 24); r.engine.SetValue((t / 64) % 24, (t / 64) % 2); }
             r.Frame();
+            if (t == 1008) notices.Add(notice, r.now); // 7件が残る間に8件目を入れる
             gohan::ui::renderer::Canvas canvas; canvas.Begin(gohan::ui::renderer::Screen::Top);
             gohan::features::menu_screen::CanvasSurface surface(canvas, gohan::ui::renderer::Screen::Top);
             r.shell.Draw(surface, r.now); notices.Draw(surface, r.now);
@@ -186,19 +187,50 @@ int main() {
             unsigned actual = 0, expected = 0;
             for (unsigned n = 0; n < 7; ++n) {
                 const s32 age = static_cast<s32>(r.now - (born + n * ca::Time::Notice[3]));
-                expected += age >= ca::Time::Notice[0] && age < ca::Time::Notice[0] + ca::Time::Notice[1];
+                expected += age >= ca::Time::Notice[0] && age < ca::Time::Notice[0] + ca::Time::Notice[1] &&
+                            (n != 0 || t < 1008 + ca::Time::Notice[2]);
             }
+            expected += t >= 1008 + ca::Time::Notice[0] &&
+                        t < 1008 + ca::Time::Notice[0] + ca::Time::Notice[1];
             for (std::size_t n = 0; n < d.count; ++n) {
                 const auto &c = d.commands[n];
                 actual += c.kind == gohan::game::lyt::Kind::Text && c.length > 5 &&
                           std::u16string_view(c.text, 5) == u"GOHAN";
             }
+            if (t == 1120) assert(actual == 8);
             // 予算不足で通知そのものを省いた場合も、欠落として検出する。
             if (actual < expected) std::fprintf(stderr, "通知の欠落: %u/%u 時刻=%u 文字枠=%zu\n", actual, expected, t, d.texts);
             assert(actual >= expected);
             maxRects = std::max(maxRects, d.rectangles); maxTexts = std::max(maxTexts, d.texts); maxBytes = std::max(maxBytes, d.estimatedBytes);
         }
         std::printf("最大重なり: 板=%zu 文字枠=%zu 記録=%zu\n", maxRects, maxTexts, maxBytes);
+    }
+    {
+        // 10行の親子フォルダを切り替えつつ、通知7件と退場中1件を重ねる。
+        ItemDef defs[21]{};
+        for (unsigned n = 0; n < 21; ++n) {
+            auto &d = defs[n];
+            d.key = "stress"; d.label = "見本の長い名前のフラグ";
+            d.desc = "見本の長い説明です。見本の長い説明です。";
+            d.parent = n == 0 ? kNoItem : n <= 10 ? 0 : 10;
+            d.first_child = n == 0 ? 1 : n == 10 ? 11 : kNoItem;
+            d.next = n >= 1 && n < 10 ? n + 1 : n >= 11 && n < 20 ? n + 1 : kNoItem;
+            d.control = n == 0 || n == 10 ? Control::Folder : Control::Toggle;
+            d.behavior = Behavior::Value; d.source = Source::Setting;
+            d.min = 0; d.max = d.step = 1;
+        }
+        Rig r(defs, 21); r.Open(); r.Tap(key::A); r.Advance(240);
+        NoticeQueue notices; Notice notice{}; NoticeFailed(notice, "GOHANGOHANGOHAN", Result::NotReady);
+        for (unsigned n = 0; n < 7; ++n) notices.Add(notice, r.now);
+        { RecordingSurface placed; notices.Draw(placed, r.now); }
+        assert(r.engine.Select(10)); r.Frame(); r.Tap(key::A);
+        notices.Add(notice, r.now); r.Advance(48);
+        gohan::ui::renderer::Canvas canvas; canvas.Begin(gohan::ui::renderer::Screen::Top);
+        gohan::features::menu_screen::CanvasSurface surface(canvas, gohan::ui::renderer::Screen::Top);
+        r.shell.Draw(surface, r.now); notices.Draw(surface, r.now);
+        const auto &d = canvas.Data().screens[0];
+        std::printf("フォルダと通知の重なり: 板=%zu 文字枠=%zu 記録=%zu\n", d.rectangles, d.texts, d.estimatedBytes);
+        assert(surface.dropped() == 0 && surface.truncated() == 0);
     }
     // 狙いの場面が描かれたこと（描かれていない場面の文字は確かめられない）。
     for (const char *marker : {"GOHAN", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",
