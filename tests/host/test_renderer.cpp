@@ -141,20 +141,25 @@ void TextAndSlots() {
     for (std::size_t i = 0; i < drawing.count; ++i)
         for (std::size_t j = i + 1; j < drawing.count; ++j)
             assert(drawing.commands[i].slot != drawing.commands[j].slot);
-    // 17 字以上の文字列を入れられる枠は 32 個。28 字は 16 個。
+    // 長さごとに、設計表で用意した枠を使い切った次の1件を拒否する。
+    const auto slots_for = [](unsigned length) {
+        unsigned count = 0;
+        for (const auto capacity : gohan::core::limits::RendererSlotChars) count += capacity >= length;
+        return count;
+    };
     canvas.Begin(Screen::Top);
-    for (int i = 0; i < 16; ++i)
+    for (unsigned i = 0; i < slots_for(28); ++i)
         assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Added);
     assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Full);
     assert(canvas.Text(0, 0, "A", White) == Result::Added);
     canvas.Begin(Screen::Top);
-    for (int i = 0; i < 32; ++i)
+    for (unsigned i = 0; i < slots_for(17); ++i)
         assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Added);
     assert(canvas.Text(0, 0, std::string(17, 'A'), White) == Result::Full);
     // 画面ごとに数える。下画面は上画面の枠を使わない。
     canvas.Begin(Screen::Bottom);
     assert(canvas.Text(0, 0, std::string(28, 'A'), White) == Result::Added);
-    assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == 32);
+    assert(canvas.Data().screens[1].texts == 1 && canvas.Data().screens[0].texts == slots_for(17));
 }
 
 void ImagesAndSlices() {
@@ -352,7 +357,9 @@ void Shutdown() {
 namespace gohan::game::lyt {
 RendererMemory ReadRendererMemory() {
     return {{738876, 603712, true}, {640060, 504896, true}, {430000, 300000, true},
-            295424, 295936, 831759, 312328, 98816, 99072, 196608, 196864,
+            295424, 295936, 831759,
+            2 * (68 + gohan::core::limits::RendererRecordBytes + 28 * gohan::core::limits::RendererQueueEntries),
+            98816, 99072, 196608, 196864,
             {BackgroundResult::InsufficientSpace, 401184, 399000, true}};
 }
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {

@@ -20,7 +20,13 @@ def test_design_covers_all_ca2_tables():
             name = re.match(r'\| `ca2\.([^`]+)`', line)[1]
             assert name in values or any(k.startswith(name + '.') for k in values), name
     assert values['list.rect'] == [4, 4, 228, 210]
-    assert values['budget.plan'] == [269, 269, 76024, 64, 64, 123132, 124518]
+    assert values['budget.plan'] == [368, 368, 110080, 88, 88, 167808, 170393]
+    plan = values['budget.plan']
+    assert [a + b for a, b in zip(values['budget.folder'], values['budget.notice'])] == [plan[0], plan[3], plan[5]]
+    assert plan[0] <= plan[1] == values['budget.rects']
+    assert plan[3] <= plan[4] == values['budget.texts'] == len(values['budget.slot_chars'])
+    assert plan[5] <= plan[6] == values['budget.record_bytes'] * 80 // 100
+    assert values['budget.slot_chars'] == sorted(values['budget.slot_chars'])
     assert len(values['glyph.override']) == 23
 
 
