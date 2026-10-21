@@ -20,8 +20,15 @@ Rect DialogBox(int screen_width, bool menu_open);
 Rect DialogOption(const Rect &box, int index);
 // 互換用。上画面のタッチは常に無視する。
 int DialogOptionAt(int screen_width, bool menu_open, int x, int y);
-// menu_amount: メニューの出現量（位置の補間）。appear: ダイアログ自身の出現量。
-void DrawDialog(Surface &surface, const Engine &engine, float menu_amount, float appear);
+// 描く確認の中身。開いている確認は ViewOf で写し、閉じる途中の確認は閉じた時の写しを使う。
+struct DialogView {
+    DialogKind kind = DialogKind::None;
+    u16 item = kNoItem; // Action の対象
+    bool yes = true;    // 選んでいる答え（false は「キャンセル」）
+};
+DialogView ViewOf(const Engine &engine);
+// menu_amount: メニューの出現量（位置の補間）。appear: ダイアログ自身の出現量（0 で消える）。
+void DrawDialog(Surface &surface, const Engine &engine, const DialogView &view, float menu_amount, float appear);
 
 // ---- 入力の枠 ----
 // エンジンが出した入力の要求（Number・Slider・TriggerInput・List・CheckList・Key）に答える。
