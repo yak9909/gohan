@@ -68,7 +68,7 @@ RendererMemory ReadRendererMemory() {
     memoryStatus.pluginBytes = engine ? sizeof(detail::Engine) + alignof(detail::Engine) - 1 : 0;
     if (!engine) {
         memoryStatus.gameBytes = memoryStatus.gameUpperBytes = memoryStatus.commandBytes = 0;
-        memoryStatus.residentBytes = memoryStatus.residentUpperBytes = memoryStatus.openBytes = memoryStatus.openUpperBytes = 0;
+        memoryStatus.fontBytes = memoryStatus.uiBytes = memoryStatus.windowBytes = memoryStatus.selectionBytes = 0;
     }
     return memoryStatus;
 }

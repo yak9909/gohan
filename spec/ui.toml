@@ -261,11 +261,9 @@ screen = [400, 240]
 "titlebg.window.image_size" = [256, 256] # 最大の窓 228×210 を覆う最小の2の冪。L4、32,768バイト
 "titlebg.selection.inset" = [2, 1, -4, -2]
 "titlebg.selection.boards" = 6
-"titlebg.selection.image_size" = [256, 16] # 帯の二重 L4 画像。各 2,048 バイト
+"titlebg.selection.image_size" = [256, 16] # 帯の巡回 L4 画像。10面、各 2,048 バイト
 "titlebg.selection.update_frames" = 1
-"titlebg.selection.atlas_size" = [1024, 256]
-"titlebg.selection.tail_atlas_size" = [1024, 64]
-"titlebg.selection.cell_size" = [182, 11] # 実際に描く画素だけを横へ連続して詰め、端をまたぐ時は2枚で描く
+"titlebg.selection.cell_size" = [182, 11] # 1面で実際に描く画素の範囲
 "titlebg.fallback.window_overlay" = false
 "titlebg.fallback.selection" = 0xFF6DBB4B
 

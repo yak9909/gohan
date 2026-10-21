@@ -1,4 +1,5 @@
 #include "game/lyt/scene.hpp"
+#include "game/lyt/streaming_picture.hpp"
 #include <bit>
 #include <algorithm>
 #include <cstring>
@@ -24,8 +25,8 @@ constexpr std::uint8_t TextPositionLeftMiddle = 3;
 // Material の欄の「UV を計算済み」の印。
 constexpr std::uint8_t MaterialUvDone = 0x04;
 // 画像の書式。ゲームの Layout の番号と GPU の番号は別。
-constexpr unsigned SamplerFormatLa4 = 2;
-constexpr unsigned GpuFormatLa4 = 9;
+constexpr unsigned SamplerFormatA4 = 4;
+constexpr unsigned GpuFormatA4 = 11;
 constexpr unsigned SamplerFormatRgba8 = 0;
 constexpr unsigned GpuFormatRgba8 = 0;
 constexpr unsigned SamplerFormatL4 = 3; // 輝度のみ（RGBA=0、RGB=1、輝度と不透明度=2）。
@@ -155,7 +156,8 @@ bool Scene::Prepare(const ResourceApi &api, const FontResource &font) {
         !font.numericCount || font.glyphs == 0 || font.glyphs > MaxGlyphs ||
         font.mainCount > MaxGlyphs || font.numericCount > MaxGlyphs || font.solidGlyph >= font.glyphs ||
         !font.sheetWidth || !font.sheetHeight || !font.cellWidth || !font.cellHeight || !font.columns ||
-        font.sheetWidth > 0xFFFF || font.sheetHeight > 0xFFFF)
+        font.sheetWidth > 0xFFFF || font.sheetHeight > 0xFFFF ||
+        font.atlasBytes != std::size_t(font.sheetWidth) * font.sheetHeight / 2)
         return false;
     if (font.textureCount > static_cast<unsigned>(Texture::Count) || (font.textureCount && !font.textures))
         return false;
@@ -175,10 +177,13 @@ bool Scene::Prepare(const ResourceApi &api, const FontResource &font) {
     return true;
 }
 
-void Scene::Build(const ResourceApi &api, const FontResource &font, const void *atlas, const void *background) {
+void Scene::Build(const ResourceApi &api, const FontResource &font, const void *atlas) {
     api_ = &api;
     font_ = &font;
-    haveBackground_ = background != nullptr;
+#ifdef __3DS__
+    streamingPictureTable_ = *reinterpret_cast<const NwLytPaneVtable *>(vtbl_nw_lyt_Picture_addr);
+    streamingPictureTable_.draw_self = StreamingPicture;
+#endif
     const std::uint32_t physical = api.physical(atlas);
 
     // 共有の Material。可変領域は TexMap・TexSrt・TexCoordGen を 1 つずつ。
@@ -196,15 +201,13 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     map.texture_address = physical;
     map.image_width = map.texture_width = static_cast<std::uint16_t>(font.sheetWidth);
     map.image_height = map.texture_height = static_cast<std::uint16_t>(font.sheetHeight);
-    map.sampler_bits = SamplerFormatLa4 << 8;
+    map.sampler_bits = SamplerFormatA4 << 8;
     map.gpu_dimensions = (font.sheetWidth << 16) | font.sheetHeight;
-    map.gpu_format = GpuFormatLa4;
+    map.gpu_format = GpuFormatA4;
     shared_.value.srt.scale[0] = shared_.value.srt.scale[1] = 1.0f;
 
     for (std::size_t i = 0; i < font.textureCount; ++i) {
         if (!font.textures[i].gpuResident) continue;
-        if (i >= font.requiredTextureCount && !background)
-            continue;
         auto &own = imageMaterials_[i].value;
         own = material;
         own.animation_links.sentinel.next = own.animation_links.sentinel.prev = &own.animation_links.sentinel;
@@ -213,7 +216,7 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
         own.variable_data = &variable.map;
         const auto &t = font.textures[i];
         auto &texture = variable.map;
-        texture.texture_address = api.physical(static_cast<const unsigned char *>(i >= font.requiredTextureCount ? background : atlas) + TextureOffset(font, i));
+        texture.texture_address = api.physical(static_cast<const unsigned char *>(atlas) + TextureOffset(font, i));
         texture.image_width = texture.texture_width = static_cast<std::uint16_t>(t.width);
         texture.image_height = texture.texture_height = static_cast<std::uint16_t>(t.height);
         // UI はクランプ、独立した模様だけ繰り返す。フィルタは両方ニアレスト。
@@ -269,7 +272,7 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
         glyphs.max_char_width = static_cast<std::uint8_t>(font.cellWidth + 1);
         glyphs.sheet_bytes = static_cast<unsigned>(font.atlasBytes);
         glyphs.sheet_count = 1;
-        glyphs.sheet_format = GpuFormatLa4;
+        glyphs.sheet_format = GpuFormatA4;
         glyphs.sheet_columns = static_cast<std::uint16_t>(font.columns);
         glyphs.sheet_rows = static_cast<std::uint16_t>(font.sheetHeight / (font.cellHeight + 1));
         glyphs.sheet_width = static_cast<std::uint16_t>(font.sheetWidth);
@@ -279,7 +282,7 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
         sheet.physical_address_div8 = physical >> 3;
         sheet.height = static_cast<std::uint16_t>(font.sheetHeight);
         sheet.width = static_cast<std::uint16_t>(font.sheetWidth);
-        sheet.gpu_format = GpuFormatLa4;
+        sheet.gpu_format = GpuFormatA4;
     }
 
     // 塗りつぶし用のセルの内側（縁の 1 画素を除く）の UV。v は下から数える。
@@ -397,9 +400,6 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
         if (command.kind == Kind::Rectangle || command.kind == Kind::Image || command.kind == Kind::Repeat) {
             const bool image = command.kind != Kind::Rectangle;
             const auto textureIndex = static_cast<unsigned>(command.texture);
-            // 背景の未確保時は窓の重ねを省く。帯の単色の地は呼び出し側が先に描く。
-            if (image && textureIndex >= font_->requiredTextureCount && !haveBackground_)
-                continue;
             if (image && (textureIndex >= font_->textureCount || command.source.width <= 0 ||
                           command.source.height <= 0 || command.scale < 1 || command.scale > 8))
                 continue;
@@ -430,6 +430,10 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
             picture->pane.alpha = picture->pane.global_alpha =
                 image ? font_->textures[textureIndex].opacity : 255;
             picture->material = image ? &imageMaterials_[textureIndex].value : &material_.value;
+#ifdef __3DS__
+            picture->pane.vptr = image && textureIndex >= static_cast<unsigned>(Texture::TitleSelection)
+                ? &streamingPictureTable_ : reinterpret_cast<NwLytPaneVtable *>(vtbl_nw_lyt_Picture_addr);
+#endif
             if (image) {
                 const auto &t = font_->textures[textureIndex];
                 const auto &src = command.source;

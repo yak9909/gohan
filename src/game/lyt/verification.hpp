@@ -1,6 +1,7 @@
 #pragma once
 #include "game/generated/api.hpp"
 #include "game/lyt/renderer.hpp"
+#include "game/lyt/streaming_picture.hpp"
 
 namespace gohan::game::lyt::detail {
 struct CodeCheck {
@@ -11,6 +12,8 @@ struct CodeCheck {
 
 // 資源を作る API も、登録・記録・再生と同じく導入前に照合する。
 inline constexpr CodeCheck RendererChecks[] = {
+    {PictureDrawAddress, 32, 0x3C0D5FFA},
+    {FlushBatchAddress, 32, 0xF0F18EEB},
     {generated::LayoutTopEntry_addr, generated::LayoutTopEntry_len, generated::LayoutTopEntry_crc32},
     {generated::LayoutBottomEntry_addr, generated::LayoutBottomEntry_len, generated::LayoutBottomEntry_crc32},
     {generated::GpuPropertyEntry_addr, generated::GpuPropertyEntry_len, generated::GpuPropertyEntry_crc32},

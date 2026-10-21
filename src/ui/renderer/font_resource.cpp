@@ -8,8 +8,8 @@ namespace gohan::ui::renderer {
 static_assert(std::size(ui_data::Atlas) == core::design::ca2::Atlas::Bytes);
 static_assert(std::size(ui_data::Atlas) + std::size(ui_data::DashH) + std::size(ui_data::DashV) ==
               core::limits::RendererUiTextureBytes);
-static_assert((std::size(font_data::Atlas) + 127) / 128 * 128 +
-              core::limits::RendererUiTextureBytes + core::limits::RendererGameAllocationSlack <=
+static_assert(std::size(font_data::Atlas) == core::limits::RendererFontTextureBytes);
+static_assert(core::limits::RendererTextureBytes + core::limits::RendererGameAllocationSlack <=
               core::limits::RendererResidentHeapLimit);
 const game::lyt::FontResource &Fonts() {
     static const game::lyt::TextureResource textures[] = {
@@ -17,7 +17,16 @@ const game::lyt::FontResource &Fonts() {
         {ui_data::DashH, std::size(ui_data::DashH), core::design::ca2::Part::Dash[0], core::design::ca2::Part::Dash[1]},
         {ui_data::DashV, std::size(ui_data::DashV), core::design::ca2::Part::Dash[1], core::design::ca2::Part::Dash[0]},
         TitleBackgroundImage(0), TitleBackgroundImage(1), TitleBackgroundImage(2),
-        TitleBackgroundImage(3), TitleBackgroundImage(4),
+        TitleBackgroundImage(3),
+        TitleBackgroundImage(4),
+        TitleBackgroundImage(5),
+        TitleBackgroundImage(6),
+        TitleBackgroundImage(7),
+        TitleBackgroundImage(8),
+        TitleBackgroundImage(9),
+        TitleBackgroundImage(10),
+        TitleBackgroundImage(11),
+        TitleBackgroundImage(12),
     };
     static const game::lyt::FontResource resource{
         font_data::Atlas, std::size(font_data::Atlas), font_data::Widths,
@@ -26,12 +35,8 @@ const game::lyt::FontResource &Fonts() {
         font_data::NumericMap, std::size(font_data::NumericMap) / 2,
         font_data::SheetWidth, font_data::SheetHeight, font_data::CellWidth, font_data::CellHeight,
         font_data::Columns, font_data::SolidIndex, textures,
-#ifdef __3DS__
-        TitleBackgroundSources() ? std::size(textures) : 3,
-#else
-        std::size(textures),
-#endif
-        3};
+        std::size(textures)};
+    static_assert(std::size(textures) == static_cast<unsigned>(Texture::Count));
     return resource;
 }
 

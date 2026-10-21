@@ -64,60 +64,30 @@ void BoundsAndOrder() {
 void TitleFrames() {
     PrepareTitleBackground();
     const auto &font = Fonts();
-    std::size_t resident = font.atlasBytes, background = 0;
-    for (std::size_t i = 0; i < font.textureCount; ++i) {
-        if (!font.textures[i].gpuResident) continue;
-        (i < font.requiredTextureCount ? resident : background) += (font.textures[i].bytes + 127) / 128 * 128;
-    }
-    assert(resident == 98816 && background == 196608);
+    std::size_t resident = font.atlasBytes;
+    for (std::size_t i = 0; i < font.textureCount; ++i)
+        if (font.textures[i].gpuResident) resident += (font.textures[i].bytes + 127) / 128 * 128;
+    assert(resident == 119296 && font.atlasBytes == 32768);
     assert(resident + gohan::core::limits::RendererGameAllocationSlack <= gohan::core::limits::RendererResidentHeapLimit);
     assert(!font.textures[3].gpuResident && !font.textures[4].gpuResident);
-    namespace ca = gohan::core::design::ca2;
-    Canvas full; full.Begin(Screen::Top);
-    for (std::size_t i = 0; i + 1 < gohan::core::limits::RendererRects; ++i)
-        assert(full.FillRect({0, 0, 1, 1}, White) == Result::Added);
-    const auto count = full.Data().screens[0].count;
-    assert(full.Repeat({0, 0, 182, 11}, Texture::TitleSelection) == Result::Full);
-    assert(full.Data().screens[0].count == count && full.Data().screens[0].rectangles == count);
-    const auto &atlas = TitleBackgroundImage(3), &tail = TitleBackgroundImage(4);
-    const std::vector<std::uint8_t> before(atlas.data, atlas.data + atlas.bytes), beforeTail(tail.data, tail.data + tail.bytes);
-    const auto *sources = TitleBackgroundSources();
-    std::vector<std::uint8_t> work(2048);
     Canvas canvas;
     for (auto screen : {Screen::Top, Screen::Bottom}) {
         canvas.Begin(screen);
         assert(canvas.Repeat({26, 29, 182, 11}, Texture::TitleSelection) == Result::Added);
     }
     Drawing drawing = canvas.Data();
-    auto pixel = [](const std::uint8_t *data, unsigned x, unsigned y, unsigned width) {
-        unsigned n = (y / 8 * (width / 8) + x / 8) * 64;
-        for (unsigned b = 0; b < 3; ++b) n += ((x >> b & 1) << (2*b)) + ((y >> b & 1) << (2*b+1));
-        return (data[n / 2] >> ((n & 1) * 4)) & 15;
-    };
-    for (unsigned f = 0; f <= unsigned(ca::Titlebg::Loop); ++f) {
-        StepTitleAnimation(f, drawing);
-        if (sources) assert(gohan::game::titlebg::BakeSelectionL4(sources, 256, 16, 182, 11, work.data(), f));
-        int drawn = 0;
-        for (unsigned part = 0; part < 2; ++part) {
-            const auto &a = drawing.screens[0].commands[part], &b = drawing.screens[1].commands[part];
-            const auto &image = a.texture == Texture::TitleSelection ? atlas : tail;
-            assert(a.kind == gohan::game::lyt::Kind::Image && a.texture == b.texture);
-            assert(a.source.x == b.source.x && a.source.y == b.source.y && a.bounds.width == b.bounds.width);
-            assert(a.bounds.x == 26 + drawn && a.bounds.y == 29 && a.bounds.height == 11);
-            assert(a.source.x >= 0 && a.source.y >= 0 && unsigned(a.source.x + a.bounds.width) <= image.width && unsigned(a.source.y + 11) <= image.height);
-            if (sources) for (unsigned y = 0; y < 11; ++y) for (int x = 0; x < a.bounds.width; ++x)
-                assert(pixel(work.data(), drawn + x, y, 256) == pixel(image.data, a.source.x+x, a.source.y+y, image.width));
-            drawn += a.bounds.width;
-        }
-        assert(drawn == 182 && drawing.screens[0].count == 2);
+    std::vector<std::uint8_t> expected(2048);
+    for (unsigned frame = 0; frame <= 300; ++frame) {
+        StepTitleAnimation(frame, drawing);
+        assert(gohan::game::titlebg::BakeSelectionL4(TitleBackgroundSources(), 256, 16, 182, 11, expected.data(), frame));
+        const auto &a = drawing.screens[0].commands[0], &b = drawing.screens[1].commands[0];
+        assert(a.texture == b.texture && a.bounds.width == 182 && a.bounds.height == 11);
+        assert(a.source.x == 0 && a.source.y == 0 && a.source.width == 182);
+        const auto &image = font.textures[static_cast<unsigned>(a.texture)];
+        assert(image.bytes == 2048 && std::memcmp(expected.data(), image.data, 2048) == 0);
+        assert(drawing.screens[0].commands[1].bounds.width == 0);
     }
-    assert(drawing.screens[0].commands[0].source.x == 0 && drawing.screens[0].commands[0].source.y == 0);
-    assert(std::memcmp(before.data(), atlas.data, atlas.bytes) == 0);
-    assert(std::memcmp(beforeTail.data(), tail.data, tail.bytes) == 0);
-    std::size_t bytes = Fonts().atlasBytes;
-    for (std::size_t i = 0; i < Fonts().textureCount; ++i) bytes += Fonts().textures[i].bytes;
-    assert(bytes == 297472 && bytes + 2 * gohan::core::limits::RendererGameAllocationSlack <= gohan::core::limits::RendererGameHeapLimit);
-    std::puts(sources ? "帯: 実素材の全150コマ・両ページ・境界を画素単位で照合、元画像は不変" : "帯: 代替色の全150コマ・両ページの範囲と周期を確認");
+    std::puts("帯: 全150位相を2周・上下同位相・同じ合成式のL4全画素と照合");
 }
 
 void TextAndSlots() {
@@ -271,14 +241,14 @@ void Dispatch() {
     Frame();
     assert(ReadStatus() == Status::Ready && stub::installs == 2);
     const std::string background = TitleBackgroundStatusText();
-    assert(background.find("空き不足（予備400000を残せない・代わりの色）") != std::string::npos);
+    assert(background.find("常駐画像を確保できる空きがない") != std::string::npos);
     assert(background.find("合計 401184 / 最大の塊 399000 バイト") != std::string::npos);
     const std::string memory = MemoryStatusText();
     assert(memory.find("確保直前: 合計 738876 / 最大 603712") != std::string::npos);
     assert(memory.find("確保直後: 合計 640060 / 最大 504896") != std::string::npos);
     assert(memory.find("現在: 合計 430000 / 最大 300000") != std::string::npos);
-    assert(memory.find("常駐: 画像 98816 / 管理分込み上限 99072 / 予算 120000") != std::string::npos);
-    assert(memory.find("開いている間: 画像 196608 / 管理分込み上限 196864") != std::string::npos);
+    assert(memory.find("常駐: 画像 119296 / 管理分込み上限 120320 / 予算 120320") != std::string::npos);
+    assert(memory.find("字形 32768 / UI（破線込み）33280 / 窓 32768") != std::string::npos);
     stub::busyLeft = 2;
     assert(SetEnabled(false));
     Frame();
@@ -352,12 +322,12 @@ void Shutdown() {
 namespace gohan::game::lyt {
 RendererMemory ReadRendererMemory() {
     return {{738876, 603712, true}, {640060, 504896, true}, {430000, 300000, true},
-            295424, 295936, 831759, 295944, 98816, 99072, 196608, 196864,
+            119296, 120320, 831759, 295944, 32768, 33280, 32768, 20480,
             {BackgroundResult::InsufficientSpace, 401184, 399000, true}};
 }
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
     if (background) *background = {BackgroundResult::InsufficientSpace, 401184, 399000, true};
-    assert(font.atlasBytes == 65536 && font.glyphs == 703);
+    assert(font.atlasBytes == 32768 && font.glyphs == 703);
     ++stub::installs;
     stub::installed = stub::installResult == InstallResult::Ready;
     return stub::installResult;

@@ -40,6 +40,7 @@ def main() -> int:
     background = ['src/game/title_background.cpp', 'src/game/title_background_io.cpp', 'src/game/title_background_self.cpp']
     renderer += background
     run(['tests/host/test_title_background.cpp', *background], 'test_title_background')
+    run(['tests/host/test_selection_compositor.cpp', *background], 'test_selection_compositor')
     run(['tests/host/test_title_background.cpp', *background], 'test_title_background_self',
         ('tests/host/romfs_fakes', 'src'), ('-D__3DS__',))
     run(['tests/host/test_renderer.cpp', 'src/core/frame.cpp', 'src/core/feature.cpp', 'src/core/utf.cpp', *renderer],
