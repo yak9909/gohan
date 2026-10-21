@@ -26,7 +26,10 @@ struct Game {
     static inline int batchInits = 0, addCalls = 0;
     static inline int allocateCalls = 0, flushCalls = 0, spaceCalls = 0;
     static inline int failAllocate = 0, failFlush = 0, failSpace = 0;
+    static inline bool commandsInLayoutHeap = false;
+    static inline unsigned allocationOverhead = 0;
     static inline std::map<void *, unsigned> blocks;
+    static inline void *resident = nullptr;
     static inline std::set<unsigned> lists;
     static inline std::string releases;
 
@@ -42,6 +45,9 @@ struct Game {
         allocations = frees = attempts = failCreate = storages = batchInits = addCalls = 0;
         allocateCalls = flushCalls = spaceCalls = failAllocate = failFlush = failSpace = 0;
         releases.clear();
+        commandsInLayoutHeap = false;
+        allocationOverhead = 0;
+        resident = nullptr;
         manager = {};
     }
     static bool Balanced() { return lists.empty() && blocks.empty() && allocations == frees; }
@@ -55,11 +61,18 @@ struct Game {
         assert(data);
         std::memset(data, 0xA5, bytes);
         blocks[data] = bytes;
+        if (!resident) resident = data;
         ++allocations;
         return data;
     }
     static void Free(generated::SsysMaAllocator *owner, void *data) {
-        assert(owner == &allocator && blocks.contains(data) && lists.empty());
+        assert(owner == &allocator && blocks.contains(data));
+        if (data == resident) {
+            assert(lists.empty());
+            resident = nullptr;
+        } else {
+            assert(!manager.top.head && !manager.bottom.head);
+        }
         blocks.erase(data);
         ::operator delete(data, std::align_val_t{128});
         ++frees;
@@ -107,7 +120,9 @@ struct Game {
         assert(owner == &allocator && alignment == 128);
         if (++spaceCalls == failSpace) return false;
         unsigned used = 0;
-        for (const auto &[data, bytes] : blocks) { (void)data; used += bytes; }
+        for (const auto &[data, bytes] : blocks) { (void)data; used += bytes + allocationOverhead; }
+        if (commandsInLayoutHeap)
+            used += lists.size() * (68 + gohan::core::limits::RendererRecordBytes + 28 * gohan::core::limits::RendererQueueEntries);
         out->freeBytes = freeBytes > used ? freeBytes - used : 0;
         out->largestBlock = largestBlock > used ? largestBlock - used : 0;
         return true;

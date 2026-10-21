@@ -8,6 +8,9 @@ namespace gohan::ui::renderer {
 static_assert(std::size(ui_data::Atlas) == core::design::ca2::Atlas::Bytes);
 static_assert(std::size(ui_data::Atlas) + std::size(ui_data::DashH) + std::size(ui_data::DashV) ==
               core::limits::RendererUiTextureBytes);
+static_assert((std::size(font_data::Atlas) + 127) / 128 * 128 +
+              core::limits::RendererUiTextureBytes + core::limits::RendererGameAllocationSlack <=
+              core::limits::RendererResidentHeapLimit);
 const game::lyt::FontResource &Fonts() {
     static const game::lyt::TextureResource textures[] = {
         {ui_data::Atlas, std::size(ui_data::Atlas), core::design::ca2::Atlas::Size[0], core::design::ca2::Atlas::Size[1]},

@@ -73,6 +73,8 @@ struct ScreenObjects {
 
 class Scene {
   public:
+    // 呼び出し元が背景を含む記録とGPUの参照を排出した後だけ使う。
+    void ForgetBackground() { haveBackground_ = false; }
     // 確保の前に、字形の表の大きさとゲームの文字バッファの必要量を確かめる。
     static bool Prepare(const ResourceApi &api, const FontResource &font);
     // Prepare に成功した後、アトラス（GPU が読める確保済みの領域）が決まってから組む。

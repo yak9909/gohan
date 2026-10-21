@@ -34,6 +34,8 @@ inline constexpr auto RendererSlotChars = [] {
 // UI は RGBA8 の 256×32 と 8×8 が 2 枚。字形 65,536 と合わせて 98,816 バイト。
 inline constexpr std::size_t RendererUiTextureBytes = 33280;
 inline constexpr unsigned RendererHeapReserve = 400000;
+// メニューを閉じた後も借りる字形・UI。管理欄と整列の余裕も含む。
+inline constexpr unsigned RendererResidentHeapLimit = 120000;
 // 場面転換後の空きから逆算した、描画資源のヒープから借りる総量の上限。
 // 画像本体に加え、各確保の管理欄と128バイト整列の余裕も含める。
 inline constexpr unsigned RendererGameHeapLimit = 300000;

@@ -63,6 +63,15 @@ void BoundsAndOrder() {
 
 void TitleFrames() {
     PrepareTitleBackground();
+    const auto &font = Fonts();
+    std::size_t resident = font.atlasBytes, background = 0;
+    for (std::size_t i = 0; i < font.textureCount; ++i) {
+        if (!font.textures[i].gpuResident) continue;
+        (i < font.requiredTextureCount ? resident : background) += (font.textures[i].bytes + 127) / 128 * 128;
+    }
+    assert(resident == 98816 && background == 196608);
+    assert(resident + gohan::core::limits::RendererGameAllocationSlack <= gohan::core::limits::RendererResidentHeapLimit);
+    assert(!font.textures[3].gpuResident && !font.textures[4].gpuResident);
     namespace ca = gohan::core::design::ca2;
     Canvas full; full.Begin(Screen::Top);
     for (std::size_t i = 0; i + 1 < gohan::core::limits::RendererRects; ++i)
@@ -262,12 +271,14 @@ void Dispatch() {
     Frame();
     assert(ReadStatus() == Status::Ready && stub::installs == 2);
     const std::string background = TitleBackgroundStatusText();
-    assert(background.find("空き不足（代わりの色）") != std::string::npos);
+    assert(background.find("空き不足（予備400000を残せない・代わりの色）") != std::string::npos);
     assert(background.find("合計 401184 / 最大の塊 399000 バイト") != std::string::npos);
     const std::string memory = MemoryStatusText();
     assert(memory.find("確保直前: 合計 738876 / 最大 603712") != std::string::npos);
-    assert(memory.find("確保直後: 合計 441404 / 最大 306240") != std::string::npos);
+    assert(memory.find("確保直後: 合計 640060 / 最大 504896") != std::string::npos);
     assert(memory.find("現在: 合計 430000 / 最大 300000") != std::string::npos);
+    assert(memory.find("常駐: 画像 98816 / 管理分込み上限 99072 / 予算 120000") != std::string::npos);
+    assert(memory.find("開いている間: 画像 196608 / 管理分込み上限 196864") != std::string::npos);
     stub::busyLeft = 2;
     assert(SetEnabled(false));
     Frame();
@@ -340,7 +351,9 @@ void Shutdown() {
 
 namespace gohan::game::lyt {
 RendererMemory ReadRendererMemory() {
-    return {{738876, 603712, true}, {441404, 306240, true}, {430000, 300000, true}, 297472, 297984, 831759};
+    return {{738876, 603712, true}, {640060, 504896, true}, {430000, 300000, true},
+            295424, 295936, 831759, 295944, 98816, 99072, 196608, 196864,
+            {BackgroundResult::InsufficientSpace, 401184, 399000, true}};
 }
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
     if (background) *background = {BackgroundResult::InsufficientSpace, 401184, 399000, true};

@@ -31,6 +31,7 @@ class Engine {
     const LayoutNodes &Nodes() const { return nodes_; }
 
   private:
+    void RebuildScene();
     const ResourceApi &api_;
     unsigned selectionIdle_[2] = {};
     unsigned protectedSelection_ = 2;
@@ -42,6 +43,8 @@ class Engine {
     bool installed_ = false;
     bool stopping_ = false;
     unsigned idle_ = 0;
+    bool backgroundAttempted_ = false;
+    unsigned backgroundIdle_ = 0;
     std::uint32_t built_[2]{};
     bool haveBuilt_[2]{};
 };
