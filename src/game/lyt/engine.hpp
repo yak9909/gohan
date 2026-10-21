@@ -20,8 +20,9 @@ class Engine {
     InstallResult Install(const FontResource &font);
     // 登録が必要なノードをゲームのリストに載せる。導入済みでなければ false。
     bool Present(const Drawing &drawing);
-    // 描画スレッドから。公開済み・記録中・排出待ちの面へは書かない。
-    bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot);
+    // 描画スレッドから。導入時に合成済みの1コマ（1,001 B）を、使える面の実画素だけへコピーして排出する。
+    // 公開済み・記録中・排出待ちの面へは書かない。
+    bool UpdateSelection(const std::uint8_t *packed, unsigned &slot);
     // ノードの登録をやめ、リストから外れ GPU が使い終えるのを待って資源を返す。
     // 完全に返せたら true。false の間は毎フレーム呼ぶ。導入していなければ true。
     bool Detach();

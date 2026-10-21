@@ -1,5 +1,8 @@
 // 元の6層CPU合成と、固定値を外へ出した合成を全150位相で比較する。
-#include "game/lyt/selection_compositor.hpp"
+// 導入時に合成して持つ150コマ（実画素のみ）を面へ展開した結果も、全150位相で元の式と比較し、
+// 導入時の合成と毎フレームのコピーの時間を測る。
+#include "game/lyt/selection_frame_cache.hpp"
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <chrono>
@@ -39,6 +42,58 @@ int main() {
             compositor.Bake(phase, actual.data());
             assert(actual == expected);
         }
+    }
+    // 導入時に合成した150コマを面へ展開すると、元の式の2,048 Bと一致する（余白は0）。
+    static gohan::game::lyt::detail::SelectionFrameCache cache;
+    const auto verifyCache = [&](const bg::Sources &input) {
+        cache.Prepare(&input);
+        for (unsigned phase = 0; phase < 150; ++phase) {
+            assert(bg::BakeSelectionL4(&input, 256, 16, 182, 11, expected.data(), phase));
+            std::array<std::uint8_t, 2048> surface{};
+            gohan::game::lyt::detail::CopySelectionFrame(surface.data(), cache.Frame(phase));
+            assert(surface == expected);
+        }
+    };
+    verifyCache(sources);
+    for (unsigned pattern = 0; pattern < 6; ++pattern) {
+        auto synthetic = sources;
+        for (unsigned i = 0; i < 256; ++i) {
+            synthetic.alpha[i] = pattern == 0 ? 0 : pattern == 1 ? 255 :
+                pattern == 2 ? (i & 1) * 255 : (i * 71 + pattern * 13) & 255;
+            synthetic.luminance[i] = pattern == 0 ? 0 : pattern == 1 ? 255 :
+                pattern == 2 ? ((i >> 4) & 1) * 255 : (i * 43 + pattern * 29) & 255;
+        }
+        verifyCache(synthetic);
+    }
+    {
+        // 導入時の150コマの合成時間と、毎フレームのコピーの時間。
+        const auto begin = Clock::now();
+        cache.Prepare(&sources);
+        const double prepare = std::chrono::duration<double, std::micro>(Clock::now() - begin).count();
+        std::array<std::uint8_t, 2048> surface{};
+        std::array<double, 1500> samples{};
+        double total = 0, maximum = 0;
+        unsigned checksum = 0;
+        for (unsigned sample = 0; sample < 1500; ++sample) {
+            const auto start = Clock::now();
+            gohan::game::lyt::detail::CopySelectionFrame(surface.data(), cache.Frame(sample % 150));
+            const double us = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
+            total += us;
+            samples[sample] = us;
+            maximum = std::max(maximum, us);
+            checksum += surface[sample % surface.size()];
+        }
+        std::sort(samples.begin(), samples.end());
+        std::printf("帯の導入時の合成PC %s: 150コマ %.3f us（1コマ平均 %.3f us）/ 保存 %zu B\n",
+                    status.ready ? "実入力" : "自作入力", prepare, prepare / 150, sizeof(cache));
+        std::printf("帯の毎フレームのコピーPC %s: 1500標本 平均 %.3f us 中央 %.3f us p95 %.3f us 最大 %.3f us / 検算 %u\n",
+                    status.ready ? "実入力" : "自作入力", total / 1500, samples[750], samples[1425], maximum, checksum);
+    }
+    cache.Prepare(nullptr);
+    for (unsigned phase = 0; phase < 150; ++phase) {
+        std::array<std::uint8_t, 2048> surface{};
+        gohan::game::lyt::detail::CopySelectionFrame(surface.data(), cache.Frame(phase));
+        assert(surface == (std::array<std::uint8_t, 2048>{}));
     }
     compositor.Prepare(&sources);
     for (unsigned method = 0; method < 2; ++method) {

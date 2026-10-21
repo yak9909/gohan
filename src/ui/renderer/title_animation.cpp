@@ -1,13 +1,9 @@
 #include "ui/renderer/renderer.hpp"
 #include "ui/renderer/selection_frames.hpp"
+#include "ui/renderer/stopwatch.hpp"
 #include "game/lyt/renderer.hpp"
 #include "ui_values.hpp"
 #include <algorithm>
-#ifdef __3DS__
-#include <CTRPluginFramework.hpp>
-#else
-#include <chrono>
-#endif
 
 namespace gohan::ui::renderer {
 namespace {
@@ -16,7 +12,11 @@ unsigned selected = 0;
 bool active = false;
 }
 namespace detail {
-SelectionTiming ReadSelectionTiming() { return timing; }
+SelectionTiming ReadSelectionTiming() {
+    auto result = timing;
+    result.prepareMicros = SelectionPrepareMicros();
+    return result;
+}
 }
 void StartTitleAnimation() { active = true; }
 void StopTitleAnimation() { active = false; }
@@ -29,35 +29,26 @@ void StepTitleAnimation(std::uint32_t frame, Drawing &drawing) {
                       screen.commands[n].slot == detail::SelectionFirst;
     if (!needed) return;
     const unsigned phase = frame / v::Titlebg::Selection::UpdateFrames % v::Titlebg::Loop;
+    // 導入時に合成済みのコマを選ぶだけ。ここで色や座標の計算はしない。
+    const auto *packed = detail::SelectionFrame(phase);
+    const detail::Stopwatch watch;
+    bool updated = true;
 #ifdef __3DS__
-    const CTRPluginFramework::Clock clock;
+    unsigned slot = selected;
+    if (active && game::lyt::UpdateSelection(packed, slot)) selected = slot;
+    else updated = false;
 #else
-    const auto start = std::chrono::steady_clock::now();
+    (void)active;
+    selected = (selected + 1) % core::limits::RendererSelectionSurfaces;
+    detail::StoreSelection(selected, packed);
 #endif
-    const auto *pixels = detail::ComposeSelection(phase);
-#ifdef __3DS__
-    const auto micros = unsigned(clock.GetElapsedTime().AsMicroseconds());
-#else
-    const auto micros = unsigned(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - start).count());
-#endif
+    // 測るのは、コマの実画素のコピーと（実機では）データキャッシュの排出。
+    const auto micros = watch.ElapsedMicros();
     timing.lastMicros = micros;
     timing.maxMicros = std::max(timing.maxMicros, micros);
     timing.totalMicros += micros;
     ++timing.samples;
-#ifdef __3DS__
-    unsigned slot = selected;
-    if (!active || !game::lyt::UpdateSelection(pixels, core::limits::RendererSelectionSurfaceBytes, slot)) {
-        ++timing.unavailable;
-    } else {
-        selected = slot;
-        detail::StoreSelection(selected, pixels);
-    }
-#else
-    (void)active;
-    selected = (selected + 1) % core::limits::RendererSelectionSurfaces;
-    detail::StoreSelection(selected, pixels);
-#endif
+    if (!updated) ++timing.unavailable;
     for (unsigned i = 0; i < 2; ++i) {
         auto &screen = drawing.screens[i];
         bool changed = false;

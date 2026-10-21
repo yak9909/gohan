@@ -1,5 +1,6 @@
 // 巡回面の公開、上下の記録の残存、8回の非参照待ち、キャッシュ命令を試す。
 #include "game/lyt/engine.hpp"
+#include "game/lyt/selection_frames.hpp"
 #include "game/lyt/streaming_picture.hpp"
 #include "lyt_font.hpp"
 #include "lyt_game.hpp"
@@ -53,26 +54,32 @@ int main() {
     CacheCommands();
     Game::Reset();
     fakegame::UiFont font;
-    std::array<std::uint8_t, limits::RendererSelectionSurfaceBytes> pixels{};
+    // 余白が初期値のまま残る事を見るため、面の初期値は0以外にする。
+    font.pixels.fill(0xA5);
+    std::array<std::uint8_t, limits::RendererSelectionFrameBytes> pixels{};
     detail::Engine engine(fakegame::Api());
     unsigned slot = 99;
-    assert(!engine.UpdateSelection(pixels.data(), pixels.size(), slot));
+    assert(!engine.UpdateSelection(pixels.data(), slot));
     assert(engine.Install(font.resource) == InstallResult::Ready);
-    assert(!engine.UpdateSelection(pixels.data(), pixels.size() - 1, slot));
+    assert(!engine.UpdateSelection(nullptr, slot));
     Drawing d;
     // 300フレーム連続して全150位相を2周する。同じ面を続けて公開しない。
     for (unsigned frame = 0; frame < 300; ++frame) {
         pixels.fill(static_cast<std::uint8_t>(frame));
-        assert(engine.UpdateSelection(pixels.data(), pixels.size(), slot));
+        assert(engine.UpdateSelection(pixels.data(), slot));
         assert(slot == frame % limits::RendererSelectionSurfaces);
         const auto *gpu = static_cast<const std::uint8_t *>(engine.Resources().Atlas());
-        assert(std::memcmp(gpu + TextureOffset(font.resource, 6 + slot), pixels.data(), pixels.size()) == 0);
+        // 実画素の96本の範囲は新しいコマ、それ以外は導入時の値のまま。
+        std::array<std::uint8_t, limits::RendererSelectionSurfaceBytes> expected;
+        expected.fill(0xA5);
+        detail::CopySelectionFrame(expected.data(), pixels.data());
+        assert(std::memcmp(gpu + TextureOffset(font.resource, 6 + slot), expected.data(), expected.size()) == 0);
         d = Reference(slot, slot); d.revisions[0] = d.revisions[1] = frame + 1;
         assert(engine.Present(d)); Game::EndPasses();
     }
     // 下の旧記録だけが面を保持する場合も、その面へ上書きしない。
     for (unsigned frame = 0; frame < 30; ++frame) {
-        assert(engine.UpdateSelection(pixels.data(), pixels.size(), slot) && slot != 9);
+        assert(engine.UpdateSelection(pixels.data(), slot) && slot != 9);
         d.screens[0] = Reference(slot, slot).screens[0]; ++d.revisions[0];
         assert(engine.Present(d)); Game::EndPasses();
     }
@@ -84,20 +91,20 @@ int main() {
     Game::EndPasses();
     for (unsigned n = 0; n < limits::RendererSelectionIdlePresents - 1; ++n) {
         assert(engine.Present(d)); Game::EndPasses();
-        assert(engine.UpdateSelection(pixels.data(), pixels.size(), slot) && slot != 9);
+        assert(engine.UpdateSelection(pixels.data(), slot) && slot != 9);
     }
     assert(engine.Present(d)); Game::EndPasses();
     Game::flushFails = true;
     const auto previous = slot;
-    assert(!engine.UpdateSelection(pixels.data(), pixels.size(), slot) && slot == previous);
+    assert(!engine.UpdateSelection(pixels.data(), slot) && slot == previous);
     Game::flushFails = false;
     bool reused = false;
     for (unsigned n = 0; n < limits::RendererSelectionSurfaces; ++n) {
-        assert(engine.UpdateSelection(pixels.data(), pixels.size(), slot));
+        assert(engine.UpdateSelection(pixels.data(), slot));
         reused |= slot == 9;
     }
     assert(reused);
     for (unsigned n = 1; n < detail::Engine::DrainFrames; ++n) assert(!engine.Detach());
     assert(engine.Detach() && Game::Balanced());
-    assert(!engine.UpdateSelection(pixels.data(), pixels.size(), slot));
+    assert(!engine.UpdateSelection(pixels.data(), slot));
 }

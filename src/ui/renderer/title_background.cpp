@@ -1,7 +1,8 @@
 #include "ui/renderer/renderer.hpp"
 #include "ui_values.hpp"
 #include "ui/renderer/selection_frames.hpp"
-#include "game/lyt/selection_compositor.hpp"
+#include "ui/renderer/stopwatch.hpp"
+#include "game/lyt/selection_frame_cache.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -14,8 +15,11 @@ static_assert(v::Titlebg::Selection::ImageSize[0] % 8 == 0 && v::Titlebg::Select
 game::titlebg::Sources sources;
 game::titlebg::Status backgroundStatus;
 bool prepared = false;
-game::lyt::detail::SelectionCompositor compositor;
-// 窓は不変。帯だけを小さな面へ合成して巡回する。
+// 帯の150コマは導入時に一度だけ合成し、プラグイン側のメモリ（.bss、150,150 B）に持つ。
+// ゲームの描画用ヒープには置かない。毎フレームはその時のコマを小さな面へコピーするだけ。
+game::lyt::detail::SelectionFrameCache frames;
+unsigned prepareMicros = 0;
+// 窓は不変。帯だけを小さな面へ巡回して使う。
 constexpr unsigned WindowWidth = v::Titlebg::Window::ImageSize[0];
 constexpr unsigned WindowHeight = v::Titlebg::Window::ImageSize[1];
 static_assert(WindowWidth * WindowHeight / 2 == core::limits::RendererWindowTextureBytes);
@@ -24,8 +28,8 @@ constexpr unsigned SelectionHeight = v::Titlebg::Selection::ImageSize[1];
 static_assert(SelectionWidth * SelectionHeight / 2 == core::limits::RendererSelectionSurfaceBytes);
 std::uint8_t window[core::limits::RendererWindowTextureBytes];
 std::uint8_t alpha[16 * 16 * 4], luminance[16 * 16 * 4];
+// 導入時にゲームの描画用ヒープへ複製される初期値。余白は0のまま変わらない。
 std::uint8_t selection[core::limits::RendererSelectionSurfaces][core::limits::RendererSelectionSurfaceBytes];
-std::uint8_t work[core::limits::RendererSelectionSurfaceBytes];
 game::lyt::TextureResource images[] = {
     {alpha, sizeof(alpha), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
     {luminance, sizeof(luminance), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
@@ -57,13 +61,16 @@ game::lyt::TextureResource images[] = {
 void PrepareTitleBackground() {
     if (prepared) return;
     backgroundStatus = game::titlebg::LoadSelf(sources);
-    compositor.Prepare(backgroundStatus.ready ? &sources : nullptr);
     game::titlebg::BakeWindowL4(backgroundStatus.ready ? &sources : nullptr, WindowWidth, WindowHeight, window);
     if (!backgroundStatus.ready) images[2].opacity = 0;
+    {
+        const detail::Stopwatch watch;
+        frames.Prepare(backgroundStatus.ready ? &sources : nullptr);
+        prepareMicros = watch.ElapsedMicros();
+    }
+    // 全面を位相0のコマで始める。以後は実画素の範囲だけを書き換える。
     for (unsigned slot = 0; slot < core::limits::RendererSelectionSurfaces; ++slot)
-        game::titlebg::BakeSelectionL4(backgroundStatus.ready ? &sources : nullptr,
-            SelectionWidth, SelectionHeight, v::Titlebg::Selection::CellSize[0],
-            v::Titlebg::Selection::CellSize[1], selection[slot], 0);
+        game::lyt::detail::CopySelectionFrame(selection[slot], frames.Frame(0));
     // A4 は形の不透明度、L4 は不透明の輝度。CPU の上から順を GPU の順に登録する。
     for (unsigned y = 0; y < 16; ++y) {
         for (unsigned x = 0; x < 16; ++x) {
@@ -79,13 +86,11 @@ void PrepareTitleBackground() {
     prepared = true;
 }
 namespace detail {
-const std::uint8_t *ComposeSelection(unsigned frame) {
-    compositor.Bake(frame, work);
-    return work;
+const std::uint8_t *SelectionFrame(unsigned phase) { return frames.Frame(phase); }
+void StoreSelection(unsigned slot, const std::uint8_t *packed) {
+    game::lyt::detail::CopySelectionFrame(selection[slot], packed);
 }
-void StoreSelection(unsigned slot, const std::uint8_t *pixels) {
-    std::memcpy(selection[slot], pixels, sizeof(selection[slot]));
-}
+unsigned SelectionPrepareMicros() { return prepareMicros; }
 } // namespace detail
 const game::titlebg::Sources *TitleBackgroundSources() { return backgroundStatus.ready ? &sources : nullptr; }
 const game::lyt::TextureResource &TitleBackgroundImage(unsigned index) { return images[index]; }

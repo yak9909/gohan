@@ -1,6 +1,6 @@
 #include "game/lyt/engine.hpp"
+#include "game/lyt/selection_frames.hpp"
 #include <initializer_list>
-#include <cstring>
 
 namespace gohan::game::lyt::detail {
 InstallResult Engine::Install(const FontResource &font) {
@@ -66,14 +66,16 @@ bool Engine::Present(const Drawing &drawing) {
     return true;
 }
 
-bool Engine::UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot) {
-    if (!installed_ || stopping_ || !resources_.Atlas() || !font_ || !data) return false;
+bool Engine::UpdateSelection(const std::uint8_t *packed, unsigned &slot) {
+    constexpr std::size_t bytes = core::limits::RendererSelectionSurfaceBytes;
+    if (!installed_ || stopping_ || !resources_.Atlas() || !font_ || !packed) return false;
     for (unsigned n = 0; n < core::limits::RendererSelectionSurfaces; ++n) {
         const unsigned i = (nextSelection_ + n) % core::limits::RendererSelectionSurfaces;
         const auto index = static_cast<unsigned>(Texture::TitleSelection) + i;
         if (i == protectedSelection_ || selectionIdle_[i] < core::limits::RendererSelectionIdlePresents || index >= font_->textureCount || bytes != font_->textures[index].bytes) continue;
         auto *target = static_cast<std::uint8_t *>(resources_.Atlas()) + TextureOffset(*font_, index);
-        std::memcpy(target, data, bytes);
+        // 余白は導入時の0のまま。実画素の96本の範囲だけを書き換え、面ごと排出する。
+        CopySelectionFrame(target, packed);
         if (!api_.flush(target, bytes)) return false;
         protectedSelection_ = slot = i;
         nextSelection_ = (i + 1) % core::limits::RendererSelectionSurfaces;

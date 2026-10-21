@@ -175,21 +175,23 @@ const char *BackgroundAllocationStatusText() {
 const char *MemoryStatusText() {
     static game::lyt::RendererMemory last;
     static std::uint32_t generation = 0;
-    static char text[1024];
+    static char text[1280];
     publishedMemory.ReadIfNew(last, generation);
     static detail::SelectionTiming timing;
     static std::uint32_t timingGeneration = 0;
     publishedTiming.ReadIfNew(timing, timingGeneration);
     const auto &a = last.before, &b = last.after, &c = last.current;
     std::snprintf(text, sizeof(text),
-                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\n字形 %u / UI（破線込み）%u / 窓 %u\n帯 %u（%u 面 × %u）\n常駐: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u\n別の描画命令用ヒープ: 記録列等 %u\n帯合成 us: 今 %u / 平均 %u / 最大 %u / 標本 %u\n面を更新できなかった回数 %u\n現在値は約30フレームごとに更新",
+                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\n字形 %u / UI（破線込み）%u / 窓 %u\n帯 %u（%u 面 × %u）\n常駐: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u / 帯の%uコマ（常駐）%u\n別の描画命令用ヒープ: 記録列等 %u\n帯: 導入時の合成 %u us（%u コマ）\n帯の毎フレーム（コピー＋排出）us: 今 %u / 平均 %u / 最大 %u / 標本 %u\n面を更新できなかった回数 %u\n現在値は約30フレームごとに更新",
                   a.freeBytes, a.largestBlock, a.measured ? "" : "未計測",
                   b.freeBytes, b.largestBlock, b.measured ? "" : "未計測",
                   c.freeBytes, c.largestBlock, c.measured ? "" : "未計測",
                   last.fontBytes, last.uiBytes, last.windowBytes, last.selectionBytes,
                   core::limits::RendererSelectionSurfaces, unsigned(core::limits::RendererSelectionSurfaceBytes),
                   last.gameBytes, last.gameUpperBytes, core::limits::RendererResidentHeapLimit,
-                  last.pluginBytes, last.commandBytes, timing.lastMicros,
+                  last.pluginBytes, core::limits::RendererSelectionPhases,
+                  unsigned(core::limits::RendererSelectionCacheBytes), last.commandBytes,
+                  timing.prepareMicros, core::limits::RendererSelectionPhases, timing.lastMicros,
                   timing.samples ? unsigned(timing.totalMicros / timing.samples) : 0,
                   timing.maxMicros, timing.samples, timing.unavailable);
     return text;
