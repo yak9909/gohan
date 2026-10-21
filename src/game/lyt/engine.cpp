@@ -10,13 +10,10 @@ InstallResult Engine::Install(const FontResource &font) {
         return InstallResult::ResourceFailed;
     if (!resources_.Acquire(font))
         return InstallResult::ResourceFailed;
-    scene_.Build(api_, font, resources_.Atlas(), resources_.Background());
-    generated::NwLytPane *roots[2] = {scene_.Root(Screen::Top), scene_.Root(Screen::Bottom)};
-    const unsigned lists[2] = {resources_.List(Screen::Top), resources_.List(Screen::Bottom)};
-    nodes_.Build(api_, roots, lists);
     font_ = &font;
-    built_[0] = built_[1] = 0;
-    haveBuilt_[0] = haveBuilt_[1] = false;
+    RebuildScene();
+    backgroundAttempted_ = false;
+    backgroundIdle_ = 0;
     installed_ = true;
     protectedSelection_ = 2;
     selectionReferences_[0] = selectionReferences_[1] = 0;
@@ -26,11 +23,38 @@ InstallResult Engine::Install(const FontResource &font) {
     return InstallResult::Ready;
 }
 
+void Engine::RebuildScene() {
+    scene_.Build(api_, *font_, resources_.Atlas(), resources_.Background());
+    generated::NwLytPane *roots[2] = {scene_.Root(Screen::Top), scene_.Root(Screen::Bottom)};
+    const unsigned lists[2] = {resources_.List(Screen::Top), resources_.List(Screen::Bottom)};
+    nodes_.Build(api_, roots, lists);
+    built_[0] = built_[1] = 0;
+    haveBuilt_[0] = haveBuilt_[1] = false;
+}
+
 bool Engine::Present(const Drawing &drawing) {
     if (!installed_)
         return false;
     if (stopping_)
         return true;
+    bool needsBackground = false;
+    for (const auto &screen : drawing.screens)
+        for (std::size_t i = 0; i < screen.count && i < core::limits::RendererCommands; ++i) {
+            const auto &command = screen.commands[i];
+            const auto texture = static_cast<unsigned>(command.texture);
+            if ((command.kind == Kind::Image || command.kind == Kind::Repeat) &&
+                texture >= font_->requiredTextureCount && texture < font_->textureCount && font_->textures[texture].gpuResident)
+                needsBackground = true;
+        }
+    if (needsBackground) {
+        backgroundIdle_ = 0;
+        // 一度の開閉につき一回だけ試す。空き不足時は単色の帯で描き続ける。
+        // 閉じる途中で開き直した場合は、排出待ちの画像をそのまま再利用する。
+        if (!backgroundAttempted_ && !nodes_.AnyLinked()) {
+            if (resources_.AcquireBackground(*font_)) RebuildScene();
+            backgroundAttempted_ = true;
+        }
+    }
     for (const Screen screen : {Screen::Top, Screen::Bottom}) {
         const unsigned index = static_cast<unsigned>(screen);
         // 木はノードがゲームのリストに載っていない間にだけ組み替える。載っていたら次のフレームに回す。
@@ -47,12 +71,25 @@ bool Engine::Present(const Drawing &drawing) {
                 if (c.texture == Texture::TitleSelectionBack) selectionReferences_[index] |= 2;
             }
         }
-        if (haveBuilt_[index] && scene_.Items(screen) > 0)
-            nodes_.Register(screen);
     }
     for (unsigned slot = 0; slot < 2; ++slot) {
         if ((selectionReferences_[0] | selectionReferences_[1]) & (1u << slot)) selectionIdle_[slot] = 0;
         else if (selectionIdle_[slot] < DrainFrames) ++selectionIdle_[slot];
+    }
+    // 背景を含まない画面を両方に適用し、前の登録が消えた後にGPUの参照を待つ。
+    // 木の更新を待っている画面があれば、前の画像を解放しない。
+    // 別の描画元が単色の枠等を出していても、背景の借用を引き延ばさない。
+    if (!needsBackground && !nodes_.AnyLinked() &&
+        haveBuilt_[0] && haveBuilt_[1] && built_[0] == drawing.revisions[0] && built_[1] == drawing.revisions[1]) {
+        if (backgroundIdle_ < DrainFrames) ++backgroundIdle_;
+        if (backgroundIdle_ == DrainFrames && resources_.ReleaseBackgroundIdle()) {
+            backgroundAttempted_ = false;
+            scene_.ForgetBackground();
+        }
+    } else if (!needsBackground) backgroundIdle_ = 0;
+    for (const Screen screen : {Screen::Top, Screen::Bottom}) {
+        const unsigned index = static_cast<unsigned>(screen);
+        if (haveBuilt_[index] && scene_.Items(screen) > 0) nodes_.Register(screen);
     }
     return true;
 }

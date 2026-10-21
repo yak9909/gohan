@@ -37,6 +37,13 @@ void Failures(const FontResource &font) {
     assert(!resources.Acquire(font) && resources.Empty());
     assert(Fake::allocations == 1 && Fake::frees == 1 && Fake::attempts == 0);
     Fake::Reset();
+    Fake::failSpace = 2;
+    assert(!resources.Acquire(font) && resources.Empty() && Fake::Balanced());
+    Fake::Reset();
+    // 記録列の確保元が想定と違って画像用ヒープなら、実差分で常駐上限を守る。
+    Fake::commandsInLayoutHeap = true;
+    assert(!resources.Acquire(font) && resources.Empty() && Fake::Balanced());
+    Fake::Reset();
     for (int fail : {1, 2}) {
         Fake::failCreate = fail;
         assert(!resources.Acquire(font) && resources.Empty());
@@ -75,17 +82,23 @@ void HeapBudget() {
     const unsigned sizes[] = {32768, 256, 256, 1024, 1024, 32768, 131072, 32768};
     TextureResource textures[8];
     for (unsigned i = 0; i < 8; ++i) { textures[i].data = pixels.data(); textures[i].bytes = sizes[i]; }
+    textures[3].gpuResident = textures[4].gpuResident = false;
     FontResource font;
     font.atlas = atlas.data(); font.atlasBytes = atlas.size();
     font.textures = textures; font.textureCount = 8; font.requiredTextureCount = 3;
     Fake::Reset(); Fake::freeBytes = 738876; Fake::largestBlock = 603712;
     RecordingResources resources(fakegame::Api());
-    assert(resources.Acquire(font) && resources.BackgroundStatus().result == BackgroundResult::Ready);
-    const auto &m = resources.MemoryStatus();
-    assert(m.gameBytes == 297472 && m.gameUpperBytes == 297984);
+    assert(resources.Acquire(font) && resources.BackgroundStatus().result == BackgroundResult::NotAttempted);
+    auto m = resources.MemoryStatus();
+    assert(m.residentBytes == 98816 && m.residentUpperBytes == 99072);
+    assert(m.gameUpperBytes <= limits::RendererResidentHeapLimit && Fake::allocateCalls == 1);
+    assert(m.openBytes == 0 && m.before.freeBytes == 738876 && m.after.freeBytes == 640060);
+    assert(resources.AcquireBackground(font) && resources.BackgroundStatus().result == BackgroundResult::Ready);
+    m = resources.MemoryStatus();
+    assert(m.gameBytes == 295424 && m.gameUpperBytes == 295936);
     assert(m.commandBytes == 295944);
     assert(m.gameUpperBytes <= limits::RendererGameHeapLimit && Fake::allocateCalls == 2);
-    assert(m.before.freeBytes == 738876 && m.after.freeBytes == 441404);
+    assert(m.openBytes == 196608 && m.openUpperBytes == 196864 && m.current.freeBytes == 443452);
     assert(m.before.freeBytes - m.gameUpperBytes >= limits::RendererHeapReserve);
     assert(resources.ReleaseIdle() && Fake::Balanced());
     // 上限を超える必須画像はゲームの確保関数に触れず拒否する。
@@ -93,8 +106,29 @@ void HeapBudget() {
     assert(!resources.Acquire(font) && resources.Empty() && Fake::allocateCalls == 0);
     // 任意画像だけが上限を超える時は必須画像を保ち、代わりの色にする。
     font.atlasBytes = atlas.size(); textures[7].bytes += 4096;
-    assert(resources.Acquire(font) && resources.BackgroundStatus().result == BackgroundResult::InsufficientSpace);
+    assert(resources.Acquire(font) && !resources.AcquireBackground(font) && resources.BackgroundStatus().result == BackgroundResult::BudgetExceeded);
     assert(Fake::allocateCalls == 1 && resources.MemoryStatus().gameUpperBytes <= limits::RendererGameHeapLimit);
+    assert(resources.ReleaseIdle() && Fake::Balanced());
+    // 予算の境界は常駐120,000バイト。総予算300,000以下でも常駐を増やせない。
+    Fake::Reset(); font.atlas = pixels.data();
+    font.atlasBytes = limits::RendererResidentHeapLimit - limits::RendererGameAllocationSlack;
+    font.textureCount = 0;
+    assert(resources.Acquire(font));
+    assert(resources.MemoryStatus().residentUpperBytes == limits::RendererResidentHeapLimit);
+    assert(resources.ReleaseIdle() && Fake::Balanced());
+    ++font.atlasBytes;
+    assert(!resources.Acquire(font) && Fake::allocateCalls == 1);
+    // 管理費が見積もりを上回り、確保後に予備を割った時も背景だけを戻す。
+    Fake::Reset();
+    font.atlas = atlas.data(); font.atlasBytes = atlas.size(); font.textureCount = 8;
+    textures[7].bytes = 32768;
+    Fake::allocationOverhead = 512;
+    Fake::freeBytes = 98816 + 512 + 196608 + limits::RendererGameAllocationSlack + limits::RendererHeapReserve;
+    assert(resources.Acquire(font));
+    assert(resources.MemoryStatus().residentUpperBytes == 98816 + 512);
+    assert(!resources.AcquireBackground(font) && !resources.Background());
+    assert(resources.BackgroundStatus().result == BackgroundResult::InsufficientSpace);
+    assert(resources.MemoryStatus().openUpperBytes == 0 && Fake::blocks.size() == 1);
     assert(resources.ReleaseIdle() && Fake::Balanced());
 }
 } // namespace

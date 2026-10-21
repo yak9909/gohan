@@ -7,7 +7,9 @@ namespace gohan::game::lyt::detail {
 namespace {
 constexpr unsigned ListBinding = 519;
 constexpr int AtlasAlignment = 128;
-// 記録列は画像用アロケーターとは別の描画命令用コールバックで確保される。
+// リスト生成・領域確保とも、メモリ種別65536のコールバックを使う。
+// 描画の初期化で登録されるコールバックは描画メモリ管理者へ渡り、
+// この種別は独立して作られる描画命令用ヒープを選ぶ。画像用とは別。
 constexpr unsigned ListManagerBytes = 68, QueueEntryBytes = 28;
 
 class BindingGuard {
@@ -40,9 +42,9 @@ bool RecordingResources::Acquire(const FontResource &font) {
     if (required) {
         total = (total + 127) / 128 * 128;
         for (std::size_t i = 0; i < required; ++i)
-            total += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
+            if (font.textures[i].gpuResident) total += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
     }
-    if (total + core::limits::RendererGameAllocationSlack > core::limits::RendererGameHeapLimit)
+    if (total + core::limits::RendererGameAllocationSlack > core::limits::RendererResidentHeapLimit)
         return false;
     allocator_ = api_.allocator();
     if (!allocator_)
@@ -68,47 +70,16 @@ bool RecordingResources::Acquire(const FontResource &font) {
     memoryStatus_.gameUpperBytes = bytes + core::limits::RendererGameAllocationSlack;
     std::memcpy(atlas_, font.atlas, font.atlasBytes);
     for (std::size_t i = 0; i < required; ++i)
-        std::memcpy(static_cast<unsigned char *>(atlas_) + TextureOffset(font, i),
+        if (font.textures[i].gpuResident) std::memcpy(static_cast<unsigned char *>(atlas_) + TextureOffset(font, i),
                     font.textures[i].data, font.textures[i].bytes);
     if (!api_.flush(atlas_, bytes)) {
         ReleaseIdle();
         return false;
     }
-    // 必須画像が確保できた後の空きを改めて測る。背景を取れなくても導入を続ける。
-    backgroundStatus_.result = BackgroundResult::NotNeeded;
-    if (required < font.textureCount) {
-        std::uint64_t backgroundBytes = 0;
-        for (std::size_t i = required; i < font.textureCount; ++i)
-            backgroundBytes += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
-        space = {};
-        backgroundStatus_.measured = api_.heapSpace(allocator_, AtlasAlignment, &space);
-        backgroundStatus_.freeBytes = space.freeBytes;
-        backgroundStatus_.largestBlock = space.largestBlock;
-        if (!backgroundStatus_.measured) {
-            backgroundStatus_.result = BackgroundResult::HeapUnavailable;
-        } else if (total + backgroundBytes + 2 * core::limits::RendererGameAllocationSlack > core::limits::RendererGameHeapLimit ||
-                   space.largestBlock < backgroundBytes + AtlasAlignment ||
-                   space.freeBytes < backgroundBytes + core::limits::RendererGameAllocationSlack + core::limits::RendererHeapReserve) {
-            backgroundStatus_.result = BackgroundResult::InsufficientSpace;
-        } else {
-            background_ = api_.allocate(allocator_, static_cast<unsigned>(backgroundBytes), AtlasAlignment);
-            backgroundStatus_.result = background_ ? BackgroundResult::Ready : BackgroundResult::AllocateFailed;
-            if (background_) {
-                memoryStatus_.gameBytes += static_cast<unsigned>(backgroundBytes);
-                memoryStatus_.gameUpperBytes += static_cast<unsigned>(backgroundBytes) + core::limits::RendererGameAllocationSlack;
-                for (std::size_t i = required; i < font.textureCount; ++i)
-                    std::memcpy(static_cast<unsigned char *>(background_) + TextureOffset(font, i),
-                                font.textures[i].data, font.textures[i].bytes);
-                if (!api_.flush(background_, static_cast<unsigned>(backgroundBytes))) {
-                    api_.free(allocator_, background_);
-                    background_ = nullptr;
-                    memoryStatus_.gameBytes -= static_cast<unsigned>(backgroundBytes);
-                    memoryStatus_.gameUpperBytes -= static_cast<unsigned>(backgroundBytes) + core::limits::RendererGameAllocationSlack;
-                    backgroundStatus_.result = BackgroundResult::FlushFailed;
-                }
-            }
-        }
-    }
+    memoryStatus_.residentBytes = memoryStatus_.gameBytes;
+    memoryStatus_.residentUpperBytes = memoryStatus_.gameUpperBytes;
+    // 背景はメニューが描画を始める時まで借りない。
+    backgroundStatus_.result = required < font.textureCount ? BackgroundResult::NotAttempted : BackgroundResult::NotNeeded;
     bool created = true;
     {
         BindingGuard binding(api_);
@@ -129,16 +100,108 @@ bool RecordingResources::Acquire(const FontResource &font) {
     const bool afterMeasured = api_.heapSpace(allocator_ ? allocator_ : api_.allocator(), AtlasAlignment, &space);
     memoryStatus_.after = {space.freeBytes, space.largestBlock, afterMeasured};
     memoryStatus_.current = memoryStatus_.after;
+    if (created && !afterMeasured) {
+        ReleaseIdle();
+        return false;
+    }
     // API内で追加の確保が増えても、実際の空きの差で上限違反を検出する。
     if (created && measured && afterMeasured && memoryStatus_.before.freeBytes > space.freeBytes) {
         memoryStatus_.gameUpperBytes = std::max(memoryStatus_.gameUpperBytes, memoryStatus_.before.freeBytes - space.freeBytes);
-        if (memoryStatus_.gameUpperBytes > core::limits::RendererGameHeapLimit ||
+        if (memoryStatus_.gameUpperBytes > core::limits::RendererResidentHeapLimit ||
             space.freeBytes < core::limits::RendererHeapReserve) {
             ReleaseIdle();
             return false;
         }
     }
+    memoryStatus_.residentUpperBytes = memoryStatus_.gameUpperBytes;
     return created;
+}
+
+bool RecordingResources::AcquireBackground(const FontResource &font) {
+    if (!atlas_ || background_) return background_ != nullptr;
+    unsigned bound = 0;
+    api_.property(ListBinding, &bound);
+    if (bound && (bound == lists_[0] || bound == lists_[1])) return false;
+    const auto required = std::min(font.textureCount, font.requiredTextureCount);
+    backgroundStatus_ = {};
+    if (required == font.textureCount) {
+        backgroundStatus_.result = BackgroundResult::NotNeeded;
+        return false;
+    }
+    std::uint64_t bytes = 0;
+    for (std::size_t i = required; i < font.textureCount; ++i)
+        if (font.textures[i].gpuResident) bytes += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
+    if (!bytes) {
+        backgroundStatus_.result = BackgroundResult::NotNeeded;
+        return false;
+    }
+    HeapSpace space;
+    backgroundStatus_.measured = api_.heapSpace(allocator_, AtlasAlignment, &space);
+    backgroundStatus_.freeBytes = space.freeBytes;
+    backgroundStatus_.largestBlock = space.largestBlock;
+    if (!backgroundStatus_.measured) {
+        backgroundStatus_.result = BackgroundResult::HeapUnavailable;
+        return false;
+    }
+    // 管理・整列の余裕まで含めて予備を残す。引き算のアンダーフローも避ける。
+    if (memoryStatus_.residentUpperBytes + bytes + core::limits::RendererGameAllocationSlack > core::limits::RendererGameHeapLimit) {
+        backgroundStatus_.result = BackgroundResult::BudgetExceeded;
+        return false;
+    }
+    if (space.largestBlock < bytes + AtlasAlignment) {
+        backgroundStatus_.result = BackgroundResult::BlockTooSmall;
+        return false;
+    }
+    if (space.freeBytes < bytes + core::limits::RendererGameAllocationSlack + core::limits::RendererHeapReserve) {
+        backgroundStatus_.result = BackgroundResult::InsufficientSpace;
+        return false;
+    }
+    background_ = api_.allocate(allocator_, static_cast<unsigned>(bytes), AtlasAlignment);
+    if (!background_) {
+        backgroundStatus_.result = BackgroundResult::AllocateFailed;
+        return false;
+    }
+    memoryStatus_.openBytes = static_cast<unsigned>(bytes);
+    memoryStatus_.openUpperBytes = static_cast<unsigned>(bytes) + core::limits::RendererGameAllocationSlack;
+    for (std::size_t i = required; i < font.textureCount; ++i)
+        if (font.textures[i].gpuResident) std::memcpy(static_cast<unsigned char *>(background_) + TextureOffset(font, i), font.textures[i].data, font.textures[i].bytes);
+    if (!api_.flush(background_, static_cast<unsigned>(bytes))) {
+        ReleaseBackgroundIdle(); // まだ木に公開していない。
+        backgroundStatus_.result = BackgroundResult::FlushFailed;
+        return false;
+    }
+    HeapSpace after;
+    const bool measured = api_.heapSpace(allocator_, AtlasAlignment, &after);
+    memoryStatus_.current = {after.freeBytes, after.largestBlock, measured};
+    if (measured && space.freeBytes > after.freeBytes)
+        memoryStatus_.openUpperBytes = std::max(memoryStatus_.openUpperBytes, space.freeBytes - after.freeBytes);
+    const bool overBudget = memoryStatus_.residentUpperBytes + memoryStatus_.openUpperBytes > core::limits::RendererGameHeapLimit;
+    if (!measured || overBudget ||
+        after.freeBytes < core::limits::RendererHeapReserve) {
+        ReleaseBackgroundIdle();
+        backgroundStatus_.result = !measured ? BackgroundResult::HeapUnavailable :
+            overBudget ? BackgroundResult::BudgetExceeded : BackgroundResult::InsufficientSpace;
+        return false;
+    }
+    memoryStatus_.gameBytes = memoryStatus_.residentBytes + memoryStatus_.openBytes;
+    memoryStatus_.gameUpperBytes = memoryStatus_.residentUpperBytes + memoryStatus_.openUpperBytes;
+    backgroundStatus_.result = BackgroundResult::Ready;
+    return true;
+}
+
+bool RecordingResources::ReleaseBackgroundIdle() {
+    unsigned bound = 0;
+    api_.property(ListBinding, &bound);
+    if (bound && (bound == lists_[0] || bound == lists_[1])) return false;
+    if (background_) {
+        api_.free(allocator_, background_);
+        background_ = nullptr;
+        backgroundStatus_.result = BackgroundResult::Released;
+    }
+    memoryStatus_.openBytes = memoryStatus_.openUpperBytes = 0;
+    memoryStatus_.gameBytes = memoryStatus_.residentBytes;
+    memoryStatus_.gameUpperBytes = memoryStatus_.residentUpperBytes;
+    return true;
 }
 
 bool RecordingResources::ReleaseIdle() {
@@ -154,10 +217,7 @@ bool RecordingResources::ReleaseIdle() {
             list = 0;
         }
     }
-    if (background_) {
-        api_.free(allocator_, background_);
-        background_ = nullptr;
-    }
+    ReleaseBackgroundIdle();
     if (atlas_) {
         api_.free(allocator_, atlas_);
         atlas_ = nullptr;
@@ -165,6 +225,7 @@ bool RecordingResources::ReleaseIdle() {
     allocator_ = nullptr;
     memoryStatus_.gameBytes = memoryStatus_.gameUpperBytes = 0;
     memoryStatus_.commandBytes = 0;
+    memoryStatus_.residentBytes = memoryStatus_.residentUpperBytes = 0;
     return true;
 }
 } // namespace gohan::game::lyt::detail
