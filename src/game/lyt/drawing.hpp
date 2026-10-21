@@ -53,6 +53,8 @@ struct TextureResource {
     // 輝度の黒→白の色（0xAARRGGBB）。不透明度は画像に含めず Pane に渡す。
     std::uint32_t black = 0, white = 0xFFFFFFFFu;
     unsigned opacity = 255;
+    // PCの部品プレビューだけで使う元画像等は、ゲームのヒープへ複製しない。
+    bool gpuResident = true;
 };
 struct FontResource {
     const std::uint8_t *atlas = nullptr;
@@ -72,7 +74,7 @@ struct FontResource {
     std::size_t textureCount = 0;
     std::size_t requiredTextureCount = static_cast<unsigned>(Texture::Count);
 };
-enum class BackgroundResult { NotAttempted, NotNeeded, Ready, HeapUnavailable, InsufficientSpace, AllocateFailed, FlushFailed };
+enum class BackgroundResult { NotAttempted, NotNeeded, Ready, HeapUnavailable, InsufficientSpace, AllocateFailed, FlushFailed, Released, BlockTooSmall, BudgetExceeded };
 struct BackgroundAllocation {
     BackgroundResult result = BackgroundResult::NotAttempted;
     unsigned freeBytes = 0, largestBlock = 0;
@@ -85,13 +87,15 @@ struct HeapMeasurement {
 struct RendererMemory {
     HeapMeasurement before, after, current;
     unsigned gameBytes = 0, gameUpperBytes = 0, pluginBytes = 0, commandBytes = 0;
+    unsigned residentBytes = 0, residentUpperBytes = 0, openBytes = 0, openUpperBytes = 0;
+    BackgroundAllocation background;
 };
 // 各画像の開始を GPU 用の 128 バイト境界に揃える。必須と背景は別の確保の先頭から。
 inline std::size_t TextureOffset(const FontResource &font, std::size_t index) {
     const bool background = index >= font.requiredTextureCount;
     std::size_t bytes = background ? 0 : (font.atlasBytes + 127) / 128 * 128;
     for (std::size_t i = background ? font.requiredTextureCount : 0; i < index; ++i)
-        bytes += (font.textures[i].bytes + 127) / 128 * 128;
+        if (font.textures[i].gpuResident) bytes += (font.textures[i].bytes + 127) / 128 * 128;
     return bytes;
 }
 } // namespace gohan::game::lyt

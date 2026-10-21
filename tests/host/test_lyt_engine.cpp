@@ -420,7 +420,7 @@ void OptionalBackground(Engine &engine) {
         Fake::Reset();
         if (mode == 0) Fake::freeBytes = 500000;
         if (mode == 1) Fake::largestBlock = essentialBytes + backgroundBytes + 127;
-        if (mode == 2) Fake::failSpace = 2;
+        if (mode == 2) Fake::failSpace = 3;
         if (mode == 3) Fake::failAllocate = 2;
         if (mode == 4) Fake::failFlush = 2;
         if (mode == 5) {
@@ -430,9 +430,23 @@ void OptionalBackground(Engine &engine) {
         const unsigned beforeFree = Fake::freeBytes - essentialBytes;
         const unsigned beforeLargest = Fake::largestBlock - essentialBytes;
         assert(engine.Install(font.resource) == InstallResult::Ready && engine.Installed());
+        Drawing drawing;
+        drawing.revisions[0] = 1;
+        auto &screen = drawing.screens[0];
+        Command image;
+        image.kind = Kind::Image;
+        image.bounds = {4, 4, 8, 8}; image.clip = FullTop; image.source = {0, 0, 8, 8};
+        image.scale = 1; image.color = 0xFFFFFFFFu;
+        Add(screen, image); // 自作 UI
+        Add(screen, Text(screen, 20, 4, u"ABC", 0xFFFFFFFFu, 1, FullTop));
+        Add(screen, Rectangle({10, 20, 186, 13}, 0xFF6DBB4Bu, FullTop)); // 帯の地
+        image.texture = Texture::TitleWindow;
+        Add(screen, image);
+        assert(engine.Resources().Background() == nullptr && Fake::allocateCalls == 1);
+        assert(engine.Present(drawing));
         const bool ready = mode >= 5;
         const auto &status = engine.Resources().BackgroundStatus();
-        const BackgroundResult results[] = {BackgroundResult::InsufficientSpace, BackgroundResult::InsufficientSpace,
+        const BackgroundResult results[] = {BackgroundResult::InsufficientSpace, BackgroundResult::BlockTooSmall,
             BackgroundResult::HeapUnavailable, BackgroundResult::AllocateFailed, BackgroundResult::FlushFailed,
             BackgroundResult::Ready, BackgroundResult::Ready};
         assert(status.result == results[mode] && status.measured == (mode != 2));
@@ -447,19 +461,6 @@ void OptionalBackground(Engine &engine) {
         } else if (mode < 3) {
             assert(Fake::allocateCalls == 1); // 安全でないゲームの確保関数は呼ばない。
         }
-        Drawing drawing;
-        drawing.revisions[0] = 1;
-        auto &screen = drawing.screens[0];
-        Command image;
-        image.kind = Kind::Image;
-        image.bounds = {4, 4, 8, 8}; image.clip = FullTop; image.source = {0, 0, 8, 8};
-        image.scale = 1; image.color = 0xFFFFFFFFu;
-        Add(screen, image); // 自作 UI
-        Add(screen, Text(screen, 20, 4, u"ABC", 0xFFFFFFFFu, 1, FullTop));
-        Add(screen, Rectangle({10, 20, 186, 13}, 0xFF6DBB4Bu, FullTop)); // 帯の地
-        image.texture = Texture::TitleWindow;
-        Add(screen, image);
-        assert(engine.Present(drawing));
         auto children = Children(engine.Nodes().Node(Screen::Top).root);
         assert(children.size() == (ready ? 4 : 3));
         assert(IsPicture(children[0]) && IsTextBox(children[1]));
@@ -484,13 +485,95 @@ void OptionalBackground(Engine &engine) {
         for (unsigned i = 1; i < Engine::DrainFrames; ++i) assert(!engine.Detach());
         assert(engine.Detach() && Fake::Balanced());
     }
-    // 背景も取得した後のリスト作成失敗で、両方の画像を巻き戻す。
+    // リスト作成失敗は常駐だけを巻き戻し、背景には触れない。
     Fake::Reset();
     Fake::failCreate = 2;
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed);
-    assert(engine.Resources().Empty() && Fake::Balanced() && Fake::allocations == 2);
+    assert(engine.Resources().Empty() && Fake::Balanced() && Fake::allocations == 1);
     Fake::Reset();
 }
+// 実際と同じ画像容量で、閉じた時の取り分・GPU排出・反復・低メモリ時の代替を確認する。
+void BackgroundLifetime(Engine &engine) {
+    Fake::Reset();
+    TestFont font;
+    std::vector<std::uint8_t> pixels(131072, 0x46);
+    const unsigned sizes[] = {32768, 256, 256, 1024, 1024, 32768, 131072, 32768};
+    const unsigned widths[] = {256, 8, 8, 16, 16, 256, 1024, 1024};
+    const unsigned heights[] = {32, 8, 8, 16, 16, 256, 256, 64};
+    TextureResource textures[8];
+    for (unsigned i = 0; i < 8; ++i)
+        textures[i] = {pixels.data(), sizes[i], widths[i], heights[i], i >= 5 ? TextureFormat::L4 : TextureFormat::Rgba8};
+    textures[3].gpuResident = textures[4].gpuResident = false;
+    font.resource.textures = textures; font.resource.textureCount = 8; font.resource.requiredTextureCount = 3;
+    assert(engine.Install(font.resource) == InstallResult::Ready);
+    assert(Fake::allocateCalls == 1 && !engine.Resources().Background());
+    Drawing open, closed;
+    open.revisions[0] = 1; closed.revisions[0] = 2;
+    // メニュー以外の下画面の描画が続いていても、閉じた後の背景は返す。
+    open.revisions[1] = closed.revisions[1] = 1;
+    Add(open.screens[1], Rectangle({20, 20, 120, 40}, 0xFFFFFFFFu, {0, 0, 320, 240}));
+    closed.screens[1] = open.screens[1];
+    Add(open.screens[0], Rectangle({10, 20, 186, 13}, 0xFF6DBB4Bu, FullTop));
+    Command band;
+    band.kind = Kind::Image; band.texture = Texture::TitleSelection;
+    band.bounds = {12, 21, 8, 8}; band.clip = FullTop; band.source = {0, 0, 8, 8};
+    band.scale = 1; band.color = 0xFFFFFFFFu;
+    Add(open.screens[0], band);
+    for (unsigned cycle = 0; cycle < 100; ++cycle) {
+        auto m = engine.Resources().MemoryStatus();
+        assert(m.residentBytes == 98816 && m.residentUpperBytes == 99072);
+        assert(m.gameUpperBytes <= limits::RendererResidentHeapLimit && m.openBytes == 0);
+        // 予備を1バイト割る場合と、ちょうど残せる場合を交互に試す。
+        const bool ready = cycle % 2 == 0;
+        Fake::freeBytes = 98816 + 196608 + limits::RendererGameAllocationSlack + limits::RendererHeapReserve - (ready ? 0 : 1);
+        const int calls = Fake::allocateCalls;
+        assert(engine.Present(open));
+        m = engine.Resources().MemoryStatus();
+        assert(Fake::allocateCalls == calls + (ready ? 1 : 0));
+        assert(m.background.result == (ready ? BackgroundResult::Ready : BackgroundResult::InsufficientSpace));
+        assert(m.openBytes == (ready ? 196608u : 0u));
+        assert(m.gameUpperBytes <= limits::RendererGameHeapLimit && Fake::lists.size() == 2);
+        const auto children = Children(engine.Nodes().Node(Screen::Top).root);
+        assert(children.size() == (ready ? 2 : 1)); // 未確保の画像を記録しない。単色の地は残す。
+        if (ready) {
+            // 登録中のノードが残っている間は、空を渡し続けても返却を進めない。
+            for (unsigned n = 0; n < 12; ++n) {
+                assert(engine.Present(closed));
+                assert(engine.Resources().Background());
+            }
+        }
+        Fake::EndPasses();
+        for (unsigned n = 1; n < Engine::DrainFrames; ++n) {
+            assert(engine.Present(closed)); Fake::EndPasses();
+            assert((engine.Resources().Background() != nullptr) == ready);
+        }
+        if (ready) {
+            // 閉じ切っても排出前に開き直せば、同じ画像を使い、二重に借りない。
+            const auto *saved = engine.Resources().Background();
+            const int before = Fake::allocateCalls;
+            assert(engine.Present(open)); Fake::EndPasses();
+            assert(engine.Resources().Background() == saved && Fake::allocateCalls == before);
+            for (unsigned n = 1; n < Engine::DrainFrames; ++n) {
+                assert(engine.Present(closed)); Fake::EndPasses();
+                assert(engine.Resources().Background() == saved);
+            }
+            Fake::bound = engine.Resources().List(Screen::Top);
+            assert(engine.Present(closed) && engine.Resources().Background() == saved);
+            Fake::EndPasses();
+            Fake::bound = 7;
+        }
+        assert(engine.Present(closed)); Fake::EndPasses();
+        m = engine.Resources().MemoryStatus();
+        assert(!engine.Resources().Background() && m.openBytes == 0 && m.openUpperBytes == 0);
+        assert(m.gameBytes == 98816 && m.gameUpperBytes == 99072 && Fake::blocks.size() == 1);
+        assert(Fake::allocations - Fake::frees == 1);
+        assert(m.commandBytes == 295944); // 閉じても別ヒープの記録列は維持する。
+    }
+    for (unsigned n = 1; n < Engine::DrainFrames; ++n) assert(!engine.Detach());
+    assert(engine.Detach() && Fake::Balanced());
+    Fake::Reset();
+}
+
 } // namespace
 
 int main() {
@@ -505,6 +588,7 @@ int main() {
     Cycles(engine);
     Images(engine);
     OptionalBackground(engine);
+    BackgroundLifetime(engine);
     assert(Fake::Balanced());
     std::puts("lyt engine: ok");
 }

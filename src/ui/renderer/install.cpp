@@ -82,8 +82,11 @@ void FrameStep() {
     StepTitleAnimation(animationFrame++, drawing);
     if (state == Status::Ready && !game::lyt::Present(drawing))
         BeginStop(Status::PresentFailed);
-    if (changed || animationFrame % core::limits::RendererHeapSampleFrames == 0 || state == Status::Stopping)
-        publishedMemory.TryPublish(game::lyt::ReadRendererMemory());
+    if (changed || animationFrame % core::limits::RendererHeapSampleFrames == 0 || state == Status::Stopping) {
+        const auto memory = game::lyt::ReadRendererMemory();
+        publishedMemory.TryPublish(memory);
+        backgroundAllocation = memory.background;
+    }
     published.TryPublish(state);
     publishedBackground.TryPublish(backgroundAllocation);
 }
@@ -144,7 +147,7 @@ Status ReadStatus() {
 const char *BackgroundAllocationStatusText() {
     static game::lyt::BackgroundAllocation last;
     static std::uint32_t generation = 0;
-    static char text[256];
+    static char text[384];
     publishedBackground.ReadIfNew(last, generation);
     using game::lyt::BackgroundResult;
     const char *result = "未試行";
@@ -153,29 +156,34 @@ const char *BackgroundAllocationStatusText() {
     case BackgroundResult::NotNeeded: result = "不要（代わりの色）"; break;
     case BackgroundResult::Ready: result = "成功"; break;
     case BackgroundResult::HeapUnavailable: result = "ヒープを確認できない（代わりの色）"; break;
-    case BackgroundResult::InsufficientSpace: result = "空き不足（代わりの色）"; break;
+    case BackgroundResult::InsufficientSpace: result = "空き不足（予備400000を残せない・代わりの色）"; break;
     case BackgroundResult::AllocateFailed: result = "失敗（代わりの色）"; break;
     case BackgroundResult::FlushFailed: result = "排出失敗（代わりの色）"; break;
+    case BackgroundResult::Released: result = "閉じた後に返却済み"; break;
+    case BackgroundResult::BlockTooSmall: result = "連続した空き不足（代わりの色）"; break;
+    case BackgroundResult::BudgetExceeded: result = "借用の予算超過（代わりの色）"; break;
     }
     if (last.measured)
-        std::snprintf(text, sizeof(text), "背景の確保: %s\n確保前の空き: 合計 %u / 最大の塊 %u バイト",
+        std::snprintf(text, sizeof(text), "帯の画像の借用: %s\n確保前の空き: 合計 %u / 最大の塊 %u バイト",
                       result, last.freeBytes, last.largestBlock);
     else
-        std::snprintf(text, sizeof(text), "背景の確保: %s\n確保前の空き: 未計測", result);
+        std::snprintf(text, sizeof(text), "帯の画像の借用: %s\n確保前の空き: 未計測", result);
     return text;
 }
 const char *MemoryStatusText() {
     static game::lyt::RendererMemory last;
     static std::uint32_t generation = 0;
-    static char text[768];
+    static char text[1024];
     publishedMemory.ReadIfNew(last, generation);
     const auto &a = last.before, &b = last.after, &c = last.current;
     std::snprintf(text, sizeof(text),
-                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\ngohan: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u\n別の描画命令用ヒープ: 記録列等 %u\n現在値は約30フレームごとに更新",
+                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\n常駐: 画像 %u / 管理分込み上限 %u / 予算 %u\n開いている間: 画像 %u / 管理分込み上限 %u\n画像合計 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u\n別の描画命令用ヒープ: 記録列等 %u\n現在値は約30フレームごとに更新",
                   a.freeBytes, a.largestBlock, a.measured ? "" : "未計測",
                   b.freeBytes, b.largestBlock, b.measured ? "" : "未計測",
                   c.freeBytes, c.largestBlock, c.measured ? "" : "未計測",
-                  last.gameBytes, last.gameUpperBytes, core::limits::RendererGameHeapLimit, last.pluginBytes, last.commandBytes);
+                  last.residentBytes, last.residentUpperBytes, core::limits::RendererResidentHeapLimit,
+                  last.openBytes, last.openUpperBytes, last.gameBytes, last.gameUpperBytes,
+                  core::limits::RendererGameHeapLimit, last.pluginBytes, last.commandBytes);
     return text;
 }
 const char *StatusText() {

@@ -56,6 +56,7 @@ InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *ba
 
 RendererMemory ReadRendererMemory() {
     core::LockGuard guard(rendererMutex);
+    if (engine) memoryStatus = engine->Resources().MemoryStatus();
     if (verified) {
         const auto &api = detail::GameResourceApi();
         detail::HeapSpace space;
@@ -65,7 +66,10 @@ RendererMemory ReadRendererMemory() {
         memoryStatus.current.largestBlock = space.largestBlock;
     }
     memoryStatus.pluginBytes = engine ? sizeof(detail::Engine) + alignof(detail::Engine) - 1 : 0;
-    if (!engine) memoryStatus.gameBytes = memoryStatus.gameUpperBytes = memoryStatus.commandBytes = 0;
+    if (!engine) {
+        memoryStatus.gameBytes = memoryStatus.gameUpperBytes = memoryStatus.commandBytes = 0;
+        memoryStatus.residentBytes = memoryStatus.residentUpperBytes = memoryStatus.openBytes = memoryStatus.openUpperBytes = 0;
+    }
     return memoryStatus;
 }
 
@@ -86,7 +90,10 @@ bool DetachRenderer() {
     if (!rendererMutex.TryLock()) return false;
     const bool result = !engine || engine->Detach();
     // エンジン内の木・文字バッチも、ノードとGPUの参照の排出が済んでから返す。
-    if (result) ReleaseEngine();
+    if (result) {
+        if (engine) memoryStatus = engine->Resources().MemoryStatus();
+        ReleaseEngine();
+    }
     rendererMutex.Unlock();
     return result;
 }

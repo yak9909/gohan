@@ -18,6 +18,15 @@ int main() {
     assert(!engine.UpdateSelection(pixels.data(), pixels.size(), slot));
     assert(engine.Install(font.resource) == InstallResult::Ready);
     assert(!engine.UpdateSelection(pixels.data(), pixels.size() - 1, slot));
+    Drawing opening; opening.screens[0].count = 1;
+    opening.screens[0].commands[0].kind = Kind::Image;
+    // 窓だけを描いて背景を借り、帯の画像はまだ参照しない。
+    opening.screens[0].commands[0].texture = Texture::TitleWindow;
+    opening.screens[0].commands[0].bounds = opening.screens[0].commands[0].clip = {0, 0, 8, 8};
+    opening.screens[0].commands[0].source = {0, 0, 8, 8};
+    opening.screens[0].commands[0].scale = 1;
+    opening.screens[0].commands[0].color = 0xFFFFFFFFu;
+    assert(engine.Present(opening)); Game::EndPasses();
     pixels.fill(0x75);
     assert(engine.UpdateSelection(pixels.data(), pixels.size(), slot) && slot == 0);
     const auto *gpu = static_cast<const std::uint8_t *>(engine.Resources().Background());

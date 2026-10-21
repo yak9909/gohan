@@ -202,6 +202,7 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     shared_.value.srt.scale[0] = shared_.value.srt.scale[1] = 1.0f;
 
     for (std::size_t i = 0; i < font.textureCount; ++i) {
+        if (!font.textures[i].gpuResident) continue;
         if (i >= font.requiredTextureCount && !background)
             continue;
         auto &own = imageMaterials_[i].value;
@@ -402,6 +403,7 @@ void Scene::Apply(Screen which, const ScreenDrawing &drawing) {
             if (image && (textureIndex >= font_->textureCount || command.source.width <= 0 ||
                           command.source.height <= 0 || command.scale < 1 || command.scale > 8))
                 continue;
+            if (image && !font_->textures[textureIndex].gpuResident) continue;
             const auto pictureLimit = which == Screen::Bottom ? core::limits::RendererBottomRects : core::limits::RendererRects;
             if (rectangles >= pictureLimit || command.bounds.width <= 0 ||
                 command.bounds.height <= 0)

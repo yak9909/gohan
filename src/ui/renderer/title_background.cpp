@@ -31,7 +31,9 @@ static_assert(AtlasWidth == TailWidth);
 static_assert(v::Titlebg::Selection::CellSize[0] == v::Row::W + v::Titlebg::Selection::Inset[2]);
 static_assert(v::Titlebg::Selection::CellSize[1] == v::Row::H + v::Titlebg::Selection::Inset[3]);
 static_assert((AtlasHeight / v::Titlebg::Selection::CellSize[1] + TailHeight / v::Titlebg::Selection::CellSize[1]) * AtlasWidth >= v::Titlebg::Loop * v::Titlebg::Selection::CellSize[0]);
-static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) + sizeof(alpha) + sizeof(luminance) + 98816 + 2 * core::limits::RendererGameAllocationSlack <= core::limits::RendererGameHeapLimit);
+// 元2枚はPCの部品プレビューだけが読む。ゲーム側には窓と合成済みの帯だけを渡す。
+static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) == 196608);
+static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) + 98816 + 2 * core::limits::RendererGameAllocationSlack <= core::limits::RendererGameHeapLimit);
 
 unsigned PixelOffset(unsigned x, unsigned y, unsigned width) {
     unsigned n = (y / 8 * (width / 8) + x / 8) * 64;
@@ -39,7 +41,8 @@ unsigned PixelOffset(unsigned x, unsigned y, unsigned width) {
     return n;
 }
 game::lyt::TextureResource images[] = {
-    {alpha, sizeof(alpha), 16, 16}, {luminance, sizeof(luminance), 16, 16},
+    {alpha, sizeof(alpha), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
+    {luminance, sizeof(luminance), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
     {window, sizeof(window), WindowWidth, WindowHeight, game::lyt::TextureFormat::L4,
      0xFF000000u | v::Window::Overlay::Color[0], 0xFF000000u | v::Window::Overlay::Color[1],
      unsigned(v::Window::Overlay::Alpha * 255 + .5)},
