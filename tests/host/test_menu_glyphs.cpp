@@ -188,16 +188,16 @@ int main() {
             for (unsigned n = 0; n < 7; ++n) {
                 const s32 age = static_cast<s32>(r.now - (born + n * ca::Time::Notice[3]));
                 expected += age >= ca::Time::Notice[0] && age < ca::Time::Notice[0] + ca::Time::Notice[1] &&
-                            (n != 0 || t < 1008 + ca::Time::Notice[2]);
+                            (n != 0 || t < 1008u + ca::Time::Notice[2]);
             }
-            expected += t >= 1008 + ca::Time::Notice[0] &&
-                        t < 1008 + ca::Time::Notice[0] + ca::Time::Notice[1];
+            expected += t >= 1008u + ca::Time::NoticeStack + ca::Time::Notice[0] &&
+                        t < 1008u + ca::Time::NoticeStack + ca::Time::Notice[0] + ca::Time::Notice[1];
             for (std::size_t n = 0; n < d.count; ++n) {
                 const auto &c = d.commands[n];
                 actual += c.kind == gohan::game::lyt::Kind::Text && c.length > 5 &&
                           std::u16string_view(c.text, 5) == u"GOHAN";
             }
-            if (t == 1120) assert(actual == 8);
+            if (t == 1120) assert(actual == 7); // 新規は積む位置が空くまで隠す。
             // 予算不足で通知そのものを省いた場合も、欠落として検出する。
             if (actual < expected) std::fprintf(stderr, "通知の欠落: %u/%u 時刻=%u 文字枠=%zu\n", actual, expected, t, d.texts);
             assert(actual >= expected);

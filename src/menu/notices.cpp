@@ -21,7 +21,7 @@ float NoticeQueue::X(const Slot &slot, int screen_width, u32 now) const {
     const float off = static_cast<float>(screen_width);
     if (slot.forced_exit)
         return Mix(off + slot.exit_x, off, EaseOut(Progress(slot.exit_at, now, timing::kNoticeExitMs)));
-    const s32 age = static_cast<s32>(now - slot.created);
+    const s32 age = static_cast<s32>(now - slot.enter_at);
     if (age < 0) return off;
     if (age < static_cast<s32>(timing::kNoticeEnterMs))
         return Mix(off, target, EaseOut(static_cast<float>(age) / static_cast<float>(timing::kNoticeEnterMs)));
@@ -33,15 +33,15 @@ float NoticeQueue::X(const Slot &slot, int screen_width, u32 now) const {
 
 float NoticeQueue::Alpha(const Slot &slot, u32 now) const {
     if (slot.forced_exit) return 1.f - EaseOut(Progress(slot.exit_at, now, timing::kNoticeExitMs));
-    const s32 age = static_cast<s32>(now - slot.created);
+    const s32 age = static_cast<s32>(now - slot.enter_at);
     const s32 exit = static_cast<s32>(timing::kNoticeEnterMs + timing::kNoticeHoldMs);
-    return age < exit ? 1.f : 1.f - EaseOut(Progress(slot.created + exit, now, timing::kNoticeExitMs));
+    return age < exit ? 1.f : 1.f - EaseOut(Progress(slot.enter_at + exit, now, timing::kNoticeExitMs));
 }
 
 bool NoticeQueue::SlotAlive(const Slot &slot, u32 now) const {
     if (!slot.active) return false;
     if (slot.forced_exit) return motion::Progress(slot.exit_at, now, timing::kNoticeExitMs) < 1.f;
-    const s32 age = static_cast<s32>(now - slot.created);
+    const s32 age = static_cast<s32>(now - slot.enter_at);
     return age < static_cast<s32>(timing::kNoticeEnterMs + timing::kNoticeHoldMs + timing::kNoticeExitMs);
 }
 
@@ -93,6 +93,8 @@ void NoticeQueue::Insert(const Notice &notice, u32 now) {
         Copy(slot.title, sizeof(slot.title), notice.title);
         Copy(slot.message, sizeof(slot.message), notice.message);
         slot.created = at;
+        slot.wait_for_stack = n >= kCapacity;
+        slot.enter_at = at + (slot.wait_for_stack ? timing::kNoticeStackMs : 0);
         slot.placed = false;
         slot.forced_exit = false;
         break;
@@ -145,13 +147,16 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
         char lines[ca::Notice::Inner::Body[3]][kLineBytes];
         const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, maxLines, nullptr);
         const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
-        const int x = Round(X(slot, s.Width(), now));
         const int target = bottom - h;
-        if (!slot.placed) { slot.y.Jump(float(target), now); slot.placed = true; }
-        else if (slot.y.to != float(target)) slot.y.Go(float(target), now, timing::kNoticeEnterMs);
+        if (!slot.placed) {
+            slot.y.Jump(float(target), now); slot.placed = true;
+            // 初回の描画で積み替えを始める。描画間隔が空いても、入りだけ先行させない。
+            if (slot.wait_for_stack) { slot.enter_at = now + timing::kNoticeStackMs; slot.wait_for_stack = false; }
+        }
+        else if (slot.y.to != float(target)) slot.y.Go(float(target), now, timing::kNoticeStackMs);
         const int y = std::clamp(Round(slot.y.At(now)), ca::Notice::Top, ca::Notice::Bottom[menu_open ? 0 : 1] - h);
         bottom -= h + ca::Notice::Gap;
-        draw(slot, x, y, maxLines);
+        if (static_cast<s32>(now - slot.enter_at) >= 0) draw(slot, Round(X(slot, s.Width(), now)), y, maxLines);
     }
 }
 } // namespace gohan::menu

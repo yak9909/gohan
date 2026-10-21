@@ -249,7 +249,7 @@ void DeviceCorrections() {
     for (const auto &c : seven.commands) if (c.text == "notice.window" && c.kind == Command::Slice) {
         ++windows; assert(c.bounds.y >= ca::Notice::Top && c.bounds.y + c.bounds.h <= ca::Notice::Bottom[0]);
     }
-    assert(windows == 8); // 7件の積み上げと退場中の1件
+    assert(windows == 6); // 連続追加の2件は初回の積み替え待ち。既存5件と退場中の1件を描く。
 
     NoticeQueue overflow;
     for (int i = 0; i < 7; ++i) {
@@ -287,5 +287,83 @@ void DeviceCorrections() {
     assert(reversingFolder.HasText("見本のフラグ") && reversingFolder.HasText("見本"));
     folders.Advance(240); assert(folders.engine.Depth() == 0 && !folders.Draw().HasText("見本のフラグ"));
 }
+
+void FolderViewport() {
+    Rig r(kMenuItems, kMenuItemCount);
+    assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    r.Open();
+    unsigned frames = 0, moving_switches = 0, crossing_edges = 0;
+    auto check = [&] {
+        const auto s = r.Draw();
+        std::size_t last_row = 0, finger = 0;
+        for (std::size_t i = 0; i < s.commands.size(); ++i) {
+            const auto &c = s.commands[i];
+            if (c.text == "finger") { finger = i; assert(!c.clipped); }
+            if (!c.clipped) continue;
+            last_row = i;
+            assert(c.clip.x == ca::Row::Clip::X[0] && c.clip.w == ca::Row::Clip::X[1] - ca::Row::Clip::X[0]);
+            assert(c.clip.y == ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1]);
+            assert(c.clip.y + c.clip.h == ca::Row::Top + (r.shell.panel().Rows() - 1) * ca::Row::Pitch + ca::Row::H);
+            crossing_edges += c.bounds.x < c.clip.x || c.bounds.x + c.bounds.w > c.clip.x + c.clip.w;
+            if (c.text != "switch.track" || c.bounds.y != ca::Row::Top + ca::Row::Pill::Y) continue;
+            // 新しい選択行のスイッチと帯は、横移動中も同じ相対位置を保つ。
+            const int band_x = c.bounds.x - (ca::Row::W + ca::Row::Value::Right - ca::Row::Pill::Size[0]);
+            assert(Part(s, "selrim", band_x));
+            moving_switches += band_x != ca::Row::X;
+        }
+        assert(finger > last_row);
+        ++frames;
+    };
+    r.Hold(key::A); r.Release();
+    for (unsigned t = 0; t < 224; t += 16) { check(); r.Frame(); }
+    r.Hold(key::B); r.Release();
+    for (unsigned t = 0; t < 224; t += 16) { check(); r.Frame(); }
+    r.Hold(key::A); r.Release(); r.Advance(48); r.Hold(key::B); r.Release();
+    for (unsigned t = 0; t < 224; t += 16) { check(); r.Frame(); }
+    assert(moving_switches && crossing_edges);
+    std::printf("フォルダの表示範囲と帯: %u コマ、切り抜き・指の前後・帯とスイッチの相対位置を確認\n", frames);
 }
-int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); std::puts("menu shell: ok"); }
+
+void NoticeIncomingRects() {
+    auto notice = [](int number) {
+        Notice n{};
+        std::snprintf(n.title, sizeof(n.title), "N%d", number);
+        std::snprintf(n.message, sizeof(n.message), "message %d", number);
+        return n;
+    };
+    auto intersects = [](Rect a, Rect b) {
+        return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    };
+    unsigned frames = 0, comparisons = 0;
+    for (const u32 first_draw_delay : {0u, 80u}) {
+        NoticeQueue q;
+        for (int n = 1; n <= 7; ++n) {
+            q.Add(notice(n), (n - 1) * 200);
+            RecordingSurface placed; q.Draw(placed, (n - 1) * 200);
+        }
+        const u32 added = 1400, first_draw = added + first_draw_delay;
+        q.Add(notice(8), added);
+        for (u32 elapsed = 0; elapsed <= timing::kNoticeStackMs + timing::kNoticeEnterMs; ++elapsed) {
+            RecordingSurface s; q.Draw(s, first_draw + elapsed);
+            std::vector<Rect> windows;
+            Rect incoming{}, current{};
+            std::size_t incoming_index = 0;
+            for (const auto &c : s.commands) {
+                if (c.kind == Command::Slice && c.text == "notice.window") { current = c.bounds; windows.push_back(current); }
+                if (c.kind == Command::Text && c.text == "N8") { incoming = current; incoming_index = windows.size() - 1; }
+            }
+            if (elapsed < timing::kNoticeStackMs) assert(!incoming.w);
+            else {
+                assert(incoming.w && incoming.y == ca::Notice::Bottom[0] - incoming.h);
+                for (std::size_t i = 0; i < windows.size(); ++i) {
+                    if (i == incoming_index) continue;
+                    ++comparisons; assert(!intersects(incoming, windows[i]));
+                }
+            }
+            ++frames;
+        }
+    }
+    std::printf("新規通知の矩形: %u コマ・%u 組、ほかの通知との重なり 0\n", frames, comparisons);
+}
+}
+int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); std::puts("menu shell: ok"); }

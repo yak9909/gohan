@@ -189,20 +189,11 @@ void Panel::DrawHeading(Surface &s, const Engine &e, int dx, u16 folder, int cou
 
 void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
     const float start = view_.At(now);
-    const int action = Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f));
-    const int value = Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f));
     const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
     const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
                                     ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);
-    const bool clipped = s.BeginClip({dx + ca::List::Rect[0], clipTop, ca::List::Rect[2], clipBottom - clipTop});
-    if (count_) {
-        const float row = std::clamp(selection_.At(now) - start, 0.f, float(rows_ - 1));
-        const int y = Round(ca::Row::Top + row * ca::Row::Pitch);
-        const Rect band{dx + ca::Row::X + value + action, y, ca::Row::W, ca::Row::H};
-        Selected(s, band, e.View(e.Selected()).disabled);
-        s.Sprite(band.x + ca::Cursor::Offset[0] + ca::Cursor::Sway[(now % ca::Time::Cursor) >= unsigned(ca::Time::Cursor / 2)],
-                 band.y + ca::Cursor::Offset[1], "finger");
-    }
+    const bool clipped = s.BeginClip({dx + ca::Row::Clip::X[0], clipTop,
+                                     ca::Row::Clip::X[1] - ca::Row::Clip::X[0], clipBottom - clipTop});
     if (old_count_ && !folder_phase_.Done(now)) {
         const float p = folder_phase_.At(now);
         FadedSurface old(s, 1.f - p), next(s, p);
@@ -214,10 +205,28 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
         DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected());
     }
     if (clipped) s.EndClip();
+    // 指の列は横移動させず、切り抜いた旧・新の行より後に重ねる。
+    if (count_) {
+        const float row = std::clamp(selection_.At(now) - start, 0.f, float(rows_ - 1));
+        const int action = Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f));
+        const int value = Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f));
+        s.Sprite(dx + ca::Row::X + value + action + ca::Cursor::Offset[0] +
+                 ca::Cursor::Sway[(now % ca::Time::Cursor) >= unsigned(ca::Time::Cursor / 2)],
+                 Round(ca::Row::Top + row * ca::Row::Pitch) + ca::Cursor::Offset[1], "finger");
+    }
 }
 
 void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
                          const u16 *items, int count, float start, float selected_index, u16 selected_item) {
+    // 帯も行の層に含める。縦の選択移動に、同じ横移動とフェードを重ねる。
+    if (count) {
+        const float row = std::clamp(selected_index - start, 0.f, float(rows_ - 1));
+        const int offset = items == items_ ?
+            Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
+            Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
+        Selected(s, {dx + ca::Row::X + offset, Round(ca::Row::Top + row * ca::Row::Pitch), ca::Row::W, ca::Row::H},
+                 e.View(selected_item).disabled);
+    }
     const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
     const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
                                     ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);

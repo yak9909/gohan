@@ -96,7 +96,7 @@ void HeapBudget() {
     assert(resources.AcquireBackground(font) && resources.BackgroundStatus().result == BackgroundResult::Ready);
     m = resources.MemoryStatus();
     assert(m.gameBytes == 295424 && m.gameUpperBytes == 295936);
-    assert(m.commandBytes == 295944);
+    assert(m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries));
     assert(m.gameUpperBytes <= limits::RendererGameHeapLimit && Fake::allocateCalls == 2);
     assert(m.openBytes == 196608 && m.openUpperBytes == 196864 && m.current.freeBytes == 443452);
     assert(m.before.freeBytes - m.gameUpperBytes >= limits::RendererHeapReserve);

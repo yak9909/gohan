@@ -23,8 +23,10 @@ class NoticeQueue {
         char title[core::limits::MenuText]{};
         char message[core::limits::MenuText]{};
         u32 created = 0;
+        u32 enter_at = 0;
         motion::Tween y;
         bool placed = false;
+        bool wait_for_stack = false;
         bool forced_exit = false;
         u32 exit_at = 0;
         float exit_x = 0.f;

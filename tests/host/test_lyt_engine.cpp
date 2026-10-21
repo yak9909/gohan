@@ -567,7 +567,8 @@ void BackgroundLifetime(Engine &engine) {
         assert(!engine.Resources().Background() && m.openBytes == 0 && m.openUpperBytes == 0);
         assert(m.gameBytes == 98816 && m.gameUpperBytes == 99072 && Fake::blocks.size() == 1);
         assert(Fake::allocations - Fake::frees == 1);
-        assert(m.commandBytes == 295944); // 閉じても別ヒープの記録列は維持する。
+        assert(m.commandBytes == 2 * (68 + gohan::core::limits::RendererRecordBytes +
+                                      28 * gohan::core::limits::RendererQueueEntries)); // 閉じても別ヒープの記録列は維持する。
     }
     for (unsigned n = 1; n < Engine::DrainFrames; ++n) assert(!engine.Detach());
     assert(engine.Detach() && Fake::Balanced());
