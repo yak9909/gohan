@@ -88,7 +88,7 @@ void HeapBudget() {
     assert(m.fontBytes == 32768 && m.uiBytes == 33280 && m.windowBytes == 32768 && m.selectionBytes == 20480);
     assert(m.before.freeBytes == 228580 && m.after.freeBytes == 109284);
     assert(m.before.freeBytes - m.gameUpperBytes == 108260);
-    assert(m.commandBytes == 295944 && Fake::allocateCalls == 1);
+    assert(m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries) && Fake::allocateCalls == 1);
     const auto *data = static_cast<const std::uint8_t *>(resources.Atlas());
     for (unsigned i = 0; i < font.resource.textureCount; ++i)
         if (font.textures[i].gpuResident) {

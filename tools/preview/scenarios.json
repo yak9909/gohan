@@ -1530,8 +1530,7 @@
         {
           "at": 32,
           "buttons": [
-            "L",
-            "Up"
+            "Select"
           ]
         },
         {
@@ -1539,142 +1538,507 @@
           "buttons": []
         },
         {
-          "at": 252,
+          "at": 500,
           "buttons": [
-            "L",
-            "Up"
+            "A"
           ]
         },
         {
-          "at": 284,
+          "at": 532,
           "buttons": []
         },
         {
-          "at": 472,
+          "at": 700,
           "buttons": [
-            "L",
-            "Up"
+            "A"
           ]
         },
         {
-          "at": 504,
+          "at": 732,
           "buttons": []
         },
         {
-          "at": 692,
+          "at": 900,
           "buttons": [
-            "L",
-            "Up"
+            "X"
           ]
         },
         {
-          "at": 724,
+          "at": 932,
           "buttons": []
         },
         {
-          "at": 912,
-          "buttons": [
-            "L",
-            "Up"
-          ]
-        },
-        {
-          "at": 944,
-          "buttons": []
-        },
-        {
-          "at": 1132,
-          "buttons": [
-            "L",
-            "Up"
-          ]
-        },
-        {
-          "at": 1164,
-          "buttons": []
-        },
-        {
-          "at": 1352,
-          "buttons": [
-            "L",
-            "Up"
-          ]
-        },
-        {
-          "at": 1384,
-          "buttons": []
-        },
-        {
-          "at": 1700,
+          "at": 1100,
           "buttons": [
             "Select"
           ]
         },
         {
-          "at": 1732,
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 4400,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4432,
+          "buttons": []
+        },
+        {
+          "at": 4620,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4652,
+          "buttons": []
+        },
+        {
+          "at": 4840,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4872,
+          "buttons": []
+        },
+        {
+          "at": 5060,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5092,
+          "buttons": []
+        },
+        {
+          "at": 5280,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5312,
+          "buttons": []
+        },
+        {
+          "at": 5500,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5532,
+          "buttons": []
+        },
+        {
+          "at": 5720,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5752,
+          "buttons": []
+        },
+        {
+          "at": 6100,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 6132,
           "buttons": []
         }
       ],
       "captures": [
         {
-          "at": 400,
-          "name": "ms-400"
+          "at": 4800,
+          "name": "ms-4800"
         },
         {
-          "at": 460,
-          "name": "ms-460"
+          "at": 5000,
+          "name": "ms-5000"
         },
         {
-          "at": 620,
-          "name": "ms-620"
+          "at": 5440,
+          "name": "ms-5440"
         },
         {
-          "at": 840,
-          "name": "ms-840"
+          "at": 5800,
+          "name": "ms-5800"
+        },
+        {
+          "at": 5900,
+          "name": "ms-5900",
+          "contains": [
+            "見本のフラグ"
+          ]
+        },
+        {
+          "at": 6120,
+          "name": "ms-6120"
+        },
+        {
+          "at": 6400,
+          "name": "ms-6400"
+        },
+        {
+          "at": 7200,
+          "name": "ms-7200"
+        },
+        {
+          "at": 7360,
+          "name": "ms-7360"
+        },
+        {
+          "at": 7480,
+          "name": "ms-7480"
+        },
+        {
+          "at": 7600,
+          "name": "ms-7600"
+        },
+        {
+          "at": 7720,
+          "name": "ms-7720"
+        },
+        {
+          "at": 8000,
+          "name": "ms-8000"
+        }
+      ]
+    },
+    {
+      "name": "folder-motion",
+      "label": "フォルダの出入りと途中反転",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 600,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "at": 632,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 940,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "at": 972,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 500,
+          "name": "enter-000"
+        },
+        {
+          "at": 516,
+          "name": "enter-016"
+        },
+        {
+          "at": 540,
+          "name": "enter-040"
+        },
+        {
+          "at": 580,
+          "name": "enter-080"
+        },
+        {
+          "at": 600,
+          "name": "reverse-000"
+        },
+        {
+          "at": 640,
+          "name": "reverse-040"
+        },
+        {
+          "at": 700,
+          "name": "enter-again-000"
+        },
+        {
+          "at": 760,
+          "name": "enter-again-060"
+        },
+        {
+          "at": 900,
+          "name": "inside"
+        },
+        {
+          "at": 940,
+          "name": "back-000"
+        },
+        {
+          "at": 956,
+          "name": "back-016"
+        },
+        {
+          "at": 980,
+          "name": "back-040"
+        },
+        {
+          "at": 1000,
+          "name": "back-060"
+        },
+        {
+          "at": 1020,
+          "name": "back-080"
         },
         {
           "at": 1060,
-          "name": "ms-1060"
+          "name": "back-120"
         },
         {
-          "at": 1280,
-          "name": "ms-1280"
+          "at": 1160,
+          "name": "root"
+        }
+      ]
+    },
+    {
+      "name": "overflow-motion",
+      "label": "8件目の退場・積み替え・空いてからの入り",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
         },
         {
-          "at": 1500,
-          "name": "ms-1500"
+          "at": 64,
+          "buttons": []
         },
         {
-          "at": 1800,
-          "name": "ms-1800"
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
         },
         {
-          "at": 2100,
-          "name": "ms-2100"
+          "at": 532,
+          "buttons": []
         },
         {
-          "at": 3100,
-          "name": "ms-3100"
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
         },
         {
-          "at": 3200,
-          "name": "ms-3200"
+          "at": 732,
+          "buttons": []
         },
         {
-          "at": 3320,
-          "name": "ms-3320"
+          "at": 900,
+          "buttons": [
+            "X"
+          ]
         },
         {
-          "at": 3480,
-          "name": "ms-3480"
+          "at": 932,
+          "buttons": []
         },
         {
-          "at": 3640,
-          "name": "ms-3640"
+          "at": 1100,
+          "buttons": [
+            "Select"
+          ]
         },
         {
-          "at": 3800,
-          "name": "ms-3800"
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 4400,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4432,
+          "buttons": []
+        },
+        {
+          "at": 4620,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4652,
+          "buttons": []
+        },
+        {
+          "at": 4840,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 4872,
+          "buttons": []
+        },
+        {
+          "at": 5060,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5092,
+          "buttons": []
+        },
+        {
+          "at": 5280,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5312,
+          "buttons": []
+        },
+        {
+          "at": 5500,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5532,
+          "buttons": []
+        },
+        {
+          "at": 5720,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5752,
+          "buttons": []
+        },
+        {
+          "at": 5940,
+          "buttons": [
+            "L",
+            "Up"
+          ]
+        },
+        {
+          "at": 5972,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 5900,
+          "name": "seven",
+          "contains": [
+            "見本のフラグ"
+          ]
+        },
+        {
+          "at": 5940,
+          "name": "exit-000"
+        },
+        {
+          "at": 5980,
+          "name": "exit-040"
+        },
+        {
+          "at": 6060,
+          "name": "exit-120"
+        },
+        {
+          "at": 6140,
+          "name": "exit-200"
+        },
+        {
+          "at": 6220,
+          "name": "exit-280"
+        },
+        {
+          "at": 6300,
+          "name": "exit-360"
+        },
+        {
+          "at": 6340,
+          "name": "enter-040"
+        },
+        {
+          "at": 6420,
+          "name": "enter-120"
+        },
+        {
+          "at": 6500,
+          "name": "enter-200"
+        },
+        {
+          "at": 6580,
+          "name": "enter-280"
+        },
+        {
+          "at": 6660,
+          "name": "enter-360"
         }
       ]
     }

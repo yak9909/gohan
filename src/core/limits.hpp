@@ -23,7 +23,7 @@ inline constexpr std::size_t RendererRecordPercent = 80;
 // コマンドリストが持つ GPU 提出の項目数。
 inline constexpr int RendererQueueEntries = 16;
 // 文字の枠（TextBox）の最大字数。昇順に並べ、文字列は入る中で最小の空き枠を使う。
-// 17字以上は24枠（28字は8枠）。総数56で7通知と長い行・説明・影を収める。
+// 17〜28字は56枠。総数88で退場中を含む8通知・切り替え中の行・説明・影を収める。
 inline constexpr auto RendererSlotChars = [] {
     std::array<unsigned, RendererTexts> result{};
     for (std::size_t i = 0; i < result.size(); ++i) result[i] = design::ca2::Budget::SlotChars[i];
@@ -36,6 +36,11 @@ inline constexpr std::size_t RendererWindowTextureBytes = 32768;
 inline constexpr unsigned RendererSelectionSurfaces = 10;
 inline constexpr unsigned RendererSelectionIdlePresents = 8;
 inline constexpr std::size_t RendererSelectionSurfaceBytes = 2048;
+// プラグイン側のコマの保存。GPU画像の予算へは加えない。
+inline constexpr unsigned RendererSelectionPhases = 150;
+inline constexpr std::size_t RendererSelectionFrameBytes = 182 * 11 / 2;
+inline constexpr std::size_t RendererSelectionCacheBytes = RendererSelectionFrameBytes * RendererSelectionPhases;
+static_assert(RendererSelectionCacheBytes == 150150);
 inline constexpr std::size_t RendererTextureBytes = RendererFontTextureBytes + RendererUiTextureBytes +
     RendererWindowTextureBytes + RendererSelectionSurfaceBytes * RendererSelectionSurfaces;
 inline constexpr unsigned RendererGameAllocationSlack = 1024;

@@ -436,7 +436,7 @@ void BackgroundLifetime(Engine &engine) {
         }
         assert(engine.Resources().Atlas() == allocation && Fake::allocateCalls == 1 && Fake::frees == 0);
         const auto m = engine.Resources().MemoryStatus();
-        assert(m.gameBytes == 119296 && m.gameUpperBytes == 120320 && m.commandBytes == 295944);
+        assert(m.gameBytes == 119296 && m.gameUpperBytes == 120320 && m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries));
     }
     for (unsigned n = 1; n < Engine::DrainFrames; ++n) assert(!engine.Detach());
     assert(engine.Detach() && Fake::Balanced());
