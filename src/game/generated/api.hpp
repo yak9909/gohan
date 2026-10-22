@@ -437,7 +437,7 @@ struct NwLytMaterial
 };
 #pragma pack(pop)
 
-enum NwLytMaterialCountMask
+enum NwLytMaterialCountMask : std::uint32_t
 {
   NwLytMaterialCountMask_TexMaps = 0x3,
   NwLytMaterialCountMask_TexSrts = 0xC,
@@ -446,6 +446,7 @@ enum NwLytMaterialCountMask
   NwLytMaterialCountMask_AlphaCompare = 0x200,
   NwLytMaterialCountMask_BlendMode = 0x400,
 };
+static_assert(sizeof(NwLytMaterialCountMask) == 4);
 
 #pragma pack(push, 1)
 
@@ -813,6 +814,12 @@ inline constexpr std::uintptr_t nwfont_TextBatch_Init_addr = 0x004D76BC;
 using nwlyt_TextBox_CalcDrawBufferBytes_t = unsigned int (*)(unsigned int max_chars);
 inline constexpr std::uintptr_t nwlyt_TextBox_CalcDrawBufferBytes_addr = 0x004D5480;
 
+using nwlyt_Picture_DrawToCommandList_t = unsigned int * (*)(NwLytPicture *picture, unsigned int *cursor, NwLytDrawInfo *draw_info, NwLytDrawContext *draw_context);
+inline constexpr std::uintptr_t nwlyt_Picture_DrawToCommandList_addr = 0x0073CB58;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t DrawCtx_FlushBatch_addr = 0x004B8360;
+
 using g_LayoutMgr_t = SsysMaLayoutMgr *;
 inline constexpr std::uintptr_t g_LayoutMgr_addr = 0x0096FC38;
 
@@ -912,5 +919,13 @@ inline constexpr std::uint32_t TextBatchInitEntry_crc32 = 0x5E9A8CD3;
 inline constexpr std::uintptr_t TextBufferBytesEntry_addr = 0x004D5480;
 inline constexpr std::uint32_t TextBufferBytesEntry_len = 16;
 inline constexpr std::uint32_t TextBufferBytesEntry_crc32 = 0xEB17487B;
+
+inline constexpr std::uintptr_t PictureDrawEntry_addr = 0x0073CB58;
+inline constexpr std::uint32_t PictureDrawEntry_len = 32;
+inline constexpr std::uint32_t PictureDrawEntry_crc32 = 0x3C0D5FFA;
+
+inline constexpr std::uintptr_t FlushBatchEntry_addr = 0x004B8360;
+inline constexpr std::uint32_t FlushBatchEntry_len = 32;
+inline constexpr std::uint32_t FlushBatchEntry_crc32 = 0xF0F18EEB;
 
 } // namespace gohan::game::generated

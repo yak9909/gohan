@@ -164,7 +164,7 @@ const char *BackgroundAllocationStatusText() {
     case BackgroundResult::AllocateFailed: result = "失敗"; break;
     case BackgroundResult::FlushFailed: result = "排出失敗"; break;
     case BackgroundResult::BlockTooSmall: result = "連続した空き不足"; break;
-    case BackgroundResult::BudgetExceeded: result = "借用の予算超過"; break;
+    case BackgroundResult::BudgetExceeded: result = "常駐の予算超過"; break;
     }
     if (last.measured)
         std::snprintf(text, sizeof(text), "全画像の常駐: %s\n確保前の空き: 合計 %u / 最大の塊 %u バイト",

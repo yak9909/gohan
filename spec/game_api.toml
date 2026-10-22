@@ -8,6 +8,8 @@ functions = [
     "ssys_ma_lyt_Layout_RecordPaneTree", "ssys_ma_lyt_Layout_ReplayRecordedList",
     "ssys_ma_lyt_Layout_SetupProjectionMatrix", "ssys_ma_lyt_LayoutMgr_AddLayout",
     "nwfont_TextBatch_Init", "nwlyt_TextBox_CalcDrawBufferBytes",
+    # 帯の Picture の描画と、描画の状態に溜まった板のバッチの流し出し。後者の型は symbols に無い。
+    "nwlyt_Picture_DrawToCommandList", "DrawCtx_FlushBatch",
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
@@ -125,3 +127,15 @@ name = "TextBufferBytesEntry"
 function = "nwlyt_TextBox_CalcDrawBufferBytes"
 offset = 0
 length = 16
+
+[[checks]]
+name = "PictureDrawEntry"
+function = "nwlyt_Picture_DrawToCommandList"
+offset = 0
+length = 32
+
+[[checks]]
+name = "FlushBatchEntry"
+function = "DrawCtx_FlushBatch"
+offset = 0
+length = 32
