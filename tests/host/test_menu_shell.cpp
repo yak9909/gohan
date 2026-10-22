@@ -366,4 +366,29 @@ void NoticeIncomingRects() {
     std::printf("新規通知の矩形: %u コマ・%u 組、ほかの通知との重なり 0\n", frames, comparisons);
 }
 }
-int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); std::puts("menu shell: ok"); }
+void InputDemand() {
+    namespace block = gohan::core::input_block;
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount);
+    assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    const auto want = [&] { assert(r.shell.InputDemand() == (block::Claim{block::group::Buttons, 0})); };
+    const auto empty = [&] { assert(r.shell.InputDemand() == block::Claim{}); };
+    empty();
+    // 開く動きが始まる時点で要求する。タッチ・スライドパッド・押し切りは要求しない。
+    r.shell.Toggle(r.now); want();
+    r.Frame(); r.Advance(400); want();
+    assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
+    assert(!r.engine.RequestClose(r.now));
+    assert(r.engine.Dialog() == DialogKind::Close); want();
+    r.Tap(key::B); want();
+    r.engine.DiscardAll();
+    assert(r.engine.RequestClose(r.now)); empty();
+    r.Frame(0); assert(r.shell.NeedsDraw(r.now)); empty(); // 退場中の描画は要求にしない。
+    r.Advance(500); empty();
+    // 閉じたままホットキーで確認を開く場合も要求する。
+    r.Tap(key::L | key::Down);
+    assert(!r.engine.Visible() && r.engine.Dialog() == DialogKind::Action); want();
+    r.Tap(key::B); empty();
+    assert(r.shell.NeedsDraw(r.now)); // 通知・確認の退場も遮断しない。
+}
+int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); std::puts("menu shell: ok"); }

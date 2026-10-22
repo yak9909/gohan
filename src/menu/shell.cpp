@@ -53,6 +53,10 @@ bool Shell::NeedsDraw(u32 now) const {
     return panel_.Visible(now) || panel_.Animating(now) || Modal() || notices_.Alive(now) || !modal_.Done(now);
 }
 
+core::input_block::Claim Shell::InputDemand() const {
+    return {engine_.Visible() || Modal() ? core::input_block::group::Buttons : 0, 0};
+}
+
 void Shell::Draw(Surface &surface, u32 now) {
     panel_.SetRows(layout::RowsFor(surface.TextsLeft()), now);
     const bool modal = Modal();

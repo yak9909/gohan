@@ -30,6 +30,8 @@ def main() -> int:
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
+    run(['tests/host/test_input_block.cpp', 'src/core/input_block.cpp'], 'test_input_block')
+    run(['tests/host/test_input_filter.cpp', 'src/game/input_filter.cpp'], 'test_input_filter')
     run(['tests/host/test_frame_hook.cpp', 'src/game/frame_hook.cpp', 'src/core/frame.cpp'],
         'test_frame_hook', ('tests/host/fakes', 'src'))
 
