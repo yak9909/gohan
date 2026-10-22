@@ -30,19 +30,20 @@ Rect DialogOption(const Rect &b, int index) {
     return {b.x + b.w / 2 + ca::Dialog::Button::Offset[index], b.y + ca::Dialog::Button::Offset[2], ca::Dialog::Button::Size[0], ca::Dialog::Button::Size[1]};
 }
 int DialogOptionAt(int, bool, int, int) { return -1; }
-void DrawDialog(Surface &s, const Engine &e, float, float appear) {
-    if (appear <= 0 || e.Dialog() == DialogKind::None) return;
+DialogView ViewOf(const Engine &e) { return {e.Dialog(), e.DialogItem(), e.DialogYes()}; }
+void DrawDialog(Surface &s, const Engine &e, const DialogView &view, float, float appear) {
+    if (appear <= 0 || view.kind == DialogKind::None) return;
     s.Fill({0, 0, ca::Screen[0], ca::Screen[1]}, Fade(ca::Color::Dim, appear));
     Rect b = Bounds(ca::Dialog::Rect); b.y += Round((1 - appear) * ca::Time::Dialog[1]);
     Title(s, b, ca::Text::DialogTitle, appear, ca::Dialog::Title);
     const char *yes = "適用";
     char question[kLineBytes]; core::TextWriter w(question, sizeof(question));
-    switch (e.Dialog()) {
+    switch (view.kind) {
     case DialogKind::Close: w.Append("変更を適用しますか？"); break;
     case DialogKind::ApplyAll: w.Append("全ての変更を適用しますか？"); break;
     case DialogKind::RevertAll: w.Append("全ての変更を戻しますか？"); yes = "戻す"; break;
     case DialogKind::Action:
-        if (e.DialogItem() != kNoItem) w.Append(e.Def(e.DialogItem()).label);
+        if (view.item != kNoItem) w.Append(e.Def(view.item).label);
         w.Append("を実行しますか？"); yes = "実行"; break;
     case DialogKind::None: break;
     }
@@ -50,7 +51,7 @@ void DrawDialog(Surface &s, const Engine &e, float, float appear) {
     for (int i = 0; i < n; ++i) s.Text(b.x + (b.w - s.Measure(lines[i])) / 2, b.y + ca::Dialog::QuestionY + i * ca::Font::Line, lines[i], Fade(ca::Color::Text, appear));
     const char *labels[] = {yes, "キャンセル"};
     for (int i = 0; i < 2; ++i) {
-        const Rect option = DialogOption(b, i); const bool selected = (e.DialogYes() ? 0 : 1) == i;
+        const Rect option = DialogOption(b, i); const bool selected = (view.yes ? 0 : 1) == i;
         if (selected) {
             Selected(s, {option.x, option.y - 1, option.w, ca::Row::H}, false, appear);
             s.Sprite(option.x + ca::Cursor::Offset[0], option.y + ca::Cursor::Offset[1] - 1, "finger", Fade(0xFFFFFFFFu, appear));

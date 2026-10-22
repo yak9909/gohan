@@ -610,6 +610,93 @@
       ]
     },
     {
+      "name": "dialog-cancel",
+      "label": "取り消しで閉じる時のキャンセル（はいを選んだまま B）",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1080,
+          "name": "yes-before-b",
+          "contains": [
+            "変更を適用しますか？"
+          ]
+        },
+        {
+          "at": 1160,
+          "name": "cancel-hold",
+          "contains": [
+            "変更を適用しますか？",
+            "キャンセル"
+          ]
+        },
+        {
+          "at": 1240,
+          "name": "cancel-closing",
+          "contains": [
+            "変更を適用しますか？"
+          ]
+        },
+        {
+          "at": 1400,
+          "name": "after-cancel",
+          "contains": [
+            "GOHAN"
+          ]
+        }
+      ]
+    },
+    {
       "name": "device-calibration",
       "label": "実機撮影時の予約・選択と撮影入力",
       "events": [
