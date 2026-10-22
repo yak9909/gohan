@@ -55,9 +55,23 @@ void DialogAndHold() {
     assert(Part(s, "button.normal"));
     assert(s.HasText("確認") && s.HasText("全ての変更を適用しますか？"));
     r.TapAt(140, 126); assert(r.engine.Dialog() != DialogKind::None);
-    r.Tap(key::B); assert(r.engine.Dialog() == DialogKind::None);
+    r.Tap(key::B); assert(r.engine.Dialog() == DialogKind::None && !r.engine.DialogYes());
+    // 取り消しは「キャンセル」を選んだ状態で閉じる。選んだ状態を見せてから、確認を退場させる。
+    const Rect cancel = DialogOption(Bounds(ca::Dialog::Rect), 1);
+    s = r.Draw(); Budget(s);
+    assert(s.HasText("全ての変更を適用しますか？") && s.HasText("キャンセル") && Part(s, "button.normal"));
+    assert(Part(s, "finger", cancel.x + ca::Cursor::Offset[0], cancel.y + ca::Cursor::Offset[1] - 1));
+    r.Advance(128); s = r.Draw();
+    const Command *fading = s.FindText("全ての変更を");
+    assert(fading && (fading->color >> 24) > 0 && (fading->color >> 24) < 0xFF);
+    r.Advance(400); assert(!r.Draw().HasText("全ての変更を"));
     r.Tap(key::Select); r.Advance(200); assert(r.engine.Dialog() == DialogKind::Close);
-    r.Tap(key::A); r.Advance(400); assert(!r.engine.Visible() && r.engine.Applied(Idx(MenuId::SampleFlag)));
+    // 「キャンセル」を選んだ A も同じ取り消し。「はい」の A は退場の写しを出さない。
+    r.Tap(key::Right); r.Tap(key::A); s = r.Draw();
+    assert(r.engine.Visible() && s.HasText("変更を適用しますか？") && s.HasText("キャンセル"));
+    r.Advance(400); r.Tap(key::Select); r.Advance(200); assert(r.engine.Dialog() == DialogKind::Close);
+    r.Tap(key::A); assert(!r.Draw().HasText("キャンセル"));
+    r.Advance(400); assert(!r.engine.Visible() && r.engine.Applied(Idx(MenuId::SampleFlag)));
 }
 void Notification() {
     NoticeQueue q; RecordingSurface s;
@@ -366,4 +380,16 @@ void NoticeIncomingRects() {
     std::printf("新規通知の矩形: %u コマ・%u 組、ほかの通知との重なり 0\n", frames, comparisons);
 }
 }
-int main() { Scene(); DialogAndHold(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); std::puts("menu shell: ok"); }
+// 取り消しの写しが退場している間に新しい確認が出たら、古い写しは出さない。
+void CancelCopyYields() {
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount); assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount)); Enter(r);
+    assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
+    r.Hold(key::X); r.Advance(100); r.Advance(300); r.Advance(300); r.Release(); r.Advance(200);
+    assert(r.engine.Dialog() == DialogKind::ApplyAll);
+    r.Tap(key::B); assert(!r.engine.DialogYes());
+    r.Tap(key::Select); assert(r.engine.Dialog() == DialogKind::Close); // 退場の途中に新しい確認
+    r.Tap(key::A); auto s = r.Draw(); Budget(s);                        // はい
+    assert(!r.engine.Visible() && !s.HasText("全ての変更を"));
+}
+int main() { Scene(); DialogAndHold(); CancelCopyYields(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); std::puts("menu shell: ok"); }
