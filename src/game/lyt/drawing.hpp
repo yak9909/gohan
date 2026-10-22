@@ -8,7 +8,9 @@ namespace gohan::game::lyt {
 enum class Screen : unsigned { Top, Bottom };
 enum class Font : unsigned { Main, Numeric };
 enum class Kind : unsigned { Rectangle, Text, Image, Repeat };
-enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, TitleAlpha, TitleLuminance, TitleWindow, TitleSelection, TitleSelectionBack, Count };
+enum class Texture : unsigned { Ui, DashHorizontal, DashVertical, TitleAlpha, TitleLuminance, TitleWindow, TitleSelection, TitleSelectionBack, TitleSelection2, TitleSelection3, TitleSelection4, TitleSelection5, TitleSelection6, TitleSelection7, TitleSelection8, TitleSelection9, Count };
+static_assert(static_cast<unsigned>(Texture::Count) - static_cast<unsigned>(Texture::TitleSelection) ==
+              core::limits::RendererSelectionSurfaces);
 struct Rect {
     int x = 0, y = 0, width = 0, height = 0;
 };
@@ -42,7 +44,7 @@ struct Drawing {
     ScreenDrawing screens[2]{};
     std::uint32_t revisions[2]{};
 };
-// 字形のアトラス（1 枚の LA4 画像）と、その字形表。マップは (文字コード, 字形番号) の組を
+// 字形のアトラス（1 枚の A4 画像）と、その字形表。マップは (文字コード, 字形番号) の組を
 // 文字コードの昇順に並べた物。widths は字形ごとの 3 バイト（左, 字形幅, 送り幅）。
 enum class TextureFormat { Rgba8, L4 };
 struct TextureResource {
@@ -69,12 +71,11 @@ struct FontResource {
     unsigned sheetWidth = 0, sheetHeight = 0;
     unsigned cellWidth = 0, cellHeight = 0, columns = 0;
     unsigned solidGlyph = 0;
-    // UI と任意の背景画像。背景は別枠で確保し、失敗しても字形・UI を使える。
+    // UI・窓・帯の全画像。導入時に一括で常駐させる。
     const TextureResource *textures = nullptr;
     std::size_t textureCount = 0;
-    std::size_t requiredTextureCount = static_cast<unsigned>(Texture::Count);
 };
-enum class BackgroundResult { NotAttempted, NotNeeded, Ready, HeapUnavailable, InsufficientSpace, AllocateFailed, FlushFailed, Released, BlockTooSmall, BudgetExceeded };
+enum class BackgroundResult { NotAttempted, Ready, HeapUnavailable, InsufficientSpace, AllocateFailed, FlushFailed, BlockTooSmall, BudgetExceeded };
 struct BackgroundAllocation {
     BackgroundResult result = BackgroundResult::NotAttempted;
     unsigned freeBytes = 0, largestBlock = 0;
@@ -87,14 +88,13 @@ struct HeapMeasurement {
 struct RendererMemory {
     HeapMeasurement before, after, current;
     unsigned gameBytes = 0, gameUpperBytes = 0, pluginBytes = 0, commandBytes = 0;
-    unsigned residentBytes = 0, residentUpperBytes = 0, openBytes = 0, openUpperBytes = 0;
+    unsigned fontBytes = 0, uiBytes = 0, windowBytes = 0, selectionBytes = 0;
     BackgroundAllocation background;
 };
-// 各画像の開始を GPU 用の 128 バイト境界に揃える。必須と背景は別の確保の先頭から。
+// 全画像の開始を GPU 用の 128 バイト境界に揃える。一つの確保の先頭から数える。
 inline std::size_t TextureOffset(const FontResource &font, std::size_t index) {
-    const bool background = index >= font.requiredTextureCount;
-    std::size_t bytes = background ? 0 : (font.atlasBytes + 127) / 128 * 128;
-    for (std::size_t i = background ? font.requiredTextureCount : 0; i < index; ++i)
+    std::size_t bytes = (font.atlasBytes + 127) / 128 * 128;
+    for (std::size_t i = 0; i < index; ++i)
         if (font.textures[i].gpuResident) bytes += (font.textures[i].bytes + 127) / 128 * 128;
     return bytes;
 }

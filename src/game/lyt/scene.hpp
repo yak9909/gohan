@@ -73,12 +73,10 @@ struct ScreenObjects {
 
 class Scene {
   public:
-    // 呼び出し元が背景を含む記録とGPUの参照を排出した後だけ使う。
-    void ForgetBackground() { haveBackground_ = false; }
     // 確保の前に、字形の表の大きさとゲームの文字バッファの必要量を確かめる。
     static bool Prepare(const ResourceApi &api, const FontResource &font);
     // Prepare に成功した後、アトラス（GPU が読める確保済みの領域）が決まってから組む。
-    void Build(const ResourceApi &api, const FontResource &font, const void *atlas, const void *background = nullptr);
+    void Build(const ResourceApi &api, const FontResource &font, const void *atlas);
     // 1 画面の描画指示から Pane の木を組み直す。呼び出し側は、その画面のノードが
     // ゲームのリストに載っていない時だけ呼ぶ。
     void Apply(Screen screen, const ScreenDrawing &drawing);
@@ -94,11 +92,13 @@ class Scene {
                  generated::NwLytTextBox **placed);
     const ResourceApi *api_ = nullptr;
     const FontResource *font_ = nullptr;
-    bool haveBackground_ = false;
     Aligned<generated::NwLytMaterial> material_;
     Aligned<SharedVariable> shared_;
     Aligned<generated::NwLytMaterial> imageMaterials_[static_cast<unsigned>(Texture::Count)];
     Aligned<SharedVariable> imageShared_[static_cast<unsigned>(Texture::Count)];
+#ifdef __3DS__
+    generated::NwLytPaneVtable streamingPictureTable_;
+#endif
     float solidUv_[4]{};
     Aligned<generated::NwLytPicture> topPictures_[core::limits::RendererRects];
     Aligned<generated::NwLytPicture> bottomPictures_[core::limits::RendererBottomRects];

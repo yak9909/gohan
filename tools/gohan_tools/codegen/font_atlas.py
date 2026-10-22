@@ -1,4 +1,4 @@
-"""同梱 BDF から UI 用の字形表と LA4 アトラスを作る（外部依存なし）。"""
+"""同梱 BDF から UI 用の字形表と A4 アトラスを作る（外部依存なし）。"""
 from __future__ import annotations
 
 import argparse
@@ -113,12 +113,15 @@ def build(root: Path) -> tuple[bytes, list[int], list[tuple[int, int]], list[tup
     widths.extend((0, 7, 7))
     if len(cells) > 32 * 28:
         raise ValueError('アトラスの容量を超えています')
-    atlas = bytearray(256 * 256)
+    atlas = bytearray(256 * 256 // 2)
     for index, pixels in enumerate(cells):
         x0, y0 = (index % 32) * 8 + 1, (index // 32) * 9 + 1
         for y, row in enumerate(pixels):
             for x, value in enumerate(row):
-                atlas[pixel_offset(x0 + x, y0 + y)] = value
+                if value not in (0, 255):
+                    raise ValueError('A4 への変換前の字形は二値である必要があります')
+                offset = pixel_offset(x0 + x, y0 + y)
+                atlas[offset // 2] |= (value // 17) << ((offset & 1) * 4)
     return bytes(atlas), widths, *maps
 
 

@@ -2,12 +2,13 @@
 #include "game/lyt/drawing.hpp"
 #include <cstdint>
 #include <vector>
+#include <array>
 
 namespace fakegame {
 // 字形の表の代役: 空白〜~ が 95 字（送り 6）、「予」「約」（送り 8）、塗りつぶし、数字用 13 字（送り 5）。
 struct TestFont {
     static constexpr unsigned Main = 97, Solid = 97, Total = 111;
-    std::vector<std::uint8_t> atlas = std::vector<std::uint8_t>(65536, 0x11);
+    std::vector<std::uint8_t> atlas = std::vector<std::uint8_t>(32768, 0x11);
     std::vector<std::uint8_t> widths = std::vector<std::uint8_t>(Total * 3);
     std::vector<std::uint16_t> main, numeric;
     gohan::game::lyt::FontResource resource{};
@@ -39,6 +40,21 @@ struct TestFont {
         resource.cellHeight = 8;
         resource.columns = 32;
         resource.solidGlyph = Solid;
+    }
+};
+// 製品と同じ寸法・形式・常駐量。画素は自作の一様な試験値。
+struct UiFont : TestFont {
+    std::array<std::uint8_t, 32768> pixels{};
+    std::array<gohan::game::lyt::TextureResource, static_cast<unsigned>(gohan::game::lyt::Texture::Count)> textures{};
+    UiFont() {
+        using namespace gohan::game::lyt;
+        textures[0] = {pixels.data(), 32768, 256, 32};
+        textures[1] = textures[2] = {pixels.data(), 256, 8, 8};
+        textures[3] = textures[4] = {pixels.data(), 1024, 16, 16, TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false};
+        textures[5] = {pixels.data(), 32768, 256, 256, TextureFormat::L4, 0xFFF4E6C9u, 0xFFFFFBEFu, 36};
+        for (unsigned i = 6; i < textures.size(); ++i)
+            textures[i] = {pixels.data(), 2048, 256, 16, TextureFormat::L4};
+        resource.textures = textures.data(); resource.textureCount = textures.size();
     }
 };
 } // namespace fakegame

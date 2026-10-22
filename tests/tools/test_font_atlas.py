@@ -62,9 +62,12 @@ def test_tile_boundaries_and_layout():
 
 def test_adopted_fonts_are_reproducible(tmp_path):
     atlas, widths, main, numeric = font.build(ROOT)
-    assert (len(atlas), len(widths), len(main), len(numeric)) == (65536, 2109, 674, 28)
+    assert (len(atlas), len(widths), len(main), len(numeric)) == (32768, 2109, 674, 28)
     # CA2 の 23 字の上書きと追加の字を含む、採用した出力。
-    payloads = [atlas, bytes(widths), b''.join(struct.pack('<HH', *p) for p in main),
+    # A4 を元の LA4 へ戻した全65,536画素のハッシュを比較する。
+    expanded = bytes(((atlas[i // 2] >> ((i & 1) * 4)) & 15) * 17 for i in range(65536))
+    assert set(expanded) == {0, 255}
+    payloads = [expanded, bytes(widths), b''.join(struct.pack('<HH', *p) for p in main),
                 b''.join(struct.pack('<HH', *p) for p in numeric)]
     expected = ['351971e45bcec98e931db89d8f0506d5f1209ef5104a5a158c921fe29945ed3b',
                 '29b08546080d19e2e0c0e647fd748fd3f904def058338ab1c41425fd6d0ac4a8',
@@ -87,7 +90,7 @@ def test_ca2_overrides_are_in_the_atlas():
         expected, advance = pixels(char)
         assert widths[glyph * 3:glyph * 3 + 3] == [0, advance - 1, advance]
         x0, y0 = glyph % 32 * 8 + 1, glyph // 32 * 9 + 1
-        assert [[atlas[font.pixel_offset(x0 + x, y0 + y)] for x in range(7)]
+        assert [[((atlas[font.pixel_offset(x0 + x, y0 + y) // 2] >> ((font.pixel_offset(x0 + x, y0 + y) & 1) * 4)) & 15) * 17 for x in range(7)]
                 for y in range(8)] == expected
     assert all(ord(c) in mapping for c in '±棒発省')
     slash = dict(numeric)[ord('/')]
