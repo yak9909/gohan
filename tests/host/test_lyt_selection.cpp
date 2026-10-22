@@ -12,6 +12,20 @@ using fakegame::Game;
 namespace {
 namespace limits = gohan::core::limits;
 unsigned flushes = 0, draws = 0;
+const std::uint8_t *uploadPixels = nullptr;
+unsigned *publishedSlot = nullptr, slotBeforeFlush = 0;
+bool ObserveFlush(void *data, std::size_t bytes) {
+    if (uploadPixels) {
+        // 排出の呼び出し時点で画素が揃い、呼び手への面番号はまだ公開されていない。
+        assert(bytes == limits::RendererSelectionSurfaceBytes);
+        std::array<std::uint8_t, limits::RendererSelectionSurfaceBytes> expected;
+        expected.fill(0xA5);
+        detail::CopySelectionFrame(expected.data(), uploadPixels);
+        assert(std::memcmp(data, expected.data(), bytes) == 0);
+        assert(*publishedSlot == slotBeforeFlush);
+    }
+    return Game::Flush(data, bytes);
+}
 unsigned *Flush(gohan::game::generated::NwLytDrawContext *, unsigned *cursor) {
     ++flushes;
     *cursor++ = 0xABC;
@@ -57,7 +71,9 @@ int main() {
     // 余白が初期値のまま残る事を見るため、面の初期値は0以外にする。
     font.pixels.fill(0xA5);
     std::array<std::uint8_t, limits::RendererSelectionFrameBytes> pixels{};
-    detail::Engine engine(fakegame::Api());
+    auto api = fakegame::Api();
+    api.flush = ObserveFlush;
+    detail::Engine engine(api);
     unsigned slot = 99;
     assert(!engine.UpdateSelection(pixels.data(), slot));
     assert(engine.Install(font.resource) == InstallResult::Ready);
@@ -66,7 +82,9 @@ int main() {
     // 300フレーム連続して全150位相を2周する。同じ面を続けて公開しない。
     for (unsigned frame = 0; frame < 300; ++frame) {
         pixels.fill(static_cast<std::uint8_t>(frame));
+        uploadPixels = pixels.data(); publishedSlot = &slot; slotBeforeFlush = slot;
         assert(engine.UpdateSelection(pixels.data(), slot));
+        uploadPixels = nullptr;
         assert(slot == frame % limits::RendererSelectionSurfaces);
         const auto *gpu = static_cast<const std::uint8_t *>(engine.Resources().Atlas());
         // 実画素の96本の範囲は新しいコマ、それ以外は導入時の値のまま。

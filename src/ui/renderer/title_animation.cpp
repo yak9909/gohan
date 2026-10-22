@@ -9,7 +9,6 @@ namespace gohan::ui::renderer {
 namespace {
 detail::SelectionTiming timing;
 unsigned selected = 0;
-bool active = false;
 }
 namespace detail {
 SelectionTiming ReadSelectionTiming() {
@@ -18,8 +17,6 @@ SelectionTiming ReadSelectionTiming() {
     return result;
 }
 }
-void StartTitleAnimation() { active = true; }
-void StopTitleAnimation() { active = false; }
 void StepTitleAnimation(std::uint32_t frame, Drawing &drawing) {
     namespace v = core::design::ca2;
     bool needed = false;
@@ -35,10 +32,9 @@ void StepTitleAnimation(std::uint32_t frame, Drawing &drawing) {
     bool updated = true;
 #ifdef __3DS__
     unsigned slot = selected;
-    if (active && game::lyt::UpdateSelection(packed, slot)) selected = slot;
+    if (game::lyt::UpdateSelection(packed, slot)) selected = slot;
     else updated = false;
 #else
-    (void)active;
     selected = (selected + 1) % core::limits::RendererSelectionSurfaces;
     detail::StoreSelection(selected, packed);
 #endif

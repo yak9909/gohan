@@ -44,8 +44,7 @@ void FrameStep() {
     const std::uint32_t now = input::NowMs();
     shell.Step(now, in, toggle);
 
-    // 字形・UIだけを常駐させる。背景の借用は空でない描画から始まり、
-    // 閉じ切った空の描画を確定した後、描画側がGPUの参照を排出して返す。
+    // 字形・UI・窓・帯をまとめて常駐させ、閉じている間も保持する。
     // 競合した時は次のフレームで頼み直す。
     if (!enable_requested) enable_requested = renderer::SetEnabled(renderer::Client::Menu, true);
     const bool need = shell.NeedsDraw(now);

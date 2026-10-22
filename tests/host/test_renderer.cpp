@@ -254,6 +254,11 @@ void Dispatch() {
     assert(memory.find("現在: 合計 430000 / 最大 300000") != std::string::npos);
     assert(memory.find("常駐: 画像 119296 / 管理分込み上限 120320 / 予算 120320") != std::string::npos);
     assert(memory.find("字形 32768 / UI（破線込み）33280 / 窓 32768") != std::string::npos);
+    assert(memory.find("記録列等 427016") != std::string::npos);
+    assert(memory.find("150コマ（常駐）150150") != std::string::npos);
+    assert(memory.find("150 コマ・プラグイン") != std::string::npos);
+    assert(memory.find("ゲーム・コピー＋排出") != std::string::npos);
+    assert(memory.find("現在値は約30フレームごとに更新") != std::string::npos);
     stub::busyLeft = 2;
     assert(SetEnabled(false));
     Frame();

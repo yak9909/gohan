@@ -74,12 +74,14 @@ def read_png(data: bytes) -> Image:
         mode, row = raw[start], bytearray(raw[start + 1:start + 1 + stride])
         if mode > 4:
             raise ValueError('PNG のフィルターが不正です')
-        for i in range(stride):
-            a, b = row[i - channels] if i >= channels else 0, previous[i]
-            c = previous[i - channels] if i >= channels else 0
-            p = a + b - c
-            paeth = min((a, b, c), key=lambda v: abs(p - v))
-            row[i] = (row[i] + (0, a, b, (a + b) // 2, paeth)[mode]) & 255
+        # 自作PNGの無フィルタ行は、そのまま画素として使える。
+        if mode:
+            for i in range(stride):
+                a, b = row[i - channels] if i >= channels else 0, previous[i]
+                c = previous[i - channels] if i >= channels else 0
+                p = a + b - c
+                paeth = min((a, b, c), key=lambda v: abs(p - v))
+                row[i] = (row[i] + (0, a, b, (a + b) // 2, paeth)[mode]) & 255
         for x in range(width):
             i = x * channels
             if channels == 4 and row[i + 3] != 255:

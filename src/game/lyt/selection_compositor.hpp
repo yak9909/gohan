@@ -16,7 +16,7 @@ class SelectionCompositor {
         ready_ = sources != nullptr;
         if (sources) sources_ = *sources;
     }
-    // 毎フレームの小さな合成だけは速度を優先する。fast-mathは使わない。
+    // 導入時の150コマの合成は速度を優先する。fast-mathは使わない。
 #if defined(__GNUC__) && !defined(__clang__)
     [[gnu::optimize("O2")]]
 #endif

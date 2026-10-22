@@ -96,12 +96,13 @@ void FrameStep() {
 }
 
 bool Wire() {
+    // ゲーム再開後のプラグインのメインスレッドで一度だけ準備する。
+    // 合成中はゲームを停止せず、完成後に毎フレームの読み手を登録する。
     PrepareTitleBackground();
     const auto change = core::frame::Global().Add(FrameStep, 100);
     if (change.result != core::frame::Result::Queued &&
         change.result != core::frame::Result::Unchanged)
         return false;
-    StartTitleAnimation();
     published.TryPublish(Status::Waiting);
     return true;
 }
@@ -109,7 +110,7 @@ bool Wire() {
 // ゲームの毎フレームのフックを止める前に、資源を排出して返す。
 // そのため、この機能の終了の段は「ゲームのフック」とし、フックの機能より後に登録する。
 void Shutdown() {
-    StopTitleAnimation();
+    // 停止要求はMailboxで渡す。帯の更新もFrameStepのReady判定だけで制御する。
     for (unsigned i = 0; i < ClientCount; ++i)
         for (unsigned tries = 0; tries < 100 && !requests[i].TryPublish(false); ++tries)
             game::lyt::WaitMilliseconds(1);
@@ -182,7 +183,7 @@ const char *MemoryStatusText() {
     publishedTiming.ReadIfNew(timing, timingGeneration);
     const auto &a = last.before, &b = last.after, &c = last.current;
     std::snprintf(text, sizeof(text),
-                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\n字形 %u / UI（破線込み）%u / 窓 %u\n帯 %u（%u 面 × %u）\n常駐: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u / 帯の%uコマ（常駐）%u\n別の描画命令用ヒープ: 記録列等 %u\n帯: 導入時の合成 %u us（%u コマ）\n帯の毎フレーム（コピー＋排出）us: 今 %u / 平均 %u / 最大 %u / 標本 %u\n面を更新できなかった回数 %u\n現在値は約30フレームごとに更新",
+                  "描画資源のヒープ（バイト）\n確保直前: 合計 %u / 最大 %u %s\n確保直後: 合計 %u / 最大 %u %s\n現在: 合計 %u / 最大 %u %s\n字形 %u / UI（破線込み）%u / 窓 %u\n帯 %u（%u 面 × %u）\n常駐: 画像 %u / 管理分込み上限 %u / 予算 %u\nCPU用: プラグインのヒープ %u / 帯の%uコマ（常駐）%u\n別の描画命令用ヒープ: 記録列等 %u\n帯: 導入時の合成 %u us（%u コマ・プラグイン）\n帯の毎フレーム（ゲーム・コピー＋排出）us: 今 %u / 平均 %u / 最大 %u / 標本 %u\n面を更新できなかった回数 %u\n現在値は約30フレームごとに更新",
                   a.freeBytes, a.largestBlock, a.measured ? "" : "未計測",
                   b.freeBytes, b.largestBlock, b.measured ? "" : "未計測",
                   c.freeBytes, c.largestBlock, c.measured ? "" : "未計測",
