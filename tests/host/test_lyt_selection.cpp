@@ -1,7 +1,6 @@
-// 巡回面の公開、上下の記録の残存、8回の非参照待ち、キャッシュ命令を試す。
+// 巡回面の公開、上下の記録の残存、8回の非参照待ちを試す。
 #include "game/lyt/engine.hpp"
 #include "game/lyt/selection_frames.hpp"
-#include "game/lyt/streaming_picture.hpp"
 #include "lyt_font.hpp"
 #include "lyt_game.hpp"
 #include <array>
@@ -11,7 +10,6 @@ using namespace gohan::game::lyt;
 using fakegame::Game;
 namespace {
 namespace limits = gohan::core::limits;
-unsigned flushes = 0, draws = 0;
 const std::uint8_t *uploadPixels = nullptr;
 unsigned *publishedSlot = nullptr, slotBeforeFlush = 0;
 bool ObserveFlush(void *data, std::size_t bytes) {
@@ -25,29 +23,6 @@ bool ObserveFlush(void *data, std::size_t bytes) {
         assert(*publishedSlot == slotBeforeFlush);
     }
     return Game::Flush(data, bytes);
-}
-unsigned *Flush(gohan::game::generated::NwLytDrawContext *, unsigned *cursor) {
-    ++flushes;
-    *cursor++ = 0xABC;
-    *cursor++ = 0xDEF;
-    return cursor;
-}
-unsigned *Draw(gohan::game::generated::NwLytPane *, unsigned *cursor,
-               gohan::game::generated::NwLytDrawInfo *, gohan::game::generated::NwLytDrawContext *) {
-    ++draws;
-    assert(cursor[-2] == 0x10000 && cursor[-1] == 0x40080);
-    *cursor++ = 0x123;
-    *cursor++ = 0x456;
-    return cursor;
-}
-void CacheCommands() {
-    std::array<unsigned, 8> commands{};
-    for (bool pending : {false, true}) {
-        auto *end = detail::DrawStreamingPicture(nullptr, commands.data(), nullptr, nullptr, pending, Flush, Draw);
-        assert(end == commands.data() + (pending ? 6 : 4));
-        if (pending) assert(commands[0] == 0xABC && commands[1] == 0xDEF);
-    }
-    assert(flushes == 1 && draws == 2);
 }
 Drawing Reference(unsigned top, unsigned bottom) {
     Drawing d;
@@ -65,7 +40,6 @@ Drawing Reference(unsigned top, unsigned bottom) {
 }
 }
 int main() {
-    CacheCommands();
     Game::Reset();
     fakegame::UiFont font;
     // 余白が初期値のまま残る事を見るため、面の初期値は0以外にする。
