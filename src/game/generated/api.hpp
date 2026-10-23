@@ -6,6 +6,11 @@
 
 namespace gohan::game::generated {
 
+struct AcnlPadReaderPrefix;
+struct AcnlPadState;
+struct AcnlUiPoint2;
+struct AcnlUiPoint2I;
+struct SeadControllerBasePrefix;
 struct NwFontCharWidths;
 struct NwFontCmap;
 struct NwFontCmapScanPair;
@@ -45,8 +50,12 @@ struct NwLytTexCoordGen;
 struct NwLytTexSrt;
 struct NwLytTextBox;
 struct NwLytTextBoxVtable;
+struct SeadOffsetList;
+struct SeadControllerPrefix;
+struct SeadControllerWrapperPrefix;
 struct SeadExpHeapBlock;
 struct SeadExpHeapList;
+struct SeadCtrControllerVtable;
 struct SeadExpHeapVtable;
 struct SeadExpHeapPrefix;
 struct SsysMaAllocatorVtable;
@@ -55,6 +64,89 @@ struct SsysMaLayoutNodeVtable;
 struct SsysMaLayoutNode;
 struct SsysMaLayoutList;
 struct SsysMaLayoutMgr;
+
+#pragma pack(push, 2)
+
+struct AcnlPadReaderPrefix
+{
+  void *handle;
+  unsigned int unk_4;
+  unsigned int previous_held;
+  std::uint8_t unk_C[36];
+  bool resync_previous_held_pending;    
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct AcnlPadState
+{
+  unsigned int held;
+  unsigned int pressed;
+  unsigned int released;
+  std::int16_t circle_x;
+  std::int16_t circle_y;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct AcnlUiPoint2
+{
+  float x;
+  float y;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct AcnlUiPoint2I
+{
+  int x;
+  int y;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct SeadControllerBasePrefix
+{
+  void *vtable;
+  unsigned int pressed;
+  unsigned int released;
+  unsigned int repeat;
+  unsigned int pointer_flags;           
+  AcnlUiPoint2I pixel_int;
+  AcnlUiPoint2 pointer_min;
+  AcnlUiPoint2 pointer_max;
+  unsigned int held_frames[32];
+  std::uint8_t repeat_delay[32];
+  std::uint8_t repeat_interval[32];
+  float axis0_press_threshold;
+  float axis1_press_threshold;
+  float axis0_release_threshold;
+  float axis1_release_threshold;
+  int button_count;
+  int axis0_bit;
+  int axis1_bit;
+  int pointer_bit;
+  unsigned int idle_frames;
+  unsigned int held;
+  AcnlUiPoint2 pixel_float;
+  AcnlUiPoint2 axis0;
+  AcnlUiPoint2 axis1;
+  float unk_12C[2];
+};
+#pragma pack(pop)
+
+enum AcnlPointerFlags : std::uint32_t
+{
+  AcnlPointerFlags_Valid = 0x1,
+  AcnlPointerFlags_Pressed = 0x2,
+  AcnlPointerFlags_Released = 0x4,
+  AcnlPointerFlags_ClearPosition = 0x8,
+};
+static_assert(sizeof(AcnlPointerFlags) == 4);
 
 #pragma pack(push, 1)
 
@@ -612,6 +704,43 @@ struct NwLytTextBoxVtable
 };
 #pragma pack(pop)
 
+#pragma pack(push, 2)
+
+struct SeadOffsetList
+{
+  void *prev;
+  void *next;
+  unsigned int count;
+  unsigned int offset;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct SeadControllerPrefix
+{
+  SeadControllerBasePrefix base;
+  std::uint8_t unk_134;
+  std::uint8_t unk_135[3];
+  void *manager;
+  SeadOffsetList addons;
+  SeadOffsetList wrappers;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+
+struct SeadControllerWrapperPrefix
+{
+  SeadControllerBasePrefix base;
+  std::uint8_t unk_134[16];
+  SeadControllerPrefix *source;
+  std::uint8_t enabled;
+  std::uint8_t unk_149[43];
+  std::uint8_t source_bit_index[32];
+};
+#pragma pack(pop)
+
 #pragma pack(push, 1)
 
 struct SeadExpHeapBlock
@@ -634,6 +763,19 @@ struct SeadExpHeapList
   int link_offset;
 };
 #pragma pack(pop)
+
+struct SeadCtrControllerVtable
+{
+  void *unk_0;                          
+  void *unk_4;
+  void *unk_8;
+  void *unk_C;
+  int ( *calc)(SeadControllerPrefix *controller);
+  void *unk_14;
+  void *( *update_from_device)(SeadControllerPrefix *controller);
+  void *unk_1C;
+  void *unk_20;
+};
 
 #pragma pack(push, 1)
 
@@ -826,6 +968,9 @@ inline constexpr std::uintptr_t g_LayoutMgr_addr = 0x0096FC38;
 using g_LayoutAllocator_t = SsysMaAllocator *;
 inline constexpr std::uintptr_t g_LayoutAllocator_addr = 0x0096F150;
 
+using vtbl_sead_CtrController_t = SeadCtrControllerVtable;
+inline constexpr std::uintptr_t vtbl_sead_CtrController_addr = 0x008FE6F8;
+
 using vtbl_ssys_ma_lyt_Layout_t = SsysMaLayoutNodeVtable;
 inline constexpr std::uintptr_t vtbl_ssys_ma_lyt_Layout_addr = 0x00900608;
 
@@ -859,6 +1004,14 @@ inline constexpr std::uintptr_t vtbl_sead_ExpHeap_addr = 0x008FFEF8;
 inline constexpr std::uintptr_t FrameDispatch_addr = 0x001B721C;
 inline constexpr std::uint32_t FrameDispatch_len = 16;
 inline constexpr std::uint32_t FrameDispatch_crc32 = 0x92DE8A91;
+
+inline constexpr std::uintptr_t InputPadRead_addr = 0x003534C8;
+inline constexpr std::uint32_t InputPadRead_len = 16;
+inline constexpr std::uint32_t InputPadRead_crc32 = 0xF58178F8;
+
+inline constexpr std::uintptr_t InputControllerCalc_addr = 0x0053CDE8;
+inline constexpr std::uint32_t InputControllerCalc_len = 16;
+inline constexpr std::uint32_t InputControllerCalc_crc32 = 0xB77ADF3C;
 
 inline constexpr std::uintptr_t LayoutTopEntry_addr = 0x00566DF8;
 inline constexpr std::uint32_t LayoutTopEntry_len = 16;

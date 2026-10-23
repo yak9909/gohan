@@ -30,8 +30,13 @@ def main() -> int:
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
+    run(['tests/host/test_input_block.cpp', 'src/core/input_block.cpp'], 'test_input_block')
+    run(['tests/host/test_input_filter.cpp', 'src/game/input_filter.cpp'], 'test_input_filter')
     run(['tests/host/test_frame_hook.cpp', 'src/game/frame_hook.cpp', 'src/core/frame.cpp'],
         'test_frame_hook', ('tests/host/fakes', 'src'))
+    run(['tests/host/test_input_hook.cpp', 'src/game/input_hook.cpp', 'src/game/input_filter.cpp',
+         'src/core/input_block.cpp', 'src/core/format.cpp'], 'test_input_hook',
+        ('tests/host/fakes', 'src'), ('-DGOHAN_DEV=1',))
 
     # 描画: 字形の表を生成してから試験する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
@@ -78,6 +83,7 @@ def main() -> int:
 
     # ゲーム中のメニュー: 毎フレームの処理から描画指示まで。入力・時計・ゲーム側の描画は代役。
     run(['tests/host/test_menu_screen.cpp', 'src/features/menu_screen/menu_screen.cpp', 'src/ui/input/buttons.cpp',
+         'tests/host/input_hook_stub.cpp', 'src/core/input_block.cpp',
          'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen, 'src/menu/sample_items.cpp', *renderer,
          'build/host/gen-sample/menu_table.cpp'],
         'test_menu_screen', ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))

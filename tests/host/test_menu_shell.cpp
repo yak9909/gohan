@@ -380,6 +380,31 @@ void NoticeIncomingRects() {
     std::printf("新規通知の矩形: %u コマ・%u 組、ほかの通知との重なり 0\n", frames, comparisons);
 }
 }
+void InputDemand() {
+    namespace block = gohan::core::input_block;
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount);
+    assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    const auto want = [&] { assert(r.shell.InputDemand() == (block::Claim{block::group::Buttons, 0})); };
+    const auto empty = [&] { assert(r.shell.InputDemand() == block::Claim{}); };
+    empty();
+    // 開く動きが始まる時点で要求する。タッチ・スライドパッド・押し切りは要求しない。
+    r.shell.Toggle(r.now); want();
+    r.Frame(); r.Advance(400); want();
+    assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
+    assert(!r.engine.RequestClose(r.now));
+    assert(r.engine.Dialog() == DialogKind::Close); want();
+    r.Tap(key::B); want();
+    r.engine.DiscardAll();
+    assert(r.engine.RequestClose(r.now)); empty();
+    r.Frame(0); assert(r.shell.NeedsDraw(r.now)); empty(); // 退場中の描画は要求にしない。
+    r.Advance(500); empty();
+    // 閉じたままホットキーで確認を開く場合も要求する。
+    r.Tap(key::L | key::Down);
+    assert(!r.engine.Visible() && r.engine.Dialog() == DialogKind::Action); want();
+    r.Tap(key::B); empty();
+    assert(r.shell.NeedsDraw(r.now)); // 通知・確認の退場も遮断しない。
+}
 // 取り消しの写しが退場している間に新しい確認が出たら、古い写しは出さない。
 void CancelCopyYields() {
     sample::Get() = sample::State{};
@@ -392,4 +417,4 @@ void CancelCopyYields() {
     r.Tap(key::A); auto s = r.Draw(); Budget(s);                        // はい
     assert(!r.engine.Visible() && !s.HasText("全ての変更を"));
 }
-int main() { Scene(); DialogAndHold(); CancelCopyYields(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); std::puts("menu shell: ok"); }
+int main() { Scene(); DialogAndHold(); CancelCopyYields(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); std::puts("menu shell: ok"); }

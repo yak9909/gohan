@@ -8,6 +8,11 @@
 using namespace menu_test;
 
 namespace {
+void Demand(const Rig &rig, bool wanted) {
+    const auto claim = rig.shell.InputDemand();
+    assert(claim.block == (wanted ? gohan::core::input_block::group::Buttons : 0));
+    assert(claim.defer == 0);
+}
 u16 Idx(MenuId id) { return static_cast<u16>(id); }
 
 struct Rec {
@@ -76,6 +81,7 @@ void NumberEntry() {
     f.Select(MenuId::Num);
     f.rig.Tap(key::A);
     assert(f.e().Ui().kind == UiKind::Number && f.rig.shell.Modal());
+    Demand(f.rig, true);
     RecordingSurface s = f.Draw();
     // 数字用の書体で大きく出し、ボタンの枠と決定・取消がある。説明や足は出さない。
     const Command *value = Large(s, "10");
@@ -135,6 +141,7 @@ void ListEntry() {
     f.Select(MenuId::Weather);
     f.rig.Tap(key::A);
     assert(f.e().Ui().kind == UiKind::List);
+    Demand(f.rig, true);
     RecordingSurface s = f.Draw();
     assert(s.HasText("晴れ") && s.HasText("雨") && s.HasText("雪") && !s.HasText("HOTKEY"));
     assert(s.dropped == 0 && s.texts <= static_cast<int>(gohan::core::limits::RendererTexts));
@@ -154,6 +161,7 @@ void CheckListEntry() {
     f.Select(MenuId::Multi);
     f.rig.Tap(key::A);
     assert(f.e().Ui().kind == UiKind::CheckList);
+    Demand(f.rig, true);
     RecordingSurface s = f.Draw();
     assert(s.HasText("[ ] a") && s.HasText("[X] b") && s.HasText("決定") && s.HasText("取消"));
     f.rig.Tap(key::A); // a を入れる
@@ -166,6 +174,7 @@ void CheckListEntry() {
 void KeyCapture() {
     Fixture f; f.EnterFolder(); f.Select(MenuId::Keyc); f.rig.Hold(key::A);
     assert(f.e().Ui().kind == UiKind::Key);
+    Demand(f.rig, true);
     f.rig.Hold(key::A); f.rig.Release();
     assert(f.Draw().HasText("ボタンを押す"));
     f.rig.Hold(key::L); f.rig.Hold(key::L | key::R); f.rig.Release();
@@ -194,10 +203,12 @@ void TriggerInputWhileClosed() {
     f.rig.Tap(key::Select);
     f.rig.Advance(400);
     assert(!f.e().Visible());
+    Demand(f.rig, false);
     // 閉じたまま、ホットキー（R+X）で十六進の入力が下画面の中央に出る。
     f.rig.Hold(key::R | key::X);
     f.rig.Release();
     assert(f.e().Ui().kind == UiKind::TriggerInput && f.rig.shell.Modal());
+    Demand(f.rig, true);
     RecordingSurface s = f.Draw();
     assert(Large(s, "0x0") && s.dropped == 0);
     bool centered = false;
@@ -208,6 +219,7 @@ void TriggerInputWhileClosed() {
     f.rig.Tap(key::A);
     assert(g.pocket_runs == 1 && g.pocket_input == 0x11);
     assert(!f.rig.shell.Modal());
+    Demand(f.rig, false);
 }
 } // namespace
 

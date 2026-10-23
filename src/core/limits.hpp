@@ -5,7 +5,12 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-inline constexpr std::size_t StatusText = 2048;
+inline constexpr std::size_t StatusText = 4096;
+// 入力の遮断。所有者の枠は内蔵の SELECT 用も含む。
+inline constexpr std::size_t InputBlockOwners = 16;
+inline constexpr unsigned InputDeferWindowMs = 300;
+inline constexpr unsigned InputSuspendGapMs = 100;
+inline constexpr unsigned InputSuspendCalls = 30;
 // メニュー（src/menu/）。項目数は codegen の上限と同じにする。
 inline constexpr std::size_t MenuItems = 192;
 inline constexpr std::size_t MenuText = 96;
