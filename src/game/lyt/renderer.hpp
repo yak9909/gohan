@@ -8,7 +8,8 @@ enum class InstallResult { Ready, WrongTitle, Unreadable, Mismatch, MissingBindi
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background = nullptr);
 // 導入済みなら、変化のあった画面の木を組み直し、描くものがある画面のノードをゲームのリストに登録する。
 bool Present(const Drawing &drawing);
-bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot);
+// 導入時に合成した帯の1コマ（Morton 順の実画素 1,001 B）を、空いている巡回面へコピーして排出する。
+bool UpdateSelection(const std::uint8_t *packed, unsigned &slot);
 // 登録をやめ、ゲームのリストから外れて GPU が使い終えるのを待ってから資源を返す。
 // 完全に返せたら true。false の間は毎フレーム呼ぶ。導入していなければ true。
 bool DetachRenderer();

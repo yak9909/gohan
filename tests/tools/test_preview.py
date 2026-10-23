@@ -33,6 +33,19 @@ def atlas(tmp_path):
     return Raster(tmp_path, model())
 
 
+def test_a4_nibble_order_and_white_luminance(tmp_path):
+    (tmp_path / 'fonts.json').write_text(json.dumps(dict(
+        format='a4', sheet=[8, 8], cell=[2, 2], columns=1, widths=[0, 2, 3], main=[65, 0], numeric=[49, 0])))
+    data = bytearray(32)
+    data[1] = 0x80  # (1,1)は上位ニブル。
+    data[3] = 0x0F  # (2,1)は下位ニブル。
+    (tmp_path / 'atlas.a4').write_bytes(data)
+    raster = Raster(tmp_path, model())
+    assert raster.texel(1, 1) == (255, 136)
+    assert raster.texel(2, 1) == (255, 255)
+    assert raster.texel(0, 0) == (255, 0)
+
+
 @pytest.mark.parametrize(('bits', 'top_down'), [(24, False), (24, True), (32, False), (32, True)])
 def test_bmp_bgr_padding_and_vertical_direction(bits, top_down):
     width, height = 3, 2

@@ -68,7 +68,7 @@ RendererMemory ReadRendererMemory() {
     memoryStatus.pluginBytes = engine ? sizeof(detail::Engine) + alignof(detail::Engine) - 1 : 0;
     if (!engine) {
         memoryStatus.gameBytes = memoryStatus.gameUpperBytes = memoryStatus.commandBytes = 0;
-        memoryStatus.residentBytes = memoryStatus.residentUpperBytes = memoryStatus.openBytes = memoryStatus.openUpperBytes = 0;
+        memoryStatus.fontBytes = memoryStatus.uiBytes = memoryStatus.windowBytes = memoryStatus.selectionBytes = 0;
     }
     return memoryStatus;
 }
@@ -79,9 +79,9 @@ bool Present(const Drawing &drawing) {
     rendererMutex.Unlock();
     return result;
 }
-bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot) {
+bool UpdateSelection(const std::uint8_t *packed, unsigned &slot) {
     if (!rendererMutex.TryLock()) return false;
-    const bool result = engine && engine->UpdateSelection(data, bytes, slot);
+    const bool result = engine && engine->UpdateSelection(packed, slot);
     rendererMutex.Unlock();
     return result;
 }

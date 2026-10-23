@@ -29,7 +29,8 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
         'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'hotkey',
         'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'shell', 'sample_items')]
     sources = [root / 'tests/host/menu_preview.cpp', feature, root / 'src/ui/input/buttons.cpp',
-               *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format')],
+               root / 'tests/host/input_hook_stub.cpp',
+               *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format', 'input_block')],
                *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')),
                *sorted((root / 'src/game').glob('title_background*.cpp')), menu_gen / 'menu_table.cpp']
     executable = directory / ('menu-preview.exe' if os.name == 'nt' else 'menu-preview')

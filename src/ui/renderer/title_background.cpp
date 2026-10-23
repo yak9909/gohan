@@ -1,6 +1,8 @@
 #include "ui/renderer/renderer.hpp"
 #include "ui_values.hpp"
 #include "ui/renderer/selection_frames.hpp"
+#include "ui/renderer/stopwatch.hpp"
+#include "game/lyt/selection_frame_cache.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -13,42 +15,46 @@ static_assert(v::Titlebg::Selection::ImageSize[0] % 8 == 0 && v::Titlebg::Select
 game::titlebg::Sources sources;
 game::titlebg::Status backgroundStatus;
 bool prepared = false;
-// 元画像・窓・帯の全コマは準備後に不変。描画中の転送や画像の上書きは行わない。
+// 帯の150コマは導入時に一度だけ合成し、プラグイン側のメモリ（.bss、150,150 B）に持つ。
+// ゲームの描画用ヒープには置かない。毎フレームはその時のコマを小さな面へコピーするだけ。
+game::lyt::detail::SelectionFrameCache frames;
+unsigned prepareMicros = 0;
+// 窓は不変。帯だけを小さな面へ巡回して使う。
 constexpr unsigned WindowWidth = v::Titlebg::Window::ImageSize[0];
 constexpr unsigned WindowHeight = v::Titlebg::Window::ImageSize[1];
-// 最大の窓 228×210 を覆う最小の 2 の冪。RGBA8 では 262,144 バイトになる。
-static_assert(WindowWidth == 256 && WindowHeight == 256);
-std::uint8_t window[WindowWidth * WindowHeight / 2];
+static_assert(WindowWidth * WindowHeight / 2 == core::limits::RendererWindowTextureBytes);
+constexpr unsigned SelectionWidth = v::Titlebg::Selection::ImageSize[0];
+constexpr unsigned SelectionHeight = v::Titlebg::Selection::ImageSize[1];
+static_assert(SelectionWidth * SelectionHeight / 2 == core::limits::RendererSelectionSurfaceBytes);
+std::uint8_t window[core::limits::RendererWindowTextureBytes];
 std::uint8_t alpha[16 * 16 * 4], luminance[16 * 16 * 4];
-static_assert(sizeof(window) + sizeof(alpha) + sizeof(luminance) <= 40000);
-constexpr int AtlasWidth = v::Titlebg::Selection::AtlasSize[0];
-constexpr int AtlasHeight = v::Titlebg::Selection::AtlasSize[1];
-std::uint8_t selectionAtlas[AtlasWidth * AtlasHeight / 2];
-constexpr int TailWidth = v::Titlebg::Selection::TailAtlasSize[0], TailHeight = v::Titlebg::Selection::TailAtlasSize[1];
-std::uint8_t selectionTail[TailWidth * TailHeight / 2];
-std::uint8_t selection[v::Titlebg::Selection::ImageSize[0] * v::Titlebg::Selection::ImageSize[1] / 2];
-static_assert(AtlasWidth == TailWidth);
-static_assert(v::Titlebg::Selection::CellSize[0] == v::Row::W + v::Titlebg::Selection::Inset[2]);
-static_assert(v::Titlebg::Selection::CellSize[1] == v::Row::H + v::Titlebg::Selection::Inset[3]);
-static_assert((AtlasHeight / v::Titlebg::Selection::CellSize[1] + TailHeight / v::Titlebg::Selection::CellSize[1]) * AtlasWidth >= v::Titlebg::Loop * v::Titlebg::Selection::CellSize[0]);
-// 元2枚はPCの部品プレビューだけが読む。ゲーム側には窓と合成済みの帯だけを渡す。
-static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) == 196608);
-static_assert(sizeof(selectionAtlas) + sizeof(selectionTail) + sizeof(window) + 98816 + 2 * core::limits::RendererGameAllocationSlack <= core::limits::RendererGameHeapLimit);
-
-unsigned PixelOffset(unsigned x, unsigned y, unsigned width) {
-    unsigned n = (y / 8 * (width / 8) + x / 8) * 64;
-    for (unsigned b = 0; b < 3; ++b) n += ((x >> b & 1) << (2 * b)) + ((y >> b & 1) << (2 * b + 1));
-    return n;
-}
+// 導入時にゲームの描画用ヒープへ複製される初期値。余白は0のまま変わらない。
+std::uint8_t selection[core::limits::RendererSelectionSurfaces][core::limits::RendererSelectionSurfaceBytes];
 game::lyt::TextureResource images[] = {
     {alpha, sizeof(alpha), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
     {luminance, sizeof(luminance), 16, 16, game::lyt::TextureFormat::Rgba8, 0, 0xFFFFFFFFu, 255, false},
     {window, sizeof(window), WindowWidth, WindowHeight, game::lyt::TextureFormat::L4,
      0xFF000000u | v::Window::Overlay::Color[0], 0xFF000000u | v::Window::Overlay::Color[1],
      unsigned(v::Window::Overlay::Alpha * 255 + .5)},
-    {selectionAtlas, sizeof(selectionAtlas), AtlasWidth, AtlasHeight, game::lyt::TextureFormat::L4,
+    {selection[0], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
      v::Selection::Color[0], v::Selection::Color[1]},
-    {selectionTail, sizeof(selectionTail), TailWidth, TailHeight, game::lyt::TextureFormat::L4,
+    {selection[1], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[2], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[3], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[4], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[5], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[6], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[7], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[8], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
+     v::Selection::Color[0], v::Selection::Color[1]},
+    {selection[9], sizeof(selection[0]), SelectionWidth, SelectionHeight, game::lyt::TextureFormat::L4,
      v::Selection::Color[0], v::Selection::Color[1]},
 };
 }
@@ -57,24 +63,14 @@ void PrepareTitleBackground() {
     backgroundStatus = game::titlebg::LoadSelf(sources);
     game::titlebg::BakeWindowL4(backgroundStatus.ready ? &sources : nullptr, WindowWidth, WindowHeight, window);
     if (!backgroundStatus.ready) images[2].opacity = 0;
-    if (backgroundStatus.ready) {
-        // 実際の182×11画素だけを連続して詰める。8画素境界に丸めず、元のL4値を保つ。
-        for (unsigned frame = 0; frame < unsigned(v::Titlebg::Loop); ++frame) {
-            game::titlebg::BakeSelectionL4(&sources, v::Titlebg::Selection::ImageSize[0],
-                v::Titlebg::Selection::ImageSize[1], v::Row::W + v::Titlebg::Selection::Inset[2],
-                v::Row::H + v::Titlebg::Selection::Inset[3], selection, frame);
-            for (unsigned x = 0; x < unsigned(v::Titlebg::Selection::CellSize[0]); ++x) {
-                const auto to = detail::SelectionAt(frame * v::Titlebg::Selection::CellSize[0] + x);
-                auto *target = to.page ? selectionTail : selectionAtlas;
-                for (unsigned y = 0; y < unsigned(v::Titlebg::Selection::CellSize[1]); ++y) {
-                    const unsigned src = PixelOffset(x, y, v::Titlebg::Selection::ImageSize[0]);
-                    const unsigned dst = PixelOffset(to.x, to.y + y, AtlasWidth);
-                    const unsigned value = (selection[src / 2] >> ((src & 1) * 4)) & 15;
-                    target[dst / 2] = (target[dst / 2] & ~(15 << ((dst & 1) * 4))) | (value << ((dst & 1) * 4));
-                }
-            }
-        }
-    } else images[3].opacity = images[4].opacity = 0;
+    {
+        const detail::Stopwatch watch;
+        frames.Prepare(backgroundStatus.ready ? &sources : nullptr);
+        prepareMicros = watch.ElapsedMicros();
+    }
+    // 全面を位相0のコマで始める。以後は実画素の範囲だけを書き換える。
+    for (unsigned slot = 0; slot < core::limits::RendererSelectionSurfaces; ++slot)
+        game::lyt::detail::CopySelectionFrame(selection[slot], frames.Frame(0));
     // A4 は形の不透明度、L4 は不透明の輝度。CPU の上から順を GPU の順に登録する。
     for (unsigned y = 0; y < 16; ++y) {
         for (unsigned x = 0; x < 16; ++x) {
@@ -89,6 +85,13 @@ void PrepareTitleBackground() {
     }
     prepared = true;
 }
+namespace detail {
+const std::uint8_t *SelectionFrame(unsigned phase) { return frames.Frame(phase); }
+void StoreSelection(unsigned slot, const std::uint8_t *packed) {
+    game::lyt::detail::CopySelectionFrame(selection[slot], packed);
+}
+unsigned SelectionPrepareMicros() { return prepareMicros; }
+} // namespace detail
 const game::titlebg::Sources *TitleBackgroundSources() { return backgroundStatus.ready ? &sources : nullptr; }
 const game::lyt::TextureResource &TitleBackgroundImage(unsigned index) { return images[index]; }
 const char *TitleBackgroundStatusText() {

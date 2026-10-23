@@ -58,8 +58,6 @@ int MeasureText(std::string_view text, unsigned scale = 1, Font font = Font::Mai
 const game::lyt::FontResource &Fonts();
 // プラグインのスレッドで、フック登録より前に一度だけ呼ぶ。Fonts() 自体は I/O しない。
 void PrepareTitleBackground();
-void StartTitleAnimation();
-void StopTitleAnimation();
 // 不変のアトラスからコマ番号に対応する参照範囲を選ぶ。合成・転送は行わない。
 void StepTitleAnimation(std::uint32_t frame, Drawing &drawing);
 const game::titlebg::Sources *TitleBackgroundSources();

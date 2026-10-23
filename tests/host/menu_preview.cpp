@@ -46,10 +46,10 @@ bool Resources(const std::filesystem::path &directory) {
     std::ofstream status(directory / "background-status.txt");
     status << renderer::TitleBackgroundStatusText() << '\n';
     const auto &f = renderer::Fonts();
-    std::ofstream atlas(directory / "atlas.la4", std::ios::binary);
+    std::ofstream atlas(directory / "atlas.a4", std::ios::binary);
     atlas.write(reinterpret_cast<const char *>(f.atlas), static_cast<std::streamsize>(f.atlasBytes));
     std::ofstream out(directory / "fonts.json");
-    out << "{\"sheet\":[" << f.sheetWidth << ',' << f.sheetHeight << "],\"cell\":["
+    out << "{\"format\":\"a4\",\"sheet\":[" << f.sheetWidth << ',' << f.sheetHeight << "],\"cell\":["
         << f.cellWidth << ',' << f.cellHeight << "],\"columns\":" << f.columns << ",\"widths\":";
     Array(out, f.widths, f.glyphs * 3);
     out << ",\"main\":";

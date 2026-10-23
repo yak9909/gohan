@@ -731,8 +731,8 @@ void TestCloseDialog() {
     assert(e.Dialog() == DialogKind::None && e.Visible() && e.Dirty(num) && e.Applied(num) == 10);
     e.Press(key::B, h->now); // ルートで B: 閉じる要求
     assert(e.Dialog() == DialogKind::Close);
-    e.Press(key::B, h->now); // ダイアログの B は「いいえ」
-    assert(e.Visible() && e.Dirty(num));
+    e.Press(key::B, h->now); // ダイアログの B は「いいえ」（キャンセルを選んだ状態で閉じる）
+    assert(e.Visible() && e.Dirty(num) && !e.DialogYes());
     assert(!e.RequestClose(h->now));
     e.Press(key::Left, h->now);
     e.Press(key::A, h->now); // はい: 全項目を適用して閉じる

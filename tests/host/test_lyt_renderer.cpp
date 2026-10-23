@@ -54,7 +54,7 @@ int main() {
     assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
     assert(Fake::allocations == 0);
     Fake::Reset();
-    Fake::freeBytes = font.resource.atlasBytes + gohan::core::limits::RendererGameAllocationSlack + gohan::core::limits::RendererHeapReserve - 1;
+    Fake::freeBytes = font.resource.atlasBytes + gohan::core::limits::RendererGameAllocationSlack - 1;
     assert(InstallRenderer(font.resource) == InstallResult::ResourceFailed && Fake::Balanced());
     assert(Fake::allocations == 0);
     Fake::Reset();

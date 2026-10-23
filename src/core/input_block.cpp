@@ -28,11 +28,11 @@ bool Table::Publish(std::size_t slot, const Claim &replacement) {
 
 Result Table::Acquire(const char *name, Owner &owner) {
     if (!name || !*name || owner.slot != 0xFF) return Result::Invalid;
-    if (!mutex_.TryLock()) return Result::Busy;
+    if (!mutex_.TryLock()) return BusyWrite();
     Result result = Result::Full;
     for (std::size_t i = 1; i < owners_.size(); ++i) {
         if (owners_[i].name) continue;
-        if (!Publish(i, {})) result = Result::Busy;
+        if (!Publish(i, {})) result = BusyWrite();
         else {
             owners_[i] = {name, {}};
             owner.slot = static_cast<std::uint8_t>(i);
@@ -46,11 +46,11 @@ Result Table::Acquire(const char *name, Owner &owner) {
 
 Result Table::Set(const Owner &owner, const Claim &claim) {
     if (claim.defer & ~group::Buttons) return Result::Invalid;
-    if (!mutex_.TryLock()) return Result::Busy;
+    if (!mutex_.TryLock()) return BusyWrite();
     Result result = Result::Invalid;
     if (Valid(owner)) {
         if (owners_[owner.slot].claim == claim) result = Result::Unchanged;
-        else if (!Publish(owner.slot, claim)) result = Result::Busy;
+        else if (!Publish(owner.slot, claim)) result = BusyWrite();
         else {
             owners_[owner.slot].claim = claim;
             result = Result::Ok;
@@ -61,10 +61,10 @@ Result Table::Set(const Owner &owner, const Claim &claim) {
 }
 
 Result Table::Release(Owner &owner) {
-    if (!mutex_.TryLock()) return Result::Busy;
+    if (!mutex_.TryLock()) return BusyWrite();
     Result result = Result::Invalid;
     if (Valid(owner)) {
-        if (!Publish(owner.slot, {})) result = Result::Busy;
+        if (!Publish(owner.slot, {})) result = BusyWrite();
         else {
             owners_[owner.slot] = {};
             owner = {};
@@ -76,7 +76,9 @@ Result Table::Release(Owner &owner) {
 }
 
 MailRead Table::Read(Effective &out, std::uint32_t &generation) {
-    return published_.ReadIfNew(out, generation);
+    const auto result = published_.ReadIfNew(out, generation);
+    if (result == MailRead::Busy) ++read_busy_;
+    return result;
 }
 
 std::size_t Table::List(OwnerInfo *out, std::size_t capacity) {

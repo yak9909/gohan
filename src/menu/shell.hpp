@@ -24,6 +24,7 @@ class Shell {
     // 何か描くものがある（メニュー・動き・ダイアログ・通知）。偽になったら空の画面を 1 回描けば足りる。
     bool NeedsDraw(u32 now) const;
     core::input_block::Claim InputDemand() const;
+    void Notify(const Notice &notice, u32 now) { notices_.Add(notice, now); }
     void Draw(Surface &surface, u32 now);
 
     Engine &engine() { return engine_; }
@@ -40,6 +41,8 @@ class Shell {
     Entry entry_;
     NoticeQueue notices_;
     motion::Tween modal_;
+    motion::Tween dialog_close_; // 取り消しで閉じた確認の退場（1 → 0）
+    DialogView closing_{};       // 退場中の確認の写し（答えは「キャンセル」）
     u32 now_ = 0;
     u16 prev_held_ = 0;
     bool was_modal_ = false;

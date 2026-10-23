@@ -16,12 +16,13 @@ class Engine {
     Engine(const Engine &) = delete;
     Engine &operator=(const Engine &) = delete;
 
-    // 必須資源の確保に失敗したら拒否する。背景だけの失敗時は代わりの色で導入する。
+    // 全画像を導入時に確保する。開閉では資源を変更しない。
     InstallResult Install(const FontResource &font);
     // 登録が必要なノードをゲームのリストに載せる。導入済みでなければ false。
     bool Present(const Drawing &drawing);
-    // プラグインのスレッドから。公開済み・記録中・排出待ちの画像は拒否する。
-    bool UpdateSelection(const std::uint8_t *data, std::size_t bytes, unsigned &slot);
+    // 描画スレッドから。導入時に合成済みの1コマ（1,001 B）を、使える面の実画素だけへコピーして排出する。
+    // 公開済み・記録中・排出待ちの面へは書かない。
+    bool UpdateSelection(const std::uint8_t *packed, unsigned &slot);
     // ノードの登録をやめ、リストから外れ GPU が使い終えるのを待って資源を返す。
     // 完全に返せたら true。false の間は毎フレーム呼ぶ。導入していなければ true。
     bool Detach();
@@ -33,8 +34,9 @@ class Engine {
   private:
     void RebuildScene();
     const ResourceApi &api_;
-    unsigned selectionIdle_[2] = {};
-    unsigned protectedSelection_ = 2;
+    unsigned selectionIdle_[core::limits::RendererSelectionSurfaces]{};
+    unsigned protectedSelection_ = core::limits::RendererSelectionSurfaces;
+    unsigned nextSelection_ = 0;
     unsigned selectionReferences_[2] = {};
     RecordingResources resources_;
     Scene scene_;
@@ -43,8 +45,6 @@ class Engine {
     bool installed_ = false;
     bool stopping_ = false;
     unsigned idle_ = 0;
-    bool backgroundAttempted_ = false;
-    unsigned backgroundIdle_ = 0;
     std::uint32_t built_[2]{};
     bool haveBuilt_[2]{};
 };

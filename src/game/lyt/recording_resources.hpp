@@ -10,17 +10,12 @@ class RecordingResources {
     explicit RecordingResources(const ResourceApi &api) : api_(api) {}
     RecordingResources(const RecordingResources &) = delete;
     RecordingResources &operator=(const RecordingResources &) = delete;
-    // 常駐の字形・UIと記録列だけを確保する。失敗したら何も残さない。
+    // 字形・UI・窓・帯の全画像と記録列を確保する。失敗したら何も残さない。
     bool Acquire(const FontResource &font);
-    // メニューを開く時だけ試す。失敗しても常駐資源を保つ。
-    bool AcquireBackground(const FontResource &font);
-    // 呼び出し元が背景を含む記録・ノード・GPUの参照を排出してから呼ぶ。
-    bool ReleaseBackgroundIdle();
     // 呼び出し元がノードを外し、記録列と GPU の参照を排出してから呼ぶ。
     // 所有するリストが束縛中なら、資源と ID を保ったまま false を返す。
     bool ReleaseIdle();
     void *Atlas() const { return atlas_; }
-    void *Background() const { return background_; }
     const BackgroundAllocation &BackgroundStatus() const { return backgroundStatus_; }
     RendererMemory MemoryStatus() const {
         auto result = memoryStatus_;
@@ -28,13 +23,12 @@ class RecordingResources {
         return result;
     }
     unsigned List(Screen screen) const { return lists_[static_cast<unsigned>(screen)]; }
-    bool Empty() const { return !atlas_ && !background_ && !lists_[0] && !lists_[1]; }
+    bool Empty() const { return !atlas_ && !lists_[0] && !lists_[1]; }
 
   private:
     const ResourceApi &api_;
     generated::SsysMaAllocator *allocator_ = nullptr;
     void *atlas_ = nullptr;
-    void *background_ = nullptr;
     BackgroundAllocation backgroundStatus_{};
     RendererMemory memoryStatus_{};
     unsigned lists_[2]{};

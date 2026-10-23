@@ -1,4 +1,4 @@
-"""Canvas の指示を LA4 の字形と頂点色で合成する。較正値は settings.toml に集約する。"""
+"""Canvas の指示を A4 の字形と頂点色で合成する。較正値は settings.toml に集約する。"""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,8 @@ from .images import Image
 class Raster:
     def __init__(self, directory: Path, settings: dict):
         self.font = json.loads((directory / 'fonts.json').read_text(encoding='utf-8'))
-        self.atlas = (directory / 'atlas.la4').read_bytes()
+        self.font_format = self.font.get('format', 'la4')
+        self.atlas = (directory / ('atlas.' + self.font_format)).read_bytes()
         self.maps = [dict(zip(self.font[name][::2], self.font[name][1::2])) for name in ('main', 'numeric')]
         self.settings = settings
         self.textures = []
@@ -46,6 +47,9 @@ class Raster:
     def texel(self, x: int, y: int) -> tuple[int, int]:
         morton = sum(((x >> i) & 1) << (2 * i) | ((y >> i) & 1) << (2 * i + 1) for i in range(3))
         offset = ((y // 8) * (self.font['sheet'][0] // 8) + x // 8) * 64 + morton
+        if self.font_format == 'a4':
+            value = (self.atlas[offset // 2] >> ((offset & 1) * 4)) & 15
+            return 255, value * 17
         value = self.atlas[offset]
         # LA4 は 1 byte 内の上位が輝度、下位が alpha。
         return (value >> 4) * 17, (value & 15) * 17

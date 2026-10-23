@@ -51,7 +51,10 @@ void Engine::PressDialog(u16 pressed_key, u32 now) {
     case key::Right:
     case key::Down: dialog_yes_ = false; break;
     case key::A: Confirm(dialog_yes_, now); break;
-    case key::B: Confirm(false, now); break;
+    case key::B: // 取り消しは「キャンセル」を選んだ状態で閉じる（閉じる途中の表示も取り消しを示す）。
+        dialog_yes_ = false;
+        Confirm(false, now);
+        break;
     default: break;
     }
     Poll();

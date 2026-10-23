@@ -5,7 +5,7 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-inline constexpr std::size_t StatusText = 2048;
+inline constexpr std::size_t StatusText = 4096;
 // 入力の遮断。所有者の枠は内蔵の SELECT 用も含む。
 inline constexpr std::size_t InputBlockOwners = 16;
 inline constexpr unsigned InputDeferWindowMs = 300;
@@ -34,16 +34,25 @@ inline constexpr auto RendererSlotChars = [] {
     for (std::size_t i = 0; i < result.size(); ++i) result[i] = design::ca2::Budget::SlotChars[i];
     return result;
 }();
-// 自前の資源を置くゲームのヒープに、導入後も残す空き（バイト）。
-// 場面によっては、ゲーム自身が同じヒープから大きな資源を取るため。
-// UI は RGBA8 の 256×32 と 8×8 が 2 枚。字形 65,536 と合わせて 98,816 バイト。
+// 全画像を導入時に一括確保し、開閉で借り直さない。
+inline constexpr std::size_t RendererFontTextureBytes = 32768;
 inline constexpr std::size_t RendererUiTextureBytes = 33280;
-inline constexpr unsigned RendererHeapReserve = 400000;
-// メニューを閉じた後も借りる字形・UI。管理欄と整列の余裕も含む。
-inline constexpr unsigned RendererResidentHeapLimit = 120000;
-// 場面転換後の空きから逆算した、描画資源のヒープから借りる総量の上限。
-// 画像本体に加え、各確保の管理欄と128バイト整列の余裕も含める。
-inline constexpr unsigned RendererGameHeapLimit = 300000;
-inline constexpr unsigned RendererGameAllocationSlack = 256;
+inline constexpr std::size_t RendererWindowTextureBytes = 32768;
+inline constexpr unsigned RendererSelectionSurfaces = 10;
+inline constexpr unsigned RendererSelectionIdlePresents = 8;
+inline constexpr std::size_t RendererSelectionSurfaceBytes = 2048;
+// プラグイン側のコマの保存。GPU画像の予算へは加えない。
+inline constexpr unsigned RendererSelectionPhases = 150;
+inline constexpr std::size_t RendererSelectionFrameBytes = 182 * 11 / 2;
+inline constexpr std::size_t RendererSelectionCacheBytes = RendererSelectionFrameBytes * RendererSelectionPhases;
+static_assert(RendererSelectionCacheBytes == 150150);
+inline constexpr std::size_t RendererTextureBytes = RendererFontTextureBytes + RendererUiTextureBytes +
+    RendererWindowTextureBytes + RendererSelectionSurfaceBytes * RendererSelectionSurfaces;
+inline constexpr unsigned RendererGameAllocationSlack = 1024;
+inline constexpr unsigned RendererResidentHeapLimit = 120320;
+inline constexpr unsigned RendererGameHeapLimit = RendererResidentHeapLimit;
+static_assert(RendererTextureBytes == 119296);
+static_assert(RendererTextureBytes + RendererGameAllocationSlack <= RendererResidentHeapLimit);
+static_assert(RendererSelectionSurfaces >= RendererSelectionIdlePresents + 2);
 inline constexpr unsigned RendererHeapSampleFrames = 30;
 } // namespace gohan::core::limits

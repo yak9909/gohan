@@ -40,6 +40,7 @@ struct OwnerInfo {
     const char *name = nullptr;
     Claim claim{};
 };
+struct Activity { std::uint32_t writes = 0, reads = 0; };
 
 class Table {
   public:
@@ -52,16 +53,19 @@ class Table {
     MailRead Read(Effective &out, std::uint32_t &generation);
     // 待たない。競合時は 0、成功時は書き込んだ数（capacity まで）。
     std::size_t List(OwnerInfo *out, std::size_t capacity);
+    Activity ActivityCounts() const { return {write_busy_.load(), read_busy_.load()}; }
 
   private:
     // 試験でロック中の停止を再現する。実行時の分岐は増やさない。
     friend struct TableTestAccess;
     bool Valid(const Owner &owner) const;
     bool Publish(std::size_t slot, const Claim &replacement);
+    Result BusyWrite() { ++write_busy_; return Result::Busy; }
     SpinMutex mutex_;
     std::array<OwnerInfo, limits::InputBlockOwners> owners_{};
     Mailbox<Effective> published_;
     std::uint32_t generation_ = 0;
+    std::atomic<std::uint32_t> write_busy_{0}, read_busy_{0};
 };
 Table &Global();
 } // namespace gohan::core::input_block
