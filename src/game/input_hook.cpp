@@ -225,14 +225,13 @@ void AppendInputStatus(core::TextWriter &w) {
     w.Append("\n表の競合 書き ").Unsigned(activity.writes).Append(" 読み ").Unsigned(activity.reads);
     w.Append("\n遮断 "); MaskText(w, cs.blocked);
     w.Append(" 掛かり "); MaskText(w, cs.state.latch);
-    w.Append(" 持越し "); MaskText(w, cs.state.carry);
     w.Append(" 保留 "); MaskText(w, cs.state.pending);
     w.Append(" 窓 "); MaskText(w, cs.state.window);
     w.Append(" 通過 "); MaskText(w, cs.state.passing);
     const auto &n = cs.state.counts;
     w.Append("\n累計 離し ").Unsigned(n.hidden_releases).Append(" 押下 ").Unsigned(n.hidden_presses)
-        .Append(" 掛かり ").Unsigned(n.latch_entries).Append(" 持越し ").Unsigned(n.carry_entries)
-        .Append(" 持越し再開 ").Unsigned(n.carry_resumes).Append(" SELECT ").Unsigned(n.select_protections)
+        .Append(" 掛かり ").Unsigned(n.latch_entries)
+        .Append(" 保持再開 ").Unsigned(n.hold_resumes).Append(" SELECT ").Unsigned(n.select_protections)
         .Append(" CTRPF再開 ").Unsigned(n.resumes).Append(" 押し切り ").Unsigned(n.deferred_presses)
         .Append(" 長押し ").Unsigned(n.long_holds);
     w.Append("\nP/C スレッド: ").Append(!ps.thread || !cs.thread ? "未確認" :
