@@ -191,7 +191,10 @@ void Scene::Build(const ResourceApi &api, const FontResource &font, const void *
     InitMaterial(material);
     for (auto &color : material.colors)
         color = 0xFFFFFFFFu;
-    material.colors[0] = 0;
+    // 矩形が使う A4 の RGB は 0。既定の Picture 合成は各成分で
+    // 黒色→白色を補間するので、RGB の両端を白にして頂点色を保つ。
+    // alpha の両端は 0→255 のまま、塗りつぶしセルの不透明度を使う。
+    material.colors[0] = 0x00FFFFFFu;
     material.capacity_bits = SharedCapacity;
     material.count_bits = SharedCapacity;
     material.variable_data = &shared_.value.map;

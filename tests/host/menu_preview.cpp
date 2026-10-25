@@ -2,6 +2,7 @@
 #include "core/frame.hpp"
 #include "features/menu_screen/menu_screen.hpp"
 #include "game/lyt/renderer.hpp"
+#include "game/lyt/scene.hpp"
 #include "ui/renderer/renderer.hpp"
 #include "features/menu_screen/canvas_surface.hpp"
 #include "menu/shell.hpp"
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <cstdio>
+#include <memory>
 
 namespace gohan::game::lyt {
 namespace {
@@ -41,6 +43,36 @@ template <typename T> void Array(std::ostream &out, const T *values, std::size_t
 void Rect(std::ostream &out, const lyt::Rect &r) {
     out << '[' << r.x << ',' << r.y << ',' << r.width << ',' << r.height << ']';
 }
+// 実際の Scene が作る矩形の材質・UV を保存する。プレビュー側で白を仮定しない。
+void RectangleMaterial(std::ostream &out, const lyt::FontResource &font) {
+    namespace gen = gohan::game::generated;
+    lyt::detail::ResourceApi api{};
+    api.physical = [](const void *) -> std::uint32_t { return 0; };
+    api.batchInit = [](gen::NwFontTextBatchPrefix *batch, unsigned) { return batch; };
+    auto scene = std::make_unique<lyt::detail::Scene>();
+    scene->Build(api, font, font.atlas);
+    auto drawing = std::make_unique<lyt::ScreenDrawing>();
+    drawing->count = 1;
+    drawing->commands[0].bounds = {0, 0, 1, 1};
+    scene->Apply(lyt::Screen::Top, *drawing);
+    const auto *link = scene->Root(lyt::Screen::Top)->children.next;
+    const auto *picture = reinterpret_cast<const gen::NwLytPicture *>(
+        reinterpret_cast<const char *>(link) - offsetof(gen::NwLytPane, sibling_link));
+    out << ",\"rectangle\":{\"uv\":[";
+    for (unsigned i = 0; i < 4; ++i) {
+        if (i) out << ',';
+        out << picture->uv_output[0][i];
+    }
+    out << "],\"black\":[";
+    for (unsigned c = 0; c < 2; ++c) {
+        if (c) out << "],\"white\":[";
+        for (unsigned i = 0; i < 4; ++i) {
+            if (i) out << ',';
+            out << ((picture->material->colors[c] >> (8 * i)) & 255);
+        }
+    }
+    out << "]}";
+}
 bool Resources(const std::filesystem::path &directory) {
     renderer::PrepareTitleBackground();
     std::ofstream status(directory / "background-status.txt");
@@ -56,6 +88,7 @@ bool Resources(const std::filesystem::path &directory) {
     Array(out, f.mainMap, f.mainCount * 2);
     out << ",\"numeric\":";
     Array(out, f.numericMap, f.numericCount * 2);
+    RectangleMaterial(out, f);
     out << "}\n";
     std::ofstream textures(directory / "textures.json");
     textures << '[';
