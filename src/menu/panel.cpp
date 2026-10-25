@@ -56,10 +56,15 @@ void Panel::Sync(const Engine &engine, u32 now) {
         was_visible_ = visible;
         if (visible) {
             selection_.Jump(static_cast<float>(index), now);
-            view_.Jump(TargetFor(index), now);
+            // 閉じた時の表示範囲を保つ。行数や見える項目が変わった場合は、選択行が入る範囲へ寄せる。
+            const bool same = folder_ == engine.Folder() && selected_ == engine.Selected();
+            const float low = static_cast<float>(std::max(0, index - rows_ + 1));
+            const float high = std::min(static_cast<float>(index), MaxViewStart());
+            view_.Jump(same ? std::clamp(previous_view, low, high) : TargetFor(index), now);
+            folder_phase_.Jump(1.f, now);
             folder_ = engine.Folder();
             selected_ = engine.Selected();
-        }
+        } else view_.Jump(previous_view, now); // 閉じている間にスクロールを進めない。
     }
     // 退場中も、実行状態と字のフェードを画面外へ出るまで更新する。
     if (!visible && open_.At(now) <= 0.f) return;
@@ -338,7 +343,7 @@ void Panel::DrawScrollBar(Surface &s, int dx, u32 now) {
     s.Sprite(dx + ca::Scroll::X, ca::Scroll::Arrows[1], "arrow_d", ca::Color::Scroll::Arrow);
 }
 
-void Panel::DrawFooter(Surface &s, const Engine &e, int dx) {
+void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
     const Rect bar = Bounds(ca::Bar::Rect, dx);
     s.Box(bar, "bar");
     struct Hint { u16 key; const char *label; };
@@ -346,7 +351,7 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx) {
     auto hint = [&](u16 key, const char *label) { hints[count++] = {key, label}; };
     const auto kind = e.Ui().kind;
     char fine[24], coarse[24];
-    if (e.Dialog() != DialogKind::None) {
+    if (dialog) {
         hint(key::Left | key::Right, "えらぶ"); hint(key::A, "決定"); hint(key::B, "取消");
     } else if (kind == UiKind::Key) {
         hint(key::A, "押してはなすと決定");
@@ -383,19 +388,20 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx) {
             x += (align - (x + width + ca::Bar::Hint::LabelGap - end) % align) % align;
         }
     }
-    if (kind != UiKind::None || e.Dialog() != DialogKind::None) return;
+    if (kind != UiKind::None || dialog) return;
     char changed[24]; core::TextWriter(changed, sizeof(changed)).Unsigned(e.DirtyCount()).Append(ca::Text::ChangedSuffix);
     s.Text(bar.x + bar.w + ca::Bar::Changed[0] - s.Measure(changed), bar.y + ca::Bar::Changed[1], changed,
            e.DirtyCount() ? ca::Color::Bar::Changed : ca::Color::Bar::Unchanged);
 }
 
-void Panel::DrawBar(Surface &s, const Engine &e, u32 now) {
-    if (bar_.At(now) <= 0.f) return;
-    FadedSurface faded(s, bar_.At(now));
+void Panel::DrawBar(Surface &s, const Engine &e, u32 now, bool dialog, float appear) {
+    const float alpha = dialog ? appear : bar_.At(now);
+    if (alpha <= 0.f) return;
+    FadedSurface faded(s, alpha);
     const int dx = 0;
     u32 progress; bool muted; u16 key;
-    if (e.HoldProgress(now, &progress, &muted, &key)) DrawHoldBar(faded, e, dx, now);
-    else DrawFooter(faded, e, dx);
+    if (!dialog && e.HoldProgress(now, &progress, &muted, &key)) DrawHoldBar(faded, e, dx, now);
+    else DrawFooter(faded, e, dx, dialog);
 }
 
 void Panel::DrawHoldBar(Surface &s, const Engine &e, int dx, u32 now) {

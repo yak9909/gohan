@@ -62,7 +62,7 @@ class Engine {
     void SetReservedHotkeys(u16 mask) { reserved_ = mask; } // メニューの開閉などに使うボタン。ホットキーに使えない
 
     // ---- 入力と時刻 ----
-    void Open(u32 now);
+    void Open(u32 now); // 同じ起動中の位置を再利用し、使えない位置だけ補正する。
     bool RequestClose(u32 now); // 適用待ちがあれば確認ダイアログを出して false
     void Frame(u32 now, u16 held);
     void Press(u16 key, u32 now, bool repeated = false);
@@ -122,6 +122,7 @@ class Engine {
     void Adjust(u16 item, int direction);
     bool ReadGame(u16 item);
     void ReadGameValues();
+    void RestorePosition();
     // engine_edit.cpp
     bool CommitBody(u16 item, u32 now);
     bool ApplyValue(u16 item);

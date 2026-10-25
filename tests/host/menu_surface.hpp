@@ -37,8 +37,10 @@ class RecordingSurface : public Surface {
     }
     void Text(int x, int y, std::string_view text, u32 color, bool numeric = false, unsigned scale = 1) override {
         const int width = Measure(text, numeric, scale);
-        if (texts >= text_limit_ || (color >> 24) == 0 || width == 0) {
-            if (width != 0) ++dropped;
+        // 退場の末尾で透明になった字は、矩形と同じく予算不足に数えない。
+        if ((color >> 24) == 0 || width == 0) return;
+        if (texts >= text_limit_) {
+            ++dropped;
             return;
         }
         ++texts;

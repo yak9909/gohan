@@ -41,8 +41,8 @@ class Shell {
     Entry entry_;
     NoticeQueue notices_;
     motion::Tween modal_;
-    motion::Tween dialog_close_; // 取り消しで閉じた確認の退場（1 → 0）
-    DialogView closing_{};       // 退場中の確認の写し（答えは「キャンセル」）
+    motion::Tween dialog_close_; // 答えを選んで閉じた確認と操作案内の退場（1 → 0）
+    DialogView closing_{};       // 退場中の確認の写し（決定した答えを保つ）
     u32 now_ = 0;
     u16 prev_held_ = 0;
     bool was_modal_ = false;

@@ -849,6 +849,79 @@ void TestRepeat() {
     assert(e.Selected() == Idx(MenuId::Once));
 }
 
+// 開閉では経路と選択を保ち、読み取り・条件・開発項目の変化だけを補正する。
+void TestReopenPosition() {
+    auto h = Make();
+    Engine &e = h->engine;
+    e.Open(h->now);
+    Goto(*h, MenuId::Folder); e.Press(key::A, h->now);
+    Goto(*h, MenuId::Hexv);
+    assert(e.RequestClose(h->now)); e.Open(h->now);
+    assert(e.Depth() == 1 && e.Folder() == Idx(MenuId::Folder) && e.Selected() == Idx(MenuId::Hexv));
+    e.Press(key::B, h->now);
+    assert(e.Selected() == Idx(MenuId::Folder)); // 親の選択も保つ。
+    Goto(*h, MenuId::Multi);
+    assert(e.RequestClose(h->now)); e.Open(h->now);
+    assert(e.Depth() == 0 && e.Selected() == Idx(MenuId::Multi));
+
+    Goto(*h, MenuId::Folder); e.Press(key::A, h->now);
+    Goto(*h, MenuId::Wallet);
+    assert(e.RequestClose(h->now)); g.wallet_ok = false; e.Open(h->now);
+    assert(e.Selected() == Idx(MenuId::Weather) && e.Disabled(Idx(MenuId::Wallet)));
+    // 無効な行への通常の移動は引き続き許す。
+    assert(e.Select(Idx(MenuId::Wallet)));
+    g.wallet_ok = true;
+    assert(e.RequestClose(h->now)); e.Open(h->now);
+    assert(e.Selected() == Idx(MenuId::Wallet));
+
+    Goto(*h, MenuId::Amount);
+    assert(e.RequestClose(h->now));
+    assert(e.SetValue(Idx(MenuId::How), 1)); e.Open(h->now);
+    assert(e.Selected() == Idx(MenuId::Wallet));
+    e.DiscardAll();
+    e.SetDevVisible(true); Goto(*h, MenuId::Devx);
+    assert(e.RequestClose(h->now)); e.SetDevVisible(false); e.Open(h->now);
+    assert(e.Selected() == Idx(MenuId::Keyc));
+}
+
+void TestReopenPathFallback() {
+    ItemDef defs[6]{};
+    for (auto &d : defs) {
+        d.control = Control::Folder;
+        d.parent = d.first_child = d.next = kNoItem;
+    }
+    // ルート → 常設 → 開発用 → 葉。ルートの次の兄弟は条件付きのフォルダ。
+    defs[0].first_child = 1; defs[0].next = 4;
+    defs[1].parent = 0; defs[1].first_child = 2; defs[1].next = 3; defs[1].dev = true;
+    defs[2].parent = 1; defs[2].control = Control::Toggle;
+    defs[3].parent = 0; defs[3].control = Control::Toggle;
+    defs[4].first_child = 5; defs[4].cond = {3, CondOp::Eq, 0};
+    defs[5].parent = 4; defs[5].control = Control::Toggle;
+    Engine e(defs, 6);
+    e.SetDevVisible(true); e.Open(0);
+    e.Press(key::A, 0); e.Press(key::A, 0);
+    assert(e.Depth() == 2 && e.Selected() == 2);
+    assert(e.RequestClose(0)); e.SetDevVisible(false); e.Open(0);
+    assert(e.Depth() == 1 && e.Folder() == 0 && e.Selected() == 3);
+    // 全経路が隠れた時はルートへ戻る。
+    e.SetDevVisible(true); e.Press(key::B, 0); e.Press(key::A, 0); e.Press(key::A, 0);
+    assert(e.RequestClose(0)); defs[0].dev = true; e.SetDevVisible(false); e.Open(0);
+    assert(e.Depth() == 0 && e.Selected() == 4);
+    e.Press(key::A, 0); assert(e.Folder() == 4);
+    assert(e.RequestClose(0));
+    defs[4].cond.rhs = 1; e.Open(0);
+    assert(e.Depth() == 0 && e.Selected() == 4 && e.Disabled(4)); // 全て灰色でも安全な行に置く。
+    // 空のフォルダ、全項目が隠れる場合、項目が無い場合。
+    defs[4].cond = {}; e.Press(key::A, 0);
+    assert(e.RequestClose(0)); defs[5].dev = true; e.Open(0);
+    assert(e.Depth() == 0 && e.Selected() == 4);
+    assert(e.RequestClose(0)); defs[4].dev = true; e.Open(0);
+    assert(e.Selected() == kNoItem && e.Folder() == kNoItem);
+    Engine empty(nullptr, 0); empty.Open(0);
+    assert(empty.Selected() == kNoItem && empty.RequestClose(0));
+    empty.Open(1); assert(empty.Selected() == kNoItem);
+}
+
 void TestHiddenAndReserved() {
     auto h = Make();
     Engine &e = h->engine;
@@ -1025,6 +1098,8 @@ int main() {
     TestCloseDialog();
     TestLongPress();
     TestNavigation();
+    TestReopenPosition();
+    TestReopenPathFallback();
     TestRepeat();
     TestHiddenAndReserved();
     TestKeyControl();

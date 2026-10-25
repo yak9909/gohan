@@ -76,16 +76,6 @@
           "buttons": []
         },
         {
-          "at": 2450,
-          "buttons": [
-            "A"
-          ]
-        },
-        {
-          "at": 2482,
-          "buttons": []
-        },
-        {
           "at": 2700,
           "buttons": [
             "Down"
@@ -677,14 +667,16 @@
           "name": "cancel-hold",
           "contains": [
             "変更を適用しますか？",
-            "キャンセル"
+            "キャンセル",
+            "えらぶ"
           ]
         },
         {
           "at": 1240,
           "name": "cancel-closing",
           "contains": [
-            "変更を適用しますか？"
+            "変更を適用しますか？",
+            "えらぶ"
           ]
         },
         {
@@ -1418,13 +1410,6 @@
           "buttons": [
             "R"
           ]
-        },
-        {
-          "at": 3282,
-          "buttons": [
-            "R",
-            "A"
-          ]
         }
       ],
       "captures": [
@@ -2126,6 +2111,553 @@
         {
           "at": 6660,
           "name": "enter-360"
+        }
+      ]
+    },
+    {
+      "name": "menu-keep",
+      "label": "値のフォルダと所持金の選択を閉じて再開する",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Up"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 1250,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1282,
+          "buttons": []
+        },
+        {
+          "at": 1600,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1632,
+          "buttons": []
+        },
+        {
+          "at": 2080,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 2112,
+          "buttons": []
+        },
+        {
+          "at": 2600,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "at": 2632,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1500,
+          "name": "before-close",
+          "contains": [
+            "見本の所持金"
+          ]
+        },
+        {
+          "at": 2000,
+          "name": "closed",
+          "empty": true
+        },
+        {
+          "at": 2208,
+          "name": "reopening",
+          "contains": [
+            "見本の所持金"
+          ]
+        },
+        {
+          "at": 2480,
+          "name": "resumed",
+          "contains": [
+            "見本の所持金"
+          ]
+        },
+        {
+          "at": 2900,
+          "name": "parent",
+          "contains": [
+            "見本の値"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "menu-keep-disabled",
+      "label": "再開時に無効な量から所持金へ寄せる",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "Up"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1150,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1182,
+          "buttons": []
+        },
+        {
+          "at": 1300,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 1332,
+          "buttons": []
+        },
+        {
+          "at": 1500,
+          "buttons": [
+            "Down"
+          ]
+        },
+        {
+          "at": 1532,
+          "buttons": []
+        },
+        {
+          "at": 1750,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 1782,
+          "buttons": []
+        },
+        {
+          "at": 2200,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 2232,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1700,
+          "name": "disabled-before",
+          "contains": [
+            "今は使えません"
+          ]
+        },
+        {
+          "at": 2150,
+          "name": "closed",
+          "empty": true
+        },
+        {
+          "at": 2600,
+          "name": "fallback",
+          "contains": [
+            "見本の所持金"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dialog-action-exit",
+      "label": "実行とキャンセルの A で閉じる確認と操作案内",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "L",
+            "Down"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 400,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 432,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "L",
+            "Down"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "Right"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        },
+        {
+          "at": 1300,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1332,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 380,
+          "name": "execute-before",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 460,
+          "name": "execute-hold",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 540,
+          "name": "execute-closing",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 720,
+          "name": "executed",
+          "contains": [
+            "ACTION"
+          ]
+        },
+        {
+          "at": 1240,
+          "name": "cancel-before",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1360,
+          "name": "cancel-hold",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1440,
+          "name": "cancel-closing",
+          "contains": [
+            "実行しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1640,
+          "name": "cancelled",
+          "contains": [
+            "ACTION"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dialog-apply-exit",
+      "label": "適用して閉じる確認と操作案内が一緒に退場する",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 932,
+          "buttons": []
+        },
+        {
+          "at": 1100,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1132,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1080,
+          "name": "apply-before",
+          "contains": [
+            "変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1160,
+          "name": "apply-hold",
+          "contains": [
+            "変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1240,
+          "name": "apply-closing",
+          "contains": [
+            "変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1500,
+          "name": "closed",
+          "empty": true
+        }
+      ]
+    },
+    {
+      "name": "dialog-apply-stay",
+      "label": "全適用後も退場中は確認用の操作案内を保つ",
+      "events": [
+        {
+          "at": 32,
+          "buttons": [
+            "Select"
+          ]
+        },
+        {
+          "at": 64,
+          "buttons": []
+        },
+        {
+          "at": 500,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 532,
+          "buttons": []
+        },
+        {
+          "at": 700,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 732,
+          "buttons": []
+        },
+        {
+          "at": 900,
+          "buttons": [
+            "X"
+          ]
+        },
+        {
+          "at": 1532,
+          "buttons": []
+        },
+        {
+          "at": 1750,
+          "buttons": [
+            "A"
+          ]
+        },
+        {
+          "at": 1782,
+          "buttons": []
+        }
+      ],
+      "captures": [
+        {
+          "at": 1700,
+          "name": "apply-before",
+          "contains": [
+            "全ての変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1810,
+          "name": "apply-hold",
+          "contains": [
+            "全ての変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 1890,
+          "name": "apply-closing",
+          "contains": [
+            "全ての変更を適用しますか？",
+            "えらぶ"
+          ]
+        },
+        {
+          "at": 2150,
+          "name": "menu-again",
+          "contains": [
+            "戻る",
+            "0変更"
+          ]
         }
       ]
     }

@@ -66,11 +66,11 @@ void DialogAndHold() {
     assert(fading && (fading->color >> 24) > 0 && (fading->color >> 24) < 0xFF);
     r.Advance(400); assert(!r.Draw().HasText("全ての変更を"));
     r.Tap(key::Select); r.Advance(200); assert(r.engine.Dialog() == DialogKind::Close);
-    // 「キャンセル」を選んだ A も同じ取り消し。「はい」の A は退場の写しを出さない。
+    // 「キャンセル」を選んだ A も同じ取り消し。「はい」の A も選んだ答えを残して退場する。
     r.Tap(key::Right); r.Tap(key::A); s = r.Draw();
     assert(r.engine.Visible() && s.HasText("変更を適用しますか？") && s.HasText("キャンセル"));
     r.Advance(400); r.Tap(key::Select); r.Advance(200); assert(r.engine.Dialog() == DialogKind::Close);
-    r.Tap(key::A); assert(!r.Draw().HasText("キャンセル"));
+    r.Tap(key::A); assert(r.Draw().HasText("キャンセル"));
     r.Advance(400); assert(!r.engine.Visible() && r.engine.Applied(Idx(MenuId::SampleFlag)));
 }
 void Notification() {
@@ -415,6 +415,96 @@ void CancelCopyYields() {
     r.Tap(key::B); assert(!r.engine.DialogYes());
     r.Tap(key::Select); assert(r.engine.Dialog() == DialogKind::Close); // 退場の途中に新しい確認
     r.Tap(key::A); auto s = r.Draw(); Budget(s);                        // はい
-    assert(!r.engine.Visible() && !s.HasText("全ての変更を"));
+    assert(!r.engine.Visible() && !s.HasText("全ての変更を") && s.HasText("変更を適用しますか？"));
 }
-int main() { Scene(); DialogAndHold(); CancelCopyYields(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); std::puts("menu shell: ok"); }
+
+// 閉じる途中のスクロールも固定し、開き直す時に選択と表示範囲を復元する。
+void ReopenViewport() {
+    ItemDef defs[26]{};
+    for (u16 n = 0; n < 26; ++n) {
+        auto &d = defs[n];
+        d.key = "keep"; d.label = "見本"; d.desc = "説明";
+        d.control = n == 0 || n == 25 ? Control::Folder : Control::Toggle;
+        d.parent = n > 0 && n < 25 ? 0 : kNoItem;
+        d.first_child = n == 0 ? 1 : kNoItem;
+        d.next = n == 0 ? 25 : n < 24 ? n + 1 : kNoItem;
+        d.dev = n >= 16 && n < 25;
+    }
+    Rig r(defs, 26); r.engine.SetDevVisible(true); Enter(r);
+    assert(r.engine.Select(14)); r.Frame(0); r.Frame(32);
+    const float start = r.shell.panel().ViewStart(r.now);
+    assert(start > 4.f && start < 8.f); // 中央へ向かう途中。再計算では同じ位置にならない。
+    r.Frame(0, true); assert(!r.engine.Visible());
+    r.Advance(500);
+    assert(r.shell.panel().ViewStart(r.now) == start);
+    r.Open(); Budget(r.Draw());
+    assert(r.engine.Folder() == 0 && r.engine.Selected() == 14);
+    assert(r.shell.panel().ViewStart(r.now) == start);
+    // 退場が終わる前の反転も同じ表示範囲から始める。
+    r.Frame(0, true); r.Frame(32); r.Frame(0, true);
+    assert(r.shell.panel().ViewStart(r.now) == start);
+    r.Advance(400);
+    // 表示項目が減った時はスクロールの上限へ寄せる。
+    assert(r.engine.Select(24)); r.Frame(); r.Advance(200);
+    r.Frame(0, true); r.engine.SetDevVisible(false); r.Advance(500); r.Open();
+    assert(r.engine.Selected() == 15 && r.shell.panel().Count() == 15);
+    assert(r.shell.panel().ViewStart(r.now) <= r.shell.panel().MaxViewStart());
+    // 行数が変わっても選択が画面内に入る。
+    Panel resized; resized.Sync(r.engine, r.now); resized.SetRows(4, r.now);
+    const float view = resized.ViewStart(r.now);
+    assert(view <= 14 && 14 < view + resized.Rows());
+    assert(r.engine.RequestClose(r.now)); resized.Sync(r.engine, r.now);
+    resized.SetRows(2, r.now); r.engine.Open(r.now); resized.Sync(r.engine, r.now);
+    assert(resized.ViewStart(r.now) <= 14 && 14 < resized.ViewStart(r.now) + resized.Rows());
+    r.Tap(key::B); assert(r.engine.Selected() == 0);
+    r.Advance(400); r.Frame(0, true); r.Advance(400); r.Open();
+    assert(r.engine.Depth() == 0 && r.engine.Selected() == 0);
+}
+
+// B、キャンセルの A、実行の A は操作案内を保ったまま同じ位相で退場する。
+void DialogExitHints() {
+    unsigned frames = 0;
+    for (bool menu_open : {false, true}) for (unsigned answer = 0; answer < 3; ++answer) {
+        sample::Get() = sample::State{};
+        Rig r(kMenuItems, kMenuItemCount);
+        assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+        if (menu_open) {
+            Enter(r); assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
+            r.Hold(key::X); r.Advance(timing::kHoldMs); r.Release();
+        } else r.Tap(key::L | key::Down);
+        assert(r.engine.Dialog() != DialogKind::None); r.Advance(200);
+        if (answer == 1) r.Tap(key::Right);
+        r.Hold(answer == 0 ? key::B : key::A);
+        const u32 closed = r.now;
+        assert(r.engine.Dialog() == DialogKind::None);
+        for (u32 elapsed = 0; elapsed <= timing::kSelectionMoveMs + timing::kDialogMs; ++elapsed) {
+            r.Frame(elapsed ? 1 : 0);
+            const auto s = r.Draw(); Budget(s);
+            const auto *hint = s.FindText("えらぶ");
+            const auto *title = s.FindText("確認");
+            const auto footer = [&](const char *word) {
+                return std::any_of(s.commands.begin(), s.commands.end(), [&](const Command &c) {
+                    return c.kind == Command::Text && c.text == word && c.bounds.y == ca::Bar::Rect[1] + ca::Bar::Changed[1];
+                });
+            };
+            assert(r.now == closed + elapsed);
+            if (elapsed < timing::kSelectionMoveMs + timing::kDialogMs) {
+                // 最後の数 ms は 8bit の不透明度が 0 に丸まるので、同時に消えればよい。
+                assert(bool(hint) == bool(title));
+                if (hint && title) {
+                    assert((hint->color >> 24) == (title->color >> 24));
+                    assert(!footer("戻る") && !footer("キー") && !footer("1変更") && !footer("0変更"));
+                }
+            } else {
+                assert(!hint && !title);
+                if (menu_open) assert(footer("戻る"));
+                else assert(!Part(s, "bar") && !footer("戻る") && !footer("キー"));
+            }
+            ++frames;
+        }
+        if (menu_open) assert(r.engine.Applied(Idx(MenuId::SampleFlag)) == (answer == 2 ? 1 : 0));
+        else assert(sample::Get().stamps == (answer == 2 ? 1u : 0u));
+    }
+    std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
+}
+int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); std::puts("menu shell: ok"); }
