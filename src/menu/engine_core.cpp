@@ -13,6 +13,7 @@ Engine::Engine(const ItemDef *defs, std::size_t count)
         st.available = d.source != Source::Game;
     }
     stack_[0] = kNoItem;
+    selection_[0] = kNoItem;
 }
 
 bool Engine::Bind(const Bound &bound) {
@@ -140,15 +141,37 @@ void Engine::ReadGameValues() {
         if (defs_[i].source == Source::Game) ReadGame(i);
 }
 
+// フォルダの経路を上から検査し、選択は次の有効な兄弟、無ければ手前の兄弟へ寄せる。
+// 全て灰色なら先頭の見える行に置く。空になったフォルダからは親へ戻る。
+void Engine::RestorePosition() {
+    for (std::size_t level = 1; level <= depth_; ++level) {
+        const u16 folder = stack_[level];
+        if (!Has(folder) || defs_[folder].control != Control::Folder || defs_[folder].parent != stack_[level - 1] ||
+            Hidden(folder) || Disabled(folder) || FirstVisible(folder) == kNoItem) {
+            depth_ = level - 1;
+            break;
+        }
+    }
+    for (std::size_t level = 0; level <= depth_; ++level) {
+        const u16 selected = selection_[level];
+        if (Has(selected) && defs_[selected].parent == stack_[level] && !Hidden(selected) && !Disabled(selected)) continue;
+        u16 target = kNoItem;
+        for (u16 item = FirstVisible(stack_[level]); item != kNoItem; item = NextVisible(item)) {
+            if (Disabled(item)) continue;
+            target = item;
+            if (selected == kNoItem || item >= selected) break;
+        }
+        selection_[level] = target != kNoItem ? target : FirstVisible(stack_[level]);
+    }
+}
+
 void Engine::Open(u32 now) {
     (void)now;
     visible_ = true;
-    depth_ = 0;
-    stack_[0] = kNoItem;
-    selection_[0] = FirstVisible(kNoItem);
     ui_ = UiRequest{};
     hold_active_ = false;
     ReadGameValues(); // 開いたその時に 1 回だけ読む（開いている間は同期しない）
+    RestorePosition();
 }
 
 bool Engine::RequestClose(u32 now) {

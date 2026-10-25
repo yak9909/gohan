@@ -27,7 +27,8 @@ class Panel {
     float MaxViewStart() const { return count_ > rows_ ? static_cast<float>(count_ - rows_) : 0.0f; }
     // modal: ダイアログや入力の枠が出ている間（足と説明は描かない）。
     void Draw(Surface &surface, const Engine &engine, u32 now, bool modal);
-    void DrawBar(Surface &surface, const Engine &engine, u32 now);
+    // 確認の操作案内は退場の写しでも同じ内容と出現量を使う。
+    void DrawBar(Surface &surface, const Engine &engine, u32 now, bool dialog = false, float appear = 1.f);
     // 右の領域の説明。予算の残りで描く。
     void DrawDescription(Surface &surface, const Engine &engine, u32 now);
 
@@ -40,7 +41,7 @@ class Panel {
                       const u16 *items, int count, float start, float selected, u16 selected_item);
     void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now);
     void DrawScrollBar(Surface &surface, int menu_x, u32 now);
-    void DrawFooter(Surface &surface, const Engine &engine, int menu_x);
+    void DrawFooter(Surface &surface, const Engine &engine, int menu_x, bool dialog);
     void DrawHoldBar(Surface &surface, const Engine &engine, int menu_x, u32 now);
     float TargetFor(int index) const;
 

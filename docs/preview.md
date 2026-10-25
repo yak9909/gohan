@@ -56,6 +56,12 @@ python tools/preview.py --parts --out D:/gohan-preview/title-background
 適用前の黄色いON、予約／OK、数値の枠、選択の入力、通知、長押しの進み棒、閉じる前・
 全適用・ホットキー実行の確認を含みます。各台本は別プロセスで初期状態から動きます。
 
+`menu-keep` は値のフォルダで所持金を選んで閉じ、同じ選択から再開して親へ戻る動きを示します。
+`menu-keep-disabled` は無効になった量から次の使える行へ寄せます。
+`dialog-action-exit` は実行とキャンセルの A、`dialog-cancel` は B、`dialog-apply-exit` は適用して閉じる場合、
+`dialog-apply-stay` は全適用後もメニューを残す場合です。どれも答えの保持中・退場途中・退場後を撮り、
+退場中の「えらぶ」がメニューの「戻る」「キー」や変更数へ切り替わらないことを確かめます。
+
 別の台本は `--script tools/preview/example.json` で読み込めます。
 
 ```json
