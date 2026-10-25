@@ -31,7 +31,11 @@ Line Prepare(std::string_view text, Font font) {
 int MeasureText(std::string_view text, unsigned scale, Font font) {
     if (scale < 1 || scale > 8 || (font != Font::Main && font != Font::Numeric))
         return 0;
-    return Prepare(text, font).width * static_cast<int>(scale);
+    char16_t decoded[core::limits::RendererChars + 1];
+    const auto result = core::ToUtf16(text, decoded, std::size(decoded));
+    int width = 0;
+    for (std::size_t i = 0; i < result.written; ++i) width += detail::Advance(decoded[i], font);
+    return width * static_cast<int>(scale);
 }
 
 Result Canvas::Text(int x, int y, std::string_view text, std::uint32_t color,

@@ -11,6 +11,7 @@ import sys
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cxx', default=os.environ.get('HOST_CXX'))
+    parser.add_argument('--bench-notice', action='store_true', help='通常の試験の代わりに通知の時間を測る')
     args = parser.parse_args()
     compiler = args.cxx or shutil.which('g++') or shutil.which('clang++')
     if not compiler:
@@ -20,6 +21,9 @@ def main() -> int:
     build.mkdir(parents=True, exist_ok=True)
     exe = '.exe' if os.name == 'nt' else ''
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
+    if args.bench_notice:
+        subprocess.run([sys.executable, 'tests/host/bench_notice.py', '--cxx', compiler], cwd=root, check=True)
+        return 0
     # core の描画予算も設計表から取るため、最初のコンパイルより前に生成する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
 
@@ -31,6 +35,9 @@ def main() -> int:
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
     for dev in (False, True):
+        run(['tests/host/test_frame_timing.cpp', 'src/core/format.cpp'],
+            'test_frame_timing_dev' if dev else 'test_frame_timing',
+            defines=('-DGOHAN_DEV=1',) if dev else ())
         run(['tests/host/test_status.cpp', 'src/features/status/status.cpp', 'src/core/format.cpp'],
             'test_status_dev' if dev else 'test_status', ('tests/host/status_fakes', 'src'),
             ('-DGOHAN_DEV=1',) if dev else ())

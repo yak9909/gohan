@@ -22,6 +22,11 @@ class NoticeQueue {
         bool red = false;
         char title[core::limits::MenuText]{};
         char message[core::limits::MenuText]{};
+        // 文面と書体は表示中不変。本文は行数上限が変わった時だけ組み直す。
+        char lines[core::design::ca2::Notice::Inner::Body[3]][kLineBytes]{};
+        char display_title[core::limits::MenuText]{};
+        int lines_limit = 0;
+        int line_count = 0;
         u32 created = 0;
         u32 enter_at = 0;
         motion::Tween y;
@@ -37,6 +42,7 @@ class NoticeQueue {
     bool SlotAlive(const Slot &slot, u32 now) const;
     void Insert(const Notice &notice, u32 now);
     void Flush(u32 now);
+    void Layout(Slot &slot, Surface &surface, int lines_limit);
 
     Slot slots_[kCapacity]{};
     Slot leaving_{};

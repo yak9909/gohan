@@ -2,6 +2,7 @@
 #include <cstdio>
 #include "core/frame.hpp"
 #include "game/lyt/renderer.hpp"
+#include "ui/renderer/drawing_mailbox.hpp"
 #include <cassert>
 #include <limits>
 #include <string>
@@ -43,6 +44,55 @@ void Geometry() {
     assert(canvas.FillRect({0, 0, 10, 10}, White) == Result::Empty);
     canvas.Begin(Screen::Bottom);
     assert(canvas.FillRect({0, 0, 10, 10}, White) == Result::Added);
+}
+
+void DrawingChanges() {
+    using namespace gohan;
+    detail::DrawingMailbox box;
+    Canvas canvas;
+    game::lyt::ScreenDrawing read;
+    std::uint32_t generation = 0;
+    auto publish = [&] { assert(box.TryPublish(canvas.Data().screens[0])); };
+    canvas.Begin(Screen::Top);
+    assert(canvas.Text(1, 2, "gohan", White) == Result::Added);
+    publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    const auto first = generation;
+    // 再生側の改変は確定前の指示の比較へ混ぜない。
+    read.commands[0].bounds.x = 99;
+    publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Unchanged && generation == first);
+    // 長い字列→板→短い字列の順でも、使わない欄や末尾を比べない。
+    canvas.Begin(Screen::Top); canvas.FillRect({1, 2, 20, 8}, White); publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    const auto rectangle = generation;
+    Canvas other;
+    other.Begin(Screen::Top); other.FillRect({1, 2, 20, 8}, White);
+    assert(box.TryPublish(other.Data().screens[0]));
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Unchanged && generation == rectangle);
+    canvas.Begin(Screen::Top); canvas.Text(1, 2, "go", White); publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    other.Begin(Screen::Top); other.Text(1, 2, "go", White);
+    assert(box.TryPublish(other.Data().screens[0]));
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Unchanged);
+    // 同じ個数でも文字・色・クリップ・画像の位相が変われば新しく確定する。
+    other.Begin(Screen::Top); other.Text(1, 2, "GO", White);
+    assert(box.TryPublish(other.Data().screens[0]));
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    other.Begin(Screen::Top); other.Text(1, 2, "GO", 0xFF00FFFFu);
+    assert(box.TryPublish(other.Data().screens[0]));
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    other.Begin(Screen::Top); other.BeginClip({2, 2, 10, 10}); other.Text(1, 2, "GO", 0xFF00FFFFu);
+    assert(box.TryPublish(other.Data().screens[0]));
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    for (int phase : {0, 1}) {
+        canvas.Begin(Screen::Top); canvas.Repeat({0, 0, 20, 20}, Texture::DashHorizontal, phase, 0); publish();
+        assert(box.ReadIfNew(read, generation) == core::MailRead::Updated);
+    }
+    canvas.Begin(Screen::Top); publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Updated && read.count == 0);
+    publish();
+    assert(box.ReadIfNew(read, generation) == core::MailRead::Unchanged);
 }
 
 void BoundsAndOrder() {
@@ -204,6 +254,9 @@ void Dispatch() {
     // 上だけを確定した。下は空のまま。
     assert(stub::lastPresented.screens[0].count == 5 && stub::lastPresented.screens[1].count == 0);
     assert(stub::lastPresented.revisions[0] == 1 && stub::lastPresented.revisions[1] == 0);
+    assert(Commit(canvas, Screen::Top));
+    Frame();
+    assert(stub::lastPresented.revisions[0] == 1);
     // 下の画面は別に確定できる。上の確定は変わらない。
     Canvas lower;
     lower.Begin(Screen::Bottom);
@@ -365,6 +418,7 @@ void WaitMilliseconds(unsigned) {
 } // namespace gohan::game::lyt
 
 int main() {
+    DrawingChanges();
     Geometry();
     BoundsAndOrder();
     TextAndSlots();

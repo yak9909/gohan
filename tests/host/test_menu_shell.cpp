@@ -9,12 +9,58 @@ using namespace menu_test;
 namespace {
 u16 Idx(MenuId id) { return static_cast<u16>(id); }
 void Budget(const RecordingSurface &s) { assert(s.dropped == 0 && s.texts <= int(gohan::core::limits::RendererTexts) && s.rects <= int(gohan::core::limits::RendererRects)); }
+class LayoutSurface : public RecordingSurface {
+  public:
+    mutable unsigned measures = 0;
+    int Measure(std::string_view t, bool n = false, unsigned scale = 1) const override {
+        if (!painting_) ++measures;
+        return RecordingSurface::Measure(t, n, scale);
+    }
+    void Text(int x, int y, std::string_view t, u32 c, bool n = false, unsigned scale = 1) override {
+        painting_ = true;
+        RecordingSurface::Text(x, y, t, c, n, scale);
+        painting_ = false;
+    }
+  private:
+    bool painting_ = false;
+};
+void NoticeLayoutReuse() {
+    NoticeQueue queue;
+    const Notice notice{"長い題を表示中に省略して使い回す通知の見本です", "A long body wraps onto three lines and is not measured again while the limit stays.", false};
+    queue.Add(notice, 1000);
+    LayoutSurface cold;
+    queue.Draw(cold, 1000, false);
+    assert(cold.measures > 0);
+    LayoutSurface held;
+    queue.Draw(held, 1700, false);
+    assert(held.measures == 0 && held.texts > 1);
+    // 通知数が増えて行数上限が変わった時は本文を組み直す。
+    for (unsigned i = 0; i < 6; ++i) queue.Add(notice, 1700);
+    LayoutSurface crowded;
+    queue.Draw(crowded, 2400, false);
+    assert(crowded.measures > 0);
+    LayoutSurface same;
+    queue.Draw(same, 2433, false);
+    assert(same.measures == 0);
+    // 退場へ移した通知の写し、空いた枠の再利用も古い題を残さない。
+    queue.Add({"別の題", "別の本文", true}, 2433);
+    LayoutSurface leaving;
+    queue.Draw(leaving, 2433, false);
+    LayoutSurface next;
+    queue.Draw(next, 2833, false);
+    assert(next.HasText("別の題"));
+    queue.Add({"再利用", "新しい本文", false}, 10000);
+    LayoutSurface reused;
+    queue.Draw(reused, 10700, false);
+    assert(reused.HasText("再利用") && reused.HasText("新しい本文"));
+}
 void Enter(Rig &r) { r.Open(); r.Tap(key::A); r.Advance(400); }
 bool Part(const RecordingSurface &s, const char *name, int x = -999, int y = -999) {
     for (const auto &c : s.commands) if (c.kind != Command::Text && c.text == name && (x == -999 || c.bounds.x == x) && (y == -999 || c.bounds.y == y)) return true;
     return false;
 }
 void Scene() {
+    NoticeLayoutReuse();
     sample::Get() = sample::State{};
     Rig r(kMenuItems, kMenuItemCount); assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
     assert(r.Draw().commands.empty()); r.Open();
