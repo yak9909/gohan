@@ -53,31 +53,27 @@ bool NoticeQueue::Alive(u32 now) const {
 }
 
 void NoticeQueue::Add(const Notice &notice, u32 now) {
-    if (pending_count_ || SlotAlive(leaving_, now)) {
-        int active = 0;
-        for (const Slot &slot : slots_) active += SlotAlive(slot, now);
-        if (pending_count_ || active == kCapacity) {
-            if (pending_count_ < kPendingCapacity) pending_[pending_count_++] = notice;
-            return;
-        }
+    Flush(now);
+    // 待つのは続けて来た通知の間隔だけ。退場枠の使用中も順番どおりに押し出す。
+    if (pending_count_ || (ever_ && static_cast<s32>(now - (last_at_ + timing::kNoticeSpawnMs)) < 0)) {
+        if (pending_count_ < kPendingCapacity) pending_[pending_count_++] = notice;
+        return;
     }
     Insert(notice, now);
 }
 
 void NoticeQueue::Insert(const Notice &notice, u32 now) {
-    u32 at = now;
     for (Slot &slot : slots_)
         if (!SlotAlive(slot, now)) slot.active = false;
-    // 続けて来た通知は少しずつずらして入れる。
-    if (ever_ && static_cast<s32>(last_at_ + timing::kNoticeSpawnMs - at) > 0) at = last_at_ + timing::kNoticeSpawnMs;
     ever_ = true;
-    last_at_ = at;
+    last_at_ = now;
     // 生きている順（古い順）に前へ詰める。満杯なら一番古いものを退場へ移す。
     int n = 0;
     for (int i = 0; i < kCapacity; ++i)
         if (slots_[i].active) slots_[n++] = slots_[i];
     for (int i = n; i < kCapacity; ++i) slots_[i].active = false;
     if (n >= kCapacity) {
+        // 前の退場が残っていても置き換え、積む7件と退場1件の予算を守る。
         leaving_ = slots_[0];
         leaving_.forced_exit = true;
         leaving_.exit_at = now;
@@ -93,9 +89,8 @@ void NoticeQueue::Insert(const Notice &notice, u32 now) {
         Copy(slot.title, sizeof(slot.title), notice.title);
         Copy(slot.message, sizeof(slot.message), notice.message);
         slot.lines_limit = 0;
-        slot.created = at;
-        slot.wait_for_stack = n >= kCapacity;
-        slot.enter_at = at + (slot.wait_for_stack ? timing::kNoticeStackMs : 0);
+        slot.created = now;
+        slot.enter_at = now;
         slot.placed = false;
         slot.forced_exit = false;
         break;
@@ -103,14 +98,13 @@ void NoticeQueue::Insert(const Notice &notice, u32 now) {
 }
 
 void NoticeQueue::Flush(u32 now) {
-    if (SlotAlive(leaving_, now)) return;
-    leaving_.active = false;
-    while (pending_count_) {
+    if (!SlotAlive(leaving_, now)) leaving_.active = false;
+    while (pending_count_ && static_cast<s32>(now - (last_at_ + timing::kNoticeSpawnMs)) >= 0) {
         const Notice next = pending_[0];
         for (int i = 1; i < pending_count_; ++i) pending_[i - 1] = pending_[i];
         --pending_count_;
-        Insert(next, now);
-        if (SlotAlive(leaving_, now)) break;
+        // 描画が間に合わなくても、入りの起点を40 msの順番から遅らせない。
+        Insert(next, last_at_ + timing::kNoticeSpawnMs);
     }
 }
 
@@ -165,8 +159,6 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
         const int target = bottom - h;
         if (!slot.placed) {
             slot.y.Jump(float(target), now); slot.placed = true;
-            // 初回の描画で積み替えを始める。描画間隔が空いても、入りだけ先行させない。
-            if (slot.wait_for_stack) { slot.enter_at = now + timing::kNoticeStackMs; slot.wait_for_stack = false; }
         }
         else if (slot.y.to != float(target)) slot.y.Go(float(target), now, timing::kNoticeStackMs);
         const int y = std::clamp(Round(slot.y.At(now)), ca::Notice::Top, ca::Notice::Bottom[menu_open ? 0 : 1] - h);

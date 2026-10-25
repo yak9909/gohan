@@ -234,6 +234,36 @@ bool ScrollCatalog(const std::filesystem::path &directory) {
     lyt::Present(canvas.Data());
     return Capture(directory, 0, 400);
 }
+
+// 7件の後に5件を同時追加する。実製品の通知・Canvas・切り抜きで連続するあふれを見る。
+bool NoticeOverflow(const std::filesystem::path &directory) {
+    gohan::menu::NoticeQueue queue;
+    auto add = [&](unsigned number, unsigned now) {
+        gohan::menu::Notice notice{};
+        std::snprintf(notice.title, sizeof(notice.title), "通知 %02u", number);
+        std::snprintf(notice.message, sizeof(notice.message), "連続追加の見本 %02u", number);
+        notice.red = number % 2 == 0;
+        queue.Add(notice, now);
+    };
+    const unsigned captures[] = {1399, 1400, 1401, 1416, 1440, 1480, 1520, 1560, 1600, 1760, 2120};
+    unsigned capture = 0;
+    renderer::Canvas canvas;
+    for (unsigned now = 0; now <= captures[std::size(captures) - 1]; ++now) {
+        if (now <= 1200 && now % 200 == 0) add(now / 200 + 1, now);
+        if (now == 1400)
+            for (unsigned n = 8; n <= 12; ++n) add(n, now);
+        canvas.Begin(lyt::Screen::Top);
+        gohan::features::menu_screen::CanvasSurface surface(canvas, lyt::Screen::Top);
+        queue.Draw(surface, now);
+        if (surface.dropped() || surface.truncated()) return false;
+        lyt::Present(canvas.Data());
+        if (now == captures[capture]) {
+            if (!Capture(directory, static_cast<int>(capture), static_cast<int>(now))) return false;
+            if (++capture == std::size(captures)) break;
+        }
+    }
+    return true;
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -243,6 +273,8 @@ int main(int argc, char **argv) {
         return Resources(directory) && PartsCatalog(directory) ? 0 : 7;
     if (argc == 3 && std::string(argv[2]) == "--scroll")
         return Resources(directory) && ScrollCatalog(directory) ? 0 : 8;
+    if (argc == 3 && std::string(argv[2]) == "--notice-overflow")
+        return Resources(directory) && NoticeOverflow(directory) ? 0 : 9;
     if (!Resources(directory) || !renderer::RendererFeature().Wire() ||
         !gohan::features::menu_screen::Feature().Wire()) return 3;
     using CTRPluginFramework::Fake;
