@@ -58,8 +58,12 @@ def main():
         decoder.detail = True
     cache = {}
     counts = Counter()
+    # 外した後に付け直すと、翻訳済みの塊から呼ばれなくなる。フックは付けたままにして数える区間だけ切り替える。
+    counting = False
 
     def block(uc, address, size, _):
+        if not counting:
+            return
         thumb = bool(uc.reg_read(UC_ARM_REG_CPSR) & 0x20)
         key = (address, size, thumb)
         if key not in cache:
@@ -77,6 +81,8 @@ def main():
                     value['branch'] += 1
             cache[key] = value
         counts.update(cache[key])
+
+    uc.hook_add(UC_HOOK_BLOCK, block)
 
     def call(name, arg):
         uc.reg_write(UC_ARM_REG_LR, 0x30000000)
@@ -101,13 +107,12 @@ def main():
                 injected += 1
                 next_at += 220
             counts.clear()
-            hook = uc.hook_add(UC_HOOK_BLOCK, block) if frame in samples else None
+            counting = frame in samples
             try:
                 call('BenchDraw', now)
             finally:
-                if hook is not None:
-                    uc.hook_del(hook)
-            if hook is not None:
+                counting = False
+            if frame in samples:
                 row = {'scenario': name, 'frame': frame, **counts}
                 row['commands'] = struct.unpack('<I', uc.mem_read(symbols['bench_commands'], 4))[0]
                 row['texts'] = struct.unpack('<I', uc.mem_read(symbols['bench_texts'], 4))[0]

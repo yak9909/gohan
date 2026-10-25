@@ -26,7 +26,7 @@ class LayoutSurface : public RecordingSurface {
 };
 void NoticeLayoutReuse() {
     NoticeQueue queue;
-    const Notice notice{"長い題を表示中に省略して使い回す通知の見本です", "長い本文が折り返されて三行になる場合も同じ行数の間は測り直しません。", false};
+    const Notice notice{"長い題を表示中に省略して使い回す通知の見本です", "A long body wraps onto three lines and is not measured again while the limit stays.", false};
     queue.Add(notice, 1000);
     LayoutSurface cold;
     queue.Draw(cold, 1000, false);

@@ -107,8 +107,28 @@ const Scenario kScenarios[] = {
 struct FrameRecord {
     double step = 0, menu = 0, notice = 0, commit = 0, dispatch = 0, present = 0;
     unsigned commands = 0, rects = 0, texts = 0, chars = 0, batches = 0;
+    std::uint64_t hash = 0;
     bool drawn = false, applied = false;
 };
+
+// 描画指示の全欄の指紋。変更の前後で同じ台本の全フレームを比べるのに使う。
+std::uint64_t Fingerprint(const lyt::ScreenDrawing &drawing) {
+    std::uint64_t hash = 1469598103934665603ull;
+    auto mix = [&](std::uint64_t value) { hash = (hash ^ value) * 1099511628211ull; };
+    auto rect = [&](const lyt::Rect &r) {
+        for (const int v : {r.x, r.y, r.width, r.height}) mix(static_cast<std::uint32_t>(v));
+    };
+    mix(drawing.count); mix(drawing.rectangles); mix(drawing.texts); mix(drawing.characters);
+    mix(drawing.estimatedBytes); mix(drawing.pictureLimit);
+    for (std::size_t i = 0; i < drawing.count; ++i) {
+        const lyt::Command &c = drawing.commands[i];
+        mix(static_cast<unsigned>(c.kind)); rect(c.bounds); rect(c.clip); mix(c.color);
+        mix(static_cast<unsigned>(c.font)); mix(c.scale); mix(c.slot); mix(c.length);
+        for (unsigned j = 0; j <= c.length && j < sizeof(c.text) / sizeof(c.text[0]); ++j) mix(c.text[j]);
+        rect(c.source); mix(static_cast<unsigned>(c.texture));
+    }
+    return hash;
+}
 
 constexpr unsigned kFrameMs = 33; // 30 fps
 void Run(const Scenario &scenario, std::vector<FrameRecord> &frames) {
@@ -185,6 +205,7 @@ void Run(const Scenario &scenario, std::vector<FrameRecord> &frames) {
         rec.rects = static_cast<unsigned>(top.rectangles);
         rec.texts = static_cast<unsigned>(top.texts);
         rec.chars = static_cast<unsigned>(top.characters);
+        rec.hash = Fingerprint(top);
         const int batches = Fake::batchInits;
         lyt::presentTime = {};
         const auto t5 = Clock::now();
@@ -224,6 +245,11 @@ std::vector<FrameRecord> Measure(const Scenario &scenario, unsigned repeats) {
             sum[i].texts = one[i].texts;
             sum[i].chars = one[i].chars;
             sum[i].batches = one[i].batches;
+            if (r && sum[i].hash != one[i].hash) {
+                std::fprintf(stderr, "繰り返しで描画指示が変わりました\n");
+                std::exit(2);
+            }
+            sum[i].hash = one[i].hash;
             sum[i].drawn = one[i].drawn;
             sum[i].applied = one[i].applied;
         }
@@ -240,7 +266,9 @@ void Report(const Scenario &scenario, const std::vector<FrameRecord> &frames) {
     unsigned active = 0, applies = 0;
     double total = 0, step = 0, menuT = 0, notice = 0, commit = 0, dispatch = 0, present = 0;
     double commands = 0, rects = 0, texts = 0, chars = 0, batches = 0, peak = 0, peakCommands = 0, peakTexts = 0;
+    std::uint64_t fingerprint = 1469598103934665603ull;
     for (const auto &f : frames) {
+        fingerprint = (fingerprint ^ f.hash) * 1099511628211ull;
         if (!idle && !f.drawn && f.commands == 0) continue;
         ++active;
         const double all = f.step + f.menu + f.notice + f.commit + f.dispatch;
@@ -255,10 +283,11 @@ void Report(const Scenario &scenario, const std::vector<FrameRecord> &frames) {
     }
     const double n = active ? active : 1;
     std::printf("%-14s 描画フレーム %4u/%4zu  合計 平均 %7.1f us 最大 %7.1f us | 状態 %6.1f 通知 %7.1f メニュー %7.1f 確定 %6.1f 描画の部品 %7.1f (うち木 %7.1f)"
-                " | 指示 %5.1f (最大 %3.0f) 板 %5.1f 文字枠 %4.1f (最大 %2.0f) 字数 %5.1f 木の組み直し %4.2f/f 文字バッチ初期化 %5.1f/f\n",
+                " | 指示 %5.1f (最大 %3.0f) 板 %5.1f 文字枠 %4.1f (最大 %2.0f) 字数 %5.1f 木の組み直し %4.2f/f 文字バッチ初期化 %5.1f/f"
+                " | 全フレームの指紋 %016llx\n",
                 scenario.name, idle ? 0 : active, frames.size(), total / n, peak, step / n, notice / n, menuT / n, commit / n,
                 dispatch / n, present / n, commands / n, peakCommands, rects / n, texts / n, peakTexts, chars / n,
-                applies / n, batches / n);
+                applies / n, batches / n, static_cast<unsigned long long>(fingerprint));
 }
 } // namespace
 

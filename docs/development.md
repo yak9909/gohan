@@ -284,6 +284,7 @@ python tests/host/bench_notice.py --cxx g++ --repeats 20 closed-0 closed-1 close
 通知がある台本の表は描画中のフレーム、通知なしの閉じた台本だけは全フレームを集計します。
 PC の「うち木」はゲームの GPU 記録を含みません。実行ファイルは `build/bench-notice/` 以下に作ります。
 比較するソースの写しは `bench_notice.py --tree <ソースの写し> --name before` で選べます。
+各行の末尾の「全フレームの指紋」は、台本の全フレームの描画指示（全欄）の指紋です。変更の前後で同じ値なら、台本の全フレームで描画指示が一致しています。
 
 ARM の組み版と Canvas への記入は `tests/host/count_notice_arm.py --out <作業ツリー外のJSON>` で見積もれます。
 devkitARM と Python の unicorn・capstone・pyelftools が必要です。実行ファイルは `build/bench-notice-arm/` 以下です。
