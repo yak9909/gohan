@@ -190,14 +190,14 @@ int main() {
                 expected += age >= ca::Time::Notice[0] && age < ca::Time::Notice[0] + ca::Time::Notice[1] &&
                             (n != 0 || t < 1008u); // 押し出した題は、退場の途中で画面外へ出る。
             }
-            expected += t >= 1008u + ca::Time::NoticeStack + ca::Time::Notice[0] &&
-                        t < 1008u + ca::Time::NoticeStack + ca::Time::Notice[0] + ca::Time::Notice[1];
+            expected += t >= 1008u + ca::Time::Notice[0] &&
+                        t < 1008u + ca::Time::Notice[0] + ca::Time::Notice[1];
             for (std::size_t n = 0; n < d.count; ++n) {
                 const auto &c = d.commands[n];
                 actual += c.kind == gohan::game::lyt::Kind::Text && c.length > 5 &&
                           std::u16string_view(c.text, 5) == u"GOHAN";
             }
-            if (t == 1120) assert(actual == 7); // 新規は積む位置が空くまで隠す。
+            if (t == 1120) assert(actual == 8); // 退場中の題と、即座に入り始めた新規の題も同時に描く。
             // 予算不足で通知そのものを省いた場合も、欠落として検出する。
             if (actual < expected) std::fprintf(stderr, "通知の欠落: %u/%u 時刻=%u 文字枠=%zu\n", actual, expected, t, d.texts);
             assert(actual >= expected);

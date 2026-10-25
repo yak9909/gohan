@@ -309,7 +309,7 @@ void DeviceCorrections() {
     for (const auto &c : seven.commands) if (c.text == "notice.window" && c.kind == Command::Slice) {
         ++windows; assert(c.bounds.y >= ca::Notice::Top && c.bounds.y + c.bounds.h <= ca::Notice::Bottom[0]);
     }
-    assert(windows == 6); // 連続追加の2件は初回の積み替え待ち。既存5件と退場中の1件を描く。
+    assert(windows == 7); // 退場の完了後も、新しい7件は積み替えを待たずに描かれる。
 
     NoticeQueue overflow;
     for (int i = 0; i < 7; ++i) {
@@ -391,39 +391,104 @@ void NoticeIncomingRects() {
         std::snprintf(n.message, sizeof(n.message), "message %d", number);
         return n;
     };
-    auto intersects = [](Rect a, Rect b) {
-        return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-    };
-    unsigned frames = 0, comparisons = 0;
+    unsigned frames = 0;
+    for (const bool menu_open : {false, true})
     for (const u32 first_draw_delay : {0u, 80u}) {
         NoticeQueue q;
         for (int n = 1; n <= 7; ++n) {
             q.Add(notice(n), (n - 1) * 200);
-            RecordingSurface placed; q.Draw(placed, (n - 1) * 200);
+            RecordingSurface placed; q.Draw(placed, (n - 1) * 200, menu_open);
         }
         const u32 added = 1400, first_draw = added + first_draw_delay;
         q.Add(notice(8), added);
-        for (u32 elapsed = 0; elapsed <= timing::kNoticeStackMs + timing::kNoticeEnterMs; ++elapsed) {
-            RecordingSurface s; q.Draw(s, first_draw + elapsed);
-            std::vector<Rect> windows;
+        NoticeQueue single; single.Add(notice(8), added);
+        for (u32 elapsed = 0; elapsed <= timing::kNoticeEnterMs; ++elapsed) {
+            RecordingSurface s, reference;
+            q.Draw(s, first_draw + elapsed, menu_open);
+            single.Draw(reference, first_draw + elapsed, menu_open);
+            Budget(s);
             Rect incoming{}, current{};
-            std::size_t incoming_index = 0;
+            int windows = 0;
             for (const auto &c : s.commands) {
-                if (c.kind == Command::Slice && c.text == "notice.window") { current = c.bounds; windows.push_back(current); }
-                if (c.kind == Command::Text && c.text == "N8") { incoming = current; incoming_index = windows.size() - 1; }
+                if (c.kind == Command::Slice && c.text == "notice.window") { current = c.bounds; ++windows; }
+                if (c.kind == Command::Text && c.text == "N8") incoming = current;
             }
-            if (elapsed < timing::kNoticeStackMs) assert(!incoming.w);
-            else {
-                assert(incoming.w && incoming.y == ca::Notice::Bottom[0] - incoming.h);
-                for (std::size_t i = 0; i < windows.size(); ++i) {
-                    if (i == incoming_index) continue;
-                    ++comparisons; assert(!intersects(incoming, windows[i]));
-                }
-            }
+            // 追加直後から最下段に描き、通常の入りと同じ曲線で右から入る。
+            // 起点ちょうどのx=400も通常どおり。その次の1 msから画面内に入る。
+            assert(incoming.w && incoming.y == ca::Notice::Bottom[menu_open ? 0 : 1] - incoming.h);
+            assert(s.FindText("N8")->bounds.x == reference.FindText("N8")->bounds.x);
+            if (first_draw + elapsed > added) assert(incoming.x < s.Width());
+            assert(windows <= 8);
             ++frames;
         }
     }
-    std::printf("新規通知の矩形: %u コマ・%u 組、ほかの通知との重なり 0\n", frames, comparisons);
+    std::printf("あふれの入り: %u コマ、最下段の待ちなし・通常と同じ入り・最大8件を確認\n", frames);
+}
+
+void NoticeBurst() {
+    auto notice = [](int number) {
+        Notice n{};
+        std::snprintf(n.title, sizeof(n.title), "N%d", number);
+        std::snprintf(n.message, sizeof(n.message), "message %d", number);
+        return n;
+    };
+    unsigned frames = 0;
+    // 16件の一括追加、待機上限を越す追加、時計の周回、描画が間に合わない場合。
+    for (const int burst : {16, 21})
+    for (const u32 base : {0u, 0u - 1600u})
+    for (const u32 frame_ms : {1u, 67u}) {
+        NoticeQueue q;
+        for (int n = 1; n <= 7; ++n) {
+            const u32 at = base + (n - 1) * 200;
+            q.Add(notice(n), at);
+            RecordingSurface s; q.Draw(s, at);
+        }
+        const u32 added = base + 1400;
+        for (int n = 8; n < 8 + burst; ++n) q.Add(notice(n), added);
+        // 最初の1件は即時、残りは最大16件を先着順に保持する。
+        const int accepted = std::min(burst, 17);
+        for (u32 elapsed = 0; elapsed <= 1400; elapsed += frame_ms) {
+            const u32 now = added + elapsed;
+            RecordingSurface s; q.Draw(s, now); Budget(s);
+            const int newest = 8 + std::min(int(elapsed / timing::kNoticeSpawnMs), accepted - 1);
+            std::vector<int> titles;
+            int windows = 0;
+            for (const auto &c : s.commands) {
+                if (c.kind == Command::Slice && c.text == "notice.window") ++windows;
+                if (c.kind != Command::Text || c.text.empty() || c.text[0] != 'N') continue;
+                int number = 0;
+                assert(std::sscanf(c.text.c_str(), "N%d", &number) == 1);
+                titles.push_back(number);
+                // 前の退場は次の押し出しで消え、未来の通知はまだ描かれない。
+                assert(number >= newest - 7 && number <= newest);
+                if (number >= 8 && number > newest - 7) {
+                    NoticeQueue single;
+                    single.Add(notice(number), added + (number - 8) * timing::kNoticeSpawnMs);
+                    RecordingSurface reference; single.Draw(reference, now);
+                    assert(c.bounds.x == reference.FindText(c.text)->bounds.x);
+                }
+            }
+            assert(windows <= 8 && windows == int(titles.size()));
+            for (int n = newest - 6; n <= newest; ++n)
+                assert(std::find(titles.begin(), titles.end(), n) != titles.end());
+            if (elapsed <= (accepted - 1) * timing::kNoticeSpawnMs) {
+                assert(windows == 8);
+                assert(titles.front() == newest - 7); // 新しく押し出した物だけが退場枠にある。
+                assert(titles[1] == newest); // 最新の通知が最下段から入る。
+            }
+            ++frames;
+        }
+        assert(!q.Alive(added + (accepted - 1) * timing::kNoticeSpawnMs +
+                        timing::kNoticeEnterMs + timing::kNoticeHoldMs + timing::kNoticeExitMs));
+    }
+    // 次のAddが来た時も、先に順番が来ていた通知を追い越さない。
+    NoticeQueue q;
+    q.Add(notice(1), 1000); q.Add(notice(2), 1000); q.Add(notice(3), 1000);
+    q.Add(notice(4), 1050);
+    RecordingSurface before, after;
+    q.Draw(before, 1119); q.Draw(after, 1120);
+    assert(before.HasText("N3") && !before.HasText("N4") && after.HasText("N4"));
+    std::printf("通知の一括追加: %u コマ、40 ms順・退場の置換・最大8件・待機上限・時計の周回を確認\n", frames);
 }
 }
 void InputDemand() {
@@ -593,4 +658,4 @@ void DialogExitHints() {
     }
     std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
 }
-int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }
+int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }

@@ -31,7 +31,6 @@ class NoticeQueue {
         u32 enter_at = 0;
         motion::Tween y;
         bool placed = false;
-        bool wait_for_stack = false;
         bool forced_exit = false;
         u32 exit_at = 0;
         float exit_x = 0.f;
