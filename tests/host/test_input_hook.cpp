@@ -122,6 +122,26 @@ void OnlyFields() {
     assert(block::Global().Release(owner) == block::Result::Ok);
     Stop();
 }
+void HoldResumeSequence() {
+    Reset();
+    block::Owner owner; assert(block::Global().Acquire("hold-test", owner) == block::Result::Ok);
+    assert(game::InputPadFeature().Wire() && game::InputControllerFeature().Wire());
+    Pad pad{}; Fake::Invoke(generated::InputPadRead_addr, &pad);
+    auto c = Sample(); c.pointer_flags = 0xA; c.held = 2;
+    std::uint32_t old[] = {0, 0xC}; ControllerCall(c, old); assert(c.held == 2 && old[0] == 0);
+    assert(block::Global().Set(owner, {block::group::Buttons, 0}) == block::Result::Ok);
+    c.held = 2; old[0] = 2; ControllerCall(c, old); assert(c.held == 0 && old[0] == 0);
+    c.held = 3; ControllerCall(c, old); assert(c.held == 0); // メニュー中に A も押す。
+    assert(block::Global().Set(owner, {}) == block::Result::Ok);
+    c.held = 3; ControllerCall(c, old);
+    assert(c.held == 3 && old[0] == 3 && old[1] == 0xC && c.pointer_flags == 0xA);
+    // 公開された状態の表示にも新しい名称が現れ、旧い集合が残らない。
+    for (int i = 0; i < 30; ++i) { c.held = 3; old[0] = 3; ControllerCall(c, old); }
+    const auto text = Status();
+    assert(text.find("保持再開 2") != std::string::npos && text.find("持越し") == std::string::npos);
+    assert(block::Global().Release(owner) == block::Result::Ok);
+    Stop();
+}
 void ResumeSequence() {
     Reset(); Process::OnPauseResume = Previous;
     assert(game::InputPadFeature().Wire() && game::InputControllerFeature().Wire());
@@ -187,4 +207,4 @@ void ReinstallAndCapacity() {
     for (auto &owner : owners) assert(block::Global().Release(owner) == block::Result::Ok);
 }
 } // namespace
-int main() { InstallCases(); OnlyFields(); ResumeSequence(); ReinstallAndCapacity(); std::puts("input hook: ok"); }
+int main() { InstallCases(); OnlyFields(); HoldResumeSequence(); ResumeSequence(); ReinstallAndCapacity(); std::puts("input hook: ok"); }

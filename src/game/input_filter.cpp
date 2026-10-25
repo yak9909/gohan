@@ -9,7 +9,7 @@ namespace limits = core::limits;
 unsigned Count(Mask value) { return std::popcount(value); }
 
 // スライドパッドを押していると見なすのは方向のビットだけ。アナログ値は中央でも 0 にならない
-// ことがあり、掛かりが解けなくなるので、押しているかの判定には使わない。
+// ことがあるので、押しているかの判定には使わない。
 Mask Parts(std::uint32_t held, bool pointer) {
     Mask result = 0;
     for (unsigned i = 0; i < 16; ++i)
@@ -28,10 +28,10 @@ std::uint32_t HeldBits(Mask parts) {
 
 void Step(State &s, const Input &in, Output &out) {
     const Mask raw = Parts(in.held, in.pointer_on);
-    const Mask previous_latch = s.latch, previous_carry = s.carry;
+    const Mask previous_latch = s.latch;
     const Mask physical = raw | (in.select_down ? part::Select : 0);
     if (in.ctrpf_resumed) {
-        // 止まっている間に押した物と、押し続けていた物を区別できない。持ち越しにはせず、離すまで渡さない。
+        // 止まっている間に押した物と、押し続けていた物を区別できない。離すまで渡さない。
         s.latch |= raw & (group::Buttons | part::Touch);
         s.pending = s.window = s.passing = 0;
         ++s.counts.resumes;
@@ -43,20 +43,15 @@ void Step(State &s, const Input &in, Output &out) {
         s.counts.select_protections += Count(raw & group::Buttons);
     }
     const Mask blocked = block | (s.latch & raw);
-    // 遮断されて押されている区分を二つに分ける。遮断の直前までゲームに見えていた押下の続きは持ち越し
-    // （遮断が終わったら渡す）、遮断の間に押し始めた物は掛かり（離すまで渡さない）。離した区分は両方から外れる。
-    const Mask visible = s.previous_raw & ~s.previous_blocked;
-    const Mask held_blocked = blocked & raw;
-    const Mask carry = held_blocked & ~s.latch & (s.carry | visible);
-    const Mask latch = held_blocked & ~carry;
-    s.counts.latch_entries += Count(latch & ~previous_latch);
-    s.counts.carry_entries += Count(carry & ~previous_carry);
-    s.counts.hidden_presses += Count((s.latch & raw) & ~block);
-    s.latch = latch;
-    s.carry = carry;
+    // タッチだけは、遮断前から触れていた場合も離すまで渡さない。
+    s.latch = (s.latch | (blocked & part::Touch)) & raw;
+    s.counts.latch_entries += Count(s.latch & ~previous_latch);
+    s.counts.hidden_presses += Count(s.latch & ~block);
 
     const Mask defer = in.demand.defer & group::Buttons & ~blocked;
-    s.counts.carry_resumes += Count(previous_carry & raw & ~blocked & ~defer);
+    // 押し始めた時期によらず、直前も遮断されて押されていた区分は保持として戻す。
+    const Mask hold_resume = s.previous_blocked & s.previous_raw & raw & ~blocked & ~defer & ~part::Touch;
+    s.counts.hold_resumes += Count(hold_resume);
     // 要求を外した場合も、そのボタンの保留・窓・通過を捨てる。
     s.pending &= defer;
     s.window &= defer;
@@ -85,7 +80,8 @@ void Step(State &s, const Input &in, Output &out) {
     }
 
     out.held = (in.held & ~HeldBits(blocked | defer)) | HeldBits(s.window | s.passing);
-    out.old_held = in.old_held;
+    // スライドパッドは区分で判定し、今回立っている方向のビットだけを旧状態にも足す。
+    out.old_held = in.old_held | (in.held & HeldBits(hold_resume));
     out.pointer_on = in.pointer_on;
     out.old_pointer_on = in.old_pointer_on;
     out.slide_x = in.slide_x;

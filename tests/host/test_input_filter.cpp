@@ -23,20 +23,20 @@ std::uint32_t Encode(Mask parts) {
 }
 // 参照モデルは区分ごとの独立した真偽値と状態で書く。実装の集合演算は呼ばない。
 struct Model {
-    // latched: 遮断の間に押し始めた。carried: 遮断の前から押し続けていた。blocked: 前回の遮断。
-    struct Button { bool down = false, blocked = false, latched = false, carried = false, candidate = false, passing = false; };
+    // latched: タッチの遮断・CTRPF 再開の掛かり。blocked: 前回の遮断。
+    struct Button { bool down = false, blocked = false, latched = false, candidate = false, passing = false; };
     std::array<Button, 16> button{};
     int window = -1;
     std::uint32_t window_start = 0;
 
     filter::Output Step(const filter::Input &in) {
-        std::array<bool, 16> down{}, blocked{}, deferred{};
+        std::array<bool, 16> down{}, blocked{}, deferred{}, restored{};
         for (unsigned n = 0; n < bits.size(); ++n) down[n] = (in.held & bits[n]) != 0;
         // スライドパッドを押しているかは方向のビットだけで決める。アナログ値は見ない。
         down[15] = down[15] || in.pointer_on;
         if (in.ctrpf_resumed) {
             for (unsigned n = 0; n < bits.size(); ++n) {
-                if (n != 12 && n != 14 && down[n]) { button[n].latched = true; button[n].carried = false; }
+                if (n != 12 && n != 14 && down[n]) button[n].latched = true;
                 button[n].candidate = button[n].passing = false;
             }
             window = -1;
@@ -46,15 +46,11 @@ struct Model {
             const bool is_button = (group::Buttons & (1u << n)) != 0;
             blocked[n] = n == 12 || (in.demand.block & (1u << n)) ||
                 (in.select_down && is_button) || (button[n].latched && down[n]);
-            if (blocked[n] && down[n]) {
-                // 前のフレームでゲームに見えていた押下の続きか、遮断の間に押し始めたか。
-                const bool seen = button[n].down && !button[n].blocked;
-                const bool carried = !button[n].latched && (button[n].carried || seen);
-                button[n].carried = carried;
-                button[n].latched = !carried;
-            } else button[n].latched = button[n].carried = false;
-            button[n].blocked = blocked[n];
             deferred[n] = is_button && (in.demand.defer & (1u << n)) && !blocked[n];
+            restored[n] = button[n].blocked && button[n].down && down[n] && !blocked[n] && !deferred[n] && n != 15;
+            if (n == 15 && blocked[n] && down[n]) button[n].latched = true;
+            if (!down[n]) button[n].latched = false;
+            button[n].blocked = blocked[n];
             if (!deferred[n]) {
                 button[n].candidate = button[n].passing = false;
                 if (window == static_cast<int>(n)) window = -1;
@@ -96,6 +92,7 @@ struct Model {
                 if (window == static_cast<int>(n) || button[n].passing) out.held |= bits[n];
                 else out.held &= ~bits[n];
             }
+            if (restored[n]) out.old_held |= in.held & bits[n];
             button[n].down = down[n];
         }
         if (blocked[15]) {
@@ -114,8 +111,8 @@ struct Rig {
     filter::Output last{};
     std::uint32_t now = 0, frame = 0;
     const char *name;
-    // 履歴だけから導く答え。fresh は、ゲームに見えていた押下が途切れず続いている区分。
-    std::array<bool, 16> fresh{}, was_held_blocked{};
+    // 内部状態に頼らず、前回の出力と生の入力から保持の再開を検査する。
+    std::array<bool, 16> was_held_blocked{};
     explicit Rig(const char *name) : name(name) {}
     filter::Output Tick(filter::Input in) {
         in.old_held = last.held;
@@ -124,39 +121,32 @@ struct Rig {
         filter::Output actual{};
         filter::Step(state, in, actual);
         ++frame;
-        Mask pending = 0, passing = 0, latch = 0, carry = 0;
+        Mask pending = 0, passing = 0, latch = 0;
         for (unsigned n = 0; n < 16; ++n) {
             if (model.button[n].candidate) pending |= 1u << n;
             if (model.button[n].passing) passing |= 1u << n;
             if (model.button[n].latched) latch |= 1u << n;
-            if (model.button[n].carried) carry |= 1u << n;
         }
-        if (trace) std::printf("%s %u %u 生=%08X 要求=%04X 保持=%08X 押=%08X 離=%08X 掛かり=%04X 持越し=%04X\n",
+        if (trace) std::printf("%s %u %u 生=%08X 要求=%04X 保持=%08X 押=%08X 離=%08X 掛かり=%04X 旧保持=%08X\n",
             name, frame, in.now_ms, in.held, in.demand.block, actual.held,
-            actual.held & ~actual.old_held, actual.old_held & ~actual.held, state.latch, state.carry);
+            actual.held & ~actual.old_held, actual.old_held & ~actual.held, state.latch, actual.old_held);
         assert(actual.held == expected.held && actual.old_held == expected.old_held);
         assert(actual.pointer_on == expected.pointer_on && actual.old_pointer_on == expected.old_pointer_on);
         assert(actual.slide_x == expected.slide_x && actual.slide_y == expected.slide_y);
         assert(actual.blocked == expected.blocked);
-        assert(state.pending == pending && state.passing == passing && state.latch == latch && state.carry == carry);
-        assert(!(state.latch & state.carry));
+        assert(state.pending == pending && state.passing == passing && state.latch == latch);
         assert(state.window == (model.window < 0 ? 0 : 1u << model.window));
         assert(state.counts.calls == frame);
-        // 遮断が終わった瞬間に、まだ押されている区分は、遮断の前から切れ目なく押されていた時だけ
-        // 押下としてゲームへ戻る。遮断の間に押し始めた物、止まっている間に押した物は戻らない。
+        // 遮断の終了で直前も押されていた区分は、押し始めた時期によらず保持として戻る。
         for (unsigned n = 0; n < 16; ++n) {
-            const bool pressed = (in.held & bits[n]) != 0 || (n == 15 && in.pointer_on);
+            const bool down = (in.held & bits[n]) != 0 || (n == 15 && in.pointer_on);
             const bool is_blocked = (actual.blocked & (1u << n)) != 0;
             const bool deferred = (group::Buttons & in.demand.defer & (1u << n)) != 0;
-            const bool resumed_latch = in.ctrpf_resumed && n != 12 && n != 14;
-            if (pressed && !is_blocked && was_held_blocked[n] && n != 3 && n != 12 && !deferred) {
-                const bool delivered = n == 15 ? (actual.pointer_on || (actual.held & bits[n]))
-                                               : (actual.held & bits[n]) != 0;
-                assert(delivered == fresh[n]);
+            if (down && !is_blocked && was_held_blocked[n] && n != 3 && n != 12 && n != 15 && !deferred) {
+                const auto held = in.held & bits[n];
+                assert((actual.held & bits[n]) == held && (actual.old_held & bits[n]) == held);
             }
-            if (!pressed || resumed_latch) fresh[n] = false;
-            else if (!is_blocked) fresh[n] = true;
-            was_held_blocked[n] = pressed && is_blocked;
+            was_held_blocked[n] = down && is_blocked;
         }
         // 本体と、方向・A/B を組み替える Wrapper の両方を同じ旧状態から計算する。
         const auto changed = [](std::uint32_t current, std::uint32_t old) {
@@ -202,53 +192,58 @@ void Sequences() {
     // ゲームが見る押下・離し（本体の式: 押した = 新 & ~旧、離した = 旧 & ~新）。
     const auto pressed = [](const filter::Output &o) { return o.held & ~o.old_held; };
     const auto released = [](const filter::Output &o) { return o.old_held & ~o.held; };
-    Rig hold("押したまま開閉");
-    hold.Expect(0, {}, 0); hold.Expect(part::A, {}, part::A); hold.Expect(part::A, {}, part::A);
-    // 開始の瞬間は離しも押下も出ない。遮断の間は何も出ない。
-    auto out = hold.Expect(part::A, menu, 0); assert(out.old_held == 0 && !pressed(out) && !released(out));
-    out = hold.Expect(part::A, menu, 0); assert(!pressed(out) && !released(out));
-    // 遮断の前から押し続けていた A は、遮断が終わった瞬間に押下として戻る。
-    out = hold.Expect(part::A, {}, part::A); assert(pressed(out) == Encode(part::A) && !released(out));
-    out = hold.Expect(part::A, {}, part::A); assert(!pressed(out) && !released(out));
-    hold.Expect(0, {}, 0); hold.Expect(part::A, {}, part::A);
+    Rig hold("B を押したまま開閉");
+    hold.Expect(0, {}, 0); hold.Expect(part::B, {}, part::B); hold.Expect(part::B, {}, part::B);
+    auto out = hold.Expect(part::B, menu, 0); assert(out.old_held == 0 && !pressed(out) && !released(out));
+    out = hold.Expect(part::B, menu, 0); assert(!pressed(out) && !released(out));
+    out = hold.Expect(part::B, {}, part::B); assert(out.old_held == Encode(part::B) && !pressed(out) && !released(out));
+    out = hold.Expect(part::B, {}, part::B); assert(!pressed(out) && !released(out));
+    out = hold.Expect(0, {}, 0); assert(released(out) == Encode(part::B));
+    out = hold.Expect(0, {}, 0); assert(!released(out));
+    hold.Expect(part::B, {}, part::B);
     assert(hold.state.counts.hidden_releases == 1 && hold.state.counts.latch_entries == 0);
-    assert(hold.state.counts.carry_entries == 1 && hold.state.counts.carry_resumes == 1);
-    Rig during("遮断中の押下");
-    during.Expect(0, menu, 0); during.Expect(part::B, menu, 0);
-    during.Expect(part::B, {}, 0); during.Expect(0, {}, 0); during.Expect(part::B, {}, part::B);
-    assert(during.state.counts.latch_entries == 1 && during.state.counts.carry_entries == 0);
+    assert(hold.state.counts.hold_resumes == 1);
+    Rig during("遮断中に A を押し始める");
+    during.Expect(0, menu, 0); during.Expect(part::A, menu, 0);
+    out = during.Expect(part::A, {}, part::A); assert(!pressed(out) && !released(out));
+    during.Expect(0, {}, 0); during.Expect(part::A, {}, part::A);
+    assert(during.state.counts.latch_entries == 0 && during.state.counts.hold_resumes == 1);
     Rig mixed_hold("遮断の前の A と遮断の間の B");
     mixed_hold.Expect(part::A, {}, part::A);
     mixed_hold.Expect(part::A, menu, 0); mixed_hold.Expect(part::A | part::B, menu, 0);
-    out = mixed_hold.Expect(part::A | part::B, {}, part::A);
-    assert(pressed(out) == Encode(part::A));
-    mixed_hold.Expect(part::A | part::B, {}, part::A); mixed_hold.Expect(part::A, {}, part::A);
+    out = mixed_hold.Expect(part::A | part::B, {}, part::A | part::B);
+    assert(!pressed(out) && !released(out));
+    mixed_hold.Expect(part::A | part::B, {}, part::A | part::B); mixed_hold.Expect(part::A, {}, part::A);
     mixed_hold.Expect(0, {}, 0); mixed_hold.Expect(part::B, {}, part::B);
     Rig released_inside("遮断の間に離した物は戻らない");
     released_inside.Expect(part::A, {}, part::A); released_inside.Expect(part::A, menu, 0);
     released_inside.Expect(0, menu, 0); released_inside.Expect(0, {}, 0);
-    released_inside.Expect(part::A, {}, part::A);
-    assert(released_inside.state.counts.carry_resumes == 0);
-    Rig repressed("遮断の間に押し直した物は掛かり");
+    out = released_inside.Expect(part::A, {}, part::A); assert(pressed(out) == Encode(part::A));
+    assert(released_inside.state.counts.hold_resumes == 0);
+    Rig repressed("遮断の間に押し直した物も保持で戻る");
     repressed.Expect(part::A, {}, part::A); repressed.Expect(part::A, menu, 0);
     repressed.Expect(0, menu, 0); repressed.Expect(part::A, menu, 0);
-    repressed.Expect(part::A, {}, 0); repressed.Expect(part::A, {}, 0);
-    repressed.Expect(0, {}, 0); repressed.Expect(part::A, {}, part::A);
-    assert(repressed.state.counts.latch_entries == 1 && repressed.state.counts.carry_resumes == 0);
-    Rig again("戻った直後の遮断も持ち越し");
+    out = repressed.Expect(part::A, {}, part::A); assert(!pressed(out) && !released(out));
+    repressed.Expect(part::A, {}, part::A); repressed.Expect(0, {}, 0);
+    assert(repressed.state.counts.latch_entries == 0 && repressed.state.counts.hold_resumes == 1);
+    Rig boundary_press("遮断終了と同じ呼び出しの押し直しは普通の押下");
+    boundary_press.Expect(part::A, menu, 0); boundary_press.Expect(0, menu, 0);
+    out = boundary_press.Expect(part::A, {}, part::A); assert(pressed(out) == Encode(part::A));
+    assert(boundary_press.state.counts.hold_resumes == 0);
+    Rig again("戻った直後の遮断も保持で再開");
     again.Expect(part::A, {}, part::A); again.Expect(part::A, menu, 0); again.Expect(part::A, {}, part::A);
     again.Expect(part::A, menu, 0); again.Expect(part::A, {}, part::A);
-    assert(again.state.counts.carry_entries == 2 && again.state.counts.carry_resumes == 2);
+    assert(again.state.counts.hold_resumes == 2);
     Rig chained("SELECT の保護から要求の遮断へ続く");
     chained.Expect(part::A, {}, part::A); chained.Expect(part::A, {}, 0, 16, true);
     chained.Expect(part::A, menu, 0); chained.Expect(part::A, menu, 0);
-    chained.Expect(part::A, {}, part::A);
-    Rig changed_block("要求の区分が変わっても持ち越しは続く");
+    out = chained.Expect(part::A, {}, part::A); assert(!pressed(out));
+    Rig changed_block("遮断の区分が交互に変わっても保持で再開");
     changed_block.Expect(part::A | part::Up, {}, part::A | part::Up);
     changed_block.Expect(part::A | part::Up, {part::A, 0}, part::Up);
-    changed_block.Expect(part::A | part::Up, {part::Up, 0}, part::A);
+    out = changed_block.Expect(part::A | part::Up, {part::Up, 0}, part::A); assert(!pressed(out) && !released(out));
     changed_block.Expect(part::A | part::Up, {part::A | part::Up, 0}, 0);
-    changed_block.Expect(part::A | part::Up, {}, part::A | part::Up);
+    out = changed_block.Expect(part::A | part::Up, {}, part::A | part::Up); assert(!pressed(out));
 
     Rig tap("START単押しと300ms境界");
     tap.Expect(part::Start, defer, 0); tap.Expect(part::Start, defer, 0);
@@ -289,24 +284,24 @@ void Sequences() {
         Rig select(reverse ? "十字→SELECT" : "SELECT→十字");
         select.Expect(reverse ? part::Up : 0, {}, reverse ? part::Up : 0, 16, !reverse);
         select.Expect(part::Up | part::Start, defer, 0, 16, true);
-        // SELECT を離した時、先に押していた十字上は戻り、SELECT と一緒に押した START は掛かりのまま。
-        select.Expect(part::Up | part::Start, defer, reverse ? part::Up : 0);
+        // SELECT より先・後の十字上はいずれも保持で戻り、START の押し切りは戻さない。
+        out = select.Expect(part::Up | part::Start, defer, part::Up); assert(!pressed(out) && !released(out));
         select.Expect(0, defer, 0); select.Expect(part::Start, defer, 0);
         select.Expect(0, defer, part::Start);
     }
-    Rig touch("タッチとスライドパッドの掛かり");
+    Rig touch("タッチの掛かりとスライドパッドの保持再開");
     const Mask both = part::Touch | part::SlidePad;
-    // 遮断の間に触れ始めた指とスライドパッドは、遮断が終わっても離すまで渡さない。
+    // 指は離すまで渡さず、スライドパッドは保持で戻す。
     touch.Expect(0, {both, 0}, 0); touch.Expect(both, {both, 0}, 0);
-    touch.Expect(both, {}, 0); touch.Expect(0, {}, 0); touch.Expect(both, {}, both);
-    // 遮断の前から触れていた指とスライドパッドは、遮断が終わると戻る。
-    Rig touch_carry("遮断の前から触れていたタッチとスライドパッド");
-    touch_carry.Expect(both, {}, both); touch_carry.Expect(both, {both, 0}, 0);
-    auto back = touch_carry.Expect(both, {}, both);
-    assert(back.pointer_on && !back.old_pointer_on);
-    touch_carry.Expect(0, {}, 0);
+    out = touch.Expect(both, {}, part::SlidePad); assert(!pressed(out) && !released(out)); touch.Expect(0, {}, 0); touch.Expect(both, {}, both);
+    // 遮断の前から触れていた指も掛かりになり、スライドパッドだけ保持で戻す。
+    Rig touch_before("遮断の前から触れていたタッチとスライドパッド");
+    touch_before.Expect(both, {}, both); touch_before.Expect(both, {both, 0}, 0);
+    auto back = touch_before.Expect(both, {}, part::SlidePad);
+    assert(!back.pointer_on && !back.old_pointer_on && !pressed(back) && !released(back));
+    touch_before.Expect(0, {}, 0);
     // 中央でアナログ値が小さく残っても、方向のビットが無ければ押していないので掛かりが解ける。
-    Rig residue("アナログ値が残るスライドパッドの掛かり");
+    Rig residue("アナログ値と方向ビットの独立");
     const auto slide = [&](std::uint32_t held, float analog, block::Mask block_parts, bool expect_held) {
         filter::Input in{};
         in.held = held;
@@ -323,12 +318,21 @@ void Sequences() {
     slide(15728640, 0.5f, 0, true); // 遮断の前から倒していたので、遮断が終われば戻る。
     slide(0, 0.0f, part::SlidePad, false);
     slide(15728640, 0.5f, part::SlidePad, false);
-    slide(15728640, 0.5f, 0, false); // 遮断の間に倒し始めたので、離すまで渡さない。
-    // 方向のビットが無く、アナログ値だけが残る。掛かりは解け、アナログ値は通る。
+    slide(15728640, 0.5f, 0, true); // 遮断の間に倒し始めた場合も保持で戻る。
+    // 方向のビットが無く、アナログ値だけが残っても押されているとは扱わない。
     edge = slide(0, 0.03f, 0, false);
     assert(!(edge.blocked & part::SlidePad) && edge.slide_x == 0.03f && edge.slide_y == -0.03f);
-    assert(residue.state.latch == 0 && residue.state.carry == 0);
+    assert(residue.state.latch == 0);
     slide(15728640, 0.5f, 0, true);
+    Rig direction("遮断終了でパッドの方向が変わる");
+    filter::Input dir{}; dir.held = 1u << 20; dir.demand.block = part::SlidePad;
+    direction.Tick(dir); dir.held = 1u << 21; dir.demand.block = 0; dir.slide_x = -0.5f;
+    out = direction.Tick(dir);
+    assert(out.held == (1u << 21) && out.old_held == out.held && out.slide_x == -0.5f);
+    // 前回は中央なら、終了時の方向は普通の押下。
+    dir.held = 0; dir.demand.block = part::SlidePad; direction.Tick(dir);
+    dir.held = 1u << 22; dir.demand.block = 0; out = direction.Tick(dir);
+    assert(pressed(out) == (1u << 22) && !released(out));
     Rig pass("メニュー中もタッチとスライドパッドを通す");
     pass.Expect(both | part::A | part::Start, menu, both);
     Rig ignored("押し切りの混ざりにタッチとスライドパッドを数えない");
@@ -351,28 +355,28 @@ void Resume() {
     ctrpf.Expect(part::B | part::Touch, defer, 0); ctrpf.Expect(0, defer, 0);
     ctrpf.Expect(part::B | part::Touch, defer, part::B | part::Touch);
     assert(ctrpf.state.counts.resumes == 1 && ctrpf.state.counts.latch_entries == 2);
-    assert(ctrpf.state.counts.carry_entries == 0);
+    assert(ctrpf.state.counts.hold_resumes == 0);
     Rig kept("CTRPFを挟んで押し続けた物は戻さない");
     kept.Expect(part::B, {}, part::B); kept.Expect(part::B, {}, 0, 1, false, true);
     kept.Expect(part::B, {}, 0); kept.Expect(0, {}, 0); kept.Expect(part::B, {}, part::B);
-    Rig in_menu("持ち越し中のCTRPFの再開");
+    Rig in_menu("遮断中のCTRPFの再開");
     in_menu.Expect(part::B, {}, part::B); in_menu.Expect(part::B, menu, 0);
     in_menu.Expect(part::B, menu, 0, 1, false, true);
     in_menu.Expect(part::B, {}, 0); in_menu.Expect(0, {}, 0); in_menu.Expect(part::B, {}, part::B);
-    assert(in_menu.state.counts.carry_entries == 1 && in_menu.state.counts.carry_resumes == 0);
+    assert(in_menu.state.counts.hold_resumes == 0);
     assert(in_menu.state.counts.latch_entries == 1);
     Rig released("CTRPFの停止中に離した物は掛からない");
     released.Expect(part::B, {}, part::B); released.Expect(0, {}, 0, 1, false, true);
     released.Expect(part::B, {}, part::B); released.Expect(0, {}, 0);
     // 十字上を押したまま SELECT で CTRPF を開き、SELECT で閉じる。十字上は再開の時点で押されたままなので、
-    // 離すまで渡さない（持ち越しにしない）。
+    // 離すまで渡さない（保持で戻さない）。
     Rig select_close("CTRPFをSELECTで閉じる");
     select_close.Expect(part::Up, {}, part::Up);
     select_close.Expect(part::Up, {}, 0, 16, true);
     select_close.Expect(part::Up, {}, 0, 1, true, true);
     select_close.Expect(part::Up, {}, 0);
     select_close.Expect(0, {}, 0); select_close.Expect(part::Up, {}, part::Up);
-    assert(select_close.state.counts.carry_entries == 1 && select_close.state.counts.carry_resumes == 0);
+    assert(select_close.state.counts.hold_resumes == 0);
     assert(select_close.state.counts.latch_entries == 1 && select_close.state.counts.resumes == 1);
     // Rosalina の画面から戻った時の特別な扱いは無い。時間が空いても、SELECT の後でも、普通に渡す。
     Rig gap("時間が空いても特別に扱わない");
@@ -388,7 +392,7 @@ void Resume() {
 void Random() {
     // 固定種で再現可能。低頻度の変化で長押し・窓・掛かりも続く列にする。
     std::mt19937 random(360022);
-    std::uint64_t carry_entries = 0, carry_resumes = 0, latch_entries = 0, resumes = 0;
+    std::uint64_t hold_resumes = 0, latch_entries = 0, resumes = 0;
     for (unsigned series = 0; series < 300; ++series) {
         Rig rig("乱数");
         filter::Input in{};
@@ -418,20 +422,20 @@ void Random() {
             assert((out.held & 0x20000764u) == 0x20000764u);
         }
         const auto &n = rig.state.counts;
-        carry_entries += n.carry_entries; carry_resumes += n.carry_resumes;
+        hold_resumes += n.hold_resumes;
         latch_entries += n.latch_entries; resumes += n.resumes;
     }
-    // 乱数の列が、持ち越し・戻り・掛かり・CTRPF の再開を十分に通ること。
-    assert(carry_entries > 1000 && carry_resumes > 300 && latch_entries > 1000 && resumes > 1000);
+    // 乱数の列が、保持再開・掛かり・CTRPF の再開を十分に通ること。
+    assert(hold_resumes > 300 && latch_entries > 1000 && resumes > 1000);
     std::printf("参照モデルとの比較・不変条件: 300 系列 × 400 フレーム成功（固定種 360022）。"
-                "持ち越し %llu・戻り %llu・掛かり %llu・CTRPF 再開 %llu\n",
-                static_cast<unsigned long long>(carry_entries), static_cast<unsigned long long>(carry_resumes),
+                "保持再開 %llu・掛かり %llu・CTRPF 再開 %llu\n",
+                static_cast<unsigned long long>(hold_resumes),
                 static_cast<unsigned long long>(latch_entries), static_cast<unsigned long long>(resumes));
 }
 }
 int main(int argc, char **argv) {
     trace = argc == 2 && std::strcmp(argv[1], "--trace") == 0;
-    if (trace) std::puts("列名 / フレーム / 時刻(ms) / 生の保持 / 遮断要求 / ゲームの保持 / 押した / 離した / 掛かり / 持越し");
+    if (trace) std::puts("列名 / フレーム / 時刻(ms) / 生の保持 / 遮断要求 / ゲームの保持 / 押した / 離した / 掛かり / 旧保持");
     Sequences(); Resume();
     trace = false;
     Random();
