@@ -36,6 +36,8 @@ template <class T> class Mailbox {
     }
 
   private:
+    // PC 試験で公開中にスレッドが止まる場合を再現する。
+    friend struct MailboxTestAccess;
     SpinMutex mutex_;
     // 読み出しのコピーも同じロック内なので、値の置き場は一つで足りる。
     T value_{};

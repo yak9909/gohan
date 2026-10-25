@@ -119,6 +119,18 @@ devkitPro のシェルで環境変数が設定済みなら、`make -C third_part
 
 ## 検査
 
+入力の遮断は、`core/input_block` に所有者ごとの持続する要求、
+`game/input_filter` にメモリに触れない規則、`game/input_hook` にゲームとの接続を備えています。
+`Shell::InputDemand()` を `features/menu_screen` がフレームの最後に表へ置き、
+`settings` の枠には既定の START の押し切りを置きます。Busy のときは次のフレームで再送します。
+終了時は新しい要求を止め、枠の返却で競合しても停止中のスレッドを待ちません。
+通常版は P・C の導入結果、開発版は要求・所有者・掛かり・累計・スレッド比較・最大処理 tick も表示します。
+開発版の「入力の遮断 入・切」で再導入を試せます。設定の項目と実機の調整は今後の範囲です。
+PC 試験は表の競合・規則の参照モデルと乱数 300 系列 × 400 フレーム・メニューの要求を確認します。
+`build/host/test_input_filter --trace`（Windows は `.exe`）で入力列を表として表示できます。
+主要な条件を壊す検査は `python tests/host/check_input_mutations.py --evidence <作業ツリー外の保存先>` です。
+未変更の版が成功し、各変異版がコンパイル後の assert で失敗することを確認します。
+
 メニューの見た目は、実際のコードを PC で動かす [プレビューと実機画像の比較](preview.md) で
 確認できます。時刻付きの入力台本から、上下画面の PNG と1ファイルの HTML を作ります。
 

@@ -1,6 +1,7 @@
 // ゲーム中のメニュー（毎フレームの処理 → 入力 → メニューの画面 → ui::renderer の描画指示）を、
 // 入力と時計とゲーム側の描画の代役で通して試験する。実機の代わりにはならない。
 #include "core/frame.hpp"
+#include "core/input_block.hpp"
 #include "features/menu_screen/menu_screen.hpp"
 #include "game/lyt/renderer.hpp"
 #include "ui/renderer/renderer.hpp"
@@ -8,6 +9,10 @@
 #include <cassert>
 #include <cstdio>
 #include <string>
+
+namespace gohan::core::input_block {
+struct TableTestAccess { static SpinMutex &Mutex(Table &table) { return table.mutex_; } };
+}
 
 namespace gohan::game::lyt {
 RendererMemory ReadRendererMemory() { return {}; }
@@ -32,6 +37,17 @@ using CTRPluginFramework::Fake;
 namespace menu_screen = gohan::features::menu_screen;
 namespace renderer = gohan::ui::renderer;
 namespace lyt = gohan::game::lyt;
+namespace block = gohan::core::input_block;
+block::Effective Demand() {
+    block::Effective value; std::uint32_t generation = 0;
+    assert(block::Global().Read(value, generation) == gohan::core::MailRead::Updated);
+    return value;
+}
+void Blocked(bool open) {
+    const auto value = Demand();
+    assert(value.block == (block::part::Select | (open ? block::group::Buttons : 0)));
+    assert(value.defer == block::part::Start);
+}
 
 void Frames(int count, int step_ms = 16) {
     for (int i = 0; i < count; ++i) {
@@ -73,7 +89,12 @@ int main() {
     // 導入前は CTRPF のメニューを譲らない。
     assert(menu_screen::ShouldOpenCtrpfMenu());
     assert(renderer::RendererFeature().Wire() && feature.Wire());
+    // 借用で競合した場合も、次のフレームで menu と settings の枠を取る。
+    auto &mutex = block::TableTestAccess::Mutex(block::Global());
+    mutex.Lock(); Frames(1); mutex.Unlock();
+    assert(Demand().defer == 0);
     Frames(1);
+    Blocked(false);
     assert(renderer::ReadStatus() == renderer::Status::Ready);
     // 自前の描画が使える間は、Select 単独を自前のメニューに譲る。Select+十字上は CTRPF のメニュー。
     assert(!menu_screen::ShouldOpenCtrpfMenu());
@@ -83,7 +104,10 @@ int main() {
     assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == 0);
 
     // 上画面にだけ描き、下画面へのタッチは何も変えない。
-    Press(CTRPluginFramework::Key::Select); Frames(30);
+    // 開くフレームで Set が Busy なら古い要求が残り、次のフレームで置き直す。
+    mutex.Lock(); Fake::keys = CTRPluginFramework::Key::Select; Frames(1); mutex.Unlock();
+    Blocked(false);
+    Fake::keys = 0; Frames(1); Blocked(true); Frames(30);
     const auto &top = lyt::Last().screens[0];
     assert(top.count > 0 && lyt::Last().screens[1].count == 0);
     assert(top.commands[0].kind == lyt::Kind::Image && top.commands[0].bounds.x == 4);
@@ -108,16 +132,40 @@ int main() {
     assert(renderer::Commit(dev, renderer::Screen::Bottom) && renderer::SetEnabled(false)); Frames(3);
     assert(lyt::Last().screens[1].count == 0 && renderer::ReadStatus() == renderer::Status::Ready);
 
+    // ダイアログ中も同じ枠が残る。取り消し後もメニューが開いているので残る。
+    Press(CTRPluginFramework::Key::A);
+    assert(menu_screen::RequestToggle()); Frames(15);
+    assert(TopHasText("変更を適用")); Blocked(true);
+    Press(CTRPluginFramework::Key::B); Frames(15); Blocked(true);
+
     // 外（開発版の CTRPF の項目）からの要求で閉じる。閉じ切ったら空の描画を確定する。
     assert(menu_screen::RequestToggle());
-    Frames(2);
+    Frames(15); Blocked(true);
+    Press(CTRPluginFramework::Key::A); // はいで適用して閉じる。
+    Blocked(false); // 退場の描画中も要求は外れる。
     Frames(40);
     assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == 0);
     const int presents_after_close = lyt::Presents();
     Frames(5);
     assert(lyt::Presents() == presents_after_close + 5); // 描画の部品は毎フレーム、最新の確定を渡す
 
+    // C が無くても開く。通知は開いたときの一度だけで、毎フレーム積まない。
+    Fake::inputReady = false;
+    Press(CTRPluginFramework::Key::Select); Frames(30); Blocked(true);
+    assert(TopHasText("入力の遮断") && TopHasText("遮断が無効"));
+    Frames(400); assert(!TopHasText("遮断が無効"));
+
     // 終了。
+    // 停止中のスレッドが表を持ったままでも終了は待たない。新しい Set はもう行わない。
+    const auto before_shutdown = Demand();
+    mutex.Lock(); feature.Shutdown(); mutex.Unlock();
+    Frames(3);
+    assert(Demand().generation == before_shutdown.generation);
+    feature.Shutdown(); // 返却できるときは要求も枠も外す。
+    const auto after = Demand();
+    assert(after.block == block::part::Select && after.defer == 0);
+    assert(menu_screen::RequestToggle()); Frames(3);
+    assert(Demand().generation == after.generation);
     feature.Shutdown();
     renderer::RendererFeature().Shutdown();
     Frames(1);
