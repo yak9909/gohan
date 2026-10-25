@@ -25,25 +25,63 @@ def model(**changes):
 def atlas(tmp_path):
     # 8×8 タイル内の左上だけに、輝度15/alpha8の非対称な画素を置く。
     (tmp_path / 'fonts.json').write_text(json.dumps(dict(
-        sheet=[8, 8], cell=[2, 2], columns=1, widths=[0, 2, 3], main=[65, 0], numeric=[49, 0])))
+        sheet=[8, 8], cell=[2, 2], columns=1, widths=[0, 2, 3], main=[65, 0], numeric=[49, 0],
+        rectangle=dict(uv=[.0625, .9375, .0625, .9375], black=[0, 0, 0, 0], white=[255] * 4))))
     data = bytearray(64)
+    data[0] = 0xFF  # 矩形の UV が参照する不透明な白。
     data[3] = 0xF8  # (1,1) の Morton 番号
     data[6] = 0x8F  # (2,1)
     (tmp_path / 'atlas.la4').write_bytes(data)
     return Raster(tmp_path, model())
 
 
-def test_a4_nibble_order_and_white_luminance(tmp_path):
+def a4_atlas(tmp_path):
     (tmp_path / 'fonts.json').write_text(json.dumps(dict(
-        format='a4', sheet=[8, 8], cell=[2, 2], columns=1, widths=[0, 2, 3], main=[65, 0], numeric=[49, 0])))
+        format='a4', sheet=[8, 8], cell=[2, 2], columns=1, widths=[0, 2, 3], main=[65, 0], numeric=[49, 0],
+        rectangle=dict(uv=[.0625, .9375, .0625, .9375], black=[255, 255, 255, 0], white=[255] * 4))))
     data = bytearray(32)
+    data[0] = 0x0F  # 矩形用の不透明画素。
     data[1] = 0x80  # (1,1)は上位ニブル。
     data[3] = 0x0F  # (2,1)は下位ニブル。
     (tmp_path / 'atlas.a4').write_bytes(data)
-    raster = Raster(tmp_path, model())
-    assert raster.texel(1, 1) == (255, 136)
-    assert raster.texel(2, 1) == (255, 255)
-    assert raster.texel(0, 0) == (255, 0)
+    return Raster(tmp_path, model())
+
+
+def test_a4_nibble_order_and_zero_luminance(tmp_path):
+    raster = a4_atlas(tmp_path)
+    assert raster.texel(1, 1) == (0, 136)
+    assert raster.texel(2, 1) == (0, 255)
+    assert raster.texel(0, 1) == (0, 0)
+
+
+def test_a4_text_uses_vertex_rgb_and_texture_alpha(tmp_path):
+    raster = a4_atlas(tmp_path)
+    image = raster.draw([command()], Image.solid(8, 8, (0, 0, 0)))
+    assert image.pixels[:6] == bytes([136, 0, 0, 255, 0, 0])
+
+
+def test_a4_rectangle_reproduces_black_and_neutral_material_preserves_color(tmp_path):
+    raster = a4_atlas(tmp_path)
+    background = Image.solid(8, 8, (40, 60, 80))
+    rect = command(kind=0, bounds=[0, 0, 3, 2], color=0xFF12A4E6)
+    material = raster.font['rectangle']
+    material['black'] = [0, 0, 0, 0]
+    assert raster.draw([rect], background).pixels[:3] == bytes(3)  # 修正前の実機症状。
+    material['black'] = [255, 255, 255, 0]
+    assert raster.draw([rect], background).pixels[:3] == bytes([18, 164, 230])
+    rect.update(color=0x8012A4E6, clip=[1, 0, 1, 1])
+    image = raster.draw([rect], background)
+    assert image.pixels[:9] == bytes([40, 60, 80, 29, 112, 155, 40, 60, 80])
+    # 不透明度ゼロの画素を参照すれば、色が白でも描かれない。
+    material['uv'] = [.0625, .8125, .0625, .8125]
+    assert raster.draw([rect], background) == background
+
+
+def test_rectangle_requires_captured_material(tmp_path):
+    raster = a4_atlas(tmp_path)
+    del raster.font['rectangle']
+    with pytest.raises(ValueError, match='材質・UV'):
+        raster.draw([command(kind=0)], Image.solid(8, 8, (0, 0, 0)))
 
 
 @pytest.mark.parametrize(('bits', 'top_down'), [(24, False), (24, True), (32, False), (32, True)])

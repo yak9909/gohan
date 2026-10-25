@@ -28,7 +28,8 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
     engine = [root / 'src/menu' / (name + '.cpp') for name in (
         'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'hotkey',
         'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'shell', 'sample_items')]
-    sources = [root / 'tests/host/menu_preview.cpp', feature, root / 'src/ui/input/buttons.cpp',
+    sources = [root / 'tests/host/menu_preview.cpp', root / 'src/game/lyt/scene.cpp',
+               feature, root / 'src/ui/input/buttons.cpp',
                root / 'tests/host/input_hook_stub.cpp',
                *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format', 'input_block')],
                *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')),
@@ -37,7 +38,8 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
     if dev:
         flags.append('-DGOHAN_DEV=1')
-    includes = [root / 'tests/host/fakes', root / 'src', gen, menu_gen]
+    # Scene は実際のゲームの型を使う。CTRPF だけを入力・時計の代役へ向ける。
+    includes = [root / 'src', root / 'tests/host/fakes', gen, menu_gen]
     command = [compiler, *flags, *(f'-I{path}' for path in includes), *map(str, sources), '-o', str(executable)]
     subprocess.run(command, cwd=root, check=True)
     # ソース・ヘッダー・定義・字形表も含む。手動の較正時に使った版を追える。

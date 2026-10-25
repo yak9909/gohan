@@ -30,6 +30,10 @@ def main() -> int:
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
+    for dev in (False, True):
+        run(['tests/host/test_status.cpp', 'src/features/status/status.cpp', 'src/core/format.cpp'],
+            'test_status_dev' if dev else 'test_status', ('tests/host/status_fakes', 'src'),
+            ('-DGOHAN_DEV=1',) if dev else ())
     run(['tests/host/test_input_block.cpp', 'src/core/input_block.cpp'], 'test_input_block')
     run(['tests/host/test_input_filter.cpp', 'src/game/input_filter.cpp'], 'test_input_filter')
     run(['tests/host/test_frame_hook.cpp', 'src/game/frame_hook.cpp', 'src/core/frame.cpp'],

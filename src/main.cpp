@@ -1,7 +1,6 @@
 #include "core/feature.hpp"
-#include "core/format.hpp"
-#include "core/limits.hpp"
 #include "features/menu_screen/menu_screen.hpp"
+#include "features/status/status.hpp"
 #include "game/frame_hook.hpp"
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
@@ -38,26 +37,6 @@ bool OpenCtrpfMenu() {
     return allow;
 }
 
-void ShowStatus(CTRPluginFramework::MenuEntry *) {
-    char text[gohan::core::limits::StatusText];
-    gohan::core::TextWriter writer(text, sizeof(text));
-    writer.Append("版: ").Unsigned(3).Append(".0.0\n");
-#ifdef GOHAN_DEV
-    writer.Append("開発版\n");
-#else
-    writer.Append("通常版\n");
-#endif
-    writer.Append("骨格: 機能登録・毎フレーム処理・通信・文字処理\n")
-        .Append(gohan::game::FrameHookStatus());
-    writer.Append("\n").Append(gohan::ui::renderer::StatusText());
-    writer.Append("\n").Append(gohan::ui::renderer::TitleBackgroundStatusText());
-    writer.Append("\n");
-    gohan::game::AppendInputStatus(writer);
-#ifdef GOHAN_DEV
-    writer.Append("\n").Append(gohan::ui::renderer::MemoryStatusText());
-#endif
-    CTRPluginFramework::MessageBox("gohan（作り直し中）", text)();
-}
 } // namespace
 
 namespace CTRPluginFramework {
@@ -66,8 +45,8 @@ void OnProcessExit() { features.ShutdownAll(); }
 int main() {
     PluginMenu menu("gohan", 3, 0, 0, "日本版の無印＋更新に対応。作り直し中です。");
     menu.SynchronizeWithFrame(true);
-    menu +=
-        new MenuEntry("gohan（作り直し中）", nullptr, ShowStatus, "版と骨格の状態を表示します。");
+    menu += new MenuEntry("gohan（作り直し中）", nullptr, gohan::features::status::Show,
+                          "版と骨格の状態を表示します。");
     // 終了は同じ段で登録と逆の順。描画の部品は、毎フレームのフックを止める前に資源を排出する。
     features.Add(gohan::game::FrameHookFeature());
     features.Add(gohan::game::InputPadFeature());
@@ -77,6 +56,8 @@ int main() {
     // Select 単独は自前のメニューに譲る。Select+十字上は従来どおり CTRPF のメニュー。
     menu.OnOpening = OpenCtrpfMenu;
 #ifdef GOHAN_DEV
+    menu += new MenuEntry("状態を txt に書き出す", nullptr, gohan::features::status::Export,
+                          "表示と同じ状態を設定ファイルと同じ場所に保存し、パスを表示します。");
     menu += new MenuEntry("開発: 入力の遮断 入・切", nullptr, ToggleInput,
                           "入力のフックを取り外し、再び導入します。結果は状態表示で確認できます。");
     menu += new MenuEntry("開発: 自前描画の入・切", nullptr, ToggleRenderer,

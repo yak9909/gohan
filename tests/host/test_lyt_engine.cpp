@@ -93,6 +93,21 @@ std::u16string StringOf(const generated::NwLytTextBox *box) {
 
 constexpr unsigned Top = 0, Bottom = 1;
 
+// 既定の1枚テクスチャ合成を、GPU が読む RGBA と材質の実値で確かめる。
+std::uint32_t PictureColor(const generated::NwLytMaterial &material, std::uint32_t texel,
+                           std::uint32_t vertex) {
+    std::uint32_t result = 0;
+    for (unsigned shift : {0u, 8u, 16u, 24u}) {
+        const unsigned level = (texel >> shift) & 255;
+        const unsigned black = (material.colors[0] >> shift) & 255;
+        const unsigned white = (material.colors[1] >> shift) & 255;
+        const unsigned tint = (vertex >> shift) & 255;
+        const unsigned channel = (black * (255 - level) + white * level) * tint / (255 * 255);
+        result |= channel << shift;
+    }
+    return result;
+}
+
 void Rejections(Engine &engine, const TestFont &font) {
     auto expect = [&](const char *what) {
         assert(engine.Install(font.resource) == InstallResult::ResourceFailed && what);
@@ -189,12 +204,20 @@ void TreeAndNodes(Engine &engine, const TestFont &font) {
     assert(picture->uv_output[0][0] < picture->uv_output[0][2] && picture->uv_output[0][1] > picture->uv_output[0][3]);
     auto *material = picture->material;
     assert(material->vptr == reinterpret_cast<generated::NwLytMaterialVtable *>(generated::vtbl_nw_lyt_Material_addr));
-    assert(material->capacity_bits == 0x15 && material->count_bits == 0x15 && material->colors[0] == 0 &&
+    assert(material->capacity_bits == 0x15 && material->count_bits == 0x15 && material->colors[0] == 0x00FFFFFFu &&
            material->colors[3] == 0xFFFFFFFFu && (material->flags & 4));
     assert(material->animation_links.sentinel.next == &material->animation_links.sentinel);
     assert(material->variable_data->texture_address == Fake::Physical(engine.Resources().Atlas()));
     assert(material->variable_data->image_width == 256 && material->variable_data->gpu_format == 11);
     assert(material->variable_data->sampler_bits == (4u << 8));
+    // A4 の RGB=0 でも、矩形の指定色・半透明度を保つ。下地色を黒に戻すと症状を再現する。
+    for (auto color : {0xFF332211u, 0x8055AA33u, 0xFF000000u, 0xFFFFFFFFu}) {
+        assert(PictureColor(*material, 0xFF000000u, color) == color);
+        assert(PictureColor(*material, 0, color) == (color & 0x00FFFFFFu));
+    }
+    auto oldMaterial = *material;
+    oldMaterial.colors[0] = 0;
+    assert(PictureColor(oldMaterial, 0xFF000000u, picture->vertex_colors[0]) == 0xFF000000u);
 
     auto *box = reinterpret_cast<generated::NwLytTextBox *>(panes[1]);
     assert(StringOf(box) == u"Hi" && box->string_length == 2);
@@ -203,6 +226,7 @@ void TreeAndNodes(Engine &engine, const TestFont &font) {
     assert(box->top_color == 0x800000FFu && box->bottom_color == 0x800000FFu);
     assert(box->font_width == 16.0f && box->font_height == 16.0f && box->dirty == 1);
     assert(box->text_position == 3 && box->tag_processor == nullptr && box->batch->built == 0);
+    assert(box->material->colors[0] == 0 && box->material->colors[1] == 0xFFFFFFFFu);
     assert(box->string_buffer_bytes == 2 * (limits::RendererSlotChars[0] + 1));
     assert(box->pane.base_position == 0x13 && picture->pane.base_position == 0x14);
     auto *info = box->font->font_info;
@@ -385,6 +409,7 @@ void Images(Engine &engine) {
     assert(picture->uv_output[0][0] == 8.0f / 256 && picture->uv_output[0][1] == 1.0f - 3.5f / 32);
     assert(picture->uv_output[0][2] == 13.0f / 256 && picture->uv_output[0][3] == 1.0f - 6.5f / 32);
     auto *map = picture->material->variable_data;
+    assert(picture->material->colors[0] == 0 && picture->material->colors[1] == 0xFFFFFFFFu);
     assert(map->gpu_format == 0 && map->sampler_bits == 0 && map->gpu_sampler_bits == 0);
     assert(map->gpu_dimensions == (256u << 16 | 32u));
     assert(map->texture_address == Fake::Physical(data + 32768));
@@ -398,6 +423,7 @@ void Images(Engine &engine) {
     screen.count = 1;
     assert(engine.Present(drawing));
     assert(picture->material->variable_data->gpu_format == 11);
+    assert(PictureColor(*picture->material, 0xFF000000u, picture->vertex_colors[0]) == 0xFFFFFFFFu);
     assert(picture->uv_output[0][0] != 8.0f / 256);
     Fake::EndPasses();
     for (unsigned i = 1; i < Engine::DrainFrames; ++i)
