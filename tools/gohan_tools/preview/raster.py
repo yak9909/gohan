@@ -49,10 +49,32 @@ class Raster:
         offset = ((y // 8) * (self.font['sheet'][0] // 8) + x // 8) * 64 + morton
         if self.font_format == 'a4':
             value = (self.atlas[offset // 2] >> ((offset & 1) * 4)) & 15
-            return 255, value * 17
+            # GPU の A4 は RGB=0。文字の専用合成と Picture の合成は呼び出し側で分ける。
+            return 0, value * 17
         value = self.atlas[offset]
         # LA4 は 1 byte 内の上位が輝度、下位が alpha。
         return (value >> 4) * 17, (value & 15) * 17
+
+    def rectangle(self, output: Image, command: dict, dx: int, dy: int):
+        material = self.font.get('rectangle')
+        if material is None:
+            raise ValueError('矩形の材質・UV がありません。プレビューを再生成してください')
+        x, y, w, h = command['bounds']
+        cx, cy, cw, ch = command['clip']
+        u0, v0, u1, v1 = material['uv']
+        tw, th = self.font['sheet']
+        tint = [(command['color'] >> shift) & 255 for shift in (16, 8, 0, 24)]
+        for yy in range(max(y, cy, -dy), min(y + h, cy + ch, output.height - dy)):
+            for xx in range(max(x, cx, -dx), min(x + w, cx + cw, output.width - dx)):
+                tx = min(tw - 1, max(0, int((u0 + (u1 - u0) * (xx - x + .5) / w) * tw)))
+                ty = min(th - 1, max(0, int((1 - v0 + (v0 - v1) * (yy - y + .5) / h) * th)))
+                luminance, alpha = self.texel(tx, ty)
+                # Picture の既定1枚合成: 各成分で黒色→白色を補間し、頂点色を掛ける。
+                channels = [int((b * (255 - level) + a * level) / 255 * t / 255 + .5)
+                            for b, a, level, t in zip(material['black'], material['white'],
+                                                      (luminance, luminance, luminance, alpha), tint)]
+                color = sum(c << shift for c, shift in zip(channels, (16, 8, 0, 24)))
+                self.blend(output, xx + dx, yy + dy, color)
 
     def blend(self, image: Image, x: int, y: int, color: int, luminance: int = 255, alpha: int = 255):
         if not (0 <= x < image.width and 0 <= y < image.height):
@@ -80,9 +102,7 @@ class Raster:
             y += dy
             color = command['color']
             if command['kind'] == 0:
-                for yy in range(max(0, y), min(image.height, y + height)):
-                    for xx in range(max(0, x), min(image.width, x + width)):
-                        self.blend(image, xx, yy, color)
+                self.rectangle(image, command, dx, dy)
                 continue
             cx, cy, cw, ch = command['clip']
             # 実機側の Scene と同じく縦は行全体、横は送り幅全体が入る字だけを残す。
@@ -103,6 +123,9 @@ class Raster:
                     for yy in range(self.font['cell'][1]):
                         for xx in range(glyph_width):
                             luminance, alpha = self.texel(ax + xx, ay + yy)
+                            # TextBox は A4/A8 のとき RGB を頂点色で置き換え、alpha だけを掛ける。
+                            if self.font_format == 'a4':
+                                luminance = 255
                             if not alpha:
                                 continue
                             for sy in range(scale):
