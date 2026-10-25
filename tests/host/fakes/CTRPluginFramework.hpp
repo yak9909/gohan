@@ -28,6 +28,8 @@ struct Fake {
     static inline std::uintptr_t thread = 1;
     static inline std::uint64_t ticks = 0;
     static inline bool inputReady = true;
+    // CTRPF のメニューを閉じて再開した知らせ（メニューの画面の試験用。取り出すと偽に戻る）。
+    static inline bool ctrpfResumed = false;
     template <class... Args> static void Invoke(std::uintptr_t address, Args... args) {
         const auto &hook = hooks.at(address);
         assert(hook.enabled);

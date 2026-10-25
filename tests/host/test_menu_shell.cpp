@@ -405,6 +405,46 @@ void InputDemand() {
     r.Tap(key::B); empty();
     assert(r.shell.NeedsDraw(r.now)); // 通知・確認の退場も遮断しない。
 }
+// 外のメニュー（CTRPF）が閉じた直後など、押したままのボタンが新しい押下に見える時は、離すまで使わない。
+void IgnoreHeld() {
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount);
+    assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    // 閉じた SELECT が押されたまま再開しても、メニューは開閉しない。離して押し直せば開く。
+    r.shell.IgnoreHeld(key::Select);
+    r.Hold(key::Select); r.Advance(200);
+    assert(!r.engine.Visible());
+    r.Release(); assert(!r.engine.Visible());
+    r.Open(); assert(r.engine.Visible() && r.engine.Depth() == 0);
+    // 開いている間も同じ。押したままの A はフォルダに入らず、離して押し直せば入る。
+    r.shell.IgnoreHeld(key::A);
+    r.Hold(key::A); r.Advance(200);
+    assert(r.engine.Depth() == 0);
+    r.Release(); r.Hold(key::A); r.Release(); r.Advance(400);
+    assert(r.engine.Depth() == 1);
+    // 無視するのは、その時に押されていたボタンだけ。ほかのボタンは使える。
+    r.Tap(key::B); r.Advance(400);
+    assert(r.engine.Depth() == 0);
+    r.in.held = key::B; r.shell.IgnoreHeld(key::B); r.Frame();
+    r.Hold(key::B | key::A); r.Advance(400);
+    assert(r.engine.Depth() == 1);
+    r.Release(); r.Advance(200);
+    // 無視は押している間だけ。離した次の押下は使える。
+    r.Tap(key::B); r.Advance(400); assert(r.engine.Depth() == 0);
+    // 無視が残っていても、押されていない間は何も起きず、後の押下に影響しない。
+    r.shell.IgnoreHeld(key::Select);
+    r.Release(); r.Advance(100);
+    r.Tap(key::Select); r.Advance(400);
+    assert(!r.engine.Visible());
+    // 無視中の十字上も、SELECT+十字上（CTRPF のメニューを開く操作）の判定では押されている物として見る。
+    // 自前のメニューは開かない。十字上を離した後の SELECT は普通に開く。
+    r.in.held = key::Up; r.shell.IgnoreHeld(key::Up); r.Frame();
+    r.Hold(key::Up | key::Select); r.Advance(100);
+    assert(!r.engine.Visible());
+    r.Release(); r.Tap(key::Select); r.Advance(400);
+    assert(r.engine.Visible());
+}
+
 // 取り消しの写しが退場している間に新しい確認が出たら、古い写しは出さない。
 void CancelCopyYields() {
     sample::Get() = sample::State{};
@@ -507,4 +547,4 @@ void DialogExitHints() {
     }
     std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
 }
-int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); std::puts("menu shell: ok"); }
+int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }

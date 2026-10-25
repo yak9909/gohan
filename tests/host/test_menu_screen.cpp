@@ -149,6 +149,32 @@ int main() {
     Frames(5);
     assert(lyt::Presents() == presents_after_close + 5); // 描画の部品は毎フレーム、最新の確定を渡す
 
+    // CTRPF のメニューを SELECT で閉じる。閉じた SELECT は、ゲームが再開した時にもまだ押されている。
+    // 自前のメニューは、開く時に SELECT を見ていなくても（十字上だけが見えていた）、その押下で開閉しない。
+    using CTRPluginFramework::Key;
+    Fake::keys = Key::DPadUp; Frames(2);
+    Fake::ctrpfResumed = true;
+    Fake::keys = Key::Select; Frames(3);
+    assert(!Fake::ctrpfResumed); // 再開の知らせは一度だけ受け取る。
+    Frames(30);
+    assert(lyt::Last().screens[0].count == 0 && !TopHasText("GOHAN"));
+    // 押したままの間は何度フレームが進んでも開かない。離せば、次の SELECT の押下で普通に開く。
+    Fake::keys = 0; Frames(2);
+    Press(Key::Select); Frames(30);
+    assert(TopHasText("GOHAN") && TopHasText("見本"));
+    // メニューが開いている間に CTRPF を開いて閉じる。メニューは前に閉じた時のフォルダの中から開く。
+    // 再開の時に押されたままの B は、離すまでメニューに届かない（届けばフォルダから戻る）。
+    assert(TopHasText("見本のフラグ"));
+    Fake::ctrpfResumed = true;
+    Fake::keys = Key::B; Frames(5);
+    assert(TopHasText("見本のフラグ"));
+    Fake::keys = 0; Frames(2);
+    Press(Key::B); Frames(15);
+    assert(!TopHasText("見本のフラグ"));
+    // 知らせの無い時は、これまでどおり SELECT の押下で閉じる。
+    Press(Key::Select); Frames(40);
+    assert(lyt::Last().screens[0].count == 0);
+
     // C が無くても開く。通知は開いたときの一度だけで、毎フレーム積まない。
     Fake::inputReady = false;
     Press(CTRPluginFramework::Key::Select); Frames(30); Blocked(true);

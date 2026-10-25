@@ -37,16 +37,19 @@ struct Output {
 struct Counters {
     std::uint32_t calls = 0;
     // 区分単位の出来事の数。hidden_presses は掛かりで隠した区分・呼び出しの累計。
-    // select_protections も保護した区分・呼び出しの累計。中断は検出回数。
+    // select_protections も保護した区分・呼び出しの累計。resumes は CTRPF の再開の回数。
+    // latch_entries は遮断の間に押し始めて掛かりに入った区分、carry_entries は遮断の前から押し続けていて
+    // 遮断に入った区分、carry_resumes はそのうち遮断が終わっても押され続け、ゲームへ戻った区分の数。
     std::uint32_t hidden_releases = 0, hidden_presses = 0, latch_entries = 0;
-    std::uint32_t select_protections = 0, suspensions = 0, deferred_presses = 0, long_holds = 0;
+    std::uint32_t carry_entries = 0, carry_resumes = 0;
+    std::uint32_t select_protections = 0, resumes = 0, deferred_presses = 0, long_holds = 0;
 };
 struct State {
-    Mask latch = 0, pending = 0, window = 0, passing = 0;
-    Mask previous_raw = 0;
-    std::uint32_t window_ms = 0, previous_ms = 0;
-    unsigned suspend_calls = 0;
-    bool initialized = false;
+    // latch: 遮断の間に押し始めた物。遮断が終わっても離すまで渡さない（掛かり）。
+    // carry: 遮断の前から押し続けていた物。離さない限り、遮断が終わったら押下として渡す（持ち越し）。
+    Mask latch = 0, carry = 0, pending = 0, window = 0, passing = 0;
+    Mask previous_raw = 0, previous_blocked = 0;
+    std::uint32_t window_ms = 0;
     Counters counts{};
 };
 
