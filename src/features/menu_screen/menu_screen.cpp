@@ -63,6 +63,9 @@ void FrameStep() {
     bool toggle = false;
     toggle_request.TryTake(toggle);
     const std::uint32_t now = input::NowMs();
+    // CTRPF のメニューを閉じた操作（SELECT など）は、再開した時にまだ押されている。
+    // それを新しい押下として扱わないよう、再開の時点で押されているボタンは離すまで使わない。
+    if (game::InputTakeCtrpfResumed()) shell.IgnoreHeld(pad.buttons);
     shell.Step(now, in, toggle);
     const bool demand_active = shell.InputDemand().block != 0;
     if (demand_active && !demanding && !game::InputControllerReady()) {

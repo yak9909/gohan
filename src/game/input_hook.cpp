@@ -36,7 +36,9 @@ struct Connection {
     core::Mailbox<Status> status;
 };
 Connection pad_connection, controller_connection;
-core::Signal select_down, opening, resumed;
+// opening: CTRPF が開くことを許可した。resumed: 閉じて再開した（入力の計算が一度だけ受け取る）。
+// menu_resumed: 同じ再開を、gohan のメニューが一度だけ受け取る（別の読み手なので別の知らせにする）。
+core::Signal select_down, opening, resumed, menu_resumed;
 Process::OnPauseResumeCallback previous_resume = nullptr;
 const Clock epoch;
 filter::State state;
@@ -68,7 +70,10 @@ class PauseGuard {
 
 void PauseResume(bool pause) {
     // Mailbox の競合に依存しない。停止前の C は opening を消費しない。
-    if (!pause && opening.Take()) resumed.Set();
+    if (!pause && opening.Take()) {
+        resumed.Set();
+        menu_resumed.Set();
+    }
     if (previous_resume) previous_resume(pause);
 }
 
@@ -113,6 +118,7 @@ bool WireController() {
     demand_generation = 0;
     opening.Set(false);
     resumed.Set(false);
+    menu_resumed.Set(false);
     if (!Install(controller_connection, generated::InputControllerCalc_addr, generated::InputControllerCalc_len,
                  generated::InputControllerCalc_crc32,
                  reinterpret_cast<std::uintptr_t>(&gohan_input_controller_callback),
@@ -136,6 +142,7 @@ void StopController() {
     previous_resume = nullptr;
     opening.Set(false);
     resumed.Set(false);
+    menu_resumed.Set(false);
     state = {};
 #ifdef GOHAN_DEV
     controller_stats.state = {};
@@ -185,6 +192,7 @@ const core::Feature &InputPadFeature() { return pad_feature; }
 const core::Feature &InputControllerFeature() { return controller_feature; }
 bool InputControllerReady() { return controller_connection.ready.Get(); }
 void InputCtrpfOpening() { if (controller_connection.ready.Get()) opening.Set(); }
+bool InputTakeCtrpfResumed() { return menu_resumed.Take(); }
 
 void AppendInputStatus(core::TextWriter &w) {
     static Status p = Status::Waiting, c = Status::Waiting;
@@ -217,13 +225,15 @@ void AppendInputStatus(core::TextWriter &w) {
     w.Append("\n表の競合 書き ").Unsigned(activity.writes).Append(" 読み ").Unsigned(activity.reads);
     w.Append("\n遮断 "); MaskText(w, cs.blocked);
     w.Append(" 掛かり "); MaskText(w, cs.state.latch);
+    w.Append(" 持越し "); MaskText(w, cs.state.carry);
     w.Append(" 保留 "); MaskText(w, cs.state.pending);
     w.Append(" 窓 "); MaskText(w, cs.state.window);
     w.Append(" 通過 "); MaskText(w, cs.state.passing);
     const auto &n = cs.state.counts;
     w.Append("\n累計 離し ").Unsigned(n.hidden_releases).Append(" 押下 ").Unsigned(n.hidden_presses)
-        .Append(" 掛かり ").Unsigned(n.latch_entries).Append(" SELECT ").Unsigned(n.select_protections)
-        .Append(" 中断 ").Unsigned(n.suspensions).Append(" 押し切り ").Unsigned(n.deferred_presses)
+        .Append(" 掛かり ").Unsigned(n.latch_entries).Append(" 持越し ").Unsigned(n.carry_entries)
+        .Append(" 持越し再開 ").Unsigned(n.carry_resumes).Append(" SELECT ").Unsigned(n.select_protections)
+        .Append(" CTRPF再開 ").Unsigned(n.resumes).Append(" 押し切り ").Unsigned(n.deferred_presses)
         .Append(" 長押し ").Unsigned(n.long_holds);
     w.Append("\nP/C スレッド: ").Append(!ps.thread || !cs.thread ? "未確認" :
         ps.thread == cs.thread ? "同じ" : "異なる");

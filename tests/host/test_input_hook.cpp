@@ -130,23 +130,39 @@ void ResumeSequence() {
     ControllerCall(c, old);
     game::InputCtrpfOpening();
     ControllerCall(c, old); // 開く許可後・停止前。ここで通知を消費してはいけない。
-    Process::Pause(); Process::Play(); // OnClosing は呼ばない（B で閉じた場合）。
+    assert(!game::InputTakeCtrpfResumed()); // 停止前・停止中は、メニューにも再開の知らせは無い。
+    Process::Pause(); assert(!game::InputTakeCtrpfResumed());
+    Process::Play(); // OnClosing は呼ばない（B で閉じた場合）。
     auto &publication = block::TableTestAccess::Publication(block::Global());
     publication.Lock(); // 表の読み取りや状態の公開の成功は、再開通知を受け取る条件にしない。
     c.held = 2; old[0] = 0; ControllerCall(c, old);
     publication.Unlock();
     assert(block::Global().ActivityCounts().reads != 0);
     assert(c.held == 0 && old[0] == 0); // SELECT 無し・時間差無しでも再開の B は隠す。
+    // 入力の計算が先に受け取っても、メニューの知らせは残る（別の読み手）。一度だけ。
+    assert(game::InputTakeCtrpfResumed() && !game::InputTakeCtrpfResumed());
     c.held = 0; ControllerCall(c, old);
     c.held = 2; ControllerCall(c, old); assert(c.held == 2);
+    // 逆の順: メニューが先に受け取っても、入力の計算の知らせは残る。
+    c.held = 0; ControllerCall(c, old);
+    game::InputCtrpfOpening(); Process::Pause(); Process::Play();
+    assert(game::InputTakeCtrpfResumed());
+    c.held = 2; ControllerCall(c, old); assert(c.held == 0);
+    c.held = 0; ControllerCall(c, old);
     // 別の停止再開では、開く許可が無ければ掛からない。
     c.held = 0; ControllerCall(c, old);
     Process::Pause(); Process::Play();
+    assert(!game::InputTakeCtrpfResumed());
     c.held = 2; ControllerCall(c, old); assert(c.held == 2);
     // 再開の知らせを残したまま再導入しても持ち越さない。
     game::InputCtrpfOpening(); Process::Pause(); Process::Play();
     Stop(); assert(Process::OnPauseResume == Previous);
+    assert(!game::InputTakeCtrpfResumed());
+    // 入力の計算が入っていない間は、開く許可を記憶せず、再開の知らせも出ない。
+    game::InputCtrpfOpening(); Process::Pause(); Process::Play();
+    assert(!game::InputTakeCtrpfResumed());
     assert(game::InputControllerFeature().Wire());
+    assert(!game::InputTakeCtrpfResumed());
     c.held = 2; old[0] = 0; ControllerCall(c, old); assert(c.held == 2);
     assert(pauses && resumes);
     // 30 呼び出しごとの開発版の公開と、容量を確認する。
