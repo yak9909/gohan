@@ -11,15 +11,14 @@ constexpr std::size_t Estimate(bool text, std::size_t characters) {
 } // namespace
 
 int FindSlot(const game::lyt::ScreenDrawing &drawing, std::size_t length) {
+    bool used[core::limits::RendererTexts]{};
+    for (std::size_t i = 0; i < drawing.count; ++i)
+        if (drawing.commands[i].kind == game::lyt::Kind::Text && drawing.commands[i].slot < std::size(used))
+            used[drawing.commands[i].slot] = true;
     for (unsigned slot = 0; slot < std::size(Capacities); ++slot) {
         if (static_cast<std::size_t>(Capacities[slot]) < length)
             continue;
-        bool used = false;
-        for (std::size_t i = 0; i < drawing.count; ++i)
-            if (drawing.commands[i].kind == game::lyt::Kind::Text &&
-                drawing.commands[i].slot == slot)
-                used = true;
-        if (!used)
+        if (!used[slot])
             return static_cast<int>(slot);
     }
     return -1;

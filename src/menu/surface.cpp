@@ -1,4 +1,5 @@
 #include "menu/surface.hpp"
+#include "game/frame_timing.hpp"
 #include "core/limits.hpp"
 #include "ui_values.hpp"
 #include <cstring>
@@ -69,22 +70,32 @@ std::size_t LineEnd(const Surface &surface, std::string_view text, int width) {
 } // namespace
 
 std::string DisplayText(std::string_view text) {
-    std::string result(text);
+    std::string storage;
+    return std::string(DisplayText(text, storage));
+}
+
+std::string_view DisplayText(std::string_view text, std::string &storage) {
+    bool replaced = false;
     const auto &from = core::design::ca2::Text::Replace::From;
     const auto &to = core::design::ca2::Text::Replace::To;
     for (std::size_t n = 0; n < from.size(); ++n) {
         const std::size_t len = std::strlen(from[n]);
         if (!len) continue;
-        for (std::size_t at = 0; (at = result.find(from[n], at)) != std::string::npos;) {
-            result.replace(at, len, to[n]); at += std::strlen(to[n]);
+        for (std::size_t at = 0; (at = text.find(from[n], at)) != std::string_view::npos;) {
+            if (!replaced) { storage.assign(text); replaced = true; }
+            storage.replace(at, len, to[n]);
+            text = storage;
+            at += std::strlen(to[n]);
         }
     }
-    return result;
+    return text;
 }
 
 std::string_view Trim(const Surface &surface, std::string_view text, int max_width, char *buffer,
                       std::size_t capacity, bool numeric) {
-    const std::string display = DisplayText(text);
+    const game::frame_timing::Scope watch(game::frame_timing::Stage::Layout);
+    std::string storage;
+    const auto display = DisplayText(text, storage);
     const bool replaced = display != text;
     if (replaced) text = display;
     std::size_t chars = 0;
@@ -104,8 +115,9 @@ std::string_view Trim(const Surface &surface, std::string_view text, int max_wid
 
 int Wrap(const Surface &surface, std::string_view text, int max_width, char (*lines)[kLineBytes], int max_lines,
          bool *truncated) {
-    const std::string display = DisplayText(text);
-    text = display;
+    const game::frame_timing::Scope watch(game::frame_timing::Stage::Layout);
+    std::string storage;
+    text = DisplayText(text, storage);
     if (truncated) *truncated = false;
     if (max_lines <= 0) return 0;
     int count = 0;

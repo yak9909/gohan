@@ -1,4 +1,5 @@
 #include "game/lyt/nodes.hpp"
+#include "game/frame_timing.hpp"
 #include <cstring>
 
 namespace gohan::game::lyt::detail {
@@ -10,6 +11,13 @@ static_assert(sizeof(void *) != 4 || sizeof(SsysMaLayoutNode) == 0x14C);
 // 呼ばれても何もしない仮想表の枠。ゲームは記録・再生・投影の設定だけを呼ぶ。
 void Nothing(SsysMaLayoutNode *) {}
 bool NothingBuilt(SsysMaLayoutNode *, const char *, void *, unsigned) { return false; }
+
+#if defined(GOHAN_DEV) && defined(__3DS__)
+void RecordTimed(SsysMaLayoutNode *node) {
+    const frame_timing::Scope watch(frame_timing::Stage::Record);
+    reinterpret_cast<ssys_ma_lyt_Layout_RecordPaneTree_t>(ssys_ma_lyt_Layout_RecordPaneTree_addr)(node);
+}
+#endif
 
 constexpr std::uint8_t PriorityLast = 0xFF;
 constexpr std::uint8_t ReplayOption = 1;
@@ -32,6 +40,9 @@ void LayoutNodes::Build(const ResourceApi &api, NwLytPane *root[2], const unsign
     table.build = &NothingBuilt;
     table.record_pane_tree = reinterpret_cast<decltype(table.record_pane_tree)>(
         ssys_ma_lyt_Layout_RecordPaneTree_addr);
+#if defined(GOHAN_DEV) && defined(__3DS__)
+    table.record_pane_tree = &RecordTimed;
+#endif
     table.setup_projection_matrix = reinterpret_cast<decltype(table.setup_projection_matrix)>(
         ssys_ma_lyt_Layout_SetupProjectionMatrix_addr);
     for (unsigned s = 0; s < 2; ++s) {

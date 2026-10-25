@@ -2,11 +2,17 @@
 #include "core/frame.hpp"
 #include "core/mailbox.hpp"
 #include "game/generated/api.hpp"
+#include "game/frame_timing.hpp"
 #include <CTRPluginFramework.hpp>
 #include <cstdint>
 
 extern "C" void gohan_frame_callback();
-extern "C" void gohan_dispatch_frame() { gohan::core::frame::Dispatch(); }
+extern "C" void gohan_dispatch_frame() {
+    namespace timing = gohan::game::frame_timing;
+    timing::Begin();
+    const timing::Scope watch(timing::Stage::Total);
+    gohan::core::frame::Dispatch();
+}
 
 namespace gohan::game {
 namespace {

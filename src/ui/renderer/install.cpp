@@ -3,6 +3,8 @@
 #include "ui/renderer/selection_frames.hpp"
 #include "core/mailbox.hpp"
 #include "game/lyt/renderer.hpp"
+#include "game/frame_timing.hpp"
+#include "ui/renderer/drawing_mailbox.hpp"
 #include <cstdio>
 
 namespace gohan::ui::renderer {
@@ -14,7 +16,7 @@ constexpr unsigned ShutdownWaitMs = 2000;
 constexpr unsigned ShutdownPollMs = 10;
 
 core::Mailbox<bool> requests[ClientCount];
-core::Mailbox<ScreenDrawing> frames[2];
+detail::DrawingMailbox frames[2];
 core::Mailbox<Status> published;
 core::Mailbox<game::lyt::BackgroundAllocation> publishedBackground;
 core::Mailbox<game::lyt::RendererMemory> publishedMemory;
@@ -55,6 +57,7 @@ void BeginStop(Status then) {
 }
 
 void FrameStep() {
+    const game::frame_timing::Scope watch(game::frame_timing::Stage::Renderer);
     bool changed = false;
     for (unsigned i = 0; i < ClientCount; ++i) {
         bool value = false;
@@ -83,8 +86,10 @@ void FrameStep() {
             ++drawing.revisions[i];
     if (state == Status::Ready) StepTitleAnimation(animationFrame, drawing);
     ++animationFrame;
-    if (state == Status::Ready && !game::lyt::Present(drawing))
-        BeginStop(Status::PresentFailed);
+    if (state == Status::Ready) {
+        const game::frame_timing::Scope present_watch(game::frame_timing::Stage::Present);
+        if (!game::lyt::Present(drawing)) BeginStop(Status::PresentFailed);
+    }
     if (changed || animationFrame % core::limits::RendererHeapSampleFrames == 0 || state == Status::Stopping) {
         const auto memory = game::lyt::ReadRendererMemory();
         publishedMemory.TryPublish(memory);
@@ -139,6 +144,7 @@ bool Commit(const Canvas &canvas) {
     return top && bottom;
 }
 bool Commit(const Canvas &canvas, Screen screen) {
+    const game::frame_timing::Scope watch(game::frame_timing::Stage::Commit);
     const unsigned index = screen == Screen::Bottom ? 1 : 0;
     return frames[index].TryPublish(canvas.Data().screens[index]);
 }

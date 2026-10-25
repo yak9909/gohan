@@ -81,6 +81,8 @@ class FadedSurface final : public Surface {
 inline constexpr std::size_t kLineBytes = 96;
 // 設計表の表記を描画時に統一する。幅の測定にも同じ結果を使う。
 std::string DisplayText(std::string_view text);
+// 置換が無ければ元の view を返し、確保しない。置換時だけ storage を使う。
+std::string_view DisplayText(std::string_view text, std::string &storage);
 
 // 幅に収まらなければ末尾の開き括弧と空白を落とし、設計表の省略記号を付ける。
 // 収まる時は text をそのまま返す。buffer は容量 capacity（終端を含む）。

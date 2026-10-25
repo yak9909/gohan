@@ -92,6 +92,7 @@ void NoticeQueue::Insert(const Notice &notice, u32 now) {
         slot.red = notice.red;
         Copy(slot.title, sizeof(slot.title), notice.title);
         Copy(slot.message, sizeof(slot.message), notice.message);
+        slot.lines_limit = 0;
         slot.created = at;
         slot.wait_for_stack = n >= kCapacity;
         slot.enter_at = at + (slot.wait_for_stack ? timing::kNoticeStackMs : 0);
@@ -113,6 +114,20 @@ void NoticeQueue::Flush(u32 now) {
     }
 }
 
+void NoticeQueue::Layout(Slot &slot, Surface &s, int lines_limit) {
+    if (slot.lines_limit == lines_limit) return;
+    if (!slot.lines_limit) {
+        char title[kLineBytes];
+        const auto trimmed = Trim(s, slot.title, ca::Notice::Width - ca::Notice::Inner::Title[0] - ca::Margin,
+                                  title, sizeof(title));
+        const auto size = std::min(trimmed.size(), sizeof(slot.display_title) - 1);
+        std::memcpy(slot.display_title, trimmed.data(), size);
+        slot.display_title[size] = '\0';
+    }
+    slot.line_count = Wrap(s, slot.message, ca::Notice::Inner::Body[4], slot.lines, lines_limit, nullptr);
+    slot.lines_limit = lines_limit;
+}
+
 void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
     Flush(now);
     int bottom = ca::Notice::Bottom[menu_open ? 0 : 1];
@@ -125,8 +140,8 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
     auto draw = [&](Slot &slot, int x, int y, int lines_limit) {
         const float alpha = Alpha(slot, now);
         if (alpha <= 0.f) return 0;
-        char lines[ca::Notice::Inner::Body[3]][kLineBytes], title[kLineBytes];
-        const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, lines_limit, nullptr);
+        Layout(slot, s, lines_limit);
+        const int n = slot.line_count;
         const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
         if (s.TextsLeft() < n + 1 || s.RectsLeft() < 13) return h;
         FadedSurface faded(s, alpha);
@@ -135,8 +150,8 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
         faded.Fill({x + ca::Notice::Inner::Line[0], y + ca::Notice::Inner::Line[1], ca::Notice::Inner::Line[2], h + ca::Notice::Inner::Line[3]}, color);
         faded.Sprite(x + (slot.red ? ca::Notice::Inner::Bang[0] : ca::Notice::Inner::Icon[0]),
                      y + (slot.red ? ca::Notice::Inner::Bang[1] : ca::Notice::Inner::Icon[1]), slot.red ? "bang" : "check", color);
-        faded.Text(x + ca::Notice::Inner::Title[0], y + ca::Notice::Inner::Title[1], Trim(s, slot.title, ca::Notice::Width - ca::Notice::Inner::Title[0] - ca::Margin, title, sizeof(title)), ca::Color::Text);
-        for (int j = 0; j < n; ++j) faded.Text(x + ca::Notice::Inner::Body[0], y + ca::Notice::Inner::Body[1] + j * ca::Notice::Inner::Body[2], lines[j], slot.red ? ca::Color::Red : ca::Color::Text);
+        faded.Text(x + ca::Notice::Inner::Title[0], y + ca::Notice::Inner::Title[1], slot.display_title, ca::Color::Text);
+        for (int j = 0; j < n; ++j) faded.Text(x + ca::Notice::Inner::Body[0], y + ca::Notice::Inner::Body[1] + j * ca::Notice::Inner::Body[2], slot.lines[j], slot.red ? ca::Color::Red : ca::Color::Text);
         return h;
     };
     if (SlotAlive(leaving_, now))
@@ -144,8 +159,8 @@ void NoticeQueue::Draw(Surface &s, u32 now, bool menu_open) {
     for (int i = kCapacity - 1; i >= 0; --i) {
         Slot &slot = slots_[i];
         if (!SlotAlive(slot, now) || static_cast<s32>(now - slot.created) < 0) continue;
-        char lines[ca::Notice::Inner::Body[3]][kLineBytes];
-        const int n = Wrap(s, slot.message, ca::Notice::Inner::Body[4], lines, maxLines, nullptr);
+        Layout(slot, s, maxLines);
+        const int n = slot.line_count;
         const int h = ca::Notice::Height[0] + ca::Notice::Height[1] * (n > 0 ? n - 1 : 0);
         const int target = bottom - h;
         if (!slot.placed) {

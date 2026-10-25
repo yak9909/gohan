@@ -1,4 +1,5 @@
 #include "menu/shell.hpp"
+#include "game/frame_timing.hpp"
 #include "menu/layout.hpp"
 
 namespace gohan::menu {
@@ -18,6 +19,7 @@ void Shell::Toggle(u32 now) {
 }
 
 void Shell::Step(u32 now, const Input &input, bool toggle) {
+    const game::frame_timing::Scope watch(game::frame_timing::Stage::Update);
     now_ = now;
     const u16 pressed = static_cast<u16>(input.held & ~prev_held_);
     // Select 単独で開閉する（Up を押している時は CTRPF のメニューのために残す）。
@@ -72,6 +74,7 @@ core::input_block::Claim Shell::InputDemand() const {
 }
 
 void Shell::Draw(Surface &surface, u32 now) {
+    game::frame_timing::Scope watch(game::frame_timing::Stage::Menu);
     panel_.SetRows(layout::RowsFor(surface.TextsLeft()), now);
     const bool modal = Modal();
     panel_.Draw(surface, engine_, now, modal);
@@ -88,6 +91,8 @@ void Shell::Draw(Surface &surface, u32 now) {
                           (engine_.Visible() || entry_.Active() || closing_.kind == DialogKind::None);
     if (dialog || closing || menu_bar)
         panel_.DrawBar(surface, engine_, now, dialog || closing, closing ? dialog_close_.At(now) : appear);
+    watch.Stop();
+    const game::frame_timing::Scope notice_watch(game::frame_timing::Stage::Notice);
     notices_.Draw(surface, now, panel_.Visible(now));
 }
 } // namespace gohan::menu

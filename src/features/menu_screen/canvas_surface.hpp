@@ -22,10 +22,12 @@ class CanvasSurface final : public menu::Surface {
         Note(canvas_.FrameRect({bounds.x, bounds.y, bounds.w, bounds.h}, color));
     }
     void Text(int x, int y, std::string_view text, menu::u32 color, bool numeric, unsigned scale) override {
-        Note(canvas_.Text(x, y, menu::DisplayText(text), color, scale, numeric ? ui::renderer::Font::Numeric : ui::renderer::Font::Main));
+        std::string storage;
+        Note(canvas_.Text(x, y, menu::DisplayText(text, storage), color, scale, numeric ? ui::renderer::Font::Numeric : ui::renderer::Font::Main));
     }
     int Measure(std::string_view text, bool numeric, unsigned scale) const override {
-        return ui::renderer::MeasureText(menu::DisplayText(text), scale, numeric ? ui::renderer::Font::Numeric : ui::renderer::Font::Main);
+        std::string storage;
+        return ui::renderer::MeasureText(menu::DisplayText(text, storage), scale, numeric ? ui::renderer::Font::Numeric : ui::renderer::Font::Main);
     }
     bool BeginClip(menu::Rect bounds) override { return canvas_.BeginClip({bounds.x, bounds.y, bounds.w, bounds.h}); }
     void EndClip() override { canvas_.EndClip(); }

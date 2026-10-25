@@ -236,11 +236,12 @@ std::vector<FrameRecord> Measure(const Scenario &scenario, unsigned repeats) {
 }
 
 void Report(const Scenario &scenario, const std::vector<FrameRecord> &frames) {
+    const bool idle = !scenario.menu_open && !scenario.burst && !scenario.stream;
     unsigned active = 0, applies = 0;
     double total = 0, step = 0, menuT = 0, notice = 0, commit = 0, dispatch = 0, present = 0;
     double commands = 0, rects = 0, texts = 0, chars = 0, batches = 0, peak = 0, peakCommands = 0, peakTexts = 0;
     for (const auto &f : frames) {
-        if (!f.drawn && f.commands == 0) continue;
+        if (!idle && !f.drawn && f.commands == 0) continue;
         ++active;
         const double all = f.step + f.menu + f.notice + f.commit + f.dispatch;
         total += all;
@@ -255,7 +256,7 @@ void Report(const Scenario &scenario, const std::vector<FrameRecord> &frames) {
     const double n = active ? active : 1;
     std::printf("%-14s 描画フレーム %4u/%4zu  合計 平均 %7.1f us 最大 %7.1f us | 状態 %6.1f 通知 %7.1f メニュー %7.1f 確定 %6.1f 描画の部品 %7.1f (うち木 %7.1f)"
                 " | 指示 %5.1f (最大 %3.0f) 板 %5.1f 文字枠 %4.1f (最大 %2.0f) 字数 %5.1f 木の組み直し %4.2f/f 文字バッチ初期化 %5.1f/f\n",
-                scenario.name, active, frames.size(), total / n, peak, step / n, notice / n, menuT / n, commit / n,
+                scenario.name, idle ? 0 : active, frames.size(), total / n, peak, step / n, notice / n, menuT / n, commit / n,
                 dispatch / n, present / n, commands / n, peakCommands, rects / n, texts / n, peakTexts, chars / n,
                 applies / n, batches / n);
 }

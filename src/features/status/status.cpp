@@ -2,6 +2,7 @@
 #include "core/format.hpp"
 #include "core/limits.hpp"
 #include "game/frame_hook.hpp"
+#include "game/frame_timing.hpp"
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
 #include <CTRPluginFramework.hpp>
@@ -27,6 +28,8 @@ void Compose(core::TextWriter &writer) {
     gohan::game::AppendInputStatus(writer);
 #ifdef GOHAN_DEV
     writer.Append("\n").Append(gohan::ui::renderer::MemoryStatusText());
+    writer.Append("\n");
+    game::frame_timing::AppendStatus(writer);
 #endif
 }
 } // namespace
