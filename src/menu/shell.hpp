@@ -21,6 +21,9 @@ class Shell {
     void Toggle(u32 now);
     // 毎フレーム。toggle は外から来た開閉の要求。Select（Up を押していない時）でも開閉する。
     void Step(u32 now, const Input &input, bool toggle);
+    // この瞬間に押されているボタンを、離すまでメニューの入力に使わない（開閉にも使わない）。
+    // 外のメニュー（CTRPF）が閉じた直後など、押したままのボタンが新しい押下に見える時に、次の Step の前に呼ぶ。
+    void IgnoreHeld(u16 held) { ignored_ = static_cast<u16>(ignored_ | held); }
     // 何か描くものがある（メニュー・動き・ダイアログ・通知）。偽になったら空の画面を 1 回描けば足りる。
     bool NeedsDraw(u32 now) const;
     core::input_block::Claim InputDemand() const;
@@ -45,6 +48,7 @@ class Shell {
     DialogView closing_{};       // 退場中の確認の写し（決定した答えを保つ）
     u32 now_ = 0;
     u16 prev_held_ = 0;
+    u16 ignored_ = 0; // 離すまで入力に使わないボタン
     bool was_modal_ = false;
 };
 } // namespace gohan::menu

@@ -28,17 +28,14 @@ std::uint32_t HeldBits(Mask parts) {
 
 void Step(State &s, const Input &in, Output &out) {
     const Mask raw = Parts(in.held, in.pointer_on);
-    const Mask previous_latch = s.latch;
+    const Mask previous_latch = s.latch, previous_carry = s.carry;
     const Mask physical = raw | (in.select_down ? part::Select : 0);
-    const bool suspended = in.ctrpf_resumed ||
-        (s.initialized && s.suspend_calls && in.now_ms - s.previous_ms >= limits::InputSuspendGapMs);
-    if (suspended) {
+    if (in.ctrpf_resumed) {
+        // 止まっている間に押した物と、押し続けていた物を区別できない。持ち越しにはせず、離すまで渡さない。
         s.latch |= raw & (group::Buttons | part::Touch);
         s.pending = s.window = s.passing = 0;
-        s.suspend_calls = 0;
-        ++s.counts.suspensions;
-    } else if (in.select_down) s.suspend_calls = limits::InputSuspendCalls;
-    else if (s.suspend_calls) --s.suspend_calls;
+        ++s.counts.resumes;
+    }
 
     Mask block = in.demand.block | part::Select;
     if (in.select_down) {
@@ -46,12 +43,20 @@ void Step(State &s, const Input &in, Output &out) {
         s.counts.select_protections += Count(raw & group::Buttons);
     }
     const Mask blocked = block | (s.latch & raw);
-    const Mask latch = blocked & raw;
+    // 遮断されて押されている区分を二つに分ける。遮断の直前までゲームに見えていた押下の続きは持ち越し
+    // （遮断が終わったら渡す）、遮断の間に押し始めた物は掛かり（離すまで渡さない）。離した区分は両方から外れる。
+    const Mask visible = s.previous_raw & ~s.previous_blocked;
+    const Mask held_blocked = blocked & raw;
+    const Mask carry = held_blocked & ~s.latch & (s.carry | visible);
+    const Mask latch = held_blocked & ~carry;
     s.counts.latch_entries += Count(latch & ~previous_latch);
+    s.counts.carry_entries += Count(carry & ~previous_carry);
     s.counts.hidden_presses += Count((s.latch & raw) & ~block);
     s.latch = latch;
+    s.carry = carry;
 
     const Mask defer = in.demand.defer & group::Buttons & ~blocked;
+    s.counts.carry_resumes += Count(previous_carry & raw & ~blocked & ~defer);
     // 要求を外した場合も、そのボタンの保留・窓・通過を捨てる。
     s.pending &= defer;
     s.window &= defer;
@@ -94,8 +99,7 @@ void Step(State &s, const Input &in, Output &out) {
     if (blocked & part::Touch) out.pointer_on = false;
     if (blocked & part::SlidePad) out.slide_x = out.slide_y = 0;
     s.previous_raw = raw;
-    s.previous_ms = in.now_ms;
-    s.initialized = true;
+    s.previous_blocked = blocked;
     ++s.counts.calls;
 }
 } // namespace gohan::game::input_filter

@@ -17,11 +17,15 @@ void Shell::Toggle(u32 now) {
     else engine_.Open(now);
 }
 
-void Shell::Step(u32 now, const Input &input, bool toggle) {
+void Shell::Step(u32 now, const Input &sensed, bool toggle) {
     now_ = now;
+    // 離したボタンは無視をやめる。無視している間は、押されていない物として扱う。
+    ignored_ = static_cast<u16>(ignored_ & sensed.held);
+    Input input = sensed;
+    input.held = static_cast<u16>(sensed.held & ~ignored_);
     const u16 pressed = static_cast<u16>(input.held & ~prev_held_);
-    // Select 単独で開閉する（Up を押している時は CTRPF のメニューのために残す）。
-    if (toggle || ((pressed & key::Select) != 0 && (input.held & key::Up) == 0)) Toggle(now);
+    // Select 単独で開閉する（Up を押している時は CTRPF のメニューのために残す。Up は無視中でも押されている物として見る）。
+    if (toggle || ((pressed & key::Select) != 0 && (sensed.held & key::Up) == 0)) Toggle(now);
 
     const u16 selected = engine_.Selected();
     const bool folder = selected == kNoItem || engine_.Def(selected).control == Control::Folder;
