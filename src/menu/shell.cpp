@@ -29,11 +29,11 @@ void Shell::Step(u32 now, const Input &input, bool toggle) {
     const DialogView before = ViewOf(engine_);
     // 開閉のボタンはエンジンに渡さない（ホットキーにも使えない）。
     engine_.Frame(now, static_cast<u16>(input.held & ~key::Select));
-    // 取り消し（B、または「キャンセル」を選んだ A）で確認が閉じたら、「キャンセル」を選んだ写しを退場させる。
+    // 確認が閉じたら、決定した答えと操作案内を写しに残して退場させる。
     // 選んだ状態を選択の動きの時間だけ見せてから、確認の出入りと同じ時間で消す。
-    if (before.kind != DialogKind::None && engine_.Dialog() == DialogKind::None && !engine_.DialogYes()) {
+    if (before.kind != DialogKind::None && engine_.Dialog() == DialogKind::None) {
         closing_ = before;
-        closing_.yes = false;
+        closing_.yes = engine_.DialogYes();
         dialog_close_ = motion::Tween{1.0f, 0.0f, now + timing::kSelectionMoveMs, timing::kDialogMs};
     }
     if (engine_.Ui().kind != UiKind::None) {
@@ -48,7 +48,10 @@ void Shell::Step(u32 now, const Input &input, bool toggle) {
     }
 
     // 退場の途中に新しい確認や入力の枠が出たら、退場の写しは残さない。
-    if (Modal()) dialog_close_ = motion::Tween{};
+    if (Modal()) {
+        dialog_close_ = motion::Tween{};
+        closing_ = {};
+    } else if (engine_.Visible() && dialog_close_.Done(now)) closing_ = {};
     const bool modal = Modal();
     if (modal && !was_modal_) {
         modal_.Jump(0.0f, now);
@@ -64,6 +67,10 @@ bool Shell::NeedsDraw(u32 now) const {
            !dialog_close_.Done(now);
 }
 
+core::input_block::Claim Shell::InputDemand() const {
+    return {engine_.Visible() || Modal() ? core::input_block::group::Buttons : 0, 0};
+}
+
 void Shell::Draw(Surface &surface, u32 now) {
     panel_.SetRows(layout::RowsFor(surface.TextsLeft()), now);
     const bool modal = Modal();
@@ -74,7 +81,13 @@ void Shell::Draw(Surface &surface, u32 now) {
     if (engine_.Dialog() != DialogKind::None) DrawDialog(surface, engine_, ViewOf(engine_), menu_amount, appear);
     else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
     else if (!dialog_close_.Done(now)) DrawDialog(surface, engine_, closing_, menu_amount, dialog_close_.At(now));
-    if (panel_.BarVisible(now)) panel_.DrawBar(surface, engine_, now);
+    const bool dialog = engine_.Dialog() != DialogKind::None;
+    const bool closing = !dialog_close_.Done(now);
+    // メニューごと閉じる場合は、確認の退場後に通常の帯のフェードの残りを出さない。
+    const bool menu_bar = panel_.BarVisible(now) &&
+                          (engine_.Visible() || entry_.Active() || closing_.kind == DialogKind::None);
+    if (dialog || closing || menu_bar)
+        panel_.DrawBar(surface, engine_, now, dialog || closing, closing ? dialog_close_.At(now) : appear);
     notices_.Draw(surface, now, panel_.Visible(now));
 }
 } // namespace gohan::menu

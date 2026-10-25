@@ -13,7 +13,7 @@ functions = [
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
-    "g_LayoutMgr", "g_LayoutAllocator",
+    "g_LayoutMgr", "g_LayoutAllocator", "vtbl_sead_CtrController",
     "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
     "vtbl_nw_lyt_Material", "vtbl_nw_lyt_DrawInfo", "vtbl_nw_font_ResFont",
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
@@ -28,6 +28,9 @@ types = [
     "NwFontCharWidths", "NwFontCmapScanPrefix", "NwFontCmapScanPair",
     "NwFontGlyphTextureDescriptor", "NwFontTextBatchPrefix", "NwFontTextBatchGlyph",
     "NwFontTagProcessor",
+    "SeadControllerBasePrefix", "SeadControllerPrefix", "SeadControllerWrapperPrefix",
+    "SeadOffsetList", "AcnlPadReaderPrefix", "AcnlPadState",
+    "AcnlUiPoint2", "AcnlUiPoint2I", "AcnlPointerFlags",
 ]
 
 # 描画パス中の待機後、追加の毎フレーム処理を呼ぶ位置。
@@ -35,6 +38,19 @@ types = [
 name = "FrameDispatch"
 function = "Frame_DrawPass1024"
 offset = 88
+length = 16
+
+# 入力を読む直後と、押下・離しを作る直前。
+[[hooks]]
+name = "InputPadRead"
+function = "GameInput_ReadPadState"
+offset = 248
+length = 16
+
+[[hooks]]
+name = "InputControllerCalc"
+function = "sead_Controller_Calc"
+offset = 36
 length = 16
 
 # 描画接続の前提の照合。型と大域変数の公開が揃うまでフックは設置しない。
