@@ -35,6 +35,9 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
     const DialogView before = ViewOf(engine_);
     // 開閉のボタンはエンジンに渡さない（ホットキーにも使えない）。
     engine_.Frame(now, static_cast<u16>(input.held & ~key::Select));
+    // 次の段の描画が入るまでは新しい要求を消し、一覧と開閉をそのまま使えるようにする。
+    const auto request = engine_.Ui().kind;
+    if (request == UiKind::Actions || request == UiKind::Reorder || request == UiKind::Settings) engine_.CancelUi();
     // 確認が閉じたら、決定した答えと操作案内を写しに残して退場させる。
     // 選んだ状態を選択の動きの時間だけ見せてから、確認の出入りと同じ時間で消す。
     if (before.kind != DialogKind::None && engine_.Dialog() == DialogKind::None) {

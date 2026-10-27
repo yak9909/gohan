@@ -22,6 +22,7 @@ struct ItemState {
     bool seen = false;     // 通知済みの効果
     bool available = true; // ゲームの値を読めた（source が game の項目）
     bool fixed = false;
+    bool fixed_failed = false; // 固定の間の入れ直し失敗は 1 回だけ通知する
     bool mode_active = false;
     bool hold_active = false;
     bool feedback = false; // 「実行した」表示の間
@@ -29,7 +30,7 @@ struct ItemState {
 
 enum class DialogKind : u8 { None, Close, ApplyAll, RevertAll, Action };
 // 画面側が用意する入力の要求。結果は SubmitUi / CancelUi で返す。
-enum class UiKind : u8 { None, Number, Slider, List, CheckList, Key, TriggerInput };
+enum class UiKind : u8 { None, Number, Slider, List, CheckList, Key, TriggerInput, Actions, Reorder, Settings };
 struct UiRequest {
     UiKind kind = UiKind::None;
     u16 item = kNoItem;
@@ -89,17 +90,32 @@ class Engine {
     void DiscardAll();
     bool SetFixed(u16 item, bool on, u32 now);
 
+    bool SetFavorite(u16 item, bool on);
+    bool IsFavorite(u16 item) const;
+    std::size_t FavoriteCount() const { return favorite_count_; }
+    const u16 *FavoriteOrder() const { return favorites_; }
+    bool SetFavoriteOrder(const u16 *items, std::size_t count);
+    std::size_t Actions(u16 item, ItemAction *out) const; // out は kMaxActions 個。副作用なし
+    bool RunAction(u16 item, ActionKind kind, u32 now);
+    u32 Revision() const { return revision_; }
+    void SetKeepToggles(bool on);
+    bool KeepToggles() const { return keep_toggles_; }
+
     // ---- 照会 ----
     bool Visible() const { return visible_; }
     std::size_t Count() const { return count_; }
-    const ItemDef &Def(u16 item) const { return defs_[item]; }
-    const ItemState &State(u16 item) const { return state_[item]; }
+    const ItemDef &Def(u16 item) const;
+    const ItemState &State(u16 item) const;
     s32 Applied(u16 item) const { return state_[item].applied; }
     std::size_t Depth() const { return depth_; }
     u16 Folder() const { return stack_[depth_]; }
     u16 Selected() const { return selection_[depth_]; }
+    // 見える子の並び。返り値は out に書いた数（capacity 個まで）。
+    std::size_t Children(u16 folder, u16 *out, std::size_t capacity) const;
     u16 FirstVisible(u16 folder) const;
-    u16 NextVisible(u16 item) const;
+    u16 NextVisible(u16 item) const { return NextVisible(Folder(), item); }
+    u16 NextVisible(u16 folder, u16 item) const;
+    bool IsChild(u16 folder, u16 item) const;
     bool Hidden(u16 item) const;
     bool Disabled(u16 item) const;
     bool Dirty(u16 item) const;
@@ -113,6 +129,10 @@ class Engine {
     // engine_core.cpp
     bool Has(u16 item) const { return item < count_; }
     bool HasValue(u16 item) const;
+    bool CanFix(u16 item) const;
+    bool RemembersValue(u16 item) const;
+    u16 FirstChild(u16 folder) const;
+    u16 NextChild(u16 folder, u16 item) const;
     bool CondHolds(const Cond &cond) const;
     u16 PrevVisible(u16 item) const;
     void Emit(const Notice &notice);
@@ -149,6 +169,10 @@ class Engine {
     Bound bound_[core::limits::MenuItems]{};
     bool is_bound_[core::limits::MenuItems]{};
     NoticeSink sink_{};
+    u16 favorites_[core::limits::MenuItems]{};
+    std::size_t favorite_count_ = 0;
+    u32 revision_ = 0;
+    bool keep_toggles_ = false;
     bool dev_visible_ = false;
     u16 reserved_ = 0;
 

@@ -4,7 +4,7 @@
 namespace gohan::menu {
 namespace {
 constexpr u16 kDirections[4] = {key::Up, key::Down, key::Left, key::Right};
-constexpr u16 kPlainKeys[] = {key::Up, key::Down, key::Left, key::Right, key::A, key::B, key::Y};
+constexpr u16 kPlainKeys[] = {key::Up, key::Down, key::Left, key::Right, key::A, key::B, key::Y, key::R, key::Start};
 } // namespace
 
 void Engine::Press(u16 pressed_key, u32 now, bool repeated) {
@@ -36,8 +36,14 @@ void Engine::PressMenu(u16 pressed_key, u32 now, bool repeated) {
     case key::L:
         if (!repeated && selected != kNoItem && !Disabled(selected)) Discard(selected);
         break;
+    case key::R:
+        if (!repeated && !hold_active_ && Actions(selected, nullptr)) ui_ = {UiKind::Actions, selected};
+        break;
+    case key::Start:
+        if (!repeated && !hold_active_) ui_ = {UiKind::Settings, kNoItem};
+        break;
     case key::Y: // ホットキーの設定
-        if (!repeated && selected != kNoItem && defs_[selected].control != Control::Folder && !Disabled(selected))
+        if (!repeated && selected != kNoItem && Def(selected).control != Control::Folder && !Disabled(selected))
             ui_ = UiRequest{UiKind::Key, selected};
         break;
     default: break;

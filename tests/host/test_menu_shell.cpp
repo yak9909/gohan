@@ -658,4 +658,27 @@ void DialogExitHints() {
     }
     std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
 }
-int main() { Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }
+// 段 1 だけでは新しい要求を描かず、SELECT の開閉も従来のまま使える。
+void FutureRequestsStayInert() {
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount);
+    assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    Enter(r);
+    const auto selected = r.engine.Selected();
+    for (auto key : {key::R, key::Start}) {
+        const auto before = r.Draw();
+        r.Tap(key);
+        assert(r.engine.Selected() == selected && r.engine.Depth() == 1);
+        assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
+        const auto after = r.Draw();
+        assert(after.commands.size() == before.commands.size());
+        for (std::size_t i = 0; i < after.commands.size(); ++i) {
+            const auto &a = after.commands[i], &b = before.commands[i];
+            assert(a.kind == b.kind && a.text == b.text && a.color == b.color);
+            if (a.text != "finger") assert(a.bounds.x == b.bounds.x && a.bounds.y == b.bounds.y);
+        }
+        r.Tap(key::Select); assert(!r.engine.Visible());
+        r.Open(); assert(r.engine.Visible() && r.engine.Selected() == selected);
+    }
+}
+int main() { FutureRequestsStayInert(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }

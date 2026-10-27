@@ -67,6 +67,7 @@ bool Engine::Hidden(u16 item) const {
 
 // 灰色（カーソルは置ける）。ゲームの値を読めない、または有効の条件が成り立たない。
 bool Engine::Disabled(u16 item) const {
+    if (item == kFavoritesFolder) return false;
     if (!Has(item)) return true;
     const ItemDef &d = defs_[item];
     if (d.source == Source::Game && !state_[item].available) return true;
@@ -93,22 +94,69 @@ bool Engine::EffectOn(u16 item) const {
     return state_[item].effect;
 }
 
+const ItemDef &Engine::Def(u16 item) const {
+    static const ItemDef favorites = [] {
+        ItemDef d{};
+        d.key = ""; d.label = "お気に入り"; d.desc = "お気に入りに追加した項目を並べます。中の行の R で、外す・並べ替えができます。";
+        d.control = Control::Folder;
+        d.parent = d.first_child = d.next = kNoItem;
+        return d;
+    }();
+    return item == kFavoritesFolder ? favorites : defs_[item];
+}
+
+const ItemState &Engine::State(u16 item) const {
+    static const ItemState empty{};
+    return item == kFavoritesFolder ? empty : state_[item];
+}
+
+u16 Engine::FirstChild(u16 folder) const {
+    if (folder == kFavoritesFolder) return favorite_count_ ? favorites_[0] : kNoItem;
+    if (folder == kNoItem) {
+        if (FirstVisible(kFavoritesFolder) != kNoItem) return kFavoritesFolder;
+        return count_ ? 0 : kNoItem;
+    }
+    return Has(folder) ? defs_[folder].first_child : kNoItem;
+}
+
+u16 Engine::NextChild(u16 folder, u16 item) const {
+    if (folder == kFavoritesFolder) {
+        for (std::size_t n = 0; n + 1 < favorite_count_; ++n)
+            if (favorites_[n] == item) return favorites_[n + 1];
+        return kNoItem;
+    }
+    if (folder == kNoItem && item == kFavoritesFolder) return count_ ? 0 : kNoItem;
+    return Has(item) ? defs_[item].next : kNoItem;
+}
+
+std::size_t Engine::Children(u16 folder, u16 *out, std::size_t capacity) const {
+    std::size_t n = 0;
+    if (!out) return 0;
+    for (u16 i = FirstVisible(folder); i != kNoItem && n < capacity; i = NextVisible(folder, i)) out[n++] = i;
+    return n;
+}
+
 u16 Engine::FirstVisible(u16 folder) const {
-    u16 i = folder == kNoItem ? 0 : defs_[folder].first_child;
-    if (folder == kNoItem && count_ == 0) return kNoItem;
-    while (i != kNoItem && Hidden(i)) i = defs_[i].next;
+    u16 i = FirstChild(folder);
+    while (i != kNoItem && Hidden(i)) i = NextChild(folder, i);
     return i;
 }
 
-u16 Engine::NextVisible(u16 item) const {
-    u16 i = defs_[item].next;
-    while (i != kNoItem && Hidden(i)) i = defs_[i].next;
+u16 Engine::NextVisible(u16 folder, u16 item) const {
+    u16 i = NextChild(folder, item);
+    while (i != kNoItem && Hidden(i)) i = NextChild(folder, i);
     return i;
+}
+
+bool Engine::IsChild(u16 folder, u16 item) const {
+    for (u16 i = FirstVisible(folder); i != kNoItem; i = NextVisible(folder, i))
+        if (i == item) return true;
+    return false;
 }
 
 u16 Engine::PrevVisible(u16 item) const {
     u16 previous = kNoItem;
-    for (u16 i = FirstVisible(defs_[item].parent); i != kNoItem && i != item; i = NextVisible(i)) previous = i;
+    for (u16 i = FirstVisible(Folder()); i != kNoItem && i != item; i = NextVisible(i)) previous = i;
     return previous;
 }
 
@@ -146,7 +194,7 @@ void Engine::ReadGameValues() {
 void Engine::RestorePosition() {
     for (std::size_t level = 1; level <= depth_; ++level) {
         const u16 folder = stack_[level];
-        if (!Has(folder) || defs_[folder].control != Control::Folder || defs_[folder].parent != stack_[level - 1] ||
+        if ((folder != kFavoritesFolder && !Has(folder)) || Def(folder).control != Control::Folder || !IsChild(stack_[level - 1], folder) ||
             Hidden(folder) || Disabled(folder) || FirstVisible(folder) == kNoItem) {
             depth_ = level - 1;
             break;
@@ -154,13 +202,17 @@ void Engine::RestorePosition() {
     }
     for (std::size_t level = 0; level <= depth_; ++level) {
         const u16 selected = selection_[level];
-        if (Has(selected) && defs_[selected].parent == stack_[level] && !Hidden(selected) && !Disabled(selected)) continue;
-        u16 target = kNoItem;
-        for (u16 item = FirstVisible(stack_[level]); item != kNoItem; item = NextVisible(item)) {
-            if (Disabled(item)) continue;
-            target = item;
-            if (selected == kNoItem || item >= selected) break;
+        if (IsChild(stack_[level], selected) && !Disabled(selected)) continue;
+        u16 first = kNoItem, previous = kNoItem, next = kNoItem;
+        bool found = false;
+        for (u16 item = FirstChild(stack_[level]); item != kNoItem; item = NextChild(stack_[level], item)) {
+            if (item == selected) { found = true; continue; }
+            if (Hidden(item) || Disabled(item)) continue;
+            if (first == kNoItem) first = item;
+            if (!found) previous = item;
+            else if (next == kNoItem) next = item;
         }
+        const u16 target = found ? (next != kNoItem ? next : previous) : first;
         selection_[level] = target != kNoItem ? target : FirstVisible(stack_[level]);
     }
 }
@@ -189,7 +241,7 @@ bool Engine::RequestClose(u32 now) {
 
 bool Engine::Select(u16 item) {
     if (!visible_ || dialog_ != DialogKind::None || ui_.kind != UiKind::None) return false;
-    if (!Has(item) || Hidden(item) || defs_[item].parent != Folder()) return false;
+    if (!IsChild(Folder(), item)) return false;
     selection_[depth_] = item;
     return true;
 }
@@ -204,7 +256,7 @@ void Engine::Back(u32 now) {
 
 void Engine::Activate(u16 item, u32 now) {
     if (item == kNoItem) return;
-    const ItemDef &d = defs_[item];
+    const ItemDef &d = Def(item);
     if (d.control == Control::Folder) {
         if (depth_ + 1 >= timing::kMaxDepth) return;
         ++depth_;
@@ -238,7 +290,7 @@ void Engine::Activate(u16 item, u32 now) {
 
 // 左右キー。数値は step ずつ、選択は 1 つずつ（端で止まる）。
 void Engine::Adjust(u16 item, int direction) {
-    if (item == kNoItem || Disabled(item)) return;
+    if (!Has(item) || Disabled(item)) return;
     const ItemDef &d = defs_[item];
     const ItemState &st = state_[item];
     if (d.control == Control::Number || d.control == Control::Slider)

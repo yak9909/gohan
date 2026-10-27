@@ -14,6 +14,7 @@ unsigned PopCount(u32 mask) {
 
 RowView Engine::View(u16 item) const {
     RowView view;
+    if (item == kFavoritesFolder) { view.def = &Def(item); return view; }
     if (!Has(item)) return view;
     const ItemDef &d = defs_[item];
     const ItemState &st = state_[item];
