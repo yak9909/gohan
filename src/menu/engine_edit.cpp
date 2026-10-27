@@ -107,7 +107,12 @@ bool Engine::CommitBody(u16 item, u32 now) {
 
 bool Engine::Commit(u16 item, u32 now) {
     if (!Has(item) || Hidden(item) || Disabled(item)) return false;
+    const s32 previous = state_[item].applied;
+    const u16 previous_hotkey = state_[item].applied_hotkey;
     const bool changed = CommitBody(item, now);
+    if (previous_hotkey != state_[item].applied_hotkey ||
+        (previous != state_[item].applied && RemembersValue(item))) ++revision_;
+    if (state_[item].fixed) state_[item].fixed_value = state_[item].applied;
     Poll(); // 効果が変わったら、次のフレームを待たずに通知する
     return changed;
 }
@@ -130,42 +135,73 @@ void Engine::DiscardAll() {
         if (!Hidden(i) && !Disabled(i)) Discard(i);
 }
 
-// 値の固定（ゲームから読む lockable な値だけ）。ON は編集値を適用値にして 1 回書く。
+// 編集値だけを適用して固定する。編集中のホットキーはここでは適用しない。
 bool Engine::SetFixed(u16 item, bool on, u32 now) {
-    (void)now;
-    if (!Has(item)) return false;
-    const ItemDef &d = defs_[item];
-    ItemState &st = state_[item];
+    if (!CanFix(item)) return false;
+    auto &st = state_[item];
     if (!on) {
+        if (!st.fixed) return true;
         st.fixed = false;
-        return true;
+        st.fixed_failed = false;
+    } else {
+        if (Hidden(item) || Disabled(item)) return false;
+        if (st.fixed && st.applied == st.value) return true;
+        const auto previous = st;
+        st.applied = st.value;
+        const auto &d = defs_[item];
+        bool ok = true;
+        if (d.behavior == Behavior::State) {
+            if (st.applied) DeactivateGroup(item, now);
+            if (!st.applied || !st.applied_hotkey) ok = SetEffect(item, st.applied != 0) == Result::Ok;
+        } else if (d.behavior == Behavior::Hold) {
+            if (!st.applied && st.hold_active && is_bound_[item] && bound_[item].hold.step)
+                bound_[item].hold.step(false);
+            if (!st.applied) st.hold_active = false;
+        } else {
+            ok = ApplyValue(item);
+        }
+        if (!ok) { st = previous; return false; }
+        st.fixed_value = st.applied;
+        st.fixed = true;
+        if (!previous.fixed) st.fixed_failed = false;
     }
-    if (!d.lockable || Disabled(item)) return false;
-    st.applied = st.value;
-    st.fixed_value = st.applied;
-    st.fixed = true;
-    if (!ApplyValue(item)) {
-        st.fixed = false;
-        return false;
-    }
+    ++revision_;
+    // 固定の操作は専用の通知だけを出す。効果の通知を重ねない。
+    if (defs_[item].behavior == Behavior::State) st.seen = EffectOn(item);
+    Notice notice;
+    NoticeItemAction(notice, !on ? "固定を外す" : defs_[item].control == Control::Toggle ?
+        (st.applied ? "ONで固定" : "OFFで固定") : "値を固定", defs_[item].label);
+    Emit(notice);
     return true;
 }
 
-// 固定中の値を、ゲームが変えたら書き戻す。読めない間は何もしない。違う時だけ書く。
 void Engine::DriveFixed() {
     for (u16 i = 0; i < count_; ++i) {
-        ItemState &st = state_[i];
+        auto &st = state_[i];
         if (!st.fixed || !is_bound_[i]) continue;
-        s32 value = 0;
-        if (!bound_[i].game.read || !bound_[i].game.read(&value) || value == st.fixed_value) continue;
-        if (bound_[i].game.write) bound_[i].game.write(st.fixed_value);
+        if (defs_[i].behavior == Behavior::State) {
+            if (!st.applied || st.applied_hotkey || EffectOn(i)) continue;
+            const auto result = bound_[i].patch.set ? bound_[i].patch.set(true) : Result::Failed;
+            if (result == Result::Ok) st.effect = true;
+            else if (result != Result::NotReady && !st.fixed_failed) {
+                st.fixed_failed = true;
+                Notice notice;
+                NoticeFailed(notice, defs_[i].label, result);
+                Emit(notice);
+            }
+        } else if (defs_[i].behavior == Behavior::Value && defs_[i].source == Source::Game) {
+            s32 value = 0;
+            if (!bound_[i].game.read || !bound_[i].game.read(&value) || value == st.fixed_value) continue;
+            if (bound_[i].game.write) bound_[i].game.write(st.fixed_value);
+        }
     }
 }
 
 void Engine::SubmitUi(s32 value, u32 now) {
     const UiRequest request = ui_;
     ui_ = UiRequest{};
-    if (request.kind == UiKind::None || !Has(request.item)) return;
+    if (request.kind == UiKind::None || request.kind == UiKind::Actions ||
+        request.kind == UiKind::Reorder || request.kind == UiKind::Settings || !Has(request.item)) return;
     if (request.kind == UiKind::TriggerInput) {
         if (!Hidden(request.item) && !Disabled(request.item)) RunTrigger(request.item, static_cast<u32>(value), now);
     } else if (request.kind == UiKind::Key && defs_[request.item].control != Control::Key) {

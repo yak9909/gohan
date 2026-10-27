@@ -2,6 +2,122 @@
 
 // 効果・実行・画面・ホットキーの発火・毎フレームの処理・排他。
 namespace gohan::menu {
+bool Engine::CanFix(u16 item) const {
+    if (!Has(item)) return false;
+    const auto &d = defs_[item];
+    return (d.behavior == Behavior::Value && d.source == Source::Game && d.lockable) ||
+           (d.control == Control::Toggle && d.persist &&
+            (d.behavior == Behavior::State || d.behavior == Behavior::Hold));
+}
+
+bool Engine::RemembersValue(u16 item) const {
+    const auto &d = defs_[item];
+    return state_[item].fixed || (d.persist &&
+        (d.source == Source::Setting || (keep_toggles_ && d.control == Control::Toggle &&
+        (d.behavior == Behavior::State || d.behavior == Behavior::Hold))));
+}
+
+void Engine::SetKeepToggles(bool on) {
+    if (keep_toggles_ == on) return;
+    keep_toggles_ = on;
+    ++revision_;
+}
+
+bool Engine::IsFavorite(u16 item) const {
+    for (std::size_t n = 0; n < favorite_count_; ++n)
+        if (favorites_[n] == item) return true;
+    return false;
+}
+
+bool Engine::SetFavorite(u16 item, bool on) {
+    if (!Has(item)) return false;
+    if (IsFavorite(item) == on) return true;
+    if (on) {
+        favorites_[favorite_count_++] = item;
+    } else {
+        // 消す行の次（末尾なら手前）を、ID の大小によらず選ぶ。
+        for (std::size_t level = 1; level <= depth_; ++level) {
+            if (stack_[level] != kFavoritesFolder || selection_[level] != item) continue;
+            u16 target = NextVisible(kFavoritesFolder, item);
+            if (target == kNoItem)
+                for (u16 i = FirstVisible(kFavoritesFolder); i != item && i != kNoItem;
+                     i = NextVisible(kFavoritesFolder, i)) target = i;
+            selection_[level] = target;
+        }
+        std::size_t at = 0;
+        while (favorites_[at] != item) ++at;
+        for (; at + 1 < favorite_count_; ++at) favorites_[at] = favorites_[at + 1];
+        --favorite_count_;
+    }
+    ++revision_;
+    RestorePosition();
+    Notice notice;
+    NoticeItemAction(notice, on ? "お気に入りに追加" : "お気に入りから外す", defs_[item].label);
+    Emit(notice);
+    return true;
+}
+
+bool Engine::SetFavoriteOrder(const u16 *items, std::size_t count) {
+    if (count != favorite_count_ || (count && !items)) return false;
+    bool changed = false;
+    for (std::size_t n = 0; n < count; ++n) {
+        if (!IsFavorite(items[n])) return false;
+        for (std::size_t p = 0; p < n; ++p)
+            if (items[p] == items[n]) return false;
+        changed = changed || items[n] != favorites_[n];
+    }
+    if (!changed) return true;
+    for (std::size_t n = 0; n < count; ++n) favorites_[n] = items[n];
+    ++revision_;
+    return true;
+}
+
+std::size_t Engine::Actions(u16 item, ItemAction *out) const {
+    if (!Has(item) || Hidden(item)) return 0;
+    const auto &d = defs_[item];
+    const auto &st = state_[item];
+    std::size_t n = 0;
+    const auto add = [&](ActionKind kind, const char *label, bool disabled) {
+        if (out) out[n] = {kind, label, disabled};
+        ++n;
+    };
+    if (CanFix(item)) {
+        const char *label = st.fixed ? "固定を外す" : d.control == Control::Toggle ?
+            (st.value ? "ONで固定" : "OFFで固定") : "値を固定";
+        add(st.fixed ? ActionKind::Unfix : ActionKind::Fix, label, !st.fixed && Disabled(item));
+    }
+    add(IsFavorite(item) ? ActionKind::RemoveFavorite : ActionKind::AddFavorite,
+        IsFavorite(item) ? "お気に入りから外す" : "お気に入りに追加", false);
+    const u16 first = FirstVisible(kFavoritesFolder);
+    if (Folder() == kFavoritesFolder && IsFavorite(item) && first != kNoItem &&
+        NextVisible(kFavoritesFolder, first) != kNoItem) add(ActionKind::Reorder, "並べ替え", false);
+    if (d.control != Control::Folder && d.control != Control::Key) {
+        add(ActionKind::SetHotkey, st.hotkey ? "ホットキーを変更" : "ホットキーを設定", Disabled(item));
+        if (st.hotkey) add(ActionKind::RemoveHotkey, "ホットキーを外す", Disabled(item));
+    }
+    return n;
+}
+
+bool Engine::RunAction(u16 item, ActionKind kind, u32 now) {
+    ItemAction actions[kMaxActions];
+    const auto count = Actions(item, actions);
+    bool allowed = false;
+    for (std::size_t n = 0; n < count; ++n)
+        if (actions[n].kind == kind && !actions[n].disabled) allowed = true;
+    if (!allowed) return false;
+    ui_ = {};
+    switch (kind) {
+    case ActionKind::Fix: return SetFixed(item, true, now);
+    case ActionKind::Unfix: return SetFixed(item, false, now);
+    case ActionKind::AddFavorite: return SetFavorite(item, true);
+    case ActionKind::RemoveFavorite: return SetFavorite(item, false);
+    case ActionKind::Reorder: ui_ = {UiKind::Reorder, item}; return true;
+    case ActionKind::SetHotkey: ui_ = {UiKind::Key, item}; return true;
+    case ActionKind::RemoveHotkey: return SetHotkey(item, 0);
+    }
+    return false;
+}
+
 // 効果を入れる・外す。すでにその状態なら何もしない。
 Result Engine::SetEffect(u16 item, bool on) {
     if (EffectOn(item) == on) return Result::Ok;
@@ -22,8 +138,11 @@ void Engine::Deactivate(u16 item, u32 now) {
     (void)now;
     ItemState &st = state_[item];
     if (defs_[item].behavior == Behavior::State) {
+        if (st.applied != 0 && RemembersValue(item)) ++revision_;
         st.value = st.applied = 0;
+        if (st.fixed) st.fixed_value = 0;
         SetEffect(item, false);
+        if (st.fixed) st.seen = EffectOn(item);
     } else if (defs_[item].behavior == Behavior::Mode && st.mode_active) {
         st.mode_active = false;
         if (is_bound_[item] && bound_[item].mode.close) bound_[item].mode.close();

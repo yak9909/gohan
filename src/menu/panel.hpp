@@ -68,8 +68,8 @@ class Panel {
     u16 selected_ = kNoItem;
     int rows_ = style::kVisibleRows;
     int count_ = 0;
-    u16 items_[core::limits::MenuItems]{};
-    u16 old_items_[core::limits::MenuItems]{};
+    u16 items_[core::limits::MenuItems + 1]{};
+    u16 old_items_[core::limits::MenuItems + 1]{};
     u16 old_folder_ = kNoItem;
     u16 old_selected_ = kNoItem;
     int old_count_ = 0;

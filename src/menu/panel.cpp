@@ -40,10 +40,7 @@ void Panel::Sync(const Engine &engine, u32 now) {
         folder_phase_.Jump(start, now);
         folder_phase_.Go(1.f, now, reversing ? static_cast<u32>(timing::kFolderMs * previous_phase) : timing::kFolderMs);
     }
-    count_ = 0;
-    for (u16 item = engine.FirstVisible(engine.Folder()); item != kNoItem && count_ < static_cast<int>(core::limits::MenuItems);
-         item = engine.NextVisible(item))
-        items_[count_++] = item;
+    count_ = static_cast<int>(engine.Children(engine.Folder(), items_, core::limits::MenuItems + 1));
     int index = 0;
     while (index < count_ && items_[index] != engine.Selected()) ++index;
     if (index >= count_) index = 0;

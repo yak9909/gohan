@@ -68,7 +68,8 @@ int Entry::Rows() const { return count_ < kMaxListRows ? count_ : kMaxListRows; 
 
 void Entry::Begin(const Engine &engine, const Input &input, int screen_width) {
     const UiRequest request = engine.Ui();
-    active_ = request.kind != UiKind::None;
+    active_ = request.kind != UiKind::None && request.kind != UiKind::Actions &&
+              request.kind != UiKind::Reorder && request.kind != UiKind::Settings;
     kind_ = request.kind;
     item_ = request.item;
     screen_width_ = screen_width;
@@ -108,6 +109,9 @@ void Entry::Begin(const Engine &engine, const Input &input, int screen_width) {
         captured_ = 0;
         phase_ = Phase::Release;
         break;
+    case UiKind::Actions:
+    case UiKind::Reorder:
+    case UiKind::Settings:
     case UiKind::None: break;
     }
     top_ = 0;
@@ -168,6 +172,9 @@ void Entry::Step(Engine &engine, u32 now, const Input &input, bool /*menu_open*/
     case UiKind::List:
     case UiKind::CheckList: StepList(engine, now, input, pressed); break;
     case UiKind::Key: StepKey(engine, now, input); break;
+    case UiKind::Actions:
+    case UiKind::Reorder:
+    case UiKind::Settings:
     case UiKind::None: break;
     }
     prev_held_ = input.held;
@@ -239,6 +246,9 @@ void Entry::Draw(Surface &s, float, float appear, bool) const {
     case UiKind::Key: DrawKey(s, b, appear); break;
     case UiKind::List:
     case UiKind::CheckList: DrawList(s, b, appear); break;
+    case UiKind::Actions:
+    case UiKind::Reorder:
+    case UiKind::Settings:
     case UiKind::None: break;
     default: DrawNumber(s, b, appear); break;
     }

@@ -17,6 +17,7 @@ struct Rec {
     bool wall_on = false;
     int plain_set = 0;
     bool plain_state = false;
+    Result plain_result = Result::Ok;
     int move_calls = 0;
     bool move_last = false;
     int move_true_frames = 0;
@@ -49,6 +50,7 @@ Result WallSet(bool on) {
 }
 Result PlainSet(bool on) {
     ++g.plain_set;
+    if (g.plain_result != Result::Ok) return g.plain_result;
     g.plain_state = on;
     return Result::Ok;
 }
@@ -1075,9 +1077,282 @@ void TestRowDisplay() {
     assert(e.View(Idx(MenuId::Faint)).button && e.View(Idx(MenuId::EdA)).button && e.View(Idx(MenuId::Act)).button);
     assert(!e.View(Idx(MenuId::Num)).button && !e.View(Idx(MenuId::Once)).button);
 }
+
+// 項目の操作の段 1。見た目はまだ有効にせず、公開 API の規則を確かめる。
+void TestItemActionsTable() {
+    auto h = Make();
+    auto &e = h->engine;
+    e.Open(h->now);
+    struct Case { MenuId id; bool fix; bool hotkey; };
+    const Case cases[] = {
+        {MenuId::Folder, false, false}, {MenuId::Plain, true, true},
+        {MenuId::Move, true, true}, {MenuId::Once, false, true},
+        {MenuId::Wallet, true, true}, {MenuId::Weather, false, true},
+        {MenuId::Num, false, true}, {MenuId::Act, false, true},
+        {MenuId::EdA, false, true}, {MenuId::Keyc, false, false},
+        {MenuId::How, false, true}, {MenuId::Multi, false, true},
+    };
+    for (const auto &c : cases) {
+        const auto item = Idx(c.id);
+        ItemAction out[kMaxActions];
+        const auto rev = e.Revision();
+        const auto notes = h->notes.size();
+        const auto selected = e.Selected();
+        const auto n = e.Actions(item, out);
+        assert(n == std::size_t(1 + c.fix + c.hotkey + (c.hotkey && e.State(item).hotkey != 0)));
+        std::size_t at = 0;
+        if (c.fix) assert(out[at++].kind == ActionKind::Fix);
+        assert(out[at++].kind == ActionKind::AddFavorite);
+        if (c.hotkey) {
+            assert(out[at++].kind == ActionKind::SetHotkey);
+            if (e.State(item).hotkey) assert(out[at++].kind == ActionKind::RemoveHotkey);
+        }
+        for (std::size_t i = 0; i < n; ++i) assert(!out[i].disabled);
+        assert(e.Revision() == rev && h->notes.size() == notes && e.Selected() == selected);
+    }
+    // persist が偽の状態・押下中と、別の見た目の値も同じ表で検査する。
+    std::vector<ItemDef> defs(kMenuItems, kMenuItems + kMenuItemCount);
+    for (auto id : {MenuId::Plain, MenuId::Move}) defs[Idx(id)].persist = false;
+    defs[Idx(MenuId::Num)].control = Control::Slider;
+    auto custom = std::make_unique<Engine>(defs.data(), defs.size());
+    ItemAction out[kMaxActions];
+    for (auto id : {MenuId::Plain, MenuId::Move, MenuId::Num}) {
+        custom->Actions(Idx(id), out);
+        assert(out[0].kind == ActionKind::AddFavorite);
+        assert(!custom->SetFixed(Idx(id), true, 0));
+    }
+    assert(e.Actions(kFavoritesFolder, out) == 0 && e.Actions(kNoItem, out) == 0);
+    assert(Is(e.Def(kFavoritesFolder).desc, "お気に入りに追加した項目を並べます。中の行の R で、外す・並べ替えができます。"));
+    const auto plain = Idx(MenuId::Plain), wallet = Idx(MenuId::Wallet);
+    e.Actions(plain, out); assert(Is(out[0].label, "OFFで固定"));
+    e.SetValue(plain, 1); e.Actions(plain, out); assert(Is(out[0].label, "ONで固定"));
+    assert(e.RunAction(plain, ActionKind::Fix, h->now));
+    assert(h->notes.back().title == "ONで固定" && h->notes.back().message == e.Def(plain).label);
+    e.Actions(plain, out); assert(Is(out[0].label, "固定を外す"));
+    assert(e.RunAction(plain, ActionKind::Unfix, h->now));
+    assert(h->notes.back().title == "固定を外す" && e.Applied(plain) == 1 && g.plain_state);
+    assert(e.SetFixed(wallet, true, h->now));
+    g.wallet_ok = false; e.Open(h->now);
+    auto n = e.Actions(wallet, out);
+    assert(n == 4 && out[0].kind == ActionKind::Unfix && !out[0].disabled && !out[1].disabled);
+    assert(out[2].disabled && out[3].disabled);
+    assert(e.RunAction(wallet, ActionKind::Unfix, h->now));
+    e.Actions(wallet, out); assert(out[0].disabled && !out[1].disabled);
+    assert(!e.RunAction(wallet, ActionKind::Fix, h->now));
+    assert(!e.RunAction(wallet, ActionKind::RemoveHotkey, h->now));
+    e.SetValue(Idx(MenuId::How), 1);
+    n = e.Actions(Idx(MenuId::Amount), out);
+    assert(n == 2 && !out[0].disabled && out[1].disabled);
+    // enabled_if で無効のトグルでも固定解除とお気に入りは使える。
+    defs[plain].cond = {Idx(MenuId::How), CondOp::Eq, 1};
+    defs[plain].persist = true;
+    custom = std::make_unique<Engine>(defs.data(), defs.size());
+    custom->Actions(plain, out);
+    assert(out[0].disabled && !out[1].disabled && out[2].disabled);
+    assert(custom->SetValue(Idx(MenuId::How), 1));
+    assert(custom->SetFixed(plain, true, 0));
+    custom->SetValue(Idx(MenuId::How), 0);
+    custom->Actions(plain, out); assert(!out[0].disabled);
+    assert(custom->RunAction(plain, ActionKind::Unfix, 0));
+}
+
+// 効果が外れた観測の通知と、入れ直しの失敗の通知を分けて検査する。
+void TestFixedNotReady() {
+    auto h = Make(); auto &e = h->engine; e.Open(h->now);
+    const auto plain = Idx(MenuId::Plain);
+    assert(e.SetValue(plain, 1) && e.SetFixed(plain, true, h->now));
+    g.plain_state = false;
+    // DriveFixed を呼ぶ前に、効果が外れたことだけを Poll に観測させる。
+    assert(!e.Commit(plain, h->now));
+    h->notes.clear();
+    const auto attempts = g.plain_set;
+    const auto revision = e.Revision();
+    g.plain_result = Result::NotReady;
+    h->Frame(); h->Frame(); h->Frame();
+    assert(g.plain_set == attempts + 3 && !g.plain_state);
+    assert(h->notes.empty() && !e.State(plain).fixed_failed);
+    assert(e.State(plain).fixed && e.Applied(plain) == 1 && e.Revision() == revision);
+    g.plain_result = Result::Ok;
+    h->Frame();
+    assert(g.plain_state && !e.State(plain).fixed_failed);
+    assert(g.plain_set == attempts + 4 && e.Revision() == revision);
+    for (const auto &note : h->notes) assert(!note.red);
+    // 待機は失敗通知の枠を使わない。その後の本当の失敗は 1 回だけ知らせる。
+    g.plain_state = false; g.plain_result = Result::Failed;
+    h->Frame();
+    assert(e.State(plain).fixed_failed);
+    const auto notes = h->notes.size();
+    h->Frame(); h->Frame();
+    assert(h->notes.size() == notes);
+    std::size_t failures = 0;
+    for (const auto &note : h->notes) if (note.message == FailureText(Result::Failed)) ++failures;
+    assert(failures == 1);
+}
+
+void TestToggleFixed() {
+    auto h = Make(); auto &e = h->engine; e.Open(h->now);
+    const auto plain = Idx(MenuId::Plain), wall = Idx(MenuId::Wall), move = Idx(MenuId::Move);
+    assert(e.SetHotkey(plain, key::ZR | key::Y)); // 編集中のホットキーを残す
+    assert(e.SetValue(plain, 1) && e.SetFixed(plain, true, h->now));
+    assert(e.State(plain).fixed && e.Applied(plain) == 1 && g.plain_state);
+    assert(e.State(plain).applied_hotkey == 0 && e.Dirty(plain));
+    assert(h->notes.back().title == "ONで固定");
+    e.Discard(plain);
+    g.plain_state = false; const int before = g.plain_set; h->Frame();
+    assert(g.plain_state && g.plain_set == before + 1);
+    h->Frame(); assert(g.plain_set == before + 1);
+    // 失敗は毎フレーム試し、固定の間に通知するのは 1 回だけ。
+    g.plain_state = false; g.plain_result = Result::Failed;
+    h->Frame(); const auto notes = h->notes.size(); const auto attempts = g.plain_set;
+    h->Frame(); h->Frame(); assert(g.plain_set == attempts + 2 && h->notes.size() == notes);
+    g.plain_result = Result::Ok; h->Frame(); assert(g.plain_state);
+    g.plain_state = false; g.plain_result = Result::Failed; h->Frame();
+    std::size_t failures = 0;
+    for (const auto &note : h->notes) if (note.message == FailureText(Result::Failed)) ++failures;
+    assert(failures == 1); // 固定中の失敗通知は、成功を挟んでも 1 回だけ
+    g.plain_result = Result::Ok;
+    assert(e.SetValue(plain, 0));
+    const auto rev = e.Revision(); assert(e.Commit(plain, h->now));
+    assert(e.State(plain).fixed && e.State(plain).fixed_value == 0 && e.Revision() > rev);
+    g.plain_state = true; const int off_before = g.plain_set; h->Frame();
+    assert(g.plain_state && g.plain_set == off_before); // OFF の固定はゲームの効果を外さない
+    e.SetValue(plain, 1); e.Discard(plain); assert(e.State(plain).value == 0);
+    assert(e.SetFixed(plain, false, h->now));
+    assert(e.SetFixed(plain, true, h->now));
+    assert(h->notes.back().title == "OFFで固定");
+    // ホットキー付きの状態は待機のまま。is_active が無い項目も入れ直さない。
+    e.SetValue(wall, 1); assert(e.SetFixed(wall, true, h->now));
+    const auto calls = g.wall_set; h->Frame(); assert(g.wall_set == calls);
+    e.SetValue(move, 1); assert(e.SetFixed(move, true, h->now));
+    h->Frame(); assert(!g.move_last && e.State(move).fixed);
+    e.SetValue(move, 0); e.Commit(move, h->now); assert(e.State(move).fixed && e.Applied(move) == 0);
+    const auto a = Idx(MenuId::RadA), b = Idx(MenuId::RadB);
+    e.SetValue(a, 1); e.SetFixed(a, true, h->now);
+    e.SetValue(b, 1); e.SetFixed(b, true, h->now);
+    assert(e.State(a).fixed && e.State(b).fixed && e.Applied(a) == 0 && e.Applied(b) == 1);
+    e.SetValue(a, 1); e.Commit(a, h->now);
+    assert(e.State(a).fixed && e.State(b).fixed && e.Applied(a) == 1 && e.Applied(b) == 0);
+    assert(e.State(b).fixed_value == 0);
+    // ホットキー付きの固定でも、編集中の新しい割り当ては適用しない。
+    e.SetHotkey(wall, 0); e.SetValue(wall, 0); e.SetFixed(wall, true, h->now);
+    assert(e.State(wall).applied_hotkey != 0 && e.Dirty(wall));
+    e.SetHotkey(wall, 0); e.Commit(wall, h->now);
+    e.SetValue(wall, 1); e.SetFixed(wall, true, h->now);
+    assert(g.wall_on);
+    g.wall_on = false; const auto unobserved = g.wall_set; h->Frame();
+    assert(g.wall_set == unobserved); // is_active が無ければエンジンの記録を使う
+    e.SetHotkey(plain, key::ZR | key::Y); e.Commit(plain, h->now);
+    e.SetValue(plain, 1); e.SetFixed(plain, true, h->now);
+    assert(!g.plain_state);
+    const auto waiting = g.plain_set; h->Frame();
+    assert(g.plain_set == waiting && !g.plain_state); // ホットキーが駆動する待機には介入しない
+}
+
+void TestFavoriteActionsAndResume() {
+    auto h = Make(); auto &e = h->engine; e.Open(h->now);
+    const auto folder = Idx(MenuId::Folder), num = Idx(MenuId::Num), plain = Idx(MenuId::Plain);
+    assert(e.FirstVisible(kNoItem) != kFavoritesFolder);
+    assert(e.RunAction(folder, ActionKind::AddFavorite, h->now));
+    assert(h->notes.back().title == "お気に入りに追加" && h->notes.back().message == e.Def(folder).label);
+    assert(e.SetFavorite(num, true) && e.SetFavorite(plain, true));
+    assert(e.FirstVisible(kNoItem) == kFavoritesFolder && e.FavoriteCount() == 3);
+    assert(e.Select(kFavoritesFolder)); e.Press(key::A, h->now);
+    assert(e.Folder() == kFavoritesFolder && e.Selected() == folder);
+    assert(e.NextVisible(folder) == num && e.NextVisible(num) == plain);
+    e.Press(key::A, h->now); assert(e.Folder() == folder);
+    e.Select(num); assert(e.RequestClose(h->now)); e.Open(h->now);
+    assert(e.Depth() == 2 && e.Folder() == folder && e.Selected() == num);
+    e.Press(key::B, h->now); assert(e.Folder() == kFavoritesFolder && e.Selected() == folder);
+    e.Select(plain); e.SetValue(plain, 1); e.Commit(plain, h->now);
+    assert(e.Applied(plain) == 1 && e.View(plain).def == &e.Def(plain));
+    ItemAction out[kMaxActions]; e.Actions(plain, out);
+    assert(out[2].kind == ActionKind::Reorder);
+    e.SetHotkey(plain, key::Y); assert(e.Actions(plain, out) == 5);
+    const auto rev = e.Revision();
+    assert(e.RunAction(plain, ActionKind::Reorder, h->now) && e.Ui().kind == UiKind::Reorder);
+    u16 draft[] = {plain, folder, num};
+    e.CancelUi(); // 取消では写しを捨てるだけ
+    assert(e.Revision() == rev && e.FavoriteOrder()[0] == folder);
+    assert(e.SetFavoriteOrder(draft, 3) && e.Revision() == rev + 1);
+    assert(e.SetFavoriteOrder(draft, 3) && e.Revision() == rev + 1);
+    const u16 bad[] = {num, num, folder};
+    assert(!e.SetFavoriteOrder(bad, 3) && !e.SetFavoriteOrder(draft, 2));
+    assert(!e.SetFavoriteOrder(nullptr, 3));
+    assert(e.Selected() == plain && e.FirstVisible(kFavoritesFolder) == plain);
+    e.Discard(plain);
+    assert(e.RequestClose(h->now)); e.Open(h->now);
+    assert(e.Selected() == plain && e.Folder() == kFavoritesFolder);
+    assert(e.RunAction(plain, ActionKind::RemoveFavorite, h->now));
+    assert(e.Selected() == folder); // ID が小さい次の行でも、並びの順に選ぶ
+    assert(e.SetFavorite(num, false));
+    assert(e.Selected() == folder && e.FavoriteCount() == 1);
+    e.Actions(folder, out); assert(e.Actions(folder, out) == 1);
+    assert(!e.RunAction(folder, ActionKind::Reorder, h->now));
+    assert(e.SetFavorite(folder, false));
+    assert(e.Depth() == 0 && e.Selected() == e.FirstVisible(kNoItem));
+    assert(e.FirstVisible(kNoItem) != kFavoritesFolder);
+    // 開発項目だけなら仮のフォルダを出さず、隠れた経路から上へ戻る。
+    e.SetDevVisible(true); e.SetFavorite(Idx(MenuId::Devx), true);
+    e.Select(kFavoritesFolder); e.Press(key::A, h->now);
+    assert(e.Selected() == Idx(MenuId::Devx));
+    e.RequestClose(h->now); e.SetDevVisible(false); e.Open(h->now);
+    assert(e.Depth() == 0 && e.FirstVisible(kNoItem) != kFavoritesFolder);
+    e.SetDevVisible(true); e.SetFavorite(folder, true); e.SetFavorite(num, true);
+    e.Select(kFavoritesFolder); e.Press(key::A, h->now);
+    e.Select(folder); e.Press(key::A, h->now); e.Select(num);
+    e.SetFavorite(folder, false);
+    assert(e.Depth() == 1 && e.Folder() == kFavoritesFolder && e.Selected() == num);
+    e.Select(Idx(MenuId::Devx)); e.RequestClose(h->now);
+    e.SetDevVisible(false); e.Open(h->now);
+    assert(e.Folder() == kFavoritesFolder && e.Selected() == num);
+    assert(e.Actions(num, out) == 3); // 見える行が 1 件なら並べ替えを出さない
+}
+
+void TestFavoriteCapacity() {
+    std::vector<ItemDef> defs(gohan::core::limits::MenuItems, kMenuItems[Idx(MenuId::Plain)]);
+    for (u16 i = 0; i < defs.size(); ++i) {
+        defs[i].parent = kNoItem;
+        defs[i].next = std::size_t(i) + 1 < defs.size() ? i + 1 : kNoItem;
+    }
+    auto engine = std::make_unique<Engine>(defs.data(), defs.size());
+    for (u16 i = 0; i < defs.size(); ++i) assert(engine->SetFavorite(i, true));
+    assert(engine->FavoriteCount() == defs.size());
+    u16 children[gohan::core::limits::MenuItems + 1];
+    assert(engine->Children(kNoItem, children, defs.size() + 1) == defs.size() + 1);
+    assert(children[0] == kFavoritesFolder && children[defs.size()] == defs.size() - 1);
+    assert(engine->Children(kFavoritesFolder, children, defs.size() + 1) == defs.size());
+    assert(engine->Children(kFavoritesFolder, children, 1) == 1);
+    assert(!engine->SetFavorite(kNoItem, true));
+}
+
+void TestActionRequestsAndRevision() {
+    auto h = Make(); auto &e = h->engine; e.Open(h->now);
+    const auto plain = Idx(MenuId::Plain), num = Idx(MenuId::Num);
+    e.Select(plain); h->Tap(key::R); assert(e.Ui().kind == UiKind::Actions && e.Ui().item == plain);
+    assert(e.RunAction(plain, ActionKind::SetHotkey, h->now));
+    assert(e.Ui().kind == UiKind::Key); e.SubmitUi(key::ZR | key::Y, h->now);
+    const auto rev = e.Revision(); assert(e.Dirty(plain) && rev == 0);
+    assert(e.RunAction(plain, ActionKind::RemoveHotkey, h->now)); assert(e.State(plain).hotkey == 0);
+    e.SetHotkey(plain, key::ZR | key::Y); e.Commit(plain, h->now); assert(e.Revision() == rev + 1);
+    const auto before = e.Revision(); e.SetValue(plain, 1); e.Commit(plain, h->now);
+    assert(e.Revision() == before); // 固定も全保持もない ON は保存しない
+    e.SetKeepToggles(true); const auto keeping = e.Revision();
+    e.SetValue(plain, 0); e.Commit(plain, h->now); assert(e.Revision() == keeping + 1);
+    e.SetValue(num, 15); const auto setting = e.Revision(); e.Commit(num, h->now);
+    assert(e.Revision() == setting + 1);
+    h->Tap(key::Start); assert(e.Ui().kind == UiKind::Settings); e.CancelUi();
+    h->Push(key::X); h->Push(key::X | key::R | key::Start);
+    assert(e.Ui().kind == UiKind::None); h->Release(500);
+}
 } // namespace
 
 int main() {
+    TestItemActionsTable();
+    TestFixedNotReady();
+    TestToggleFixed();
+    TestFavoriteActionsAndResume();
+    TestActionRequestsAndRevision();
+    TestFavoriteCapacity();
     TestStateHotkeyRules();
     TestStateOffAndHotkeyOnlyChange();
     TestHotkeyOnlyChangeKeepsEffect();

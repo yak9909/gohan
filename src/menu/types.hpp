@@ -10,6 +10,11 @@ using u32 = std::uint32_t;
 using u8 = std::uint8_t;
 
 inline constexpr u16 kNoItem = 0xFFFF;
+// 定義表の外にある仮のフォルダ。保存する項目の ID には使わない。
+inline constexpr u16 kFavoritesFolder = 0xFFFE;
+enum class ActionKind : u8 { Fix, Unfix, AddFavorite, RemoveFavorite, Reorder, SetHotkey, RemoveHotkey };
+struct ItemAction { ActionKind kind; const char *label; bool disabled; };
+inline constexpr std::size_t kMaxActions = 5;
 
 // 軸1: 見た目
 enum class Control : u8 { Folder, Toggle, Select, Multiselect, Number, Slider, Action, Key };
