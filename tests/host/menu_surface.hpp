@@ -78,6 +78,11 @@ class RecordingSurface : public Surface {
         return nullptr;
     }
     bool HasText(const std::string &needle) const { return FindText(needle) != nullptr; }
+    bool HasSprite(const std::string &name) const {
+        for (const Command &c : commands)
+            if (c.kind == Command::Sprite && c.text == name) return true;
+        return false;
+    }
     int Count(Command::Kind kind) const {
         int n = 0;
         for (const Command &c : commands) n += c.kind == kind;

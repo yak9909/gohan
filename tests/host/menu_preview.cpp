@@ -9,9 +9,12 @@
 #include <CTRPluginFramework.hpp>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <cstdio>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace gohan::game::lyt {
 namespace {
@@ -264,11 +267,156 @@ bool NoticeOverflow(const std::filesystem::path &directory) {
     }
     return true;
 }
+// CA2 の行の見本（固定の印・お気に入り・複数選択の枠）。製品の Engine・Shell・Panel・Entry で描き、
+// 項目と状態だけを PC 用に作る。ゲームの値は固定の値を返す。通知は画面を作る前に起きるので出ない。
+namespace rows {
+namespace menu = gohan::menu;
+using menu::Behavior;
+using menu::Control;
+using menu::Engine;
+using menu::Format;
+using menu::ItemDef;
+using menu::Shell;
+using menu::Source;
+namespace key = menu::key;
+using menu::u16;
+using menu::u32;
+
+enum : u16 {
+    kPlayer, kWall, kStop, kSpeed, kRun, kMoney, kSavings, kWeather, kSpin, kPocket, kMap, kFurniture, kClothes,
+    kVillage, kHouse, kDisplay, kButtons, kCount
+};
+const char *const kWeatherOptions[] = {"晴れ", "雨", "雪", "曇り"};
+const char *const kButtonOptions[] = {"A", "B", "X", "Y", "START"};
+
+bool ReadMoney(menu::s32 *value) { *value = 48210; return true; }
+bool ReadWeather(menu::s32 *value) { *value = 1; return true; }
+menu::Result WriteNothing(menu::s32) { return menu::Result::Ok; }
+
+ItemDef MakeRowItem(const char *label, const char *desc, Control control, Behavior behavior, Source source,
+            u16 parent, u16 first, u16 next) {
+    ItemDef d{};
+    d.key = label; d.label = label; d.desc = desc;
+    d.control = control; d.behavior = behavior; d.source = source;
+    d.parent = parent; d.first_child = first; d.next = next;
+    return d;
+}
+
+void DefineRowItems(ItemDef (&d)[kCount]) {
+    const u16 none = menu::kNoItem;
+    d[kPlayer] = MakeRowItem("プレイヤー", "プレイヤーの項目です。", Control::Folder, Behavior::None, Source::None, none, kWall, kVillage);
+    d[kWall] = MakeRowItem("壁を通り抜ける", "壁や木を通り抜けて歩けます。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kStop);
+    d[kStop] = MakeRowItem("時間を止める", "時計を止めます。ON の間は時間が進みません。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kSpeed);
+    d[kSpeed] = MakeRowItem("歩く速さ", "歩く速さです。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kRun);
+    d[kRun] = MakeRowItem("走り続ける", "ホットキーを押している間だけ走ります。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kMoney);
+    d[kMoney] = MakeRowItem("所持金", "持っているお金です。開いた時にゲームから読みます。", Control::Number, Behavior::Value, Source::Game, kPlayer, none, kSavings);
+    d[kSavings] = MakeRowItem("貯金", "貯めているお金です。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kWeather);
+    d[kWeather] = MakeRowItem("天気", "今の天気です。開いた時にゲームから読みます。", Control::Select, Behavior::Value, Source::Game, kPlayer, none, kSpin);
+    d[kSpin] = MakeRowItem("その場で回る", "その場で 1 回転します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kPocket);
+    d[kPocket] = MakeRowItem("持ち物を並べる", "持ち物を並べ直します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kMap);
+    d[kMap] = MakeRowItem("地図の画面", "地図を開きます。もう一度で閉じます。", Control::Action, Behavior::Mode, Source::None, kPlayer, none, kFurniture);
+    d[kFurniture] = MakeRowItem("家具の並べ方", "家具を並べ直します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kClothes);
+    d[kClothes] = MakeRowItem("服の選び方", "服を選び直します。", Control::Folder, Behavior::None, Source::None, kPlayer, none, none);
+    d[kVillage] = MakeRowItem("村", "村の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kHouse);
+    d[kHouse] = MakeRowItem("見本", "見本の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kDisplay);
+    d[kDisplay] = MakeRowItem("表示", "表示の項目です。", Control::Folder, Behavior::None, Source::None, none, kButtons, none);
+    d[kButtons] = MakeRowItem("押し切るボタン", "押し切るボタンを選びます。", Control::Multiselect, Behavior::Value, Source::Setting, kDisplay, none, none);
+    d[kWall].persist = d[kStop].persist = d[kRun].persist = true;
+    d[kSpeed].persist = d[kSavings].persist = true;
+    d[kSpeed].format = Format::Decimal1; d[kSpeed].def = 10; d[kSpeed].min = 0; d[kSpeed].max = 990; d[kSpeed].step = 1;
+    d[kMoney].lockable = d[kWeather].lockable = true;
+    d[kMoney].min = 0; d[kMoney].max = 99999; d[kMoney].step = 1;
+    d[kSavings].def = 1250000; d[kSavings].min = 0; d[kSavings].max = 9999999; d[kSavings].step = 1000;
+    d[kWeather].option_count = 4; d[kWeather].options = kWeatherOptions; d[kWeather].min = 0; d[kWeather].max = 3;
+    d[kButtons].option_count = 5; d[kButtons].options = kButtonOptions;
+    d[kButtons].min = 0; d[kButtons].max = 31; d[kButtons].def = 17; d[kButtons].persist = true;
+}
+
+// 所持金と天気だけは、ゲームの値を読めるようにする（固定と鍵の表示に要る）。
+bool BindRowGameValues(Engine &engine) {
+    menu::Bound money{};
+    money.item = kMoney; money.behavior = Behavior::Value; money.source = Source::Game;
+    money.game.read = ReadMoney; money.game.write = WriteNothing;
+    menu::Bound weather{};
+    weather.item = kWeather; weather.behavior = Behavior::Value; weather.source = Source::Game;
+    weather.game.read = ReadWeather; weather.game.write = WriteNothing;
+    return engine.Bind(money) && engine.Bind(weather);
+}
+
+bool Render(const std::filesystem::path &directory, int index, const std::string &name) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine)) return false;
+    // 行の見本の状態。鍵は読めた値を固定し、ホットキーは壁と走り続けるに付ける。
+    engine.SetValue(kWall, 1);
+    engine.SetHotkey(kWall, key::L | key::Up);
+    engine.Commit(kWall, 0);
+    engine.SetHotkey(kRun, key::R | key::A);
+    engine.Commit(kRun, 0);
+    u16 target = kStop;
+    std::vector<u16> locks;
+    if (name == "lock-unselected") locks = {kWall, kMoney, kWeather};
+    else if (name == "lock-selected-value") { locks = {kWall, kMoney}; target = kMoney; }
+    else if (name == "lock-selected-toggle") { locks = {kWall, kMoney}; target = kWall; }
+    else if (name == "lock-toggle-off") locks = {kWall, kStop};
+    else if (name == "fav-top") target = kPlayer;
+    else if (name == "fav-top-selected") target = menu::kFavoritesFolder;
+    else if (name == "entry-check") target = kButtons;
+    else return false;
+    // ゲームの値は開いた時に読むので、鍵とお気に入りは開いた後に付ける（読めない値は固定できない）。
+    engine.Open(0);
+    for (u16 item : locks)
+        if (!engine.SetFixed(item, true, 0)) {
+            std::cerr << "固定できない項目: " << item << '\n';
+            return false;
+        }
+    if (name.rfind("fav-", 0) == 0)
+        for (u16 item : {kWall, kMoney, kWeather, kMap}) engine.SetFavorite(item, true);
+    if (target == menu::kFavoritesFolder || target == kPlayer) engine.Select(target);
+    else {
+        // 項目の入った一覧へ入ってから選ぶ（表示の中の押し切るボタンは、A で入力の枠を開く）。
+        const u16 folder = target == kButtons ? kDisplay : kPlayer;
+        engine.Select(folder); engine.Press(key::A, 0);
+        engine.Select(target);
+        if (target == kButtons) engine.Press(key::A, 0);
+    }
+    Shell shell(engine, {});
+    u32 now = 0;
+    shell.Step(now, {}, false);
+    now = 400; shell.Step(now, {}, false);
+    if (target == kButtons) {
+        // 2 つ下へ動かし、X の行の箱を選んだ状態にする。
+        for (int i = 0; i < 2; ++i) {
+            menu::Input down{}; down.held = key::Down;
+            shell.Step(now += 40, down, false);
+            shell.Step(now += 40, {}, false);
+        }
+    }
+    now = 1500; shell.Step(now, {}, false);
+    renderer::Canvas canvas;
+    canvas.Begin(lyt::Screen::Top);
+    gohan::features::menu_screen::CanvasSurface surface(canvas, lyt::Screen::Top);
+    shell.Draw(surface, now);
+    if (surface.dropped() || surface.truncated()) return false;
+    lyt::Present(canvas.Data());
+    return Capture(directory, index, static_cast<int>(now));
+}
+} // namespace rows
+
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 2 && argc != 3) return 2;
+    if (argc < 2) return 2;
     const std::filesystem::path directory(argv[1]);
+    if (argc >= 3 && std::string(argv[2]) == "--rows") {
+        // 残りの引数は場面の名前（台本の順）。場面ごとに frame-<番号>.json と resources-<番号> を書く。
+        if (!Resources(directory)) return 10;
+        for (int i = 0; i + 3 < argc; ++i)
+            if (!rows::Render(directory, i, argv[i + 3])) return 11;
+        return 0;
+    }
+    if (argc != 2 && argc != 3) return 2;
     if (argc == 3 && std::string(argv[2]) == "--parts")
         return Resources(directory) && PartsCatalog(directory) ? 0 : 7;
     if (argc == 3 && std::string(argv[2]) == "--scroll")

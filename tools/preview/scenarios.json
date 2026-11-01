@@ -2661,5 +2661,42 @@
         }
       ]
     }
+  ],
+  "rows": [
+    {
+      "name": "lock-unselected",
+      "label": "固定の印 / 非選択（値・トグル）",
+      "contains": ["壁を通り抜ける", "所持金", "天気", "時間を止める"]
+    },
+    {
+      "name": "lock-selected-value",
+      "label": "固定の印 / 選択中の値",
+      "contains": ["所持金", "固定中"]
+    },
+    {
+      "name": "lock-selected-toggle",
+      "label": "固定の印 / 選択中のトグル",
+      "contains": ["壁を通り抜ける", "固定中"]
+    },
+    {
+      "name": "lock-toggle-off",
+      "label": "固定の印 / OFF で固定したトグル",
+      "contains": ["時間を止める", "固定中"]
+    },
+    {
+      "name": "fav-top",
+      "label": "お気に入り / 一番上の一覧の先頭（非選択）",
+      "contains": ["お気に入り", "4件", "プレイヤー"]
+    },
+    {
+      "name": "fav-top-selected",
+      "label": "お気に入り / 一番上の一覧の先頭（選択中）",
+      "contains": ["お気に入り", "4件"]
+    },
+    {
+      "name": "entry-check",
+      "label": "複数選択の枠 / 字の選択肢（箱と字）",
+      "contains": ["押し切るボタン", "START", "取消"]
+    }
   ]
 }

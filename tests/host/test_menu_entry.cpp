@@ -163,10 +163,12 @@ void CheckListEntry() {
     assert(f.e().Ui().kind == UiKind::CheckList);
     Demand(f.rig, true);
     RecordingSurface s = f.Draw();
-    assert(s.HasText("[ ] a") && s.HasText("[X] b") && s.HasText("決定") && s.HasText("取消"));
+    // 選択中の空き（a）は白い輪、入っている b は ON の箱。字は箱の右に描く。
+    assert(s.HasSprite("check.ring") && s.HasSprite("check.on") && s.HasText("b") && s.HasText("決定") && s.HasText("取消"));
+    assert(s.dropped == 0); // 箱と字を足しても、描画の予算では捨てない
     f.rig.Tap(key::A); // a を入れる
     s = f.Draw();
-    assert(s.HasText("[X] a"));
+    assert(s.HasSprite("check.on.sel") && s.HasSprite("check.on"));
     f.rig.Tap(key::X);
     assert(f.e().State(Idx(MenuId::Multi)).value == 3 && f.e().Ui().kind == UiKind::None);
 }
