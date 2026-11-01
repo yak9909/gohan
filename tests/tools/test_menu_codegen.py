@@ -80,6 +80,7 @@ def test_values_are_scaled_and_resolved(tmp_path):
 
 def test_button_bits_are_fixed():
     assert menu.BUTTONS == ['ZL', 'L', 'R', 'ZR', 'Up', 'Down', 'Left', 'Right', 'A', 'B', 'X', 'Y', 'Select', 'Start']
+    assert menu.BUTTON_NAMES == {name.lower() for name in menu.BUTTONS}  # display = "buttons" の名前は BUTTONS から作る
     assert menu.parse_hotkey('start+zl', 'x') == (1 << 13) | 1
 
 

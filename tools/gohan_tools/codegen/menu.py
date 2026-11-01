@@ -41,9 +41,8 @@ INPUTS = ['none', 'number', 'hex']
 LISTS = ['fixed']  # 仮のフォルダ（子の並びをエンジンが持つ）。固定中の項目だけ。
 APPLIES = ['immediate']  # 設定の値の適用待ちを経ない
 DISPLAYS = ['buttons']  # 複数選択の選択肢をボタンの印で見せる
-# ボタンの名前（display = "buttons" の選択肢）。大文字小文字は問わない。
-BUTTON_NAMES = {name.lower() for name in ('ZL', 'L', 'R', 'ZR', 'Up', 'Down', 'Left', 'Right', 'A', 'B', 'X', 'Y',
-                                          'Select', 'Start')}
+# ボタンの名前（display = "buttons" の選択肢）。大文字小文字は問わない。BUTTON_BIT と同じ 14 個。
+BUTTON_NAMES = set(BUTTON_BIT)
 ID_PATTERN = re.compile(r'^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$')
 COND_PATTERN = re.compile(r'^\s*([a-z][a-z0-9_.]*)\s*(==|!=|<=|>=|<|>)\s*(.+?)\s*$')
 COND_OPS = {'==': 'Eq', '!=': 'Ne', '<': 'Lt', '<=': 'Le', '>': 'Gt', '>=': 'Ge'}

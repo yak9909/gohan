@@ -159,6 +159,8 @@ class Engine {
     bool CanFix(u16 item) const;
     bool RemembersValue(u16 item) const;
     bool IsFixedList(u16 folder) const;
+    // カーソルを置ける行か。灰色の行は飛ばすが、0 件の仮のフォルダ（灰色で入れないだけ）は選べる。
+    bool CanSelect(u16 item) const;
     u16 FirstChild(u16 folder) const;
     u16 NextChild(u16 folder, u16 item) const;
     bool CondHolds(const Cond &cond) const;

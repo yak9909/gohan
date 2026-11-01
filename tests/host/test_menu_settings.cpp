@@ -1,5 +1,6 @@
 // 設定画面（段 3）を、実際のエンジン・Shell で確かめる。
-// 開閉と位置（START・B・SELECT・同じ起動中の位置）、固定中の項目（順・A で外す・選択の寄せ・0 件）、
+// 開閉と位置（START・B・SELECT・同じ起動中の位置）、固定中の項目（順・A で外す・選択の寄せ・0 件は選べて入れない）、
+// 設定画面の中の X・L（効かない）、
 // トグルを全て保持（その場で効く・版の数）、保存を全て消す（既定はキャンセル・全部を戻す・効果は残す）、
 // 押し切るボタン（決定・既定・ボタンの対応）、設定画面の行の対象外、確認の中の START。
 #include "menu/paint.hpp"
@@ -104,10 +105,10 @@ void FixedListRules() {
     assert(r.engine.Selected() == Idx(MenuId::SampleHold));
     r.Tap(key::A);
     assert(r.engine.FixedCount() == 1 && r.engine.Selected() == Idx(MenuId::SampleFlag));
-    // 残りを全て外すと、フォルダは灰色になり、入れない。
+    // 残りを全て外すと、フォルダは灰色になり、入れない。一番上へ戻り、「固定中の項目」の行を選んだままにする。
     r.Tap(key::A);
     assert(r.engine.FixedCount() == 0 && r.engine.Depth() == 0 && r.engine.Folder() == Idx(kSettingsRoot));
-    assert(r.engine.Disabled(Idx(MenuId::SettingsFixed)));
+    assert(r.engine.Selected() == Idx(MenuId::SettingsFixed) && r.engine.Disabled(Idx(MenuId::SettingsFixed)));
     assert(r.engine.Select(Idx(MenuId::SettingsFixed)));
     r.Tap(key::A);
     r.Advance(400);
@@ -116,6 +117,59 @@ void FixedListRules() {
     assert(r.engine.Select(Idx(MenuId::SettingsFixed)));
     r.Frame();
     assert(r.Draw().HasText("固定している項目はありません"));
+}
+
+// 2b. 0 件の「固定中の項目」は灰色で入れないが、選べる行。0 件で初めて開くと先頭の行（固定中の項目）を選び、A では入らない。
+void EmptyFixedListIsSelectable() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    OpenSettings(r);
+    assert(r.engine.Folder() == Idx(kSettingsRoot) && r.engine.Selected() == Idx(MenuId::SettingsFixed));
+    assert(r.engine.Disabled(Idx(MenuId::SettingsFixed)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 0 && r.engine.Selected() == Idx(MenuId::SettingsFixed));
+    r.Tap(key::Down);
+    assert(r.engine.Selected() == Idx(MenuId::SettingsKeep));
+    r.Tap(key::Up);
+    assert(r.engine.Selected() == Idx(MenuId::SettingsFixed));
+}
+
+// 2c. 設定画面の中では X・L が効かない（短押しも長押しも始めない）。一覧の適用待ちは確認にかからず、そのまま残る。
+//     同じ長押しは一覧では今どおり確認を出す（対照）。
+void XAndLDoNothingInSettings() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const auto amount = Idx(MenuId::SampleAmount);
+    assert(r.engine.SetValue(amount, 70) && r.engine.Dirty(amount) && r.engine.DirtyCount() == 1);
+    OpenSettings(r);
+    assert(r.engine.Select(Idx(MenuId::SettingsKeep)));
+    const u32 hold = gohan::menu::timing::kHoldMs + 500;
+    r.Hold(key::X);
+    r.Advance(hold);
+    assert(r.engine.Dialog() == DialogKind::None && r.engine.Ui().kind == UiKind::None);
+    assert(!r.engine.HoldProgress(r.now, nullptr, nullptr, nullptr));
+    r.Release();
+    assert(r.engine.Dialog() == DialogKind::None && r.engine.DirtyCount() == 1 && r.engine.State(amount).value == 70);
+    r.Hold(key::L);
+    r.Advance(hold);
+    assert(r.engine.Dialog() == DialogKind::None && !r.engine.HoldProgress(r.now, nullptr, nullptr, nullptr));
+    r.Release();
+    assert(r.engine.Dialog() == DialogKind::None && r.engine.DirtyCount() == 1 && r.engine.State(amount).value == 70);
+    // 短押しでも何も変わらない（適用も差し戻しもしない）。
+    r.Tap(key::X);
+    r.Tap(key::L);
+    assert(r.engine.DirtyCount() == 1 && r.engine.State(amount).value == 70 && r.engine.Applied(amount) != 70);
+    // 対照: 一覧に戻ると、同じ長押しは確認を出す。B で閉じると適用待ちは残る。
+    r.Tap(key::Start);
+    r.Advance(400);
+    assert(!r.engine.InSettings() && r.engine.Visible());
+    r.Hold(key::X);
+    r.Advance(hold);
+    assert(r.engine.Dialog() == DialogKind::ApplyAll);
+    r.Release();
+    r.Tap(key::B);
+    assert(r.engine.Dialog() == DialogKind::None && r.engine.DirtyCount() == 1);
 }
 
 // 3. トグルを全て保持: 切り替えは適用待ちを経ず、その場で効く（既定は OFF）。版の数が増える。
@@ -232,6 +286,8 @@ void StartWaitsForDialog() {
 int main() {
     OpenCloseAndPosition();
     FixedListRules();
+    EmptyFixedListIsSelectable();
+    XAndLDoNothingInSettings();
     KeepToggles();
     EraseEverything();
     PressThroughKeys();

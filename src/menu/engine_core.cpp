@@ -113,6 +113,8 @@ const ItemState &Engine::State(u16 item) const {
 
 bool Engine::IsFixedList(u16 folder) const { return Has(folder) && defs_[folder].list == ListKind::Fixed; }
 
+bool Engine::CanSelect(u16 item) const { return IsFixedList(item) || !Disabled(item); }
+
 u16 Engine::FirstChild(u16 folder) const {
     if (folder == kFavoritesFolder) return favorite_count_ ? favorites_[0] : kNoItem;
     if (IsFixedList(folder)) return fixed_count_ ? fixed_order_[0] : kNoItem;
@@ -211,12 +213,12 @@ void Engine::RestorePosition() {
     }
     for (std::size_t level = 0; level <= depth_; ++level) {
         const u16 selected = selection_[level];
-        if (IsChild(stack_[level], selected) && !Disabled(selected)) continue;
+        if (IsChild(stack_[level], selected) && CanSelect(selected)) continue;
         u16 first = kNoItem, previous = kNoItem, next = kNoItem;
         bool found = false;
         for (u16 item = FirstChild(stack_[level]); item != kNoItem; item = NextChild(stack_[level], item)) {
             if (item == selected) { found = true; continue; }
-            if (Hidden(item) || Disabled(item)) continue;
+            if (Hidden(item) || !CanSelect(item)) continue;
             if (first == kNoItem) first = item;
             if (!found) previous = item;
             else if (next == kNoItem) next = item;

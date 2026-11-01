@@ -156,7 +156,9 @@ void Engine::Frame(u32 now, u16 held) {
         for (u16 bit : kPlainKeys)
             if ((pressed & bit) != 0) Press(bit, now);
         Repeat(held, pressed, now);
-        if (!hold_active_ && dialog_ == DialogKind::None && ui_.kind == UiKind::None && (pressed & (key::X | key::L)) != 0) {
+        // 設定画面の中では X・L の短押しも長押しも始めない（一覧の適用待ちを確認にかけない）。
+        if (!hold_active_ && !in_settings_ && dialog_ == DialogKind::None && ui_.kind == UiKind::None &&
+            (pressed & (key::X | key::L)) != 0) {
             hold_active_ = true;
             hold_key_ = (pressed & key::X) != 0 ? key::X : key::L;
             hold_start_ = now;

@@ -108,6 +108,11 @@ void Engine::RemoveFixedRow(u16 item, u32 now) {
     if (target == kNoItem)
         for (u16 i = FirstVisible(folder); i != item && i != kNoItem; i = NextVisible(folder, i)) target = i;
     if (SetFixed(item, false, now)) selection_[depth_] = target;
+    // 最後の 1 件を外したら、一番上（親）へ戻り、「固定中の項目」の行を選んだままにする（空のフォルダには残らない）。
+    if (fixed_count_ == 0 && depth_ > 0) {
+        --depth_;
+        selection_[depth_] = folder;
+    }
     RestorePosition();
 }
 

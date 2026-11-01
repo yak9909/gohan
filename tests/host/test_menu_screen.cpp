@@ -182,9 +182,11 @@ int main() {
     Frames(400); assert(!TopHasText("遮断が無効"));
 
     // 押し切るボタン: 設定画面（START）で選んだボタンを、遮断の要求の defer に置く。
-    // 既定は START だけ。固定中の項目は空なので、設定画面の初めの行は「保持設定」、その次が押し切るボタン。
+    // 既定は START だけ。固定中の項目は空なので、設定画面の初めの行は灰色の「固定中の項目」（入れないが選べる）。
+    // 下へ 2 つで「押し切るボタン」（1 つ目は「保持設定」）。
     Press(CTRPluginFramework::Key::Start); Frames(30);
-    assert(TopHasText("押し切るボタン") && TopHasText("設定"));
+    assert(TopHasText("押し切るボタン") && TopHasText("設定") && TopHasText("固定している項目はありません"));
+    Press(CTRPluginFramework::Key::DPadDown); Frames(10);
     Press(CTRPluginFramework::Key::DPadDown); Frames(10);
     Press(CTRPluginFramework::Key::A); Frames(15); // 複数選択の枠（今は START が入っていて、カーソルは A）
     Press(CTRPluginFramework::Key::A); Frames(5);  // A を加える（A と START）
