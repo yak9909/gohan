@@ -45,6 +45,7 @@ void DrawDialog(Surface &s, const Engine &e, const DialogView &view, float, floa
     case DialogKind::Action:
         if (view.item != kNoItem) w.Append(e.Def(view.item).label);
         w.Append("を実行しますか？"); yes = "実行"; break;
+    case DialogKind::Erase: w.Append("保存を全て消しますか？"); yes = "消す"; break;
     case DialogKind::None: break;
     }
     char lines[2][kLineBytes]; const int n = Wrap(s, question, b.w - ca::Margin * 2, lines, 2, nullptr);

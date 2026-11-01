@@ -20,11 +20,13 @@ bool Engine::SetValue(u16 item, s32 value) {
     case Control::Folder: return false;
     }
     state_[item].value = value;
+    // 設定の値（apply = immediate）は編集した時にその場で適用する（適用待ちを作らない）。
+    if (d.apply == ApplyKind::Immediate) Commit(item, 0);
     return true;
 }
 
 bool Engine::SetHotkey(u16 item, u16 mask) {
-    if (!Has(item) || Hidden(item) || Disabled(item)) return false;
+    if (!Has(item) || Hidden(item) || Disabled(item) || InSettingsTree(item)) return false;
     const ItemDef &d = defs_[item];
     if (d.control == Control::Folder || d.control == Control::Key) return false;
     if (mask != 0) {
@@ -98,6 +100,7 @@ bool Engine::CommitBody(u16 item, u32 now) {
             st.applied = previous; // 適用できなかった。適用待ちのまま残す
             return false;
         }
+        if (item == settings_.keep) keep_toggles_ = st.applied != 0; // トグルを全て保持（次の起動に残す物の決まり）
         break;
     case Behavior::Mode:
     case Behavior::None: break;
@@ -143,6 +146,13 @@ bool Engine::SetFixed(u16 item, bool on, u32 now) {
         if (!st.fixed) return true;
         st.fixed = false;
         st.fixed_failed = false;
+        // 固定した順の並びから外す（残りの順は変えない）。
+        std::size_t at = 0;
+        while (at < fixed_count_ && fixed_order_[at] != item) ++at;
+        if (at < fixed_count_) {
+            for (; at + 1 < fixed_count_; ++at) fixed_order_[at] = fixed_order_[at + 1];
+            --fixed_count_;
+        }
     } else {
         if (Hidden(item) || Disabled(item)) return false;
         if (st.fixed && st.applied == st.value) return true;
@@ -163,7 +173,10 @@ bool Engine::SetFixed(u16 item, bool on, u32 now) {
         if (!ok) { st = previous; return false; }
         st.fixed_value = st.applied;
         st.fixed = true;
-        if (!previous.fixed) st.fixed_failed = false;
+        if (!previous.fixed) {
+            st.fixed_failed = false;
+            if (fixed_count_ < core::limits::MenuItems) fixed_order_[fixed_count_++] = item; // 固定した順に足す
+        }
     }
     ++revision_;
     // 固定の操作は専用の通知だけを出す。効果の通知を重ねない。

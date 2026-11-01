@@ -16,5 +16,6 @@ void NoticeFailed(Notice &notice, const char *label, Result result);
 void NoticeHoldCancelled(Notice &notice, bool apply); // HOLD / 全適用（全戻し）をキャンセルしました
 void NoticeHotkeyConflict(Notice &notice, const char *label, const char *other);
 void NoticeItemAction(Notice &notice, const char *action, const char *label);
+void NoticeEraseAll(Notice &notice); // 保存を全て消す（全て最初に戻しました）
 const char *FailureText(Result result);
 } // namespace gohan::menu

@@ -74,7 +74,7 @@ def main() -> int:
     # メニュー: 試験用の spec と、収録している見本の spec から、それぞれ表を生成して試験する。
     codegen = root / 'tools/gohan_tools/codegen/menu.py'
     engine = ['src/menu/engine_core.cpp', 'src/menu/engine_edit.cpp', 'src/menu/engine_action.cpp',
-              'src/menu/engine_input.cpp', 'src/menu/engine_view.cpp', 'src/menu/hotkey.cpp',
+              'src/menu/engine_input.cpp', 'src/menu/engine_view.cpp', 'src/menu/engine_settings.cpp', 'src/menu/hotkey.cpp',
               'src/menu/notice.cpp', 'src/menu/value_text.cpp', 'src/core/format.cpp']
     run(['tests/host/test_menu_motion.cpp'], 'test_menu_motion')
     # 画面（帯・説明・ダイアログ・入力の枠・通知）。描画先は代役で受ける。
@@ -87,7 +87,8 @@ def main() -> int:
              (('tests/host/test_menu_sample.cpp', ['src/menu/sample_items.cpp']),
               ('tests/host/test_menu_shell.cpp', ['src/menu/sample_items.cpp', *screen]),
               ('tests/host/test_menu_actions.cpp', ['src/menu/sample_items.cpp', *screen]),
-              ('tests/host/test_menu_reorder.cpp', ['src/menu/sample_items.cpp', *screen])))):
+              ('tests/host/test_menu_reorder.cpp', ['src/menu/sample_items.cpp', *screen]),
+              ('tests/host/test_menu_settings.cpp', ['src/menu/sample_items.cpp', *screen])))):
         gen = build / f'gen-{name}'
         subprocess.run([sys.executable, str(codegen), '--spec', spec, '--out', str(gen)], cwd=root, check=True)
         for test, extra in tests:

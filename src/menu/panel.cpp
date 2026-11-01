@@ -213,7 +213,8 @@ void Panel::DrawHeading(Surface &s, const Engine &e, int dx, const u16 *path, in
     const int py = title.y + ca::List::Title::Text[1];
     s.Text(right - s.Measure(pos, true), py, pos, ca::Color::Band::Text, true);
     char full[kLineBytes], trimmed[kLineBytes];
-    core::TextWriter w(full, sizeof(full)); w.Append(ca::Text::Title);
+    // 設定画面の中の道筋は「設定」から始める（一覧の根は従来どおり）。
+    core::TextWriter w(full, sizeof(full)); w.Append(e.InSettings() ? e.Def(e.FolderAt(0)).label : ca::Text::Title);
     for (int n = 0; n < depth; ++n) w.Append(ca::Text::PathSeparator).Append(e.Def(path[n]).label);
     const int x = title.x + ca::List::Title::Text[0];
     const int room = right - s.Measure(pos, true) - ca::Row::Gap::Min - x;
@@ -463,6 +464,10 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, kind == UiKind::CheckList ? "切替" : "決定");
         if (kind == UiKind::CheckList) hint(key::X, "決定");
         hint(key::B, "取消");
+    } else if (e.InSettings()) {
+        // 設定画面（5.2）。固定中の項目の中では A が「外す」。n変更は出さない。
+        const bool fixed = e.Def(e.Folder()).list == ListKind::Fixed;
+        hint(key::A, fixed ? "外す" : "決定"); hint(key::B, "戻る"); hint(key::Start, "閉じる");
     } else if (kind != UiKind::None) {
         const auto &d = e.Def(e.Ui().item);
         char number[16]; FormatNumber(d.format, d.step > 0 ? d.step : 1, number, sizeof(number));
@@ -479,6 +484,8 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         hint(key::B, "戻る"); hint(key::X, "適用"); hint(key::L, "戻し"); hint(key::Y, "キー");
         // 操作の無い行（お気に入りのフォルダの行）では R を出さない（D.12.5）。
         if (e.Selected() != kNoItem && e.Actions(e.Selected(), nullptr) > 0) hint(key::R, "操作");
+        // 一覧の START で設定画面（5.2）。
+        if (e.HasSettings()) hint(key::Start, "設定");
     }
     int x = bar.x + ca::Bar::Hint::Icon[0];
     for (int n = 0; n < count; ++n) {
@@ -538,7 +545,9 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
                          !std::strcmp(row.value, "OFF") ? ca::Text::State::LockedOff : ca::Text::State::LockedOn;
     // 並べ替えの間に選んでいる行は「並べ替え中」（今の状態より先。D.12.2）。下ろす動きの途中は出さない。
     const bool reordering = reordering_ && item == lifted_;
-    const char *state = reordering ? ca::Text::State::Reorder : row.disabled ? ca::Text::State::Disabled :
+    // 固定中の項目が 1 つも無い仮のフォルダ（灰色で入れない）は、そのことを状態で言う（設定画面の 5.1）。
+    const bool fixed_empty = d.list == ListKind::Fixed && e.FixedCount() == 0;
+    const char *state = reordering ? ca::Text::State::Reorder : fixed_empty ? ca::Text::State::FixedEmpty : row.disabled ? ca::Text::State::Disabled :
                         !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
                         row.pending ? ca::Text::State::Pending : row.locked ? locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
                         !std::strcmp(row.value, "ON") ? ca::Text::State::On : "";
