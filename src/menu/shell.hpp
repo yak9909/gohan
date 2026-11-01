@@ -1,5 +1,6 @@
 #pragma once
 #include "core/input_block.hpp"
+#include "menu/action_list.hpp"
 #include "menu/engine.hpp"
 #include "menu/modal.hpp"
 #include "menu/notices.hpp"
@@ -33,7 +34,7 @@ class Shell {
     Engine &engine() { return engine_; }
     const Panel &panel() const { return panel_; }
     const NoticeQueue &notices() const { return notices_; }
-    bool Modal() const { return engine_.Dialog() != DialogKind::None || entry_.Active(); }
+    bool Modal() const { return engine_.Dialog() != DialogKind::None || entry_.Active() || list_.Open(); }
 
   private:
     static void OnNotice(void *self, const Notice &notice);
@@ -42,6 +43,7 @@ class Shell {
     ShellConfig config_;
     Panel panel_;
     Entry entry_;
+    ActionList list_; // R の操作のリスト（通知より上に描く）
     NoticeQueue notices_;
     motion::Tween modal_;
     motion::Tween dialog_close_; // 答えを選んで閉じた確認と操作案内の退場（1 → 0）

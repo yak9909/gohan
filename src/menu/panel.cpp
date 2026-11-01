@@ -131,6 +131,11 @@ bool Panel::Animating(u32 now) const {
            action_.Active(now, timing::kActivationBounceMs);
 }
 
+int Panel::SelectedRowY(u32 now) const {
+    const float row = std::clamp(selection_.At(now) - view_.At(now), 0.f, float(rows_ - 1));
+    return Round(ca::Row::Top + row * ca::Row::Pitch);
+}
+
 int Panel::MenuX(u32 now) const {
     return Round(ca::Time::ExitX * (1.f - open_.At(now)));
 }
@@ -379,7 +384,7 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
     const Rect bar = Bounds(ca::Bar::Rect, dx);
     s.Box(bar, "bar");
     struct Hint { u16 key; const char *label; };
-    Hint hints[6]; int count = 0;
+    Hint hints[8]; int count = 0;
     auto hint = [&](u16 key, const char *label) { hints[count++] = {key, label}; };
     const auto kind = e.Ui().kind;
     char fine[24], coarse[24];
@@ -387,6 +392,9 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         hint(key::Left | key::Right, "えらぶ"); hint(key::A, "決定"); hint(key::B, "取消");
     } else if (kind == UiKind::Key) {
         hint(key::A, "押してはなすと決定");
+    } else if (kind == UiKind::Actions) {
+        // R の操作のリスト（D.12.5）。n変更は出さない。
+        hint(key::Up | key::Down, "えらぶ"); hint(key::A, "決定"); hint(key::B, "閉じる");
     } else if (kind == UiKind::List || kind == UiKind::CheckList) {
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, kind == UiKind::CheckList ? "切替" : "決定");
         if (kind == UiKind::CheckList) hint(key::X, "決定");
@@ -405,6 +413,8 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
             if (control == Control::Number || control == Control::Slider || control == Control::Select) hint(key::Left | key::Right, "値");
         }
         hint(key::B, "戻る"); hint(key::X, "適用"); hint(key::L, "戻し"); hint(key::Y, "キー");
+        // 操作の無い行（お気に入りのフォルダの行）では R を出さない（D.12.5）。
+        if (e.Selected() != kNoItem && e.Actions(e.Selected(), nullptr) > 0) hint(key::R, "操作");
     }
     int x = bar.x + ca::Bar::Hint::Icon[0];
     for (int n = 0; n < count; ++n) {

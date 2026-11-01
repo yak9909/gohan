@@ -19,6 +19,8 @@ class Panel {
     bool Visible(u32 now) const { return open_.At(now) > 0.0f || open_.to > 0.0f; }
     bool BarVisible(u32 now) const { return bar_.At(now) > 0.f || bar_.to > 0.f; }
     float OpenAmount(u32 now) const { return open_.At(now); }
+    // 選んだ行の y（スクロールと選択の動きの途中でも、今描いている位置）。R の操作のリストの窓の位置に使う。
+    int SelectedRowY(u32 now) const;
     bool Animating(u32 now) const;
     float ViewStart(u32 now) const { return view_.At(now); }
     int Rows() const { return rows_; }

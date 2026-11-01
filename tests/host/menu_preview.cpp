@@ -283,13 +283,15 @@ using menu::u16;
 using menu::u32;
 
 enum : u16 {
-    kPlayer, kWall, kStop, kSpeed, kRun, kMoney, kSavings, kWeather, kSpin, kPocket, kMap, kFurniture, kClothes,
+    kPlayer, kWall, kStop, kSpeed, kRun, kMoney, kSavings, kWeather, kSpin, kPocket, kMap, kLoan, kTools,
     kVillage, kHouse, kDisplay, kButtons, kCount
 };
 const char *const kWeatherOptions[] = {"晴れ", "雨", "雪", "曇り"};
 const char *const kButtonOptions[] = {"A", "B", "X", "Y", "START"};
 
-bool ReadMoney(menu::s32 *value) { *value = 48210; return true; }
+// 所持金を読めるか（操作のリストの灰色の見本だけ読めない）。場面ごとに Render の前に決める。
+bool g_money_readable = true;
+bool ReadMoney(menu::s32 *value) { *value = 48210; return g_money_readable; }
 bool ReadWeather(menu::s32 *value) { *value = 1; return true; }
 menu::Result WriteNothing(menu::s32) { return menu::Result::Ok; }
 
@@ -308,25 +310,26 @@ void DefineRowItems(ItemDef (&d)[kCount]) {
     d[kWall] = MakeRowItem("壁を通り抜ける", "壁や木を通り抜けて歩けます。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kStop);
     d[kStop] = MakeRowItem("時間を止める", "時計を止めます。ON の間は時間が進みません。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kSpeed);
     d[kSpeed] = MakeRowItem("歩く速さ", "歩く速さです。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kRun);
-    d[kRun] = MakeRowItem("走り続ける", "ホットキーを押している間だけ走ります。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, kMoney);
+    d[kRun] = MakeRowItem("走り続ける", "ホットキーを押している間だけ走ります。", Control::Toggle, Behavior::Hold, Source::None, kPlayer, none, kMoney);
     d[kMoney] = MakeRowItem("所持金", "持っているお金です。開いた時にゲームから読みます。", Control::Number, Behavior::Value, Source::Game, kPlayer, none, kSavings);
     d[kSavings] = MakeRowItem("貯金", "貯めているお金です。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kWeather);
     d[kWeather] = MakeRowItem("天気", "今の天気です。開いた時にゲームから読みます。", Control::Select, Behavior::Value, Source::Game, kPlayer, none, kSpin);
     d[kSpin] = MakeRowItem("その場で回る", "その場で 1 回転します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kPocket);
     d[kPocket] = MakeRowItem("持ち物を並べる", "持ち物を並べ直します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kMap);
-    d[kMap] = MakeRowItem("地図の画面", "地図を開きます。もう一度で閉じます。", Control::Action, Behavior::Mode, Source::None, kPlayer, none, kFurniture);
-    d[kFurniture] = MakeRowItem("家具の並べ方", "家具を並べ直します。", Control::Action, Behavior::Trigger, Source::None, kPlayer, none, kClothes);
-    d[kClothes] = MakeRowItem("服の選び方", "服を選び直します。", Control::Folder, Behavior::None, Source::None, kPlayer, none, none);
+    d[kMap] = MakeRowItem("地図の画面", "地図を開きます。もう一度で閉じます。", Control::Action, Behavior::Mode, Source::None, kPlayer, none, kLoan);
+    d[kLoan] = MakeRowItem("家のローン", "家のローンの残りです。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kTools);
+    d[kTools] = MakeRowItem("スコップを強くする", "スコップを強いままにします。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, none);
     d[kVillage] = MakeRowItem("村", "村の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kHouse);
     d[kHouse] = MakeRowItem("見本", "見本の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kDisplay);
     d[kDisplay] = MakeRowItem("表示", "表示の項目です。", Control::Folder, Behavior::None, Source::None, none, kButtons, none);
     d[kButtons] = MakeRowItem("押し切るボタン", "押し切るボタンを選びます。", Control::Multiselect, Behavior::Value, Source::Setting, kDisplay, none, none);
-    d[kWall].persist = d[kStop].persist = d[kRun].persist = true;
+    d[kWall].persist = d[kStop].persist = d[kRun].persist = d[kTools].persist = true;
     d[kSpeed].persist = d[kSavings].persist = true;
     d[kSpeed].format = Format::Decimal1; d[kSpeed].def = 10; d[kSpeed].min = 0; d[kSpeed].max = 990; d[kSpeed].step = 1;
     d[kMoney].lockable = d[kWeather].lockable = true;
     d[kMoney].min = 0; d[kMoney].max = 99999; d[kMoney].step = 1;
     d[kSavings].def = 1250000; d[kSavings].min = 0; d[kSavings].max = 9999999; d[kSavings].step = 1000;
+    d[kLoan].def = 398000; d[kLoan].min = 0; d[kLoan].max = 9999999; d[kLoan].step = 1000;
     d[kWeather].option_count = 4; d[kWeather].options = kWeatherOptions; d[kWeather].min = 0; d[kWeather].max = 3;
     d[kButtons].option_count = 5; d[kButtons].options = kButtonOptions;
     d[kButtons].min = 0; d[kButtons].max = 31; d[kButtons].def = 17; d[kButtons].persist = true;
@@ -343,7 +346,129 @@ bool BindRowGameValues(Engine &engine) {
     return engine.Bind(money) && engine.Bind(weather);
 }
 
+// 段 2b の見本（操作のリスト・通知・固定の見本）。製品の Engine と Shell を、時刻と押すボタンで進めて描く。
+// 操作のリストは 400 ms に R で開き、静止した 1500 ms で描く（開く・閉じる動きは 160 ms）。
+gohan::menu::Notice Note(const char *title, const char *message) {
+    gohan::menu::Notice notice{};
+    std::snprintf(notice.title, sizeof(notice.title), "%s", title);
+    std::snprintf(notice.message, sizeof(notice.message), "%s", message);
+    return notice;
+}
+// 16 ms の 1 フレーム。keys は押しているボタン。
+void Tick(menu::Shell &shell, u32 &now, u16 keys = 0) {
+    menu::Input in;
+    in.held = keys;
+    now += 16;
+    shell.Step(now, in, false);
+}
+void Settle(menu::Shell &shell, u32 &now, u32 until) {
+    while (now < until) Tick(shell, now);
+}
+bool DrawShell(const std::filesystem::path &directory, int index, menu::Shell &shell, u32 now) {
+    renderer::Canvas canvas;
+    canvas.Begin(lyt::Screen::Top);
+    gohan::features::menu_screen::CanvasSurface surface(canvas, lyt::Screen::Top);
+    shell.Draw(surface, now);
+    if (surface.dropped() || surface.truncated()) return false;
+    lyt::Present(canvas.Data());
+    return Capture(directory, index, static_cast<int>(now));
+}
+bool Scene(const std::filesystem::path &directory, int index, const std::string &name) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    g_money_readable = name != "actions-disabled";
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine)) return false;
+    // 壁はホットキー付き。ON にするのは、トグルの場面（見本と同じく、ほかの場面は OFF）。走り続けるはホットキー付き。
+    if (name == "actions-toggle" || name == "actions-toggle-fixed") engine.SetValue(kWall, 1);
+    engine.SetHotkey(kWall, key::L | key::Up);
+    engine.Commit(kWall, 0);
+    engine.SetHotkey(kRun, key::R | key::A);
+    engine.Commit(kRun, 0);
+    if (name == "actions-hold" || name == "lock-hold") {
+        engine.SetValue(kRun, 1);
+        engine.Commit(kRun, 0);
+    }
+    // 対象の行と入るフォルダ（kNoItem は根のまま）。
+    u16 folder = kPlayer, target = kMoney;
+    if (name == "actions-toggle" || name == "actions-toggle-fixed") target = kWall;
+    else if (name == "actions-toggle-off") target = kStop;
+    else if (name == "actions-hold" || name == "lock-hold") target = kRun;
+    else if (name == "actions-action") target = kSpin;
+    else if (name.rfind("actions-bottom", 0) == 0 || name.rfind("actions-notice", 0) == 0 || name == "fav-added-notice") target = kTools;
+    else if (name == "actions-folder") { folder = menu::kNoItem; target = kVillage; }
+    if (name == "notice-long-name") {
+        // 操作の無い（閉じた）画面の通知だけ。
+        Shell closed(engine, {});
+        closed.Notify(Note("お気に入りに追加", "とても長い名前の項目の見本で 2 行になる物"), 0);
+        closed.Notify(Note("固定を外す", "所持金"), 40);
+        u32 now = 0;
+        Settle(closed, now, 1200);
+        return DrawShell(directory, index, closed, 1200);
+    }
+    engine.Open(0);
+    // ゲームの値は開いた時に読むので、所持金の割り当て・固定・お気に入りは開いた後に付ける（読めない値は割り当てられない）。
+    if (name == "actions-value-fixed") {
+        // 走り続ける（R+A）と重ならないボタンにする（同じ割り当ては拒否される）。
+        if (!engine.SetHotkey(kMoney, key::L | key::Down) || !engine.Commit(kMoney, 0) ||
+            !engine.SetFixed(kMoney, true, 0) || !engine.SetFavorite(kMoney, true)) return false;
+    } else if (name == "actions-toggle-fixed") {
+        if (!engine.SetFixed(kWall, true, 0) || !engine.SetFavorite(kWall, true)) return false;
+    } else if (name == "lock-hold") {
+        if (!engine.SetFixed(kRun, true, 0)) return false;
+    } else if (name == "fixed-notice") {
+        if (!engine.SetFixed(kMoney, true, 0)) return false;
+    }
+    // 根の一覧の見本は、お気に入りが 4 件あると「お気に入り 4件」の行を出す（見本と同じ）。
+    if (name == "actions-folder")
+        for (u16 item : {kWall, kMoney, kWeather, kMap})
+            if (!engine.SetFavorite(item, true)) return false;
+    if (folder != menu::kNoItem) {
+        engine.Select(folder);
+        engine.Press(key::A, 0);
+    }
+    engine.Select(target);
+    Shell shell(engine, {});
+    if (name == "actions-notice" || name == "actions-notice-closed") {
+        // 前の操作の通知が 3 件残っている（ages 1500・1100・700 ms で 1500 ms に描く）。
+        shell.Notify(Note("値を固定", "所持金"), 0);
+        shell.Notify(Note("お気に入りに追加", "天気"), 400);
+        shell.Notify(Note("ONで固定", "壁を通り抜ける"), 800);
+    } else if (name == "fixed-notice") {
+        shell.Notify(Note("値を固定", "所持金"), 1000);
+    } else if (name == "fav-added-notice") {
+        shell.Notify(Note("お気に入りに追加", "スコップを強くする"), 1000);
+    }
+    u32 now = 0;
+    Tick(shell, now);
+    Settle(shell, now, 400);
+    if (name.rfind("actions-", 0) == 0) {
+        // R で開く（押した時刻 416 ms から開く）。離すと 432 ms。
+        Tick(shell, now, key::R);
+        Tick(shell, now);
+        if (name == "actions-value-fixed") {
+            Tick(shell, now, key::Down); // 2 行目（固定を外すの次の「お気に入りから外す」）
+            Tick(shell, now);
+        }
+        if (name == "actions-notice-closed") {
+            Settle(shell, now, 1000);
+            Tick(shell, now, key::B); // 閉じてから描く
+            Tick(shell, now);
+        }
+        if (name.rfind("actions-open-", 0) == 0) {
+            // 開く途中。開いた時刻（416）から 40・80・120 ms の所で描く。
+            const u32 offset = name == "actions-open-040" ? 40 : name == "actions-open-080" ? 80 : 120;
+            return DrawShell(directory, index, shell, 416 + offset);
+        }
+    }
+    Settle(shell, now, 1500);
+    return DrawShell(directory, index, shell, now);
+}
+
 bool Render(const std::filesystem::path &directory, int index, const std::string &name) {
+    if (name.rfind("actions-", 0) == 0 || name == "fixed-notice" || name == "fav-added-notice" ||
+        name == "notice-long-name" || name == "lock-hold" || name == "bar-new")
+        return Scene(directory, index, name);
     ItemDef defs[kCount];
     DefineRowItems(defs);
     Engine engine(defs, kCount);
