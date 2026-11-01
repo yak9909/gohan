@@ -27,6 +27,27 @@ const char *Place(const Engine &e, u16 item, char *buffer, std::size_t capacity)
     }
     return buffer;
 }
+
+// 押し切るボタン（display = buttons）の印の幅: 選んだボタンの印を、印の間を空けて並べた時の幅（D.12.4）。
+int ButtonsWidth(Surface &s, const ItemDef &d, s32 picked) {
+    int width = 0;
+    bool first = true;
+    for (unsigned i = 0; i < d.option_count; ++i) {
+        const u16 bit = ButtonKeyOf(d.options[i]);
+        if (!bit || !((picked >> i) & 1)) continue;
+        width += (first ? 0 : ca::Row::Buttons[0]) + KeyWidth(s, bit);
+        first = false;
+    }
+    return width;
+}
+// 選んだボタンの印を、左から印の間を空けて描く。bar は選んだ行（帯の色の印）。
+void DrawButtons(Surface &s, const ItemDef &d, s32 picked, int x, int y, bool bar) {
+    for (unsigned i = 0; i < d.option_count; ++i) {
+        const u16 bit = ButtonKeyOf(d.options[i]);
+        if (!bit || !((picked >> i) & 1)) continue;
+        x = KeyIcons(s, x, y, bit, bar) + ca::Row::Buttons[0];
+    }
+}
 } // namespace
 
 float Panel::TargetFor(int index) const {
@@ -52,7 +73,12 @@ void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
         old_selected_ = selected_;
         old_view_ = previous_view;
         old_selection_ = selection_.At(now);
-        folder_direction_ = reversing ? -folder_direction_ :
+        old_root_ = root_;
+        old_readonly_ = readonly_;
+        // 一覧と設定画面の出入りは、入る方を進む向き・出る方を戻る向きにする（一覧の深さに関わらず）。
+        // それ以外は、新しいフォルダが前のフォルダの子なら進む向き。
+        const bool switched = engine.InSettings() != settings_shown_;
+        folder_direction_ = reversing ? -folder_direction_ : switched ? (engine.InSettings() ? 1 : -1) :
             (engine.Folder() != kNoItem && engine.Def(engine.Folder()).parent == folder_ ? 1 : -1);
         const float start = reversing ? 1.f - previous_phase : 0.f;
         folder_phase_.Jump(start, now);
@@ -61,11 +87,14 @@ void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
     // 道筋は今の分を取り直す（旧い道筋は上で写した）。閉じている間も取り直して、次の比べ方に使う。
     path_depth_ = 0;
     for (std::size_t level = 1; level <= engine.Depth(); ++level) path_[path_depth_++] = engine.FolderAt(level);
+    root_ = engine.InSettings() ? engine.FolderAt(0) : kNoItem;
+    settings_shown_ = engine.InSettings();
     // 並べ替えの間は写しの順で行を集める（D.12.3）。ほかは今のフォルダの見える子。
     if (reorder.Open()) {
         count_ = static_cast<int>(reorder.Count());
         std::copy(reorder.Items(), reorder.Items() + count_, items_);
     } else count_ = static_cast<int>(engine.Children(engine.Folder(), items_, core::limits::MenuItems + 1));
+    readonly_ = engine.Folder() != kNoItem && engine.Def(engine.Folder()).list == ListKind::Fixed;
     int index = 0;
     while (index < count_ && items_[index] != engine.Selected()) ++index;
     if (index >= count_) index = 0;
@@ -194,19 +223,20 @@ void Panel::DrawFrame(Surface &s, const Engine &e, int dx, u32 now) {
         int old_index = 0;
         while (old_index < old_count_ && old_items_[old_index] != old_selected_) ++old_index;
         FadedSurface old(s, 1.f - p), next(s, p);
-        if (p < 1.f) DrawHeading(old, e, dx, old_path_, old_path_depth_, old_count_, old_index);
+        if (p < 1.f) DrawHeading(old, e, dx, old_path_, old_path_depth_, old_count_, old_index, old_root_);
         int index = 0;
         while (index < count_ && items_[index] != e.Selected()) ++index;
-        if (p > 0.f) DrawHeading(next, e, dx, path_, path_depth_, count_, index);
+        if (p > 0.f) DrawHeading(next, e, dx, path_, path_depth_, count_, index, root_);
     } else {
         int index = 0;
         while (index < count_ && items_[index] != e.Selected()) ++index;
-        DrawHeading(s, e, dx, path_, path_depth_, count_, index);
+        DrawHeading(s, e, dx, path_, path_depth_, count_, index, root_);
     }
 }
 
 // 題の道筋は、入った順のフォルダ（path）をそのまま続ける。お気に入りの中のフォルダは「お気に入り」を経由する。
-void Panel::DrawHeading(Surface &s, const Engine &e, int dx, const u16 *path, int depth, int count, int index) {
+// 先頭（root）は設定画面の根（「設定」）か、一覧の根（「GOHAN」）。旧い側は旧い先頭で描く。
+void Panel::DrawHeading(Surface &s, const Engine &e, int dx, const u16 *path, int depth, int count, int index, u16 root) {
     const Rect title = Bounds(ca::List::Title::Rect, dx + ca::List::Rect[0], ca::List::Rect[1], ca::List::Rect[2]);
     char pos[24]; core::TextWriter(pos, sizeof(pos)).Unsigned(count ? index + 1 : 0).Append("/").Unsigned(count);
     const int right = dx + ca::List::Rect[0] + ca::List::Rect[2] + ca::List::Title::Pos::Right;
@@ -214,7 +244,7 @@ void Panel::DrawHeading(Surface &s, const Engine &e, int dx, const u16 *path, in
     s.Text(right - s.Measure(pos, true), py, pos, ca::Color::Band::Text, true);
     char full[kLineBytes], trimmed[kLineBytes];
     // 設定画面の中の道筋は「設定」から始める（一覧の根は従来どおり）。
-    core::TextWriter w(full, sizeof(full)); w.Append(e.InSettings() ? e.Def(e.FolderAt(0)).label : ca::Text::Title);
+    core::TextWriter w(full, sizeof(full)); w.Append(root == kNoItem ? ca::Text::Title : e.Def(root).label);
     for (int n = 0; n < depth; ++n) w.Append(ca::Text::PathSeparator).Append(e.Def(path[n]).label);
     const int x = title.x + ca::List::Title::Text[0];
     const int room = right - s.Measure(pos, true) - ca::Row::Gap::Min - x;
@@ -240,11 +270,11 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
         const float p = folder_phase_.At(now);
         FadedSurface old(s, 1.f - p), next(s, p);
         if (p < 1.f) DrawRowLayer(old, e, dx - folder_direction_ * Round(timing::kFolderDistance * p), now,
-                                  old_items_, old_count_, old_view_, old_selection_, old_selected_);
+                                  old_items_, old_count_, old_view_, old_selection_, old_selected_, old_readonly_);
         if (p > 0.f) DrawRowLayer(next, e, dx + folder_direction_ * Round(timing::kFolderDistance * (1.f - p)), now,
-                                  items_, count_, start, selection_.At(now), e.Selected());
+                                  items_, count_, start, selection_.At(now), e.Selected(), readonly_);
     } else {
-        DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected());
+        DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected(), readonly_);
     }
     if (clipped) s.EndClip();
     // 指の列は横移動させず、切り抜いた旧・新の行より後に重ねる。
@@ -278,11 +308,11 @@ void Panel::DrawLifted(Surface &s, const Engine &e, int dx, u32 now, float start
     const float alpha = static_cast<float>(ca::Fav::Reorder::ShadowAlpha) * lift_ / static_cast<float>(ca::Fav::Reorder::Lift);
     s.Box({x + shadow[0], by + shadow[1], ca::Row::W + shadow[2], shadow[3]}, "field", Fade(ca::Color::Sel::Shadow, alpha));
     Selected(s, {x, by - lift, ca::Row::W, ca::Row::H}, false);
-    DrawRow(s, e, lifted_, dx, by - lift, offset, true, 1.f, now);
+    DrawRow(s, e, lifted_, dx, by - lift, offset, true, 1.f, now, readonly_);
 }
 
 void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
-                         const u16 *items, int count, float start, float selected_index, u16 selected_item) {
+                         const u16 *items, int count, float start, float selected_index, u16 selected_item, bool readonly) {
     // 帯も行の層に含める。縦の選択移動に、同じ横移動とフェードを重ねる。
     // 並べ替えで持ち上げた行は、帯も字も行の層の最後に描く（ほかの行より上に重なる。D.12.3）。
     const bool lifting = items == items_ && lifted_ != kNoItem && lifted_ == selected_item;
@@ -306,7 +336,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
         const int offset = selected && items == items_ ?
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
             Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
-        if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
+        if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now, readonly);
         if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
             // お気に入りの行の下は、普通の行の破線と分けて 1 画素の実線（D.12.3）。
             s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
@@ -318,7 +348,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
     if (lifting) DrawLifted(s, e, dx, now, start, selected_index);
 }
 
-void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now) {
+void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now, bool readonly) {
     const RowView v = e.View(item); if (!v.def) return;
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
@@ -343,9 +373,13 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
-    const bool numeric = NumericControl(d) || d.control == Control::Multiselect;
     const bool pill = d.control == Control::Toggle || v.button;
-    const int vw = pill ? ca::Row::Pill::Size[0] : s.Measure(v.value, numeric);
+    // 押し切るボタン（display = buttons）は、選んだボタンの印の並びの幅で値の欄を決める。1 つも無ければ「なし」（D.12.4）。
+    const bool buttons = d.control == Control::Multiselect && d.display == DisplayKind::Buttons;
+    const bool numeric = NumericControl(d) || (d.control == Control::Multiselect && !buttons);
+    const s32 picked = e.State(item).value;
+    const int icons = buttons ? ButtonsWidth(s, d, picked) : 0;
+    const int vw = pill ? ca::Row::Pill::Size[0] : buttons ? (icons ? icons : s.Measure("なし")) : s.Measure(v.value, numeric);
     const int vx = pill ? right - vw : right + ca::Row::Value::Text[0] - vw;
     const int lx = x + ca::Row::Label[0], ly = y + ca::Row::Label[1];
     const u32 normal = v.disabled ? ca::Color::Disabled::Text : v.pending ? ca::Color::Pending::Text : ca::Color::Text;
@@ -355,7 +389,8 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     // ◀ ▶ は左右で値が変わる行（数値・スライダー・選択）の選択中だけ。鍵は ◀ の左 2 画素へ（D.12.2）。
     // 並べ替えで持ち上げた行では左右で値を変えないので出さない（D.12.3）。
     const bool adjustable = d.control == Control::Number || d.control == Control::Slider || d.control == Control::Select;
-    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable && item != lifted_;
+    // 固定中の項目の中は編集できないので、選んでも矢印を出さない（D.12.4）。
+    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable && item != lifted_ && !readonly;
     const int lockX = arrows ? vx + ca::Row::Value::ArrowLeft - 2 - ca::Row::Lock::Mark[2] : vx + ca::Row::Lock::Mark[0];
     int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
     if (v.locked) valueLeft = std::min(valueLeft, lockX);
@@ -369,6 +404,13 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
+        // 固定中の項目の件数（D.12.4）。位置と色はお気に入りの件数と同じ。0 件でも「0件」を出す。
+        if (d.list == ListKind::Fixed) {
+            char count[24];
+            core::TextWriter(count, sizeof(count)).Unsigned(e.FixedCount()).Append("件");
+            Ink(s, right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count), ly, count, (shadow >> 24) != 0,
+                MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, shadow);
+        }
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink); return;
     }
     if (pill) {
@@ -412,6 +454,11 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
             s.Sprite(kx, py + inset, "switch.knob", edge);
             s.Sprite(kx + inset, py + inset * 2, "switch.knob_inner", Fade(MixColor(sw.knob, sw.next_knob, p), alpha));
         }
+    } else if (buttons) {
+        // 選んだボタンの印（選んだ行は帯の色、そうでなければ紙の色）。1 つも無ければ「なし」。◀ ▶ は出さない。
+        if (icons) DrawButtons(s, d, picked, vx, y + ca::Row::Buttons[1], weight > 0.5f);
+        else Ink(s, vx, y + ca::Row::Value::Text[1], "なし", (shadow >> 24) != 0,
+                 v.locked ? MixColor(ca::Color::Locked, ca::Color::Sel::Text, weight) : ink, false, shadow);
     } else {
         Ink(s, vx, y + ca::Row::Value::Text[1], v.value, (shadow >> 24) != 0,
             v.locked ? MixColor(ca::Color::Locked, ca::Color::Sel::Text, weight) : ink, numeric, shadow);
@@ -496,12 +543,14 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         x = end + ca::Bar::Hint::NextGap;
         if (n + 1 < count) {
             // 次の語の位置を先に計算し、印と語をまとめて動かす。
-            const int width = hints[n + 1].key & (key::L | key::R) ? ca::Icon::Button::Shoulder[0] : ca::Icon::Button::Round[0];
+            const int width = hints[n + 1].key == key::Start ? ca::Part::KeyStart[0] :
+                              hints[n + 1].key & (key::L | key::R) ? ca::Icon::Button::Shoulder[0] : ca::Icon::Button::Round[0];
             const int align = ca::Bar::Hint::Alignment;
             x += (align - (x + width + ca::Bar::Hint::LabelGap - end) % align) % align;
         }
     }
-    if (kind != UiKind::None || dialog) return;
+    // 設定画面と、その他の画面（確認・入力の枠・R の操作のリスト）は n変更を出さない（D.12.5）。
+    if (kind != UiKind::None || dialog || e.InSettings()) return;
     char changed[24]; core::TextWriter(changed, sizeof(changed)).Unsigned(e.DirtyCount()).Append(ca::Text::ChangedSuffix);
     s.Text(bar.x + bar.w + ca::Bar::Changed[0] - s.Measure(changed), bar.y + ca::Bar::Changed[1], changed,
            e.DirtyCount() ? ca::Color::Bar::Changed : ca::Color::Bar::Unchanged);
@@ -553,9 +602,10 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
                         !std::strcmp(row.value, "ON") ? ca::Text::State::On : "";
     char states[ca::Desc::State[1]][kLineBytes];
     const int ns = Wrap(s, state, ca::Desc::Body[5], states, ca::Desc::State[1], nullptr);
-    // お気に入りの中の項目は、状態の下に場所（親の道筋）を出す（D.12.2）。
+    // お気に入りと固定中の項目の中の項目は、状態の下に場所（親の道筋）を出す（D.12.2）。
     char place[kLineBytes * 2], places[ca::Desc::State[1]][kLineBytes];
-    const int nl = e.Folder() == kFavoritesFolder ?
+    const bool located = e.Folder() == kFavoritesFolder || (e.Folder() != kNoItem && e.Def(e.Folder()).list == ListKind::Fixed);
+    const int nl = located ?
         Wrap(s, Place(e, item, place, sizeof(place)), ca::Desc::Body[5], places, ca::Desc::State[1], nullptr) : 0;
     const bool extra = hotkey || state[0] || nl > 0;
     const auto &h = ca::Desc::Height;

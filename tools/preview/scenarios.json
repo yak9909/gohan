@@ -2828,9 +2828,74 @@
       "contains": ["走り続ける", "固定中"]
     },
     {
+      "name": "settings-top",
+      "label": "設定画面 / 一番上（START で開く）",
+      "contains": ["設定", "固定中の項目", "3件", "保持設定", "押し切るボタン", "閉じる"]
+    },
+    {
+      "name": "settings-enter-060",
+      "label": "設定画面 / 開く途中 60 ms（一覧は左へ、設定は右から）",
+      "contains": ["プレイヤー", "所持金"]
+    },
+    {
+      "name": "settings-enter-120",
+      "label": "設定画面 / 開く途中 120 ms",
+      "contains": ["プレイヤー", "固定中の項目"]
+    },
+    {
+      "name": "settings-fixed",
+      "label": "設定画面 / 固定中の項目（所持金を選択・場所）",
+      "contains": ["所持金", "場所: プレイヤー", "外す"]
+    },
+    {
+      "name": "settings-fixed-toggle",
+      "label": "設定画面 / 固定中の項目（トグルを選択）",
+      "contains": ["壁を通り抜ける", "場所: プレイヤー"]
+    },
+    {
+      "name": "settings-fixed-empty",
+      "label": "設定画面 / 固定中の項目が 0 件",
+      "contains": ["0件", "固定している項目はありません"]
+    },
+    {
+      "name": "settings-retain",
+      "label": "設定画面 / 保持設定（トグルを全て保持・保存を全て消す）",
+      "contains": ["トグルを全て保持", "保存を全て消す"]
+    },
+    {
+      "name": "settings-erase",
+      "label": "設定画面 / 保存を全て消す（実行の行）",
+      "contains": ["保存を全て消す", "決定"]
+    },
+    {
+      "name": "settings-erase-confirm",
+      "label": "設定画面 / 消す確認",
+      "contains": ["保存を全て消しますか？", "キャンセル"]
+    },
+    {
+      "name": "settings-defer",
+      "label": "設定画面 / 押し切るボタン（A と START の印）",
+      "contains": ["押し切るボタン", "閉じる"]
+    },
+    {
+      "name": "settings-defer-entry",
+      "label": "設定画面 / 押し切るボタンの枠（案、X を選択）",
+      "contains": ["押し切るボタン", "切替", "決定", "取消"]
+    },
+    {
+      "name": "settings-defer-entry-checked",
+      "label": "設定画面 / 押し切るボタンの枠（案、START を選択）",
+      "contains": ["押し切るボタン", "切替", "取消"]
+    },
+    {
+      "name": "settings-defer-entry-now",
+      "label": "設定画面 / 押し切るボタンの枠（今の枠・比べるため）",
+      "contains": ["押し切るボタン", "切替", "取消"]
+    },
+    {
       "name": "bar-new",
-      "label": "下の帯 / 案（R 操作）",
-      "contains": ["操作", "戻る", "キー"]
+      "label": "下の帯 / 案（R 操作・START 設定）",
+      "contains": ["操作", "戻る", "キー", "設定"]
     }
   ]
 }
