@@ -242,7 +242,11 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
             Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
         DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
-        if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
+        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
+            // お気に入りの行の下は、普通の行の破線と分けて 1 画素の実線（D.12.3）。
+            s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
+                    ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1}, ca::Color::Fav::Rule);
+        else if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
             s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                        ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
     }
@@ -253,6 +257,26 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
     const int right = x + ca::Row::W + ca::Row::Value::Right;
+    if (item == kFavoritesFolder) {
+        // お気に入りのフォルダ: 金の淡い地・星・名前・件数・>（D.12.3）。選択中は地を描かず、星と字に白と影。
+        const u32 ink = MixColor(ca::Color::Text, ca::Color::Sel::Text, weight);
+        const u32 shadow = Fade(ca::Color::Sel::Shadow, weight);
+        // 選択の重みで薄め、選択中（重み 1）は描かない。
+        if (weight < 1.f)
+            s.Fill({x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1], ca::Row::W + ca::Fav::Row::Fill[2], ca::Fav::Row::Fill[3]},
+                   Fade(ca::Color::Fav::Fill, 1.f - weight));
+        const int sx = x + ca::Fav::Row::Star[0], sy = y + ca::Fav::Row::Star[1];
+        if (weight > 0.5f) s.Sprite(sx + 1, sy + 1, "star.white", ca::Color::Sel::Shadow);
+        s.Sprite(sx, sy, weight > 0.5f ? "star.white" : "star");
+        const int lx = x + ca::Fav::Row::Label[0], ly = y + ca::Fav::Row::Label[1];
+        Ink(s, lx, ly, d.label, (shadow >> 24) != 0, ink, false, shadow);
+        char count[24];
+        core::TextWriter(count, sizeof(count)).Unsigned(e.FavoriteCount()).Append("件");
+        Ink(s, right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count), ly, count, (shadow >> 24) != 0,
+            MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, shadow);
+        s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
+        return;
+    }
     const bool numeric = NumericControl(d) || d.control == Control::Multiselect;
     const bool pill = d.control == Control::Toggle || v.button;
     const int vw = pill ? ca::Row::Pill::Size[0] : s.Measure(v.value, numeric);
@@ -262,9 +286,13 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const u32 ink = MixColor(normal, v.disabled ? ca::Color::Disabled::Sel::Text : ca::Color::Sel::Text, weight);
     const u32 shadow = Fade(v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow, weight);
     char trimmed[kLineBytes];
+    // ◀ ▶ は左右で値が変わる行（数値・スライダー・選択）の選択中だけ。鍵は ◀ の左 2 画素へ（D.12.2）。
+    const bool adjustable = d.control == Control::Number || d.control == Control::Slider || d.control == Control::Select;
+    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable;
+    const int lockX = arrows ? vx + ca::Row::Value::ArrowLeft - 2 - ca::Row::Lock::Mark[2] : vx + ca::Row::Lock::Mark[0];
     int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
-    if (v.locked) valueLeft = std::min(valueLeft, vx + ca::Row::Lock::Mark[0]);
-    if (selected && !v.disabled && !pill && v.value[0]) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
+    if (v.locked) valueLeft = std::min(valueLeft, lockX);
+    if (arrows) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
     const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
     Ink(s, lx, ly, label, (shadow >> 24) != 0, ink, false, shadow);
@@ -320,12 +348,19 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     } else {
         Ink(s, vx, y + ca::Row::Value::Text[1], v.value, (shadow >> 24) != 0,
             v.locked ? MixColor(ca::Color::Locked, ca::Color::Sel::Text, weight) : ink, numeric, shadow);
-        if (selected && !v.disabled) {
+        if (arrows) {
             s.Sprite(right + ca::Row::Value::ArrowRight[0], y + ca::Row::Value::ArrowRight[1], "arrow_r", ink);
             s.Sprite(vx + ca::Row::Value::ArrowLeft, y + ca::Row::Value::ArrowRight[1], "arrow_l", ink);
         }
     }
-    if (v.locked) s.Sprite(vx + ca::Row::Lock::Mark[0], y + ca::Row::Lock::Mark[1], "lock", ca::Color::Locked);
+    if (v.locked) {
+        // 選択中は白い鍵に、字と同じ右下 1 の影（D.12.2）。
+        const int ly = y + ca::Row::Lock::Mark[1];
+        if (weight > 0.5f) {
+            s.Sprite(lockX + 1, ly + 1, "lock", ca::Color::Sel::Shadow);
+            s.Sprite(lockX, ly, "lock", 0xFFFFFFFFu);
+        } else s.Sprite(lockX, ly, "lock", ca::Color::Locked);
+    }
 }
 
 void Panel::DrawScrollBar(Surface &s, int dx, u32 now) {
@@ -424,8 +459,11 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
     const int nb = Wrap(s, d.desc ? d.desc : "", ca::Desc::Body[5], body, ca::Desc::Body[4], nullptr);
     const int th = ca::Desc::Title::Rect[3] + ca::Desc::Title::Line * (nt > 0 ? nt - 1 : 0);
     const bool hotkey = d.control != Control::Folder && e.State(item).hotkey != 0;
+    // 固定中の文は、トグルなら固定している ON／OFF で選ぶ（待機も ON）。
+    const char *locked = d.control != Control::Toggle ? ca::Text::State::Locked :
+                         !std::strcmp(row.value, "OFF") ? ca::Text::State::LockedOff : ca::Text::State::LockedOn;
     const char *state = row.disabled ? ca::Text::State::Disabled : !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
-                        row.pending ? ca::Text::State::Pending : row.locked ? ca::Text::State::Locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
+                        row.pending ? ca::Text::State::Pending : row.locked ? locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
                         !std::strcmp(row.value, "ON") ? ca::Text::State::On : "";
     char states[ca::Desc::State[1]][kLineBytes];
     const int ns = Wrap(s, state, ca::Desc::Body[5], states, ca::Desc::State[1], nullptr);

@@ -681,4 +681,136 @@ void FutureRequestsStayInert() {
         r.Open(); assert(r.engine.Visible() && r.engine.Selected() == selected);
     }
 }
-int main() { FutureRequestsStayInert(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); std::puts("menu shell: ok"); }
+// 行の印（D.12.2・D.12.3）。鍵の位置と色、◀ ▶ の出る行、お気に入りの行を、描いた指示で確かめる。
+bool SpriteAt(const RecordingSurface &s, const char *name, int x, int y, u32 color) {
+    for (const auto &c : s.commands)
+        if (c.kind == Command::Sprite && c.text == name && c.bounds.x == x && c.bounds.y == y && c.color == color) return true;
+    return false;
+}
+int CountSpritesAtY(const RecordingSurface &s, const char *name, int y) {
+    int n = 0;
+    for (const auto &c : s.commands) n += c.kind == Command::Sprite && c.text == name && c.bounds.y == y;
+    return n;
+}
+bool FillAt(const RecordingSurface &s, int x, int y, int w, int h, u32 color) {
+    for (const auto &c : s.commands)
+        if (c.kind == Command::Fill && c.bounds.x == x && c.bounds.y == y && c.bounds.w == w && c.bounds.h == h && c.color == color) return true;
+    return false;
+}
+// 字の列のうち左端（影を除く、いちばん左の字）の x。無ければ大きな値。
+int TextLeft(const RecordingSurface &s, const char *text) {
+    int left = 1 << 30;
+    for (const auto &c : s.commands) if (c.kind == Command::Text && c.text == text) left = std::min(left, c.bounds.x);
+    return left;
+}
+const Command *TextAt(const RecordingSurface &s, const char *text, int x, int y) {
+    for (const auto &c : s.commands)
+        if (c.kind == Command::Text && c.text == text && c.bounds.x == x && c.bounds.y == y) return &c;
+    return nullptr;
+}
+bool ReadMoney(gohan::menu::s32 *value) { *value = 48210; return true; }
+// 根の項目（親も子も無い）。続きは呼び出す側で next に入れる。
+void Root(gohan::menu::ItemDef &d) { d.parent = d.first_child = d.next = gohan::menu::kNoItem; }
+gohan::menu::Result WriteMoney(gohan::menu::s32) { return gohan::menu::Result::Ok; }
+void RowMarks() {
+    namespace menu = gohan::menu;
+    const int top = ca::Row::Top, left = ca::Row::X;
+    // 固定した値: 選んだ時は白い鍵・影・◀、名前は鍵の左 − Gap::Min まで。選んでいない時は値の左 − 8 で Locked。
+    menu::ItemDef money[2]{};
+    Root(money[0]); Root(money[1]);
+    money[0].key = "money"; money[0].label = "所持金"; money[0].desc = "持っているお金です。";
+    money[0].control = menu::Control::Number; money[0].behavior = menu::Behavior::Value; money[0].source = menu::Source::Game;
+    money[0].lockable = true; money[0].format = menu::Format::Decimal; money[0].def = 48210;
+    money[0].min = 0; money[0].max = 99999; money[0].step = 1; money[0].next = 1;
+    money[1].key = "other"; money[1].label = "貯金"; money[1].desc = "貯めています。";
+    money[1].control = menu::Control::Number; money[1].behavior = menu::Behavior::Value; money[1].source = menu::Source::Setting;
+    money[1].format = menu::Format::Decimal; money[1].def = 5; money[1].min = 0; money[1].max = 99; money[1].step = 1;
+    menu::Bound bound{};
+    bound.item = 0; bound.behavior = menu::Behavior::Value; bound.source = menu::Source::Game;
+    bound.game.read = ReadMoney; bound.game.write = WriteMoney;
+    Rig r(money, 2);
+    assert(r.engine.Bind(bound));
+    r.Open();
+    assert(r.engine.SetFixed(0, true, r.now));
+    r.Frame();
+    auto s = r.Draw(); Budget(s);
+    const int vx = TextLeft(s, "48210");
+    assert(vx < (1 << 30));
+    const int lx = vx + ca::Row::Value::ArrowLeft - 2 - ca::Row::Lock::Mark[2];
+    assert(lx == vx - 13);
+    assert(SpriteAt(s, "lock", lx, top + ca::Row::Lock::Mark[1], 0xFFFFFFFFu));
+    assert(SpriteAt(s, "lock", lx + 1, top + ca::Row::Lock::Mark[1] + 1, ca::Color::Sel::Shadow));
+    assert(s.HasText("固定中: 外すまでこの値を保ちます"));
+    assert(Part(s, "arrow_l") && Part(s, "arrow_r"));
+    const Command *name = TextAt(s, "所持金", left + ca::Row::Label[0], top + ca::Row::Label[1]);
+    assert(name && name->bounds.x + name->bounds.w <= lx - ca::Row::Gap::Min);
+    // 選んでいない時: 鍵は値の左 − 8、Locked の色、◀ は出さない。
+    r.engine.Select(1); r.Advance(400);
+    s = r.Draw(); Budget(s);
+    const int ux = TextLeft(s, "48210");
+    assert(SpriteAt(s, "lock", ux - 8, top + ca::Row::Lock::Mark[1], ca::Color::Locked));
+    assert(CountSpritesAtY(s, "arrow_l", top + ca::Row::Value::ArrowRight[1]) == 0);
+    // ◀ ▶ は選択中の数値・スライダー・選択の行だけ。複数選択とキーの行には出ない。
+    const char *const kChoices[] = {"自由", "マス単位"};
+    const char *const kMany[] = {"A", "B", "X"};
+    struct Case { const char *label; menu::Control control; menu::s32 value; bool arrows; };
+    const Case cases[] = {{"数", menu::Control::Number, 5, true}, {"選ぶ", menu::Control::Select, 0, true},
+                          {"複数", menu::Control::Multiselect, 1, false}, {"キー", menu::Control::Key, menu::key::A, false}};
+    for (const Case &c : cases) {
+        menu::ItemDef d{};
+        Root(d);
+        d.key = c.label; d.label = c.label; d.desc = "見本です。";
+        d.control = c.control; d.behavior = menu::Behavior::Value; d.source = menu::Source::Setting; d.persist = true;
+        d.format = menu::Format::Decimal; d.def = c.value; d.min = 0; d.max = c.control == menu::Control::Multiselect ? 7 : 99; d.step = 1;
+        d.options = c.control == menu::Control::Select ? kChoices : kMany;
+        d.option_count = c.control == menu::Control::Select ? 2 : 3;
+        Rig one(&d, 1);
+        one.Open();
+        const auto row = one.Draw(); Budget(row);
+        assert(Part(row, "arrow_l") == c.arrows && Part(row, "arrow_r") == c.arrows);
+    }
+    // トグル: 固定した ON は鍵がスイッチの左 − 8（白・影）、説明は ON の文。OFF で固定すると OFF の文。
+    menu::ItemDef wall{};
+    Root(wall);
+    wall.key = "wall"; wall.label = "壁を通り抜ける"; wall.desc = "壁や木を通り抜けて歩けます。";
+    wall.control = menu::Control::Toggle; wall.behavior = menu::Behavior::State; wall.source = menu::Source::None; wall.persist = true;
+    const int switch_x = left + ca::Row::W + ca::Row::Value::Right - ca::Row::Pill::Size[0];
+    for (const int on : {1, 0}) {
+        Rig t(&wall, 1);
+        t.Open();
+        assert(t.engine.SetValue(0, on));
+        assert(t.engine.SetFixed(0, true, t.now));
+        t.Frame();
+        const auto toggle = t.Draw(); Budget(toggle);
+        assert(Part(toggle, "switch.track", switch_x, top + ca::Row::Pill::Y));
+        assert(SpriteAt(toggle, "lock", switch_x - 8, top + ca::Row::Lock::Mark[1], 0xFFFFFFFFu));
+        assert(SpriteAt(toggle, "lock", switch_x - 7, top + ca::Row::Lock::Mark[1] + 1, ca::Color::Sel::Shadow));
+        assert(toggle.HasText(on ? "固定中: 外すまでONのままです" : "固定中: 外すまでOFFのままです"));
+    }
+    // お気に入り: 金の淡い地・星・件数・chevron、下の区切りは金の高さ 1 の塗り。選んだ時は地を描かず白い星と影。
+    menu::ItemDef fav[2]{};
+    Root(fav[0]); Root(fav[1]);
+    fav[0].key = "number"; fav[0].label = "数"; fav[0].desc = "見本です。";
+    fav[0].control = menu::Control::Number; fav[0].behavior = menu::Behavior::Value; fav[0].source = menu::Source::Setting;
+    fav[0].format = menu::Format::Decimal; fav[0].def = 5; fav[0].min = 0; fav[0].max = 99; fav[0].step = 1; fav[0].next = 1;
+    fav[1].key = "folder"; fav[1].label = "フォルダ"; fav[1].desc = "見本です。";
+    fav[1].control = menu::Control::Folder;
+    Rig f(fav, 2);
+    f.engine.SetFavorite(0, true);
+    f.Open();
+    const int star_x = left + ca::Fav::Row::Star[0], star_y = top + ca::Fav::Row::Star[1];
+    const int fill_x = left + ca::Fav::Row::Fill[0], fill_y = top + ca::Fav::Row::Fill[1];
+    const int fill_w = ca::Row::W + ca::Fav::Row::Fill[2], fill_h = ca::Fav::Row::Fill[3];
+    f.engine.Select(1); f.Advance(400);
+    auto fs = f.Draw(); Budget(fs);
+    assert(fs.HasText("お気に入り") && fs.HasText("1件") && Part(fs, "star", star_x, star_y) && Part(fs, "chevron"));
+    assert(FillAt(fs, fill_x, fill_y, fill_w, fill_h, ca::Color::Fav::Fill));
+    assert(FillAt(fs, ca::Row::Rule[0], top + ca::Row::H + ca::Row::Rule[2], ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1, ca::Color::Fav::Rule));
+    f.engine.Select(menu::kFavoritesFolder); f.Advance(400);
+    fs = f.Draw(); Budget(fs);
+    assert(!FillAt(fs, fill_x, fill_y, fill_w, fill_h, ca::Color::Fav::Fill));
+    assert(SpriteAt(fs, "star.white", star_x, star_y, 0xFFFFFFFFu));
+    assert(SpriteAt(fs, "star.white", star_x + 1, star_y + 1, ca::Color::Sel::Shadow));
+}
+
+int main() { FutureRequestsStayInert(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); RowMarks(); std::puts("menu shell: ok"); }

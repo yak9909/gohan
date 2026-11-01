@@ -130,6 +130,36 @@ def sprites(v):
                              {'K': rgba(v['cursor.image.edge']), 'W': rgba(v['cursor.image.fill'])}))
     for name in ('CHEVRON', 'ARROW_L', 'ARROW_R', 'ARROW_U', 'ARROW_D', 'CHECK', 'BANG', 'LOCK', 'DOT'):
         add(name.lower(), ascii_image(getattr(shapes, name), {'W': white}))
+    # お気に入りの星（2 色と白）と、操作のリストの指し（D.12.1・D.12.3）。
+    add('star', ascii_image(shapes.STAR, {'K': color('star.edge'), 'W': color('star.fill')}))
+    add('star.white', ascii_image(shapes.STAR, {'K': white, 'W': white}))
+    add('pointer', ascii_image(shapes.POINTER, {'W': white}))
+    # 複数選択の箱（D.12.4）。非選択は OFF・ON のスイッチと同じ色、選択中（緑の帯の上）は白。
+    # ring・solid は白の型で、頂点色を付けて使う（縁だけ・中だけ）。
+    def check(edge, fill, mark=None):
+        rows = [''.join('M' if mark is not None and (x, y) in shapes.CHECK_MARK else c for x, c in enumerate(row))
+                for y, row in enumerate(shapes.CHECK_BOX)]
+        palette = {'K': edge, 'F': fill}
+        if mark is not None:
+            palette['M'] = mark
+        return ascii_image(rows, palette)
+    clear = (0, 0, 0, 0)
+    add('check.off', check(color('switch.off_edge'), color('paper.inner')))
+    add('check.on', check(color('switch.on_edge'), color('switch.on'), white))
+    add('check.on.sel', check(white, white, color('switch.on')))
+    add('check.ring', check(white, clear))
+    add('check.solid', check(white, white))
+    # START の印（D.12.7）。帯と紙の 2 組。字は 3×5 を x + 2 から 4 画素ごと、y + 3。
+    for palette in ('bar', 'paper'):
+        fill, ink, edge, _ = map(rgba, v['icon.color.' + palette])
+        w, h, radius = v['part.key_start']
+        image = box(w, h, radius, [edge], fill)
+        for n, letter in enumerate(shapes.START_WORD):
+            for y, row in enumerate(shapes.START_LETTERS[letter]):
+                for dx, c in enumerate(row):
+                    if c == 'W':
+                        image[3 + y][2 + 4 * n + dx] = ink
+        add(f'key.{palette}.start', image)
     add('hotkey', ascii_image(['WWWWW', 'WWWW.', 'WWW..', 'WW...', 'W....'], {'W': white}))
     add('hotkey.selected', ascii_image(['WWWWWW', 'WBBBW.', 'WBBW..', 'WBW...', 'WW....', 'W.....'],
                                       {'W': white, 'B': rgba(v['hotkey.mark.color'])}))

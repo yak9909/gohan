@@ -283,11 +283,22 @@ void Entry::DrawList(Surface &s, const Rect &b, float alpha) const {
             Rect band = Bounds(ca::Entry::List::Band, b.x, y, b.w); Selected(s, band, false, alpha);
             s.Sprite(b.x + ca::Entry::List::Cursor[0], y + ca::Entry::List::Cursor[1], "finger", Fade(0xFFFFFFFFu, alpha));
         }
-        char text[kLineBytes], trimmed[kLineBytes]; core::TextWriter w(text, sizeof(text));
-        if (kind_ == UiKind::CheckList) w.Append((mask_ >> option) & 1 ? "[X] " : "[ ] ");
-        w.Append(def_->options[option]);
+        if (kind_ == UiKind::CheckList) {
+            // 複数選択は角の少し丸い箱（D.12.4）。選択中は白と右下の影。字は箱の右に置く。
+            const bool on = (mask_ >> option) & 1;
+            const int bx = b.x + ca::Entry::Check::Box[0], by = y + ca::Entry::Check::Box[1];
+            if (selected) s.Sprite(bx + 1, by + 1, on ? "check.solid" : "check.ring", Fade(ca::Color::Sel::Shadow, alpha));
+            s.Sprite(bx, by, selected ? (on ? "check.on.sel" : "check.ring") : (on ? "check.on" : "check.off"),
+                     Fade(0xFFFFFFFFu, alpha));
+            const int tx = b.x + ca::Entry::Check::Text[0], ty = y + ca::Entry::Check::Text[1];
+            char trimmed[kLineBytes];
+            Ink(s, tx, ty, Trim(s, def_->options[option], b.w - ca::Entry::Check::Text[0] - ca::Margin, trimmed, sizeof(trimmed)),
+                selected, Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, alpha), false, Fade(ca::Color::Sel::Shadow, alpha));
+            continue;
+        }
+        char trimmed[kLineBytes];
         Ink(s, b.x + ca::Entry::List::Text[0], y + ca::Entry::List::Text[1],
-            Trim(s, text, b.w - ca::Entry::List::Text[0] - ca::Margin, trimmed, sizeof(trimmed)), selected,
+            Trim(s, def_->options[option], b.w - ca::Entry::List::Text[0] - ca::Margin, trimmed, sizeof(trimmed)), selected,
             Fade(selected ? ca::Color::Sel::Text : ca::Color::Text, alpha), false, Fade(ca::Color::Sel::Shadow, alpha));
     }
 }

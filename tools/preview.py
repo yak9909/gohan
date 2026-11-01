@@ -53,6 +53,7 @@ def main(argv=None) -> int:
     parser.add_argument('--cxx')
     parser.add_argument('--dev', action='store_true')
     parser.add_argument('--parts', action='store_true', help='CA2 の全 UI 部品・整数倍・分割・繰り返しの一覧を出す')
+    parser.add_argument('--rows', action='store_true', help='台本の rows の行の見本（固定の印・お気に入り・複数選択の枠）を出す')
     parser.add_argument('--local', type=Path, default=ROOT / 'gohan.local.toml', help='任意の RomFS 設定')
     parser.add_argument('--no-rom', action='store_true', help='ローカル設定に関わらず代わりの絵を使う')
     parser.add_argument('--scenario', action='append', help='指定した名前だけ実行（複数指定可）')
@@ -83,6 +84,35 @@ def main(argv=None) -> int:
         binary_directory = output_directory(ROOT / 'build/preview-runtime' / ('dev1' if args.dev else 'dev0'))
         executable, manifest = build(ROOT, binary_directory, settings['screen'], args.cxx, args.dev)
         manifest['title_background_romfs_configured'] = configured
+        if args.rows:
+            # 台本の rows の順に、製品の Engine・Shell・Panel・Entry で描いた行の見本を出す。
+            rows = script.get('rows', [])
+            if not rows:
+                raise ValueError('台本に rows がありません')
+            target = output_directory(directory / 'rows')
+            subprocess.run([str(executable), str(target), '--rows', *(row['name'] for row in rows)],
+                           cwd=ROOT, check=True, env=env)
+            frames = []
+            for i, row in enumerate(rows):
+                raster = Raster(target / f'resources-{i}', settings['raster'])
+                drawing = json.loads((target / f'frame-{i}.json').read_text(encoding='utf-8'))
+                texts = [''.join(map(chr, command['text'])) for screen in drawing['screens'] for command in screen
+                         if command['kind'] == 1]
+                for expected in row.get('contains', []):
+                    if not any(expected in text for text in texts):
+                        raise ValueError(f'{row["name"]}: 必要な文字がありません: {expected}')
+                frame = {'label': row['label'], 'at': drawing['at'], 'scenario': 'rows', 'capture': row['name']}
+                for s, screen in enumerate(('top', 'bottom')):
+                    frame[screen] = raster.draw(drawing['screens'][s], Image.solid(
+                        400 if s == 0 else 320, 240, tuple(settings['background'])))
+                    frame[screen].save(target / f'{row["name"]}-{screen}.png')
+                frames.append(frame)
+            (directory / 'index.html').write_text(gallery(frames, 'top'), encoding='utf-8')
+            manifest['rows'] = [row['name'] for row in rows]
+            manifest['settings'] = settings
+            (directory / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(f'行の見本: {len(frames)} 枚、{directory / "index.html"}')
+            return 0
         if args.parts:
             target = output_directory(directory / 'parts')
             subprocess.run([str(executable), str(target), '--parts'], cwd=ROOT, check=True, env=env)

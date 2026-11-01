@@ -89,6 +89,10 @@ def part_color_keys(name):
         'box': ['color.field.edge', 'color.field.fill'],
         'finger': ['cursor.image.edge', 'cursor.image.fill'],
         'hotkey.selected': ['color.switch.knob', 'hotkey.mark.color'],
+        'star': ['color.star.edge', 'color.star.fill'],
+        'check.off': ['color.switch.off_edge', 'color.paper.inner'],
+        'check.on': ['color.switch.on_edge', 'color.switch.on', 'color.switch.knob'],
+        'check.on.sel': ['color.switch.on', 'color.switch.knob'],
     }
     if name in fixed:
         return fixed[name]
@@ -123,7 +127,7 @@ def test_every_part_color_survives_device_format(name):
         fill, ink, edge, accent = map(ui.rgba, VALUES['icon.color.' + name.split('.')[1]])
         if name.endswith('.plus'):
             palette = {fill}
-        elif name.split('.')[-1] in ('a', 'b', 'x', 'y', 'l', 'r'):
+        elif name.split('.')[-1] in ('a', 'b', 'x', 'y', 'l', 'r', 'start'):
             palette = {fill, ink, edge}
         else:
             palette = {fill, edge, accent, tuple(max(0, c - VALUES['icon.dpad'][4]) for c in accent[:3]) + (255,)}
