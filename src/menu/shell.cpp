@@ -36,12 +36,15 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
     const DialogView before = ViewOf(engine_);
     // 開閉のボタンはエンジンに渡さない（ホットキーにも使えない）。
     engine_.Frame(now, static_cast<u16>(input.held & ~key::Select));
-    // 並べ替え・設定画面の要求は、その段が入るまで取り消す（一覧と開閉をそのまま使えるようにする）。
-    // R の操作のリストは要求を受けて開き、閉じるまでエンジンが要求を持つ（開いている間は一覧に入力を渡さない）。
+    // 設定画面の要求は、その段が入るまで取り消す（一覧と開閉をそのまま使えるようにする）。
+    // R の操作のリストと並べ替えは要求を受けて開き、閉じるまでエンジンが要求を持つ（開いている間は一覧に入力を渡さない）。
     const auto request = engine_.Ui().kind;
-    if (request == UiKind::Reorder || request == UiKind::Settings) engine_.CancelUi();
+    if (request == UiKind::Settings) engine_.CancelUi();
     if (request == UiKind::Actions && !list_.Open()) list_.Begin(engine_, input.held, now);
     list_.Step(engine_, now, input.held);
+    // 並べ替えは R の操作のリストの A で要求されるので、リストの処理の後に受け取る（同じフレームで始める）。
+    if (engine_.Ui().kind == UiKind::Reorder && !reorder_.Open()) reorder_.Begin(engine_, input.held, now);
+    reorder_.Step(engine_, now, input.held);
     // 確認が閉じたら、決定した答えと操作案内を写しに残して退場させる。
     // 選んだ状態を選択の動きの時間だけ見せてから、確認の出入りと同じ時間で消す。
     if (before.kind != DialogKind::None && engine_.Dialog() == DialogKind::None) {
@@ -50,7 +53,7 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
         dialog_close_ = motion::Tween{1.0f, 0.0f, now + timing::kSelectionMoveMs, timing::kDialogMs};
     }
     const UiKind kind = engine_.Ui().kind;
-    if (kind != UiKind::None && kind != UiKind::Actions) {
+    if (kind != UiKind::None && kind != UiKind::Actions && kind != UiKind::Reorder) {
         if (!entry_.Active()) entry_.Begin(engine_, input, config_.screen_width);
         else if (entry_before) entry_.Step(engine_, now, input, engine_.Visible());
     } else {
@@ -73,12 +76,12 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
         modal_.Go(1.0f, now, timing::kDialogMs);
     }
     was_modal_ = modal;
-    panel_.Sync(engine_, now);
+    panel_.Sync(engine_, now, reorder_);
     prev_held_ = input.held;
 }
 
 bool Shell::NeedsDraw(u32 now) const {
-    return panel_.Visible(now) || panel_.Animating(now) || Modal() || list_.Animating(now) || notices_.Alive(now) ||
+    return panel_.Visible(now) || panel_.Animating(now) || Modal() || list_.Animating(now) || reorder_.Animating(now) || notices_.Alive(now) ||
            !modal_.Done(now) || !dialog_close_.Done(now);
 }
 

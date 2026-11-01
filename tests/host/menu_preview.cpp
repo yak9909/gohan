@@ -319,7 +319,7 @@ void DefineRowItems(ItemDef (&d)[kCount]) {
     d[kMap] = MakeRowItem("地図の画面", "地図を開きます。もう一度で閉じます。", Control::Action, Behavior::Mode, Source::None, kPlayer, none, kLoan);
     d[kLoan] = MakeRowItem("家のローン", "家のローンの残りです。", Control::Number, Behavior::Value, Source::Setting, kPlayer, none, kTools);
     d[kTools] = MakeRowItem("スコップを強くする", "スコップを強いままにします。", Control::Toggle, Behavior::State, Source::None, kPlayer, none, none);
-    d[kVillage] = MakeRowItem("村", "村の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kHouse);
+    d[kVillage] = MakeRowItem("村", "村の中の物を変えます。", Control::Folder, Behavior::None, Source::None, none, none, kHouse);
     d[kHouse] = MakeRowItem("見本", "見本の項目です。", Control::Folder, Behavior::None, Source::None, none, none, kDisplay);
     d[kDisplay] = MakeRowItem("表示", "表示の項目です。", Control::Folder, Behavior::None, Source::None, none, kButtons, none);
     d[kButtons] = MakeRowItem("押し切るボタン", "押し切るボタンを選びます。", Control::Multiselect, Behavior::Value, Source::Setting, kDisplay, none, none);
@@ -465,7 +465,74 @@ bool Scene(const std::filesystem::path &directory, int index, const std::string 
     return DrawShell(directory, index, shell, now);
 }
 
+void Wait(menu::Shell &shell, u32 &now, u32 ms) { Settle(shell, now, now + ms); }
+
+// 段 2c の見本（お気に入りの中・R の操作のリスト・並べ替え・外した後）。製品の Engine と Shell を、時刻と押すボタンで進めて描く。
+// お気に入りは 所持金・壁・天気・村 の順（見本と同じ）。所持金は固定、壁は ON（待機）。
+bool FavScene(const std::filesystem::path &directory, int index, const std::string &name) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    g_money_readable = true;
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine)) return false;
+    engine.SetValue(kWall, 1);
+    engine.SetHotkey(kWall, key::L | key::Up);
+    engine.Commit(kWall, 0);
+    engine.Open(0);
+    if (!engine.SetFixed(kMoney, true, 0)) return false;
+    for (u16 item : {kMoney, kWall, kWeather, kVillage})
+        if (!engine.SetFavorite(item, true)) return false;
+    // お気に入りの中へ入り、見本の行を選ぶ（村は R の操作だけを見る見本）。
+    engine.Select(menu::kFavoritesFolder);
+    engine.Press(key::A, 0);
+    engine.Select(name == "fav-inside" ? kMoney : name == "fav-folder-actions" ? kVillage : kWeather);
+    Shell shell(engine, {});
+    u32 now = 0;
+    Tick(shell, now);
+    Wait(shell, now, 400);
+    if (name == "fav-inside") {
+        Wait(shell, now, 1100);
+        return DrawShell(directory, index, shell, now);
+    }
+    // R で操作のリストを開く（押した時刻から 2 フレーム。開く動きは 160 ms）。
+    Tick(shell, now, key::R);
+    Tick(shell, now);
+    Wait(shell, now, 200);
+    if (name == "fav-inside-actions" || name == "fav-reorder" || name == "fav-reorder-moved" || name == "fav-removed") {
+        // 行の並びの 3 番目（並べ替え）、fav-removed は 2 番目（お気に入りから外す）へ下りる。
+        const int downs = name == "fav-removed" ? 1 : 2;
+        for (int i = 0; i < downs; ++i) {
+            Tick(shell, now, key::Down);
+            Tick(shell, now);
+        }
+    }
+    if (name == "fav-inside-actions" || name == "fav-folder-actions") {
+        Wait(shell, now, 1100);
+        return DrawShell(directory, index, shell, now);
+    }
+    if (name == "fav-removed") {
+        Tick(shell, now, key::A); // お気に入りから外す（天気）。選択は次の村へ。
+        Tick(shell, now);
+        Wait(shell, now, 500);    // 通知は 500 ms 経った所を見る
+        return DrawShell(directory, index, shell, now);
+    }
+    // 並べ替え: A で持ち上げる（リストは閉じる）。
+    Tick(shell, now, key::A);
+    Tick(shell, now);
+    Wait(shell, now, 400);
+    if (name == "fav-reorder-moved") {
+        Tick(shell, now, key::Up); // 1 つ上へ（写しの中）
+        Tick(shell, now);
+        Wait(shell, now, 300);
+    }
+    Wait(shell, now, 500);
+    return DrawShell(directory, index, shell, now);
+}
+
 bool Render(const std::filesystem::path &directory, int index, const std::string &name) {
+    if (name == "fav-inside" || name == "fav-inside-actions" || name == "fav-folder-actions" || name == "fav-reorder" ||
+        name == "fav-reorder-moved" || name == "fav-removed")
+        return FavScene(directory, index, name);
     if (name.rfind("actions-", 0) == 0 || name == "fixed-notice" || name == "fav-added-notice" ||
         name == "notice-long-name" || name == "lock-hold" || name == "bar-new")
         return Scene(directory, index, name);

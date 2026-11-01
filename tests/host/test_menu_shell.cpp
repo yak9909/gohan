@@ -601,11 +601,12 @@ void ReopenViewport() {
     assert(r.engine.Selected() == 15 && r.shell.panel().Count() == 15);
     assert(r.shell.panel().ViewStart(r.now) <= r.shell.panel().MaxViewStart());
     // 行数が変わっても選択が画面内に入る。
-    Panel resized; resized.Sync(r.engine, r.now); resized.SetRows(4, r.now);
+    Panel resized; Reorder idle;
+    resized.Sync(r.engine, r.now, idle); resized.SetRows(4, r.now);
     const float view = resized.ViewStart(r.now);
     assert(view <= 14 && 14 < view + resized.Rows());
-    assert(r.engine.RequestClose(r.now)); resized.Sync(r.engine, r.now);
-    resized.SetRows(2, r.now); r.engine.Open(r.now); resized.Sync(r.engine, r.now);
+    assert(r.engine.RequestClose(r.now)); resized.Sync(r.engine, r.now, idle);
+    resized.SetRows(2, r.now); r.engine.Open(r.now); resized.Sync(r.engine, r.now, idle);
     assert(resized.ViewStart(r.now) <= 14 && 14 < resized.ViewStart(r.now) + resized.Rows());
     r.Tap(key::B); assert(r.engine.Selected() == 0);
     r.Advance(400); r.Frame(0, true); r.Advance(400); r.Open();
