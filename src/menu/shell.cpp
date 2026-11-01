@@ -32,12 +32,16 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
     const u16 selected = engine_.Selected();
     const bool folder = selected == kNoItem || engine_.Def(selected).control == Control::Folder;
     const bool entry_before = entry_.Active();
+    const bool list_before = list_.Open();
     const DialogView before = ViewOf(engine_);
     // 開閉のボタンはエンジンに渡さない（ホットキーにも使えない）。
     engine_.Frame(now, static_cast<u16>(input.held & ~key::Select));
-    // 次の段の描画が入るまでは新しい要求を消し、一覧と開閉をそのまま使えるようにする。
+    // 並べ替え・設定画面の要求は、その段が入るまで取り消す（一覧と開閉をそのまま使えるようにする）。
+    // R の操作のリストは要求を受けて開き、閉じるまでエンジンが要求を持つ（開いている間は一覧に入力を渡さない）。
     const auto request = engine_.Ui().kind;
-    if (request == UiKind::Actions || request == UiKind::Reorder || request == UiKind::Settings) engine_.CancelUi();
+    if (request == UiKind::Reorder || request == UiKind::Settings) engine_.CancelUi();
+    if (request == UiKind::Actions && !list_.Open()) list_.Begin(engine_, input.held, now);
+    list_.Step(engine_, now, input.held);
     // 確認が閉じたら、決定した答えと操作案内を写しに残して退場させる。
     // 選んだ状態を選択の動きの時間だけ見せてから、確認の出入りと同じ時間で消す。
     if (before.kind != DialogKind::None && engine_.Dialog() == DialogKind::None) {
@@ -45,13 +49,15 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
         closing_.yes = engine_.DialogYes();
         dialog_close_ = motion::Tween{1.0f, 0.0f, now + timing::kSelectionMoveMs, timing::kDialogMs};
     }
-    if (engine_.Ui().kind != UiKind::None) {
+    const UiKind kind = engine_.Ui().kind;
+    if (kind != UiKind::None && kind != UiKind::Actions) {
         if (!entry_.Active()) entry_.Begin(engine_, input, config_.screen_width);
         else if (entry_before) entry_.Step(engine_, now, input, engine_.Visible());
     } else {
         entry_.End();
     }
-    if (!Modal() && engine_.Visible()) {
+    // R の操作のリストが開いていた間の A（実行して閉じた A を含む）では、一覧の行を揺らさない。
+    if (!Modal() && engine_.Visible() && !list_before) {
         if ((pressed & key::A) != 0 && !folder) panel_.NudgeAction(now);
         if ((pressed & (key::Left | key::Right)) != 0) panel_.NudgeValue(now, (pressed & key::Right) != 0 ? 1 : -1);
     }
@@ -72,8 +78,8 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
 }
 
 bool Shell::NeedsDraw(u32 now) const {
-    return panel_.Visible(now) || panel_.Animating(now) || Modal() || notices_.Alive(now) || !modal_.Done(now) ||
-           !dialog_close_.Done(now);
+    return panel_.Visible(now) || panel_.Animating(now) || Modal() || list_.Animating(now) || notices_.Alive(now) ||
+           !modal_.Done(now) || !dialog_close_.Done(now);
 }
 
 core::input_block::Claim Shell::InputDemand() const {
@@ -87,7 +93,8 @@ void Shell::Draw(Surface &surface, u32 now) {
     panel_.Draw(surface, engine_, now, modal);
     const float menu_amount = panel_.OpenAmount(now);
     const float appear = modal_.At(now);
-    if (!entry_.Active()) panel_.DrawDescription(surface, engine_, now);
+    // 説明の窓は、入力の枠と R の操作のリストが出ている間は描かない。
+    if (!entry_.Active() && !list_.Showing(now)) panel_.DrawDescription(surface, engine_, now);
     if (engine_.Dialog() != DialogKind::None) DrawDialog(surface, engine_, ViewOf(engine_), menu_amount, appear);
     else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
     else if (!dialog_close_.Done(now)) DrawDialog(surface, engine_, closing_, menu_amount, dialog_close_.At(now));
@@ -101,5 +108,7 @@ void Shell::Draw(Surface &surface, u32 now) {
     watch.Stop();
     const game::frame_timing::Scope notice_watch(game::frame_timing::Stage::Notice);
     notices_.Draw(surface, now, panel_.Visible(now));
+    // 重なりの順は 一覧 → 下の帯 → 通知 → R の操作のリスト（D.12.1）。
+    list_.Draw(surface, now, panel_.SelectedRowY(now));
 }
 } // namespace gohan::menu

@@ -658,14 +658,15 @@ void DialogExitHints() {
     }
     std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
 }
-// 段 1 だけでは新しい要求を描かず、SELECT の開閉も従来のまま使える。
+// 設定画面（START）は段 3 までは何も起こさない（新しい要求を描かず、SELECT の開閉も従来のまま使える）。
+// R の操作のリストは段 2b で開くので、test_menu_actions.cpp で確かめる。
 void FutureRequestsStayInert() {
     sample::Get() = sample::State{};
     Rig r(kMenuItems, kMenuItemCount);
     assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
     Enter(r);
     const auto selected = r.engine.Selected();
-    for (auto key : {key::R, key::Start}) {
+    for (auto key : {key::Start}) {
         const auto before = r.Draw();
         r.Tap(key);
         assert(r.engine.Selected() == selected && r.engine.Depth() == 1);

@@ -1349,16 +1349,20 @@
         {
           "at": 2390,
           "buttons": [
-            "R",
             "A"
           ]
         },
         {
           "at": 2400,
           "buttons": [
-            "R",
-            "A",
             "Select"
+          ]
+        },
+        {
+          "at": 2416,
+          "buttons": [
+            "R",
+            "A"
           ]
         },
         {
@@ -1421,7 +1425,7 @@
           ]
         },
         {
-          "at": 2448,
+          "at": 2480,
           "name": "hold-while-closing",
           "contains": [
             "動作中",
@@ -2697,6 +2701,106 @@
       "name": "entry-check",
       "label": "複数選択の枠 / 字の選択肢（箱と字）",
       "contains": ["押し切るボタン", "START", "取消"]
+    },
+    {
+      "name": "actions-value",
+      "label": "R のリスト / 値の行",
+      "contains": ["値を固定", "お気に入りに追加", "ホットキーを設定", "えらぶ"]
+    },
+    {
+      "name": "actions-value-fixed",
+      "label": "R のリスト / 固定中・お気に入り済みの値の行",
+      "contains": ["固定を外す", "お気に入りから外す", "ホットキーを変更", "ホットキーを外す"]
+    },
+    {
+      "name": "actions-toggle",
+      "label": "R のリスト / トグルの行（ON）",
+      "contains": ["ONで固定", "お気に入りに追加", "ホットキーを変更", "ホットキーを外す"]
+    },
+    {
+      "name": "actions-toggle-off",
+      "label": "R のリスト / トグルの行（OFF）",
+      "contains": ["OFFで固定", "お気に入りに追加", "ホットキーを設定"]
+    },
+    {
+      "name": "actions-hold",
+      "label": "R のリスト / 押している間だけ動くトグル",
+      "contains": ["ONで固定", "お気に入りに追加", "ホットキーを変更"]
+    },
+    {
+      "name": "actions-toggle-fixed",
+      "label": "R のリスト / 固定中・お気に入り済みのトグルの行",
+      "contains": ["固定を外す", "お気に入りから外す", "ホットキーを変更"]
+    },
+    {
+      "name": "actions-folder",
+      "label": "R のリスト / フォルダの行",
+      "contains": ["お気に入りに追加", "村"]
+    },
+    {
+      "name": "actions-action",
+      "label": "R のリスト / 実行の行",
+      "contains": ["お気に入りに追加", "ホットキーを設定", "その場で回る"]
+    },
+    {
+      "name": "actions-disabled",
+      "label": "R のリスト / 今は使えない行",
+      "contains": ["値を固定", "お気に入りに追加", "ホットキーを設定"]
+    },
+    {
+      "name": "actions-bottom",
+      "label": "R のリスト / 画面の下の方の行",
+      "contains": ["OFFで固定", "お気に入りに追加", "スコップを強くする"]
+    },
+    {
+      "name": "actions-notice",
+      "label": "R のリスト / 通知との重なり",
+      "contains": ["OFFで固定", "ONで固定", "壁を通り抜ける"]
+    },
+    {
+      "name": "actions-notice-closed",
+      "label": "R のリスト / 閉じた後の通知",
+      "contains": ["スコップを強くする", "値を固定", "所持金"]
+    },
+    {
+      "name": "actions-open-040",
+      "label": "R のリスト / 開く途中 40 ms",
+      "contains": ["値を固定", "お気に入りに追加"]
+    },
+    {
+      "name": "actions-open-080",
+      "label": "R のリスト / 開く途中 80 ms",
+      "contains": ["値を固定", "お気に入りに追加"]
+    },
+    {
+      "name": "actions-open-120",
+      "label": "R のリスト / 開く途中 120 ms",
+      "contains": ["値を固定", "お気に入りに追加"]
+    },
+    {
+      "name": "fixed-notice",
+      "label": "固定の通知（メニューの中）",
+      "contains": ["値を固定", "所持金", "固定中"]
+    },
+    {
+      "name": "fav-added-notice",
+      "label": "お気に入り / 追加の通知",
+      "contains": ["お気に入りに追加", "スコップを強くする"]
+    },
+    {
+      "name": "notice-long-name",
+      "label": "通知 / 長い名前",
+      "contains": ["お気に入りに追加", "固定を外す", "所持金"]
+    },
+    {
+      "name": "lock-hold",
+      "label": "固定の印 / 押している間だけ動くトグルの固定",
+      "contains": ["走り続ける", "固定中"]
+    },
+    {
+      "name": "bar-new",
+      "label": "下の帯 / 案（R 操作）",
+      "contains": ["操作", "戻る", "キー"]
     }
   ]
 }

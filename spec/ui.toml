@@ -80,6 +80,21 @@ screen = [400, 240]
 "entry.key.icon" = [14, 39]
 "entry.key.hints_y" = [62, 72]
 "entry.key.cancel" = "SELECT"
+# D.12.1 R の操作のリスト（窓・題・行・印・指し）。
+"actions.rect" = [236, 4, 160, 214] # x・窓の y の上の限り・幅・下の限り。窓の y は選んだ行の y − 3 を、この間（高さを引いた所まで）に収める
+"actions.offset" = -3 # 窓の y は選んだ行の y からこれだけずらす
+"actions.heights" = [22, 14, 6] # 上・行送り・下。高さ = 22 + 14 × 操作の数 + 6
+"actions.title.rect" = [3, 3, -6, 13] # 題の帯（窓から）。幅は窓の幅から引く
+"actions.title.text" = [8, 6] # 題の字（窓から）
+"actions.row.band" = [19, 0, -28, 13] # 選択中の帯（窓の x から、行の y から）。幅は窓の幅から引く
+"actions.row.cursor" = [6, 3] # 手（窓の x、行の y から）
+"actions.row.text" = [35, 3] # 操作の字（窓の x、行の y から）
+"actions.icon.pos" = [25, 3] # 印（窓の x、行の y から）。鍵と並べ替えは x を wide 画素右へ
+"actions.icon.wide" = 1 # 鍵と並べ替えの印の右へのずれ
+"actions.icon.hotkey_y" = 4 # ホットキーの三角の y（行から）
+"actions.icon.reorder_down" = 4 # 並べ替えの ▼ の y（▲ の y から）。▲▼ を重ねて 5 × 7
+"actions.shortcut" = [-20, 1] # Y の近道（窓の右端から、行の y から）
+"actions.pointer" = [-4, 2] # 選んだ行への指し（窓の x から、行の y から）
 "entry.key.disable" = "SELECT 長押し"
 "dialog.rect" = [106, 71, 188, 78] # 横中央、y = (220 - 78) / 2
 "dialog.center_height" = 220
@@ -297,6 +312,7 @@ screen = [400, 240]
 "time.switch" = 160
 "time.switch_text_split" = 0.5 # 前半で旧字を消し、後半で次の字を出す
 "time.folder" = [200, 32] # 一覧の切り替え ms・横移動 px。三次の減速
+"time.actions" = [160, 8] # R の操作のリストの開閉 ms・横移動 px（左から。閉じる時は逆）。三次の減速
 "time.bar_fade" = 320
 "time.exit_x" = -232
 "time.select" = 100

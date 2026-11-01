@@ -79,13 +79,14 @@ def main() -> int:
     run(['tests/host/test_menu_motion.cpp'], 'test_menu_motion')
     # 画面（帯・説明・ダイアログ・入力の枠・通知）。描画先は代役で受ける。
     screen = ['src/menu/surface.cpp', 'src/menu/notices.cpp', 'src/menu/panel.cpp', 'src/menu/modal.cpp',
-              'src/menu/shell.cpp']
+              'src/menu/action_list.cpp', 'src/menu/shell.cpp']
     for name, spec, tests in (
             ('test', 'tests/host/fixtures/menu_test.toml',
              (('tests/host/test_menu.cpp', []), ('tests/host/test_menu_entry.cpp', screen))),
             ('sample', 'spec/menu.toml',
              (('tests/host/test_menu_sample.cpp', ['src/menu/sample_items.cpp']),
-              ('tests/host/test_menu_shell.cpp', ['src/menu/sample_items.cpp', *screen])))):
+              ('tests/host/test_menu_shell.cpp', ['src/menu/sample_items.cpp', *screen]),
+              ('tests/host/test_menu_actions.cpp', ['src/menu/sample_items.cpp', *screen])))):
         gen = build / f'gen-{name}'
         subprocess.run([sys.executable, str(codegen), '--spec', spec, '--out', str(gen)], cwd=root, check=True)
         for test, extra in tests:
