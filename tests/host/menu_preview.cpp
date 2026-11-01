@@ -283,6 +283,8 @@ using menu::u16;
 using menu::u32;
 // 見本（gohan-56 の mock の kSettled）と同じ時刻。タイトルの背景は時刻で動くので、比べる絵はこの時刻で描く。
 constexpr u32 kSettledMs = 1000;
+// お気に入りの場面の描く時刻。カーソルの揺れは（時刻 % 800）が 400 未満の半分で止まるので、見本（1000 ms）と同じ揺れにそろえる。
+constexpr u32 kFavSettledMs = 2400;
 
 // 設定画面の項目（段 3）は、一覧の鎖（kPlayer から辿る next）の外に置く。一覧には出ない。
 enum : u16 {
@@ -295,8 +297,10 @@ const char *const kButtonOptions[] = {"A", "B", "X", "Y", "START"};
 
 // 所持金を読めるか（操作のリストの灰色の見本だけ読めない）。場面ごとに Render の前に決める。
 bool g_money_readable = true;
-bool ReadMoney(menu::s32 *value) { *value = 48210; return g_money_readable; }
-bool ReadWeather(menu::s32 *value) { *value = 1; return true; }
+// ゲームの仮の値。一覧の場面は所持金 48210・天気は雨。設定画面の場面は見本と同じく所持金 99999・天気は晴れ（Render が戻す）。
+menu::s32 g_money_value = 48210, g_weather_value = 1;
+bool ReadMoney(menu::s32 *value) { *value = g_money_value; return g_money_readable; }
+bool ReadWeather(menu::s32 *value) { *value = g_weather_value; return true; }
 menu::Result WriteNothing(menu::s32) { return menu::Result::Ok; }
 
 ItemDef MakeRowItem(const char *label, const char *desc, Control control, Behavior behavior, Source source,
@@ -521,6 +525,9 @@ void Enter(Engine &engine, u16 folder) {
 bool SettingsScene(const std::filesystem::path &directory, int index, const std::string &name) {
     ItemDef defs[kCount];
     DefineRowItems(defs);
+    // 固定中の項目の値（見本の設定画面と同じ）。
+    g_money_value = 99999;
+    g_weather_value = 0;
     // 「今の枠」は、比べるための文字の箇条（今の製品の枠の見た目）。
     if (name == "settings-defer-entry-now") defs[kDefer].display = menu::DisplayKind::Default;
     g_money_readable = true;
@@ -611,7 +618,7 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
     Tick(shell, now);
     Wait(shell, now, 400);
     if (name == "fav-inside") {
-        Wait(shell, now, 1100);
+        SettleTo(shell, now, kFavSettledMs);
         return DrawShell(directory, index, shell, now);
     }
     // R で操作のリストを開く（押した時刻から 2 フレーム。開く動きは 160 ms）。
@@ -627,13 +634,13 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
         }
     }
     if (name == "fav-inside-actions" || name == "fav-folder-actions") {
-        Wait(shell, now, 1100);
+        SettleTo(shell, now, kFavSettledMs);
         return DrawShell(directory, index, shell, now);
     }
     if (name == "fav-removed") {
         Tick(shell, now, key::A); // お気に入りから外す（天気）。選択は次の村へ。
         Tick(shell, now);
-        Wait(shell, now, 500);    // 通知は 500 ms 経った所を見る
+        SettleTo(shell, now, kFavSettledMs); // 通知は出た後の静止した所を見る（見本は 500 ms 経った所）
         return DrawShell(directory, index, shell, now);
     }
     // 並べ替え: A で持ち上げる（リストは閉じる）。
@@ -645,11 +652,14 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
         Tick(shell, now);
         Wait(shell, now, 300);
     }
-    Wait(shell, now, 500);
+    SettleTo(shell, now, kFavSettledMs);
     return DrawShell(directory, index, shell, now);
 }
 
 bool Render(const std::filesystem::path &directory, int index, const std::string &name) {
+    // 場面ごとに仮の値を既定へ戻す（設定画面の場面が、後の一覧の場面の値を変えないように）。
+    g_money_value = 48210;
+    g_weather_value = 1;
     if (name == "settings-enter-060") return EnterScene(directory, index, 60);
     if (name == "settings-enter-120") return EnterScene(directory, index, 120);
     if (name.rfind("settings-", 0) == 0) return SettingsScene(directory, index, name);

@@ -397,21 +397,27 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     if (arrows) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
     const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
-    Ink(s, lx, ly, label, (shadow >> 24) != 0, ink, false, shadow);
+    // 0 件の固定中の項目（灰色のフォルダ）は、字に影を付けない（見本の settings-fixed-empty）。
+    const bool empty_folder = v.disabled && d.control == Control::Folder;
+    Ink(s, lx, ly, label, (shadow >> 24) != 0 && !empty_folder, ink, false, shadow);
     if (v.pending) s.Sprite(lx + s.Measure(label) + ca::Row::Pending::Mark[0], y + ca::Row::Pending::Mark[1], "dot",
                              selected ? ca::Color::Pending::SelectedDot : ca::Color::Pending::Dot);
     if (e.State(item).hotkey && d.control != Control::Folder)
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
+        // フォルダの件数と指しは、0 件の灰色の行でも通常の選択と同じ色と影（見本の settings-fixed-empty）。
+        const u32 folder_shadow = Fade(ca::Color::Sel::Shadow, weight);
         // 固定中の項目の件数（D.12.4）。位置と色はお気に入りの件数と同じ。0 件でも「0件」を出す。
         if (d.list == ListKind::Fixed) {
             char count[24];
             core::TextWriter(count, sizeof(count)).Unsigned(e.FixedCount()).Append("件");
-            Ink(s, right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count), ly, count, (shadow >> 24) != 0,
-                MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, shadow);
+            Ink(s, right + ca::Row::Folder::Mark[0] - ca::Settings::Count - s.Measure(count), ly, count, (folder_shadow >> 24) != 0,
+                MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, folder_shadow);
         }
-        s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink); return;
+        s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron",
+                 MixColor(ca::Color::Text, ca::Color::Sel::Text, weight));
+        return;
     }
     if (pill) {
         std::string part;

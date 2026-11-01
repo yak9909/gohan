@@ -38,6 +38,7 @@ screen = [400, 240]
 "fav.row.star" = [6, 3] # 星の x・y（行から）
 "fav.row.label" = [16, 3] # 名前の x・y（行から）
 "fav.row.count" = 5 # 件数の右端から「>」の左までの差
+"settings.count" = 5 # 設定画面の「固定中の項目」の件数。位置と色は fav.row.count と同じ（D.12.4）
 "fav.reorder.lift" = 2 # 並べ替えで持ち上げた行の帯・字・印を上げる画素数
 "fav.reorder.shadow" = [2, 1, -2, 13] # 持ち上げた行の影: 帯の位置からの x・y の差、幅の差（行の幅から）、高さ
 "fav.reorder.shadow_alpha" = 0.55 # 影の不透明度（sel.shadow）
