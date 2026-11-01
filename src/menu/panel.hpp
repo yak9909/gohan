@@ -89,6 +89,8 @@ class Panel {
     // 並べ替えで持ち上げた行（選んでいる行で、並べ替えの間か下ろす動きの途中）と、持ち上げた量（画素）。
     u16 lifted_ = kNoItem;
     float lift_ = 0.f;
+    // 並べ替えの間か（説明の状態「並べ替え中」は、これが真の間だけ。下ろす動きの途中は出さない）。
+    bool reordering_ = false;
     int last_index_ = -1;
 };
 } // namespace gohan::menu

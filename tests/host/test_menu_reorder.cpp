@@ -104,6 +104,22 @@ const Command *Sprite(const RecordingSurface &s, const char *name) {
         if (c.kind == Command::Sprite && c.text == name) return &c;
     return nullptr;
 }
+// 通常の選択の帯（持ち上げた行とは別）と指の y。行 n（0 始まり）の帯は 28 + 18n、指は帯の y に ca::Cursor::Offset[1] を足した y。
+int Band(const RecordingSurface &s) {
+    const Command *c = Slice(s, "selrim", 24);
+    return c ? c->bounds.y : -1;
+}
+int Finger(const RecordingSurface &s) {
+    const Command *c = Sprite(s, "finger");
+    return c ? c->bounds.y : -1;
+}
+int BandY(int n) { return 28 + 18 * n; }
+// 持ち上げた行の影（幅 184）。A・B の跳ねで字と一緒に x がずれても見つける。
+bool Shadow(const RecordingSurface &s) {
+    for (const auto &c : s.commands)
+        if (c.kind == Command::Slice && c.text == "field" && c.bounds.w == 184) return true;
+    return false;
+}
 
 // メニューを開き、お気に入りの中へ入る。お気に入りは先に付けておく。
 void OpenFavorites(Rig &r) {
@@ -215,7 +231,11 @@ void ConfirmWritesOrder() {
     r.Tap(key::Down); r.Advance(120);
     r.Tap(key::Down); r.Advance(120); // 2,3,1
     const u32 revision = r.engine.Revision();
-    r.Tap(key::A); r.Advance(200);
+    r.Tap(key::A);
+    auto d = r.Draw(); Budget(d);
+    assert(Shadow(d)); // 下ろす動きの途中（持ち上げた行はまだ見える）
+    assert(!d.HasText("並べ替え中")); // 下ろす動きの途中でも「並べ替え中」は出さない
+    r.Advance(200);
     assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
     assert(r.engine.FavoriteOrder()[0] == 2 && r.engine.FavoriteOrder()[1] == 3 && r.engine.FavoriteOrder()[2] == 1);
     assert(r.engine.Revision() == revision + 1);
@@ -237,13 +257,74 @@ void CancelChangesNothing() {
     r.Tap(key::Down); r.Advance(120);
     r.Tap(key::Down); r.Advance(120);
     const u32 revision = r.engine.Revision();
-    r.Tap(key::B); r.Advance(200);
+    r.Tap(key::B);
+    auto d = r.Draw(); Budget(d);
+    assert(Shadow(d)); // 下ろす動きの途中（持ち上げた行はまだ見える）
+    assert(!d.HasText("並べ替え中")); // 下ろす動きの途中でも「並べ替え中」は出さない
+    r.Advance(200);
     assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
     assert(r.engine.FavoriteOrder()[0] == 1 && r.engine.FavoriteOrder()[1] == 2 && r.engine.FavoriteOrder()[2] == 3);
     assert(r.engine.Revision() == revision);
     auto s = r.Draw(); Budget(s);
     assert(RowText(s, 1) == RowY(0) && RowText(s, 2) == RowY(1) && RowText(s, 3) == RowY(2));
     assert(r.engine.Selected() == 1 && r.engine.FavoriteCount() == 3);
+}
+
+// B で取り消した後、選んだ行の帯と指は、選んだ項目の行（先頭）へ戻る。持ち上げた行を下ろす動きの後も食い違わない。
+void CancelBandFollowsSelection() {
+    Rig r(Defs().defs, kTotal);
+    Favorite(r, 1); Favorite(r, 2); Favorite(r, 3);
+    OpenFavorites(r);
+    OpenReorder(r, 1);
+    r.Tap(key::Down); r.Advance(120);
+    r.Tap(key::Down); r.Advance(120); // 写しは 2,3,1（選んだ項目は 3 番目）
+    r.Tap(key::B); r.Advance(200);
+    auto s = r.Draw(); Budget(s);
+    assert(r.engine.Selected() == 1 && r.engine.Ui().kind == UiKind::None);
+    assert(!s.HasText("並べ替え中"));
+    assert(RowText(s, 1) == RowY(0));
+    assert(Band(s) == BandY(0) && Finger(s) == BandY(0) + ca::Cursor::Offset[1]);
+}
+
+// 一番上の一覧で最初のお気に入りを付けると、先頭に「お気に入り」の行が出て、選んだ行の添え字が 1 つ増える。帯と指もそこへ追う。
+void TopListFavoriteMovesBand() {
+    Rig r(Defs().defs, kTotal);
+    r.Open();
+    assert(r.engine.Select(kVillage) && r.engine.Folder() == menu::kNoItem);
+    r.Advance(200); // 選ぶ動きを終えてから付ける（選んだ行の添え字だけが変わる）
+    assert(Band(r.Draw()) == BandY(1));
+    Favorite(r, kFirst);
+    r.Advance(200);
+    auto s = r.Draw(); Budget(s);
+    assert(r.engine.Selected() == kVillage && r.engine.Folder() == menu::kNoItem);
+    assert(RowText(s, kVillage) == RowY(2));
+    assert(Band(s) == BandY(2) && Finger(s) == BandY(2) + ca::Cursor::Offset[1]);
+}
+
+// 一番上の一覧で、最後のお気に入りを外すと「お気に入り」の行が消え、選んだ行の添え字が 1 つ減る。帯と指もそこへ追う。
+void TopListUnfavoriteMovesBand() {
+    Rig r(Defs().defs, kTotal);
+    Favorite(r, kVillage);
+    r.Open();
+    assert(r.engine.Select(kVillage));
+    r.Advance(200);
+    auto s = r.Draw(); Budget(s);
+    assert(RowText(s, kVillage) == RowY(2) && Band(s) == BandY(2));
+    r.Tap(key::R); r.Advance(200);
+    menu::ItemAction actions[menu::kMaxActions];
+    const std::size_t count = r.engine.Actions(kVillage, actions);
+    std::size_t at = count;
+    for (std::size_t n = 0; n < count; ++n)
+        if (actions[n].kind == ActionKind::RemoveFavorite) at = n;
+    assert(at < count);
+    for (std::size_t n = 0; n < at; ++n) r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
+    assert(r.engine.FavoriteCount() == 0 && r.engine.Selected() == kVillage && r.engine.Folder() == menu::kNoItem);
+    s = r.Draw(); Budget(s);
+    assert(RowText(s, kVillage) == RowY(1));
+    assert(Band(s) == BandY(1) && Finger(s) == BandY(1) + ca::Cursor::Offset[1]);
 }
 
 // 並べ替えの間は R・X・L・Y・左右・START・SELECT を受けない（モーダルに数える）。
@@ -425,6 +506,9 @@ int main() {
     RepeatStopsAtEnds();
     ConfirmWritesOrder();
     CancelChangesNothing();
+    CancelBandFollowsSelection();
+    TopListFavoriteMovesBand();
+    TopListUnfavoriteMovesBand();
     RejectsOtherButtons();
     ScrollsWithLiftedRow();
     LocationLine();

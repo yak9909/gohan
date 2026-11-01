@@ -73,8 +73,10 @@ void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
     const bool lifting = reorder.Showing(now) && reorder.Item() == engine.Selected();
     lifted_ = lifting ? reorder.Item() : kNoItem;
     lift_ = lifting ? reorder.Lift(now) : 0.f;
-    // 並べ替えで持ち上げた行の位置が変わった（入れ替え）。帯は選択の動きと同じ時間で動く。
-    const bool moved = reorder.Open() && index != last_index_;
+    reordering_ = reorder.Open();
+    // 選んだ項目の添え字が前のフレームと違う（並べ替えの入れ替え・取り消しで行が戻った・お気に入りの行の増減）。
+    // 開いている間で、フォルダが変わらない時だけ、選択の動きと同じ時間で追う。閉じている間・開き直しは下の分岐のまま。
+    const bool moved = engine.Visible() && was_visible_ && !folder_change && index != last_index_;
     last_index_ = index;
 
     const bool visible = engine.Visible();
@@ -534,8 +536,8 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
     // 固定中の文は、トグルなら固定している ON／OFF で選ぶ（待機も ON）。
     const char *locked = d.control != Control::Toggle ? ca::Text::State::Locked :
                          !std::strcmp(row.value, "OFF") ? ca::Text::State::LockedOff : ca::Text::State::LockedOn;
-    // 並べ替えで持ち上げた行は「並べ替え中」（今の状態より先。D.12.2）。
-    const bool reordering = item == lifted_;
+    // 並べ替えの間に選んでいる行は「並べ替え中」（今の状態より先。D.12.2）。下ろす動きの途中は出さない。
+    const bool reordering = reordering_ && item == lifted_;
     const char *state = reordering ? ca::Text::State::Reorder : row.disabled ? ca::Text::State::Disabled :
                         !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
                         row.pending ? ca::Text::State::Pending : row.locked ? locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
