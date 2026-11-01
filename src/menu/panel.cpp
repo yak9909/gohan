@@ -11,6 +11,22 @@ namespace gohan::menu {
 namespace {
 using namespace motion;
 bool NumericControl(const ItemDef &def) { return def.control == Control::Number || def.control == Control::Slider; }
+
+// お気に入りの中の項目の場所（D.12.2）: 「場所: 」に親の道筋を続ける。最上位の項目は「一番上の一覧」。
+const char *Place(const Engine &e, u16 item, char *buffer, std::size_t capacity) {
+    u16 ancestors[timing::kMaxDepth]{};
+    int depth = 0;
+    for (u16 at = e.Def(item).parent; at != kNoItem && depth < static_cast<int>(timing::kMaxDepth); at = e.Def(at).parent)
+        ancestors[depth++] = at;
+    core::TextWriter w(buffer, capacity);
+    w.Append(ca::Text::State::Location);
+    if (depth == 0) w.Append(ca::Text::LocationTop);
+    for (int n = depth - 1; n >= 0; --n) {
+        if (n != depth - 1) w.Append(ca::Text::PathSeparator);
+        w.Append(e.Def(ancestors[n]).label);
+    }
+    return buffer;
+}
 } // namespace
 
 float Panel::TargetFor(int index) const {
@@ -20,7 +36,7 @@ float Panel::TargetFor(int index) const {
     return static_cast<float>(target);
 }
 
-void Panel::Sync(const Engine &engine, u32 now) {
+void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
     const bool folder_change = engine.Visible() && was_visible_ && engine.Folder() != folder_;
     const bool reversing = folder_change && !folder_phase_.Done(now) && engine.Folder() == old_folder_;
     const float previous_phase = folder_phase_.At(now);
@@ -31,6 +47,8 @@ void Panel::Sync(const Engine &engine, u32 now) {
         old_count_ = count_;
         std::copy(items_, items_ + count_, old_items_);
         old_folder_ = folder_;
+        old_path_depth_ = path_depth_;
+        std::copy(path_, path_ + path_depth_, old_path_);
         old_selected_ = selected_;
         old_view_ = previous_view;
         old_selection_ = selection_.At(now);
@@ -40,10 +58,24 @@ void Panel::Sync(const Engine &engine, u32 now) {
         folder_phase_.Jump(start, now);
         folder_phase_.Go(1.f, now, reversing ? static_cast<u32>(timing::kFolderMs * previous_phase) : timing::kFolderMs);
     }
-    count_ = static_cast<int>(engine.Children(engine.Folder(), items_, core::limits::MenuItems + 1));
+    // 道筋は今の分を取り直す（旧い道筋は上で写した）。閉じている間も取り直して、次の比べ方に使う。
+    path_depth_ = 0;
+    for (std::size_t level = 1; level <= engine.Depth(); ++level) path_[path_depth_++] = engine.FolderAt(level);
+    // 並べ替えの間は写しの順で行を集める（D.12.3）。ほかは今のフォルダの見える子。
+    if (reorder.Open()) {
+        count_ = static_cast<int>(reorder.Count());
+        std::copy(reorder.Items(), reorder.Items() + count_, items_);
+    } else count_ = static_cast<int>(engine.Children(engine.Folder(), items_, core::limits::MenuItems + 1));
     int index = 0;
     while (index < count_ && items_[index] != engine.Selected()) ++index;
     if (index >= count_) index = 0;
+    // 持ち上げた行: 並べ替えの間と、下ろす動きの途中。選んでいる行に限る。
+    const bool lifting = reorder.Showing(now) && reorder.Item() == engine.Selected();
+    lifted_ = lifting ? reorder.Item() : kNoItem;
+    lift_ = lifting ? reorder.Lift(now) : 0.f;
+    // 並べ替えで持ち上げた行の位置が変わった（入れ替え）。帯は選択の動きと同じ時間で動く。
+    const bool moved = reorder.Open() && index != last_index_;
+    last_index_ = index;
 
     const bool visible = engine.Visible();
     const bool showBar = visible || engine.Ui().kind != UiKind::None || engine.Dialog() != DialogKind::None;
@@ -105,7 +137,7 @@ void Panel::Sync(const Engine &engine, u32 now) {
         view_.Jump(next_view, now);
         selection_.Jump(previous_row + next_view, now);
         selection_.Go(static_cast<float>(index), now, timing::kFolderMs);
-    } else if (engine.Selected() != selected_) {
+    } else if (engine.Selected() != selected_ || moved) {
         selection_.Go(static_cast<float>(index), now, timing::kSelectionMoveMs);
         const float start = view_.to;
         if (!keep_view_ || static_cast<float>(index) < start || static_cast<float>(index) >= start + static_cast<float>(rows_))
@@ -160,38 +192,38 @@ void Panel::DrawFrame(Surface &s, const Engine &e, int dx, u32 now) {
         int old_index = 0;
         while (old_index < old_count_ && old_items_[old_index] != old_selected_) ++old_index;
         FadedSurface old(s, 1.f - p), next(s, p);
-        if (p < 1.f) DrawHeading(old, e, dx, old_folder_, old_count_, old_index);
+        if (p < 1.f) DrawHeading(old, e, dx, old_path_, old_path_depth_, old_count_, old_index);
         int index = 0;
         while (index < count_ && items_[index] != e.Selected()) ++index;
-        if (p > 0.f) DrawHeading(next, e, dx, e.Folder(), count_, index);
+        if (p > 0.f) DrawHeading(next, e, dx, path_, path_depth_, count_, index);
     } else {
         int index = 0;
         while (index < count_ && items_[index] != e.Selected()) ++index;
-        DrawHeading(s, e, dx, e.Folder(), count_, index);
+        DrawHeading(s, e, dx, path_, path_depth_, count_, index);
     }
 }
 
-void Panel::DrawHeading(Surface &s, const Engine &e, int dx, u16 folder, int count, int index) {
+// 題の道筋は、入った順のフォルダ（path）をそのまま続ける。お気に入りの中のフォルダは「お気に入り」を経由する。
+void Panel::DrawHeading(Surface &s, const Engine &e, int dx, const u16 *path, int depth, int count, int index) {
     const Rect title = Bounds(ca::List::Title::Rect, dx + ca::List::Rect[0], ca::List::Rect[1], ca::List::Rect[2]);
     char pos[24]; core::TextWriter(pos, sizeof(pos)).Unsigned(count ? index + 1 : 0).Append("/").Unsigned(count);
     const int right = dx + ca::List::Rect[0] + ca::List::Rect[2] + ca::List::Title::Pos::Right;
     const int py = title.y + ca::List::Title::Text[1];
     s.Text(right - s.Measure(pos, true), py, pos, ca::Color::Band::Text, true);
-    u16 ancestors[timing::kMaxDepth]{}; int depth = 0;
-    for (u16 at = folder; at != kNoItem && depth < static_cast<int>(timing::kMaxDepth); at = e.Def(at).parent) ancestors[depth++] = at;
-    char path[kLineBytes], trimmed[kLineBytes];
-    core::TextWriter w(path, sizeof(path)); w.Append(ca::Text::Title);
-    for (int n = depth - 1; n >= 0; --n) w.Append(ca::Text::PathSeparator).Append(e.Def(ancestors[n]).label);
+    char full[kLineBytes], trimmed[kLineBytes];
+    core::TextWriter w(full, sizeof(full)); w.Append(ca::Text::Title);
+    for (int n = 0; n < depth; ++n) w.Append(ca::Text::PathSeparator).Append(e.Def(path[n]).label);
     const int x = title.x + ca::List::Title::Text[0];
     const int room = right - s.Measure(pos, true) - ca::Row::Gap::Min - x;
-    if (s.Measure(path) > room && depth) {
+    if (s.Measure(full) > room && depth) {
+        // 近い方から残す（今のフォルダを必ず残し、前は省略記号にする）。
         for (int keep = depth; keep > 0; --keep) {
-            core::TextWriter tail(path, sizeof(path)); tail.Append(ca::Trim::Ellipsis);
-            for (int n = keep - 1; n >= 0; --n) tail.Append(ca::Text::PathSeparator).Append(e.Def(ancestors[n]).label);
-            if (s.Measure(path) <= room) break;
+            core::TextWriter tail(full, sizeof(full)); tail.Append(ca::Trim::Ellipsis);
+            for (int n = depth - keep; n < depth; ++n) tail.Append(ca::Text::PathSeparator).Append(e.Def(path[n]).label);
+            if (s.Measure(full) <= room) break;
         }
     }
-    s.Text(x, py, Trim(s, path, room, trimmed, sizeof(trimmed)), ca::Color::Band::Text);
+    s.Text(x, py, Trim(s, full, room, trimmed, sizeof(trimmed)), ca::Color::Band::Text);
 }
 
 void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
@@ -217,16 +249,41 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
         const float row = std::clamp(selection_.At(now) - start, 0.f, float(rows_ - 1));
         const int action = Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f));
         const int value = Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f));
-        s.Sprite(dx + ca::Row::X + value + action + ca::Cursor::Offset[0] +
-                 ca::Cursor::Sway[(now % ca::Time::Cursor) >= unsigned(ca::Time::Cursor / 2)],
-                 Round(ca::Row::Top + row * ca::Row::Pitch) + ca::Cursor::Offset[1], "finger");
+        // 持ち上げた行では指を揺らさず、指の上下に ▲▼ を出す（D.12.3）。
+        const bool lifting = lifted_ != kNoItem;
+        const int y = Round(ca::Row::Top + row * ca::Row::Pitch) - (lifting ? Round(lift_) : 0);
+        const int x = dx + ca::Row::X + value + action + ca::Cursor::Offset[0] +
+                      (lifting ? 0 : ca::Cursor::Sway[(now % ca::Time::Cursor) >= unsigned(ca::Time::Cursor / 2)]);
+        s.Sprite(x, y + ca::Cursor::Offset[1], "finger");
+        if (lifting) {
+            const auto &arrows = ca::Fav::Reorder::Arrows;
+            s.Sprite(x + arrows[0], y + arrows[1], "arrow_u", ca::Color::Band::Fill);
+            s.Sprite(x + arrows[0], y + arrows[2], "arrow_d", ca::Color::Band::Fill);
+        }
     }
+}
+
+void Panel::DrawLifted(Surface &s, const Engine &e, int dx, u32 now, float start, float selected_index) {
+    const float row = std::clamp(selected_index - start, 0.f, float(rows_ - 1));
+    const int by = Round(ca::Row::Top + row * ca::Row::Pitch);
+    const int offset = Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
+        Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f));
+    const int lift = Round(lift_);
+    const int x = dx + ca::Row::X + offset;
+    // 影は持ち上げた帯の右下に落とす。持ち上げ・下ろしの途中は、持ち上げた量に合わせて薄める。
+    const auto &shadow = ca::Fav::Reorder::Shadow;
+    const float alpha = static_cast<float>(ca::Fav::Reorder::ShadowAlpha) * lift_ / static_cast<float>(ca::Fav::Reorder::Lift);
+    s.Box({x + shadow[0], by + shadow[1], ca::Row::W + shadow[2], shadow[3]}, "field", Fade(ca::Color::Sel::Shadow, alpha));
+    Selected(s, {x, by - lift, ca::Row::W, ca::Row::H}, false);
+    DrawRow(s, e, lifted_, dx, by - lift, offset, true, 1.f, now);
 }
 
 void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
                          const u16 *items, int count, float start, float selected_index, u16 selected_item) {
     // 帯も行の層に含める。縦の選択移動に、同じ横移動とフェードを重ねる。
-    if (count) {
+    // 並べ替えで持ち上げた行は、帯も字も行の層の最後に描く（ほかの行より上に重なる。D.12.3）。
+    const bool lifting = items == items_ && lifted_ != kNoItem && lifted_ == selected_item;
+    if (count && !lifting) {
         const float row = std::clamp(selected_index - start, 0.f, float(rows_ - 1));
         const int offset = items == items_ ?
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
@@ -246,7 +303,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
         const int offset = selected && items == items_ ?
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
             Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
-        DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
+        if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
         if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
             // お気に入りの行の下は、普通の行の破線と分けて 1 画素の実線（D.12.3）。
             s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
@@ -255,6 +312,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
             s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                        ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
     }
+    if (lifting) DrawLifted(s, e, dx, now, start, selected_index);
 }
 
 void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now) {
@@ -292,8 +350,9 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const u32 shadow = Fade(v.disabled ? ca::Color::Disabled::Sel::Shadow : ca::Color::Sel::Shadow, weight);
     char trimmed[kLineBytes];
     // ◀ ▶ は左右で値が変わる行（数値・スライダー・選択）の選択中だけ。鍵は ◀ の左 2 画素へ（D.12.2）。
+    // 並べ替えで持ち上げた行では左右で値を変えないので出さない（D.12.3）。
     const bool adjustable = d.control == Control::Number || d.control == Control::Slider || d.control == Control::Select;
-    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable;
+    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable && item != lifted_;
     const int lockX = arrows ? vx + ca::Row::Value::ArrowLeft - 2 - ca::Row::Lock::Mark[2] : vx + ca::Row::Lock::Mark[0];
     int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
     if (v.locked) valueLeft = std::min(valueLeft, lockX);
@@ -395,6 +454,9 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
     } else if (kind == UiKind::Actions) {
         // R の操作のリスト（D.12.5）。n変更は出さない。
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, "決定"); hint(key::B, "閉じる");
+    } else if (kind == UiKind::Reorder) {
+        // お気に入りの並べ替え（D.12.5）。n変更は出さない。
+        hint(key::Up | key::Down, "動かす"); hint(key::A, "決定"); hint(key::B, "取消");
     } else if (kind == UiKind::List || kind == UiKind::CheckList) {
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, kind == UiKind::CheckList ? "切替" : "決定");
         if (kind == UiKind::CheckList) hint(key::X, "決定");
@@ -472,14 +534,21 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
     // 固定中の文は、トグルなら固定している ON／OFF で選ぶ（待機も ON）。
     const char *locked = d.control != Control::Toggle ? ca::Text::State::Locked :
                          !std::strcmp(row.value, "OFF") ? ca::Text::State::LockedOff : ca::Text::State::LockedOn;
-    const char *state = row.disabled ? ca::Text::State::Disabled : !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
+    // 並べ替えで持ち上げた行は「並べ替え中」（今の状態より先。D.12.2）。
+    const bool reordering = item == lifted_;
+    const char *state = reordering ? ca::Text::State::Reorder : row.disabled ? ca::Text::State::Disabled :
+                        !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
                         row.pending ? ca::Text::State::Pending : row.locked ? locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
                         !std::strcmp(row.value, "ON") ? ca::Text::State::On : "";
     char states[ca::Desc::State[1]][kLineBytes];
     const int ns = Wrap(s, state, ca::Desc::Body[5], states, ca::Desc::State[1], nullptr);
-    const bool extra = hotkey || state[0];
+    // お気に入りの中の項目は、状態の下に場所（親の道筋）を出す（D.12.2）。
+    char place[kLineBytes * 2], places[ca::Desc::State[1]][kLineBytes];
+    const int nl = e.Folder() == kFavoritesFolder ?
+        Wrap(s, Place(e, item, place, sizeof(place)), ca::Desc::Body[5], places, ca::Desc::State[1], nullptr) : 0;
+    const bool extra = hotkey || state[0] || nl > 0;
     const auto &h = ca::Desc::Height;
-    const int height = h[0] + th + h[1] + h[2] * nb + (extra ? h[3] + (hotkey ? h[4] : 0) + ns * h[5] : 0) + h[6];
+    const int height = h[0] + th + h[1] + h[2] * nb + (extra ? h[3] + (hotkey ? h[4] : 0) + (ns + nl) * h[5] : 0) + h[6];
     Rect box = Bounds(ca::Desc::Rect); box.h = height;
     box.x += Round((1 - alpha) * (ca::Screen[0] - box.x));
     Paper(s, box);
@@ -498,8 +567,10 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
             else s.Text(box.x + ca::Desc::Hotkey::Icon[0], y + ca::Desc::Hotkey::Label[1], "--", Fade(ca::Color::Sub, alpha));
             y += ca::Desc::Hotkey::Pitch;
         }
-        const u32 stateColor = row.disabled || !std::strcmp(row.value, "予約") ? ca::Color::Sub : row.locked ? ca::Color::Locked : row.pending ? ca::Color::Pending::Text : !std::strcmp(row.value, "ON") ? ca::Color::Green : ca::Color::Hotkey;
+        const u32 stateColor = reordering || row.disabled || !std::strcmp(row.value, "予約") ? ca::Color::Sub : row.locked ? ca::Color::Locked : row.pending ? ca::Color::Pending::Text : !std::strcmp(row.value, "ON") ? ca::Color::Green : ca::Color::Hotkey;
         for (int n = 0; n < ns; ++n) s.Text(box.x + ca::Desc::Body[0], y + n * ca::Desc::State[0], states[n], Fade(stateColor, alpha));
+        y += ns * ca::Desc::State[0];
+        for (int n = 0; n < nl; ++n) s.Text(box.x + ca::Desc::Body[0], y + n * ca::Desc::State[0], places[n], Fade(ca::Color::Sub, alpha));
     }
 }
 } // namespace gohan::menu

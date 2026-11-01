@@ -2,15 +2,16 @@
 #include "core/limits.hpp"
 #include "menu/engine.hpp"
 #include "menu/motion.hpp"
+#include "menu/reorder.hpp"
 #include "menu/surface.hpp"
 
 // メニューの帯（題・行・足）と説明欄の表示。エンジンの状態を読み、見た目の動き
-// （出入り・選択の帯・スクロール・跳ね）だけを持つ。入力の解釈はしない。
+// （出入り・選択の帯・スクロール・跳ね・並べ替えの持ち上げ）だけを持つ。入力の解釈はしない。
 namespace gohan::menu {
 class Panel {
   public:
-    // 毎フレーム、エンジンの状態が変わった後に呼ぶ。
-    void Sync(const Engine &engine, u32 now);
+    // 毎フレーム、エンジンの状態が変わった後に呼ぶ。並べ替えの間は、写しの順で行を集める。
+    void Sync(const Engine &engine, u32 now, const Reorder &reorder);
     // 描画の予算から決めた行数を知らせる（変わったらスクロールの目標を取り直す）。
     void SetRows(int rows, u32 now);
     // 跳ね。左右（値）・決定（A）。
@@ -37,10 +38,12 @@ class Panel {
   private:
     int MenuX(u32 now) const;
     void DrawFrame(Surface &surface, const Engine &engine, int menu_x, u32 now);
-    void DrawHeading(Surface &surface, const Engine &engine, int menu_x, u16 folder, int count, int selected_index);
+    void DrawHeading(Surface &surface, const Engine &engine, int menu_x, const u16 *path, int depth, int count, int selected_index);
     void DrawRows(Surface &surface, const Engine &engine, int menu_x, u32 now);
     void DrawRowLayer(Surface &surface, const Engine &engine, int menu_x, u32 now,
                       const u16 *items, int count, float start, float selected, u16 selected_item);
+    // 並べ替えで持ち上げた行（帯・影・字・印）。行の層の最後に、ほかの行より上に描く（D.12.3）。
+    void DrawLifted(Surface &surface, const Engine &engine, int menu_x, u32 now, float start, float selected_index);
     void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now);
     void DrawScrollBar(Surface &surface, int menu_x, u32 now);
     void DrawFooter(Surface &surface, const Engine &engine, int menu_x, bool dialog);
@@ -78,5 +81,14 @@ class Panel {
     float old_view_ = 0.f;
     float old_selection_ = 0.f;
     int folder_direction_ = 1;
+    // 道筋（根からの入った順のフォルダ）。今の分と、フォルダを変える前の分（旧い行の題に使う）。
+    u16 path_[timing::kMaxDepth]{};
+    int path_depth_ = 0;
+    u16 old_path_[timing::kMaxDepth]{};
+    int old_path_depth_ = 0;
+    // 並べ替えで持ち上げた行（選んでいる行で、並べ替えの間か下ろす動きの途中）と、持ち上げた量（画素）。
+    u16 lifted_ = kNoItem;
+    float lift_ = 0.f;
+    int last_index_ = -1;
 };
 } // namespace gohan::menu

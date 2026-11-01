@@ -37,6 +37,10 @@ screen = [400, 240]
 "fav.row.star" = [6, 3] # 星の x・y（行から）
 "fav.row.label" = [16, 3] # 名前の x・y（行から）
 "fav.row.count" = 5 # 件数の右端から「>」の左までの差
+"fav.reorder.lift" = 2 # 並べ替えで持ち上げた行の帯・字・印を上げる画素数
+"fav.reorder.shadow" = [2, 1, -2, 13] # 持ち上げた行の影: 帯の位置からの x・y の差、幅の差（行の幅から）、高さ
+"fav.reorder.shadow_alpha" = 0.55 # 影の不透明度（sel.shadow）
+"fav.reorder.arrows" = [4, -1, 12] # ▲▼: 指の x からの差、▲ の帯からの y、▼ の帯からの y（指は揺らさない）
 "cursor.offset" = [-12, 3]
 "cursor.size" = [13, 8]
 "cursor.sway" = [0, 1]
@@ -232,6 +236,9 @@ screen = [400, 240]
 "text.state.locked" = "固定中: 外すまでこの値を保ちます"
 "text.state.locked_on" = "固定中: 外すまでONのままです"
 "text.state.locked_off" = "固定中: 外すまでOFFのままです"
+"text.state.reorder" = "並べ替え中"
+"text.state.location" = "場所: " # 説明の窓の「場所」（お気に入りの中の項目。親の道筋を続ける）
+"text.location_top" = "一番上の一覧" # 最上位の項目の場所
 
 # D.5
 "icon.button.round" = [11, 11, 5]

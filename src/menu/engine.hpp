@@ -109,6 +109,8 @@ class Engine {
     s32 Applied(u16 item) const { return state_[item].applied; }
     std::size_t Depth() const { return depth_; }
     u16 Folder() const { return stack_[depth_]; }
+    // 入ったフォルダの道筋。level 0 は根（kNoItem）、1 以降は入った順（お気に入りの中のフォルダは仮のフォルダを経由する）。
+    u16 FolderAt(std::size_t level) const { return level <= depth_ ? stack_[level] : kNoItem; }
     u16 Selected() const { return selection_[depth_]; }
     // 見える子の並び。返り値は out に書いた数（capacity 個まで）。
     std::size_t Children(u16 folder, u16 *out, std::size_t capacity) const;
