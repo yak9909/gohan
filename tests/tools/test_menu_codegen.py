@@ -80,6 +80,7 @@ def test_values_are_scaled_and_resolved(tmp_path):
 
 def test_button_bits_are_fixed():
     assert menu.BUTTONS == ['ZL', 'L', 'R', 'ZR', 'Up', 'Down', 'Left', 'Right', 'A', 'B', 'X', 'Y', 'Select', 'Start']
+    assert menu.BUTTON_NAMES == {name.lower() for name in menu.BUTTONS}  # display = "buttons" の名前は BUTTONS から作る
     assert menu.parse_hotkey('start+zl', 'x') == (1 << 13) | 1
 
 
@@ -204,6 +205,178 @@ def item(extra, control='toggle', behavior='state'):
     (item(['options = ["' + 'x' * 1 + '"]'] + [], 'select', '').replace('["x"]', str(['o%d' % n for n in range(40)]).replace("'", '"')), '個まで'),
 ])
 def test_spec_errors(tmp_path, text, word):
+    assert word in error(tmp_path, text)
+
+
+SETTINGS_GOOD = '''
+[[item]]
+id = "root"
+label = "根"
+control = "folder"
+  [[item.item]]
+  id = "root.flag"
+  label = "旗"
+  control = "toggle"
+  behavior = "state"
+
+[[settings]]
+id = "settings"
+label = "設定"
+control = "folder"
+  [[settings.item]]
+  id = "settings.fixed"
+  label = "固定中の項目"
+  control = "folder"
+  list = "fixed"
+  [[settings.item]]
+  id = "settings.keep"
+  label = "保持設定"
+  control = "folder"
+    [[settings.item.item]]
+    id = "settings.keep.toggles"
+    label = "トグルを全て保持"
+    control = "toggle"
+    behavior = "value"
+    apply = "immediate"
+    default = false
+    [[settings.item.item]]
+    id = "settings.keep.erase"
+    label = "保存を全て消す"
+    control = "action"
+    behavior = "trigger"
+    confirm = "menu"
+  [[settings.item]]
+  id = "settings.press"
+  label = "押し切る"
+  control = "multiselect"
+  options = ["A", "B", "Start"]
+  default = ["Start"]
+  display = "buttons"
+  apply = "immediate"
+'''
+
+
+def test_settings_root_and_new_keys(tmp_path):
+    path = tmp_path / 'menu.toml'
+    path.write_text(SETTINGS_GOOD, encoding='utf-8')
+    items = menu.load(path)
+    assert [i.id for i in items] == ['root', 'root.flag', 'settings', 'settings.fixed', 'settings.keep',
+                                     'settings.keep.toggles', 'settings.keep.erase', 'settings.press']
+    root, flag, settings, fixed, keep, toggles, erase, press = items
+    # 設定画面の根は一覧の列とつながない（一覧の最後の項目の次は無し）。
+    assert root.next == menu.NO_ITEM and settings.settings and not root.settings and settings.parent == menu.NO_ITEM
+    assert fixed.list_kind == 'fixed' and fixed.children == [] and fixed.settings
+    assert toggles.behavior == 'value' and toggles.source == 'setting' and toggles.apply == 'immediate'
+    assert toggles.persist is True and toggles.default == 0
+    assert erase.confirm == 'menu' and erase.persist is False and erase.menu == 'immediate'
+    assert press.display == 'buttons' and press.default == 1 << 2 and press.apply == 'immediate'
+    header = menu.render_ids(items)
+    assert 'inline constexpr MenuId kSettingsRoot = MenuId::Settings;' in header
+    table = menu.render_table(items)
+    assert '.list = ListKind::Fixed' in table and '.display = DisplayKind::Buttons' in table
+    assert '.apply = ApplyKind::Immediate' in table and '.confirm = Confirm::Menu' in table
+    docs = menu.render_docs(items)
+    assert '持ち越さない' in docs and '保持しない' not in docs and 'メニューで確認' in docs
+
+
+def test_settings_root_is_optional(tmp_path):
+    items = load(tmp_path, GOOD)
+    assert 'kSettingsRoot' not in menu.render_ids(items)
+
+
+PERSIST = '''
+[[item]]
+id = "p"
+label = "P"
+control = "folder"
+  [[item.item]]
+  id = "p.state"
+  label = "状態"
+  control = "toggle"
+  behavior = "state"
+  [[item.item]]
+  id = "p.hold"
+  label = "押下中"
+  control = "toggle"
+  behavior = "hold"
+  [[item.item]]
+  id = "p.setting"
+  label = "設定"
+  control = "number"
+  range = [0, 9]
+  source = "setting"
+  [[item.item]]
+  id = "p.game"
+  label = "ゲーム"
+  control = "number"
+  range = [0, 9]
+  source = "game"
+  [[item.item]]
+  id = "p.run"
+  label = "実行"
+  control = "action"
+  behavior = "trigger"
+  [[item.item]]
+  id = "p.mode"
+  label = "画面"
+  control = "action"
+  behavior = "mode"
+  [[item.item]]
+  id = "p.toggle_run"
+  label = "実行のトグル"
+  control = "toggle"
+  behavior = "trigger"
+'''
+
+
+def test_persist_defaults_follow_the_table(tmp_path):
+    # 6.2: 状態・押下中・設定の値は既定で真。実行・実行のトグル・画面・ゲームの値は既定で偽。
+    items = load(tmp_path, PERSIST)
+    persist = {i.id: i.persist for i in items if i.control != 'folder'}
+    assert persist == {'p.state': True, 'p.hold': True, 'p.setting': True, 'p.game': False,
+                       'p.run': False, 'p.mode': False, 'p.toggle_run': False}
+
+
+@pytest.mark.parametrize(('text', 'word'), [
+    (PERSIST.replace('behavior = "trigger"\n  [[item.item]]\n  id = "p.mode"', 'behavior = "trigger"\npersist = true\n  [[item.item]]\n  id = "p.mode"'), 'persist'),
+    (PERSIST.replace('source = "game"', 'source = "game"\n  persist = true'), 'persist'),
+    (PERSIST.replace('behavior = "mode"', 'behavior = "mode"\n  persist = true'), 'persist'),
+])
+def test_persist_true_is_refused_where_it_cannot_be_kept(tmp_path, text, word):
+    assert word in error(tmp_path, text)
+
+
+SETTINGS_ERRORS = [
+    # 表示: 複数選択の選択肢はボタンの名前だけ。複数選択以外には使えない。
+    (item(['options = ["A", "Foo"]', 'display = "buttons"'], 'multiselect', ''), 'ボタンの名前'),
+    (item(['options = ["A"]', 'display = "buttons"'], 'select', ''), '複数選択'),
+    (item(['options = ["A"]', 'display = "list"'], 'multiselect', ''), 'display'),
+    # 固定中の項目（仮のフォルダ）: 子の項目は書けない。フォルダにだけ使える。
+    ('[[item]]\nid = "a"\nlabel = "A"\ncontrol = "folder"\nlist = "fixed"\n[[item.item]]\nid = "b"\nlabel = "B"\n'
+     'control = "toggle"\nbehavior = "state"\n', '子の項目'),
+    (item(['list = "fixed"']), 'list'),
+    # 適用: 設定の値（value + setting）だけ。
+    (item(['apply = "immediate"']), 'apply'),
+    (item(['apply = "later"'], 'number', ''), 'apply'),
+    # トグルの値は設定の値だけ。ゲームの値は書けない。
+    (item(['source = "game"'], 'toggle', 'value'), 'setting'),
+    # 実行のトグル・実行（trigger）は次の起動に残せない。
+    (item(['persist = true'], 'toggle', 'trigger'), 'persist'),
+    (item(['persist = true'], 'action', 'trigger'), 'persist'),
+    # 設定画面の根はフォルダ 1 つだけ。
+    ('[[item]]\nid = "a"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n'
+     '[[settings]]\nid = "s"\nlabel = "S"\ncontrol = "toggle"\nbehavior = "state"\n', 'フォルダ'),
+    ('[[item]]\nid = "a"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n'
+     '[[settings]]\nid = "s"\nlabel = "S"\ncontrol = "folder"\n[[settings.item]]\nid = "s.t"\nlabel = "T"\n'
+     'control = "toggle"\nbehavior = "state"\n[[settings]]\nid = "s2"\nlabel = "S2"\ncontrol = "folder"\n'
+     '[[settings.item]]\nid = "s2.t"\nlabel = "T2"\ncontrol = "toggle"\nbehavior = "state"\n', '1 つだけ'),
+    # 確認（メニュー）は実行（trigger）だけ。
+    (item(['confirm = "menu"']), 'confirm'),
+]
+
+
+@pytest.mark.parametrize(('text', 'word'), SETTINGS_ERRORS)
+def test_settings_spec_errors(tmp_path, text, word):
     assert word in error(tmp_path, text)
 
 

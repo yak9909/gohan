@@ -28,7 +28,7 @@ struct ItemState {
     bool feedback = false; // 「実行した」表示の間
 };
 
-enum class DialogKind : u8 { None, Close, ApplyAll, RevertAll, Action };
+enum class DialogKind : u8 { None, Close, ApplyAll, RevertAll, Action, Erase };
 // 画面側が用意する入力の要求。結果は SubmitUi / CancelUi で返す。
 enum class UiKind : u8 { None, Number, Slider, List, CheckList, Key, TriggerInput, Actions, Reorder, Settings };
 struct UiRequest {
@@ -89,6 +89,25 @@ class Engine {
     void Discard(u16 item);
     void DiscardAll();
     bool SetFixed(u16 item, bool on, u32 now);
+    // 固定した順（仮のフォルダ「固定中の項目」の並び。保存の並びにも使う）。
+    std::size_t FixedCount() const { return fixed_count_; }
+    const u16 *FixedOrder() const { return fixed_order_; }
+
+    // ---- 設定画面 ----
+    // 設定画面の項目（spec の [[settings]] の根・保存を全て消す・トグルを全て保持・押し切るボタン）を結ぶ。
+    struct SettingsItems {
+        u16 root = kNoItem;
+        u16 erase = kNoItem;
+        u16 keep = kNoItem;
+        u16 press_through = kNoItem;
+    };
+    void BindSettings(const SettingsItems &items);
+    bool OpenSettings(u32 now); // 一覧で START を押した時。Shell が UiKind::Settings の要求を受けて呼ぶ
+    bool InSettings() const { return in_settings_; }
+    bool HasSettings() const { return settings_.root != kNoItem; }
+    bool InSettingsTree(u16 item) const;
+    u16 DeferKeys() const;      // 押し切るボタン（key のビット。既定は START だけ）
+    u32 EraseCount() const { return erase_count_; } // 保存を全て消した回数（保存の書き込みを頼む目印）
 
     bool SetFavorite(u16 item, bool on);
     bool IsFavorite(u16 item) const;
@@ -128,11 +147,20 @@ class Engine {
     bool HoldProgress(u32 now, u32 *permille, bool *muted, u16 *key) const;
 
   private:
+    // 一覧または設定画面の、フォルダの道筋と選択。
+    struct Position {
+        std::size_t depth = 0;
+        u16 stack[timing::kMaxDepth]{};
+        u16 selection[timing::kMaxDepth]{};
+    };
     // engine_core.cpp
     bool Has(u16 item) const { return item < count_; }
     bool HasValue(u16 item) const;
     bool CanFix(u16 item) const;
     bool RemembersValue(u16 item) const;
+    bool IsFixedList(u16 folder) const;
+    // カーソルを置ける行か。灰色の行は飛ばすが、0 件の仮のフォルダ（灰色で入れないだけ）は選べる。
+    bool CanSelect(u16 item) const;
     u16 FirstChild(u16 folder) const;
     u16 NextChild(u16 folder, u16 item) const;
     bool CondHolds(const Cond &cond) const;
@@ -145,6 +173,7 @@ class Engine {
     bool ReadGame(u16 item);
     void ReadGameValues();
     void RestorePosition();
+    void Hide(u32 now);
     // engine_edit.cpp
     bool CommitBody(u16 item, u32 now);
     bool ApplyValue(u16 item);
@@ -159,6 +188,12 @@ class Engine {
     void Tick(u32 now, u16 held);
     void Poll();
     void OpenDialog(DialogKind kind, u16 item);
+    // engine_settings.cpp
+    void SavePosition(Position &to) const;
+    void LoadPosition(const Position &from);
+    void LeaveSettings(u32 now);
+    void RemoveFixedRow(u16 item, u32 now);
+    void EraseAll(u32 now);
     // engine_input.cpp
     void Repeat(u16 held, u16 pressed, u32 now);
     void PressMenu(u16 key, u32 now, bool repeated);
@@ -173,10 +208,18 @@ class Engine {
     NoticeSink sink_{};
     u16 favorites_[core::limits::MenuItems]{};
     std::size_t favorite_count_ = 0;
+    u16 fixed_order_[core::limits::MenuItems]{};
+    std::size_t fixed_count_ = 0;
     u32 revision_ = 0;
+    u32 erase_count_ = 0;
     bool keep_toggles_ = false;
     bool dev_visible_ = false;
     u16 reserved_ = 0;
+    SettingsItems settings_{};
+    bool in_settings_ = false;
+    Position main_position_{};     // 設定画面の間の一覧の位置（閉じた時と戻る時に使う）
+    Position settings_position_{}; // 設定画面の中の位置（同じ起動中は保つ）
+    bool settings_position_saved_ = false;
 
     bool visible_ = false;
     std::size_t depth_ = 0;

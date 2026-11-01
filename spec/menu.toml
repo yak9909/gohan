@@ -98,3 +98,53 @@ label   = "見本のテスト用"
 control = "toggle"
 behavior = "state"
 dev     = true
+
+# 設定画面（START で開く）。一覧の根とは別の列に生成する。構成は docs/design/menu-item-actions.md の 5 節。
+[[settings]]
+id      = "settings"
+label   = "設定"
+desc    = "メニュー全体の設定です。次の起動に残す物と、押し切るボタンを決めます。"
+control = "folder"
+
+# 仮のフォルダ: 固定中の項目を固定した順に並べる（行は元の項目。A で固定を外す）。
+[[settings.item]]
+id      = "settings.fixed"
+label   = "固定中の項目"
+desc    = "固定している項目の一覧です。A で固定を外せます。"
+control = "folder"
+list    = "fixed"
+
+[[settings.item]]
+id      = "settings.keep"
+label   = "保持設定"
+desc    = "次の起動に残す物を決めます。"
+control = "folder"
+
+[[settings.item.item]]
+id       = "settings.keep.toggles"
+label    = "トグルを全て保持"
+desc     = "ON にすると、ON のトグルを全て次の起動でも ON にします。押している間だけ動く物も入り、1 回だけ動く物は入りません。OFF の間は、固定したトグルだけを戻します。"
+control  = "toggle"
+behavior = "value"
+source   = "setting"
+apply    = "immediate"
+default  = false
+
+[[settings.item.item]]
+id       = "settings.keep.erase"
+label    = "保存を全て消す"
+desc     = "固定・お気に入り・ホットキー・設定の値・この画面の設定を全て最初に戻し、保存も消します。"
+control  = "action"
+behavior = "trigger"
+confirm  = "menu"
+
+# 押し切るボタン: 選んだボタンは押している間ゲームに渡さず、はなした時に 1 回だけ渡す（input-block.md 5.5）。
+[[settings.item]]
+id      = "settings.press_through"
+label   = "押し切るボタン"
+desc    = "選んだボタンは、押している間ゲームに渡さず、はなした時に 1 回だけ渡します。START+十字上 などのホットキーでゲームが動かないようにします。"
+control = "multiselect"
+options = ["A", "B", "X", "Y", "Start"]
+default = ["Start"]
+display = "buttons"
+apply   = "immediate"

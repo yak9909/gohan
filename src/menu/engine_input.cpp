@@ -19,31 +19,42 @@ void Engine::Press(u16 pressed_key, u32 now, bool repeated) {
 
 void Engine::PressMenu(u16 pressed_key, u32 now, bool repeated) {
     const u16 selected = Selected();
+    // 固定中の項目の一覧: 行は元の項目なので、左右・X・L・Y・R は効かない（A で固定を外す）。
+    const bool fixed_list = IsFixedList(Folder());
     switch (pressed_key) {
     case key::Up: Move(-1, !repeated); break; // 端での折り返しは押した瞬間だけ（リピートでは端で止まる）
     case key::Down: Move(1, !repeated); break;
-    case key::Left: Adjust(selected, -1); break;
-    case key::Right: Adjust(selected, 1); break;
+    case key::Left: if (!fixed_list) Adjust(selected, -1); break;
+    case key::Right: if (!fixed_list) Adjust(selected, 1); break;
     case key::A:
-        if (!repeated) Activate(selected, now);
+        if (repeated) break;
+        if (fixed_list) {
+            if (selected != kNoItem) RemoveFixedRow(selected, now);
+        } else {
+            Activate(selected, now);
+        }
         break;
     case key::B:
         if (!repeated) Back(now);
         break;
     case key::X:
-        if (!repeated && selected != kNoItem) Commit(selected, now);
+        if (!repeated && !fixed_list && selected != kNoItem) Commit(selected, now);
         break;
     case key::L:
-        if (!repeated && selected != kNoItem && !Disabled(selected)) Discard(selected);
+        if (!repeated && !fixed_list && selected != kNoItem && !Disabled(selected)) Discard(selected);
         break;
     case key::R:
-        if (!repeated && !hold_active_ && Actions(selected, nullptr)) ui_ = {UiKind::Actions, selected};
+        if (!repeated && !fixed_list && !hold_active_ && Actions(selected, nullptr)) ui_ = {UiKind::Actions, selected};
         break;
     case key::Start:
-        if (!repeated && !hold_active_) ui_ = {UiKind::Settings, kNoItem};
+        // 設定画面の中では閉じて、一覧の元の位置へ戻る。一覧では設定画面を開く（Shell が受けて開く）。
+        if (repeated || hold_active_) break;
+        if (in_settings_) LeaveSettings(now);
+        else ui_ = {UiKind::Settings, kNoItem}; // 根が無い時は OpenSettings が何もせずに要求を消す
         break;
-    case key::Y: // ホットキーの設定
-        if (!repeated && selected != kNoItem && Def(selected).control != Control::Folder && !Disabled(selected))
+    case key::Y: // ホットキーの設定（設定画面の行はホットキーの対象にしない）
+        if (!repeated && !fixed_list && selected != kNoItem && Def(selected).control != Control::Folder && !Disabled(selected) &&
+            !InSettingsTree(selected))
             ui_ = UiRequest{UiKind::Key, selected};
         break;
     default: break;
@@ -76,13 +87,14 @@ void Engine::Confirm(bool yes, u32 now) {
     switch (kind) {
     case DialogKind::Close:
         CommitAll(now);
-        visible_ = false;
+        Hide(now);
         break;
     case DialogKind::ApplyAll: CommitAll(now); break;
     case DialogKind::RevertAll: DiscardAll(); break;
     case DialogKind::Action:
         if (item != kNoItem) RunTrigger(item, 0, now);
         break;
+    case DialogKind::Erase: EraseAll(now); break;
     case DialogKind::None: break;
     }
     Poll();
@@ -144,7 +156,9 @@ void Engine::Frame(u32 now, u16 held) {
         for (u16 bit : kPlainKeys)
             if ((pressed & bit) != 0) Press(bit, now);
         Repeat(held, pressed, now);
-        if (!hold_active_ && dialog_ == DialogKind::None && ui_.kind == UiKind::None && (pressed & (key::X | key::L)) != 0) {
+        // 設定画面の中では X・L の短押しも長押しも始めない（一覧の適用待ちを確認にかけない）。
+        if (!hold_active_ && !in_settings_ && dialog_ == DialogKind::None && ui_.kind == UiKind::None &&
+            (pressed & (key::X | key::L)) != 0) {
             hold_active_ = true;
             hold_key_ = (pressed & key::X) != 0 ? key::X : key::L;
             hold_start_ = now;

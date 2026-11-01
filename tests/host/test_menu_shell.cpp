@@ -659,29 +659,24 @@ void DialogExitHints() {
     }
     std::printf("確認の退場中の操作案内: %u コマ、内容・不透明度・消える時刻を確認\n", frames);
 }
-// 設定画面（START）は段 3 までは何も起こさない（新しい要求を描かず、SELECT の開閉も従来のまま使える）。
-// R の操作のリストは段 2b で開くので、test_menu_actions.cpp で確かめる。
-void FutureRequestsStayInert() {
+// 設定画面（START）は一覧から開き、もう一度の START で閉じて一覧の元の位置へ戻る（細かい規則は test_menu_settings.cpp）。
+void StartOpensAndClosesSettings() {
     sample::Get() = sample::State{};
     Rig r(kMenuItems, kMenuItemCount);
     assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    r.engine.BindSettings({Idx(kSettingsRoot), Idx(MenuId::SettingsKeepErase), Idx(MenuId::SettingsKeepToggles),
+                           Idx(MenuId::SettingsPressThrough)});
     Enter(r);
     const auto selected = r.engine.Selected();
-    for (auto key : {key::Start}) {
-        const auto before = r.Draw();
-        r.Tap(key);
-        assert(r.engine.Selected() == selected && r.engine.Depth() == 1);
-        assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
-        const auto after = r.Draw();
-        assert(after.commands.size() == before.commands.size());
-        for (std::size_t i = 0; i < after.commands.size(); ++i) {
-            const auto &a = after.commands[i], &b = before.commands[i];
-            assert(a.kind == b.kind && a.text == b.text && a.color == b.color);
-            if (a.text != "finger") assert(a.bounds.x == b.bounds.x && a.bounds.y == b.bounds.y);
-        }
-        r.Tap(key::Select); assert(!r.engine.Visible());
-        r.Open(); assert(r.engine.Visible() && r.engine.Selected() == selected);
-    }
+    r.Tap(key::Start);
+    r.Advance(400);
+    assert(r.engine.InSettings() && r.engine.Depth() == 0 && r.engine.Folder() == static_cast<u16>(kSettingsRoot));
+    assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
+    r.Tap(key::Start);
+    r.Advance(400);
+    assert(!r.engine.InSettings() && r.engine.Selected() == selected && r.engine.Depth() == 1);
+    r.Tap(key::Select); assert(!r.engine.Visible());
+    r.Open(); assert(r.engine.Visible() && r.engine.Selected() == selected);
 }
 // 行の印（D.12.2・D.12.3）。鍵の位置と色、◀ ▶ の出る行、お気に入りの行を、描いた指示で確かめる。
 bool SpriteAt(const RecordingSurface &s, const char *name, int x, int y, u32 color) {
@@ -815,4 +810,4 @@ void RowMarks() {
     assert(SpriteAt(fs, "star.white", star_x + 1, star_y + 1, ca::Color::Sel::Shadow));
 }
 
-int main() { FutureRequestsStayInert(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); RowMarks(); std::puts("menu shell: ok"); }
+int main() { StartOpensAndClosesSettings(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); RowMarks(); std::puts("menu shell: ok"); }

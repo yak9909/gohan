@@ -26,6 +26,11 @@ void NoticeItemAction(Notice &notice, const char *action, const char *label) {
     core::TextWriter(notice.message, sizeof(notice.message)).Append(label);
 }
 
+void NoticeEraseAll(Notice &notice) {
+    Fill(notice, "保存を全て消す", false);
+    core::TextWriter(notice.message, sizeof(notice.message)).Append("全て最初に戻しました");
+}
+
 void NoticeEffect(Notice &notice, const char *label, bool on) {
     Fill(notice, label, !on);
     core::TextWriter(notice.message, sizeof(notice.message)).Append(label).Append(on ? "を有効にしました" : "を無効にしました");

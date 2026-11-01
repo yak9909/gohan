@@ -36,10 +36,10 @@ void Shell::Step(u32 now, const Input &sensed, bool toggle) {
     const DialogView before = ViewOf(engine_);
     // 開閉のボタンはエンジンに渡さない（ホットキーにも使えない）。
     engine_.Frame(now, static_cast<u16>(input.held & ~key::Select));
-    // 設定画面の要求は、その段が入るまで取り消す（一覧と開閉をそのまま使えるようにする）。
+    // 設定画面の要求は、一覧の START でエンジンが出す。受けて設定画面の根へ入る（要求はそこで消える）。
     // R の操作のリストと並べ替えは要求を受けて開き、閉じるまでエンジンが要求を持つ（開いている間は一覧に入力を渡さない）。
     const auto request = engine_.Ui().kind;
-    if (request == UiKind::Settings) engine_.CancelUi();
+    if (request == UiKind::Settings) engine_.OpenSettings(now);
     if (request == UiKind::Actions && !list_.Open()) list_.Begin(engine_, input.held, now);
     list_.Step(engine_, now, input.held);
     // 並べ替えは R の操作のリストの A で要求されるので、リストの処理の後に受け取る（同じフレームで始める）。

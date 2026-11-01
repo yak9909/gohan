@@ -69,6 +69,7 @@ bool Engine::Hidden(u16 item) const {
 bool Engine::Disabled(u16 item) const {
     if (item == kFavoritesFolder) return false;
     if (!Has(item)) return true;
+    if (IsFixedList(item)) return fixed_count_ == 0; // 固定中の項目が 1 つも無い時は灰色で入れない
     const ItemDef &d = defs_[item];
     if (d.source == Source::Game && !state_[item].available) return true;
     return !CondHolds(d.cond);
@@ -110,8 +111,13 @@ const ItemState &Engine::State(u16 item) const {
     return item == kFavoritesFolder ? empty : state_[item];
 }
 
+bool Engine::IsFixedList(u16 folder) const { return Has(folder) && defs_[folder].list == ListKind::Fixed; }
+
+bool Engine::CanSelect(u16 item) const { return IsFixedList(item) || !Disabled(item); }
+
 u16 Engine::FirstChild(u16 folder) const {
     if (folder == kFavoritesFolder) return favorite_count_ ? favorites_[0] : kNoItem;
+    if (IsFixedList(folder)) return fixed_count_ ? fixed_order_[0] : kNoItem;
     if (folder == kNoItem) {
         if (FirstVisible(kFavoritesFolder) != kNoItem) return kFavoritesFolder;
         return count_ ? 0 : kNoItem;
@@ -123,6 +129,11 @@ u16 Engine::NextChild(u16 folder, u16 item) const {
     if (folder == kFavoritesFolder) {
         for (std::size_t n = 0; n + 1 < favorite_count_; ++n)
             if (favorites_[n] == item) return favorites_[n + 1];
+        return kNoItem;
+    }
+    if (IsFixedList(folder)) {
+        for (std::size_t n = 0; n + 1 < fixed_count_; ++n)
+            if (fixed_order_[n] == item) return fixed_order_[n + 1];
         return kNoItem;
     }
     if (folder == kNoItem && item == kFavoritesFolder) return count_ ? 0 : kNoItem;
@@ -202,12 +213,12 @@ void Engine::RestorePosition() {
     }
     for (std::size_t level = 0; level <= depth_; ++level) {
         const u16 selected = selection_[level];
-        if (IsChild(stack_[level], selected) && !Disabled(selected)) continue;
+        if (IsChild(stack_[level], selected) && CanSelect(selected)) continue;
         u16 first = kNoItem, previous = kNoItem, next = kNoItem;
         bool found = false;
         for (u16 item = FirstChild(stack_[level]); item != kNoItem; item = NextChild(stack_[level], item)) {
             if (item == selected) { found = true; continue; }
-            if (Hidden(item) || Disabled(item)) continue;
+            if (Hidden(item) || !CanSelect(item)) continue;
             if (first == kNoItem) first = item;
             if (!found) previous = item;
             else if (next == kNoItem) next = item;
@@ -235,8 +246,14 @@ bool Engine::RequestClose(u32 now) {
         OpenDialog(DialogKind::Close, kNoItem);
         return false;
     }
-    visible_ = false;
+    Hide(now);
     return true;
+}
+
+// メニューを閉じる。設定画面の中で閉じた時は、次に開く時に一覧の元の位置から始める（11 節の決定 F）。
+void Engine::Hide(u32 now) {
+    if (in_settings_) LeaveSettings(now);
+    visible_ = false;
 }
 
 bool Engine::Select(u16 item) {
@@ -246,9 +263,14 @@ bool Engine::Select(u16 item) {
     return true;
 }
 
+// B は 1 段戻る。一番上では閉じる（設定画面の一番上では一覧へ戻り、メニューは閉じない）。
 void Engine::Back(u32 now) {
     if (depth_ > 0) {
         --depth_;
+        return;
+    }
+    if (in_settings_) {
+        LeaveSettings(now);
         return;
     }
     RequestClose(now);
@@ -259,6 +281,7 @@ void Engine::Activate(u16 item, u32 now) {
     const ItemDef &d = Def(item);
     if (d.control == Control::Folder) {
         if (depth_ + 1 >= timing::kMaxDepth) return;
+        if (IsFixedList(item) && fixed_count_ == 0) return; // 空の仮のフォルダには入らない
         ++depth_;
         stack_[depth_] = item;
         selection_[depth_] = FirstVisible(item);
@@ -267,12 +290,18 @@ void Engine::Activate(u16 item, u32 now) {
     if (Disabled(item)) return;
     ItemState &st = state_[item];
     switch (d.control) {
-    case Control::Toggle: st.value = st.value ? 0 : 1; break;
+    case Control::Toggle: SetValue(item, st.value ? 0 : 1); break; // 設定の値は適用待ちを経ない（SetValue が適用する）
     case Control::Action:
         if (d.behavior == Behavior::Mode) {
             ToggleMode(item, now);
         } else if (d.menu == MenuKind::OnApply) {
             st.value = st.value ? 0 : 1; // 予約。適用で実行する
+        } else if (item == settings_.erase) {
+            // 保存を全て消す: 既定の答えはキャンセル（確認の文言は専用）。
+            OpenDialog(DialogKind::Erase, item);
+            dialog_yes_ = false;
+        } else if (d.confirm == Confirm::Menu) {
+            OpenDialog(DialogKind::Action, item);
         } else if (d.input != InputKind::None) {
             ui_ = UiRequest{UiKind::TriggerInput, item};
         } else {

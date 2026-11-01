@@ -8,9 +8,10 @@ make が呼ぶ。ROM は要らない。出力:
 
 spec の形:
   [[item]]                     最上位の項目。フォルダの子は [[item.item]] のように入れ子で書く。
+  [[settings]]                 設定画面の根（フォルダ 1 つ）。表は [[item]] の後ろに置く（kSettingsRoot）。
   id         一意の ID（小文字・数字・_ を . でつなぐ）。階層とは無関係な名前。
   label desc control behavior source hotkey format default range step options
-  lockable group enabled_if persist dev menu confirm input
+  lockable group enabled_if persist dev menu confirm input list apply display
 誤り（未知の鍵・重複 ID・振る舞いと見た目の矛盾など）は SpecError で、終了コード 1 にする。
 """
 from __future__ import annotations
@@ -26,16 +27,22 @@ BUTTONS = ['ZL', 'L', 'R', 'ZR', 'Up', 'Down', 'Left', 'Right', 'A', 'B', 'X', '
 BUTTON_BIT = {name.lower(): index for index, name in enumerate(BUTTONS)}
 
 KEYS = {'id', 'label', 'desc', 'control', 'behavior', 'source', 'hotkey', 'format', 'default', 'range', 'step',
-        'options', 'lockable', 'group', 'enabled_if', 'persist', 'dev', 'menu', 'confirm', 'input', 'item'}
-FOLDER_KEYS = {'id', 'label', 'desc', 'control', 'enabled_if', 'dev', 'item'}
+        'options', 'lockable', 'group', 'enabled_if', 'persist', 'dev', 'menu', 'confirm', 'input', 'item',
+        'list', 'apply', 'display'}
+FOLDER_KEYS = {'id', 'label', 'desc', 'control', 'enabled_if', 'dev', 'item', 'list'}
 CONTROLS = ['folder', 'toggle', 'select', 'multiselect', 'number', 'slider', 'action', 'key']
 VALUE_CONTROLS = {'select', 'multiselect', 'number', 'slider', 'key'}
 BEHAVIORS = ['state', 'hold', 'trigger', 'mode', 'value']
 SOURCES = ['setting', 'game']
 FORMATS = ['decimal', 'hex', 'decimal1']
 MENUS = ['immediate', 'on_apply']
-CONFIRMS = ['none', 'hotkey']
+CONFIRMS = ['none', 'hotkey', 'menu']
 INPUTS = ['none', 'number', 'hex']
+LISTS = ['fixed']  # 仮のフォルダ（子の並びをエンジンが持つ）。固定中の項目だけ。
+APPLIES = ['immediate']  # 設定の値の適用待ちを経ない
+DISPLAYS = ['buttons']  # 複数選択の選択肢をボタンの印で見せる
+# ボタンの名前（display = "buttons" の選択肢）。大文字小文字は問わない。BUTTON_BIT と同じ 14 個。
+BUTTON_NAMES = set(BUTTON_BIT)
 ID_PATTERN = re.compile(r'^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$')
 COND_PATTERN = re.compile(r'^\s*([a-z][a-z0-9_.]*)\s*(==|!=|<=|>=|<|>)\s*(.+?)\s*$')
 COND_OPS = {'==': 'Eq', '!=': 'Ne', '<': 'Lt', '<=': 'Le', '>': 'Gt', '>=': 'Ge'}
@@ -79,6 +86,10 @@ class Item:
     menu: str = ''
     confirm: str = ''
     input: str = ''
+    list_kind: str = ''  # フォルダの中身の出どころ（fixed = 固定中の項目）
+    apply: str = ''  # immediate なら設定の値を適用待ちなしで効かせる
+    display: str = ''  # buttons なら複数選択の選択肢をボタンの印で見せる
+    settings: bool = False  # 設定画面の根とその下の項目
     index: int = 0
     parent: int = NO_ITEM
     first_child: int = NO_ITEM
@@ -166,15 +177,23 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
         extra = sorted(set(entry) - FOLDER_KEYS)
         if extra:
             raise SpecError(f'{where}: フォルダに使えない鍵があります: {", ".join(extra)}')
+        list_kind = want_choice(entry, 'list', LISTS, where)
         children = want_type(entry, 'item', list, where)
-        if not children:
+        if list_kind:
+            # 仮のフォルダ: 中身は実行時にエンジンが並べるので、子の項目は書けない。
+            if children:
+                raise SpecError(f'{where}: list を持つフォルダに子の項目（item）は書けません')
+        elif not children:
             raise SpecError(f'{where}: フォルダには子の項目（item）が要ります')
+        item.list_kind = list_kind
         item.dev = want_type(entry, 'dev', bool, where, False)
         item.enabled_if = want_type(entry, 'enabled_if', str, where, '')
-        item.children = [parse_item(child, depth + 1, f'{where}.item[{n}]') for n, child in enumerate(children)]
+        item.children = [parse_item(child, depth + 1, f'{where}.item[{n}]') for n, child in enumerate(children or [])]
         return item
     if 'item' in entry:
         raise SpecError(f'{where}: 子の項目（item）を持てるのはフォルダだけです')
+    if 'list' in entry:
+        raise SpecError(f'{where}: list を持てるのはフォルダだけです')
 
     behavior = want_choice(entry, 'behavior', BEHAVIORS, where)
     if control in VALUE_CONTROLS:
@@ -182,8 +201,8 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
             raise SpecError(f'{where}: control={control} の振る舞いは value だけです（{behavior}）')
         behavior = 'value'
     elif control == 'toggle':
-        if behavior not in ('state', 'hold', 'trigger'):
-            raise SpecError(f'{where}: トグルの振る舞いは state / hold / trigger のどれかです（"{behavior}"）')
+        if behavior not in ('state', 'hold', 'trigger', 'value'):
+            raise SpecError(f'{where}: トグルの振る舞いは state / hold / trigger / value のどれかです（"{behavior}"）')
     elif control == 'action':
         if behavior not in ('trigger', 'mode'):
             raise SpecError(f'{where}: 実行（action）の振る舞いは trigger / mode のどちらかです（"{behavior}"）')
@@ -192,11 +211,16 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
     source = want_choice(entry, 'source', SOURCES, where)
     if behavior == 'value':
         source = source or 'setting'
-        if control == 'key' and source != 'setting':
-            raise SpecError(f'{where}: キーの値の出どころは setting だけです')
+        if control in ('key', 'toggle') and source != 'setting':
+            raise SpecError(f'{where}: {control} の値の出どころは setting だけです')
     elif source:
         raise SpecError(f'{where}: source を持てるのは値（value）の項目だけです')
     item.source = source
+
+    apply = want_choice(entry, 'apply', APPLIES, where)
+    if apply and not (behavior == 'value' and source == 'setting'):
+        raise SpecError(f'{where}: apply を持てるのは設定の値（value + setting）だけです')
+    item.apply = apply
 
     fmt = want_choice(entry, 'format', FORMATS, where)
     if control == 'number':
@@ -220,6 +244,14 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
         item.options = list(options)
     elif options is not None:
         raise SpecError(f'{where}: options を持てるのは選択と複数選択だけです')
+    display = want_choice(entry, 'display', DISPLAYS, where)
+    if display and control != 'multiselect':
+        raise SpecError(f'{where}: display を持てるのは複数選択だけです')
+    if display == 'buttons':
+        for name in item.options:
+            if name.lower() not in BUTTON_NAMES:
+                raise SpecError(f'{where}: display = "buttons" の選択肢はボタンの名前にしてください（"{name}"）')
+    item.display = display
 
     default = entry.get('default')
     if control in ('number', 'slider'):
@@ -283,10 +315,12 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
     item.dev = want_type(entry, 'dev', bool, where, False)
     item.enabled_if = want_type(entry, 'enabled_if', str, where, '')
 
+    # 次の起動に残せない物: 画面・実行・実行のトグル（既定も偽）と、ゲームの値（固定は lockable で行う）。真は誤り。
     persist = want_type(entry, 'persist', bool, where)
-    if behavior == 'mode' and persist:
-        raise SpecError(f'{where}: 画面（mode）は次の起動で戻せません（persist = true は使えません）')
-    item.persist = (behavior != 'mode' and source != 'game') if persist is None else persist
+    never = behavior in ('mode', 'trigger') or (behavior == 'value' and source == 'game')
+    if never and persist:
+        raise SpecError(f'{where}: この項目は次の起動に残せません（persist = true は使えません）')
+    item.persist = False if never else (True if persist is None else persist)
 
     menu = want_choice(entry, 'menu', MENUS, where)
     if menu and not (control == 'action' and behavior == 'trigger'):
@@ -394,17 +428,40 @@ def load(path: Path) -> list[Item]:
         data = tomllib.loads(path.read_text(encoding='utf-8'))
     except tomllib.TOMLDecodeError as error:
         raise SpecError(f'{path}: TOML として読めません: {error}') from None
-    unknown = sorted(set(data) - {'item'})
+    unknown = sorted(set(data) - {'item', 'settings'})
     if unknown:
         raise SpecError(f'最上位に未知の鍵があります: {", ".join(unknown)}')
     top = data.get('item')
     if not isinstance(top, list) or not top:
         raise SpecError('[[item]] が必要です')
     roots = [parse_item(entry, 0, f'item[{n}]') for n, entry in enumerate(top)]
+    settings = data.get('settings', [])
+    if not isinstance(settings, list) or len(settings) > 1:
+        raise SpecError('[[settings]] は 1 つだけ書けます（設定画面の根のフォルダ）')
+    setting_roots = [parse_item(entry, 0, 'settings[0]') for entry in settings]
+    if setting_roots and setting_roots[0].control != 'folder':
+        raise SpecError('settings: 設定画面の根はフォルダにしてください')
+    for root in setting_roots:
+        mark_settings(root)
     items: list[Item] = []
+    # 設定画面の根は、一覧の根と別の列にする（一覧の最後の項目の次に繋がないように）。
     flatten(roots, NO_ITEM, items)
+    flatten(setting_roots, NO_ITEM, items)
     validate(items)
     return items
+
+
+def mark_settings(item: Item) -> None:
+    item.settings = True
+    for child in item.children:
+        mark_settings(child)
+
+
+def settings_root(items: list[Item]) -> Item | None:
+    for item in items:
+        if item.settings and item.parent == NO_ITEM:
+            return item
+    return None
 
 
 def cstr(text: str) -> str:
@@ -438,6 +495,9 @@ def render_ids(items: list[Item]) -> str:
         out.append(f'    {pascal(item.id)} = {item.index},\n')
     out.append('};\n')
     out.append(f'inline constexpr std::size_t kMenuItemCount = {len(items)};\n')
+    root = settings_root(items)
+    if root is not None:
+        out.append(f'inline constexpr MenuId kSettingsRoot = MenuId::{pascal(root.id)};\n')
     out.append('extern const ItemDef kMenuItems[kMenuItemCount];\n\n')
     for item in items:
         out.append(f'template <> struct Spec<MenuId::{pascal(item.id)}> {{\n')
@@ -482,6 +542,9 @@ def render_table(items: list[Item]) -> str:
         out.append(f'        .menu = MenuKind::{enum_name(item.menu or "immediate")}, '
                    f'.confirm = Confirm::{enum_name(item.confirm or "none")}, '
                    f'.input = InputKind::{enum_name(item.input or "none")},\n')
+        out.append(f'        .list = ListKind::{enum_name(item.list_kind or "none")}, '
+                   f'.apply = ApplyKind::{enum_name(item.apply or "pending")}, '
+                   f'.display = DisplayKind::{enum_name(item.display or "default")},\n')
         out.append(f'        .lockable = {str(item.lockable).lower()}, .persist = {str(item.persist).lower()}, '
                    f'.dev = {str(item.dev).lower()}, .option_count = {len(item.options)},\n')
         out.append(f'        .parent = {item.parent}, .first_child = {item.first_child}, .next = {item.next}, '
@@ -532,6 +595,14 @@ def render_docs(items: list[Item]) -> str:
             notes.append('適用で実行')
         if item.confirm == 'hotkey':
             notes.append('ホットキーで確認')
+        if item.confirm == 'menu':
+            notes.append('メニューで確認')
+        if item.list_kind:
+            notes.append('中身は固定中の項目')
+        if item.apply:
+            notes.append('適用待ちなし')
+        if item.display:
+            notes.append('ボタンの印で表示')
         if item.input in ('number', 'hex'):
             notes.append('入力: ' + ('16進' if item.input == 'hex' else '数値'))
         if item.group:
@@ -541,7 +612,9 @@ def render_docs(items: list[Item]) -> str:
         if item.enabled_if:
             notes.append('有効条件: ' + item.enabled_if)
         if item.control not in ('folder',) and not item.persist:
-            notes.append('保持しない')
+            notes.append('持ち越さない')
+            if item.control == 'toggle' and item.behavior in ('state', 'hold'):
+                notes.append('固定できない')
         if item.dev:
             notes.append('開発用')
         if item.control in ('number', 'slider'):

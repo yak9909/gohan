@@ -181,6 +181,21 @@ int main() {
     assert(TopHasText("入力の遮断") && TopHasText("遮断が無効"));
     Frames(400); assert(!TopHasText("遮断が無効"));
 
+    // 押し切るボタン: 設定画面（START）で選んだボタンを、遮断の要求の defer に置く。
+    // 既定は START だけ。固定中の項目は空なので、設定画面の初めの行は灰色の「固定中の項目」（入れないが選べる）。
+    // 下へ 2 つで「押し切るボタン」（1 つ目は「保持設定」）。
+    Press(CTRPluginFramework::Key::Start); Frames(30);
+    assert(TopHasText("押し切るボタン") && TopHasText("設定") && TopHasText("固定している項目はありません"));
+    Press(CTRPluginFramework::Key::DPadDown); Frames(10);
+    Press(CTRPluginFramework::Key::DPadDown); Frames(10);
+    Press(CTRPluginFramework::Key::A); Frames(15); // 複数選択の枠（今は START が入っていて、カーソルは A）
+    Press(CTRPluginFramework::Key::A); Frames(5);  // A を加える（A と START）
+    Press(CTRPluginFramework::Key::X); Frames(15); // 決定でその場で効く
+    assert(Demand().defer == (block::part::A | block::part::Start));
+    // 設定画面を START で閉じ、一覧の元の位置へ戻す（以降の試験は一覧の上で行う）。
+    Press(CTRPluginFramework::Key::Start); Frames(30);
+    assert(!TopHasText("押し切るボタン") && TopHasText("GOHAN"));
+
     // 終了。
     // 停止中のスレッドが表を持ったままでも終了は待たない。新しい Set はもう行わない。
     const auto before_shutdown = Demand();

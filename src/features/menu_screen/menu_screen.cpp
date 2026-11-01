@@ -39,6 +39,12 @@ core::SpinMutex demand_mutex;
 core::Signal running;
 bool demanding = false;
 block::Owner menu_owner, settings_owner;
+// 押し切るボタン（DeferKeys）の値を、遮断の部品のビットとしてそのまま使う。
+static_assert(menu::key::ZL == block::part::ZL && menu::key::L == block::part::L && menu::key::R == block::part::R &&
+              menu::key::ZR == block::part::ZR && menu::key::Up == block::part::Up && menu::key::Down == block::part::Down &&
+              menu::key::Left == block::part::Left && menu::key::Right == block::part::Right && menu::key::A == block::part::A &&
+              menu::key::B == block::part::B && menu::key::X == block::part::X && menu::key::Y == block::part::Y &&
+              menu::key::Select == block::part::Select && menu::key::Start == block::part::Start);
 
 // フレームの最後だけが要求を更新する。Busy は次のフレームで再送する。
 void PublishDemand() {
@@ -47,7 +53,8 @@ void PublishDemand() {
         if (menu_owner.slot == 0xFF) block::Global().Acquire("menu", menu_owner);
         if (settings_owner.slot == 0xFF) block::Global().Acquire("settings", settings_owner);
         if (menu_owner.slot != 0xFF) block::Global().Set(menu_owner, shell.InputDemand());
-        if (settings_owner.slot != 0xFF) block::Global().Set(settings_owner, {0, block::part::Start});
+        // 押し切るボタンは設定の値（既定は START だけ）。ボタンのビットは入力と同じ並びなので、そのまま渡す。
+        if (settings_owner.slot != 0xFF) block::Global().Set(settings_owner, {0, static_cast<block::Mask>(engine.DeferKeys())});
     }
     demand_mutex.Unlock();
 }
@@ -96,6 +103,10 @@ bool Wire() {
 #ifdef GOHAN_DEV
     engine.SetDevVisible(true);
 #endif
+    engine.BindSettings({static_cast<menu::u16>(menu::kSettingsRoot),
+                         static_cast<menu::u16>(menu::MenuId::SettingsKeepErase),
+                         static_cast<menu::u16>(menu::MenuId::SettingsKeepToggles),
+                         static_cast<menu::u16>(menu::MenuId::SettingsPressThrough)});
     if (!engine.BindAll(menu::sample::kBindings, menu::sample::kBindingCount)) return false;
     const auto change = core::frame::Global().Add(FrameStep, 50);
     if (change.result != core::frame::Result::Queued && change.result != core::frame::Result::Unchanged)

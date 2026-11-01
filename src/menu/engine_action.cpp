@@ -17,7 +17,9 @@ bool Engine::RemembersValue(u16 item) const {
         (d.behavior == Behavior::State || d.behavior == Behavior::Hold))));
 }
 
+// トグルを全て保持。項目の値（設定画面の「トグルを全て保持」）と同じになるように、適用値も合わせる。
 void Engine::SetKeepToggles(bool on) {
+    if (settings_.keep != kNoItem) state_[settings_.keep].value = state_[settings_.keep].applied = on ? 1 : 0;
     if (keep_toggles_ == on) return;
     keep_toggles_ = on;
     ++revision_;
@@ -30,7 +32,7 @@ bool Engine::IsFavorite(u16 item) const {
 }
 
 bool Engine::SetFavorite(u16 item, bool on) {
-    if (!Has(item)) return false;
+    if (!Has(item) || InSettingsTree(item)) return false;
     if (IsFavorite(item) == on) return true;
     if (on) {
         favorites_[favorite_count_++] = item;
@@ -73,7 +75,8 @@ bool Engine::SetFavoriteOrder(const u16 *items, std::size_t count) {
 }
 
 std::size_t Engine::Actions(u16 item, ItemAction *out) const {
-    if (!Has(item) || Hidden(item)) return 0;
+    // 設定画面の行は、R の操作のリスト・固定・お気に入り・ホットキーの対象にしない。
+    if (!Has(item) || Hidden(item) || InSettingsTree(item)) return 0;
     const auto &d = defs_[item];
     const auto &st = state_[item];
     std::size_t n = 0;

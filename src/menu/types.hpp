@@ -25,10 +25,16 @@ enum class Source : u8 { None, Setting, Game };
 enum class Format : u8 { Decimal, Hex, Decimal1 };
 // 実行の属性。Immediate はメニューで選んだ時にその場で実行、OnApply は適用で実行（予約）。
 enum class MenuKind : u8 { Immediate, OnApply };
-// 確認。Hotkey はホットキーで実行する時だけ確認ダイアログを出す。
-enum class Confirm : u8 { None, Hotkey };
+// 確認。Hotkey はホットキーで実行する時だけ、Menu はメニューで実行する時も確認ダイアログを出す。
+enum class Confirm : u8 { None, Hotkey, Menu };
 // 実行の入力。実行する前に値を受け取る。
 enum class InputKind : u8 { None, Number, Hex };
+// フォルダの中身の出どころ。Fixed は固定中の項目（仮のフォルダ。固定した順にエンジンが並べる）。
+enum class ListKind : u8 { None, Fixed };
+// 設定の値の適用。Immediate は適用待ちを経ず、編集した時にその場で効く。
+enum class ApplyKind : u8 { Pending, Immediate };
+// 表示。Buttons は複数選択の選択肢をボタンの印で見せる（選択肢の名前がボタンの名前）。
+enum class DisplayKind : u8 { Default, Buttons };
 enum class CondOp : u8 { None, Eq, Ne, Lt, Le, Gt, Ge };
 
 // 他の項目の編集値との比較で無効にする（enabled_if）。比較が成り立つ間だけ有効。
@@ -50,6 +56,9 @@ struct ItemDef {
     MenuKind menu;
     Confirm confirm;
     InputKind input;
+    ListKind list;
+    ApplyKind apply;
+    DisplayKind display;
     bool lockable;
     bool persist;
     bool dev;
