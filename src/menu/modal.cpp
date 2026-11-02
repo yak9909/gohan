@@ -16,9 +16,10 @@ Rect Track(const Rect &b) { return Bounds(ca::Entry::Number::Track, b.x, b.y, b.
 
 s32 Clamp(s32 v, s32 lo, s32 hi) { return v < lo ? lo : v > hi ? hi : v; }
 constexpr u16 kDirections[4] = {key::Up, key::Down, key::Left, key::Right};
+// 確認の窓と入力の枠の地は通知と同じ notice.window（通知より上に描くので、下の通知の字が透けないようにする）。
 void Title(Surface &s, Rect b, const char *label, float alpha,
            const std::array<int, 4> &band = ca::Entry::Title::Rect) {
-    Paper(s, b, alpha);
+    Paper(s, b, alpha, "notice.window");
     s.Box(Bounds(band, b.x, b.y, b.w), "band3", Fade(0xFFFFFFFFu, alpha));
     char text[kLineBytes];
     s.Text(b.x + ca::Entry::Title::Text[0], b.y + ca::Entry::Title::Text[1],
@@ -31,9 +32,12 @@ Rect DialogOption(const Rect &b, int index) {
 }
 int DialogOptionAt(int, bool, int, int) { return -1; }
 DialogView ViewOf(const Engine &e) { return {e.Dialog(), e.DialogItem(), e.DialogYes()}; }
-void DrawDialog(Surface &s, const Engine &e, const DialogView &view, float, float appear) {
+void DrawDialogDim(Surface &s, const DialogView &view, float appear) {
     if (appear <= 0 || view.kind == DialogKind::None) return;
     s.Fill({0, 0, ca::Screen[0], ca::Screen[1]}, Fade(ca::Color::Dim, appear));
+}
+void DrawDialog(Surface &s, const Engine &e, const DialogView &view, float, float appear) {
+    if (appear <= 0 || view.kind == DialogKind::None) return;
     Rect b = Bounds(ca::Dialog::Rect); b.y += Round((1 - appear) * ca::Time::Dialog[1]);
     Title(s, b, ca::Text::DialogTitle, appear, ca::Dialog::Title);
     const char *yes = "適用";
@@ -196,6 +200,8 @@ void Entry::StepNumber(Engine &engine, u32 now, const Input &input, u16 pressed)
 
 void Entry::StepList(Engine &engine, u32 now, const Input &input, u16 pressed) {
     const bool check = kind_ == UiKind::CheckList;
+    // 押し切るボタン（apply = immediate）: A の切り替えはその場で効く。決定と取消は無い（X は何もしない。B は閉じるだけ）。
+    const bool immediate = check && def_->apply == ApplyKind::Immediate;
     bool repeated[4];
     const unsigned fired = Fired(input.held, pressed, now, repeated);
     if (count_ > 0) {
@@ -206,10 +212,10 @@ void Entry::StepList(Engine &engine, u32 now, const Input &input, u16 pressed) {
     if ((pressed & key::A) != 0) {
         if (!check) return Finish(engine, index_, now);
         mask_ ^= 1u << index_;
+        if (immediate) engine.EditUi(static_cast<s32>(mask_)); // 枠は開いたまま、その場で設定へ入れる
     }
-    if (check && (pressed & key::X) != 0) return Finish(engine, static_cast<s32>(mask_), now);
+    if (check && !immediate && (pressed & key::X) != 0) return Finish(engine, static_cast<s32>(mask_), now);
     if ((pressed & key::B) != 0) return Cancel(engine);
-
 }
 
 void Entry::StepKey(Engine &engine, u32 now, const Input &input) {

@@ -247,6 +247,42 @@ void PressThroughKeys() {
     assert(r.engine.Applied(press) == 0 && r.engine.DeferKeys() == 0);
 }
 
+// 5b. 押し切るボタンの枠（apply = immediate・K4）: 枠の A で切り替えた時点でその場で効く（適用値・DeferKeys・版の数）。
+//     X は何もしない。B は閉じるだけで、それまでの切り替えは戻さない。下の帯は 切替・閉じる。
+void PressThroughFrameApplies() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    OpenSettings(r);
+    const auto press = Idx(MenuId::SettingsPressThrough);
+    assert(r.engine.Select(press));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::CheckList && r.shell.Modal());
+    // 既定は START（ビット 4）。カーソルは A の所: A を加えると、枠を開いたままその場で効く。
+    const u32 before = r.engine.Revision();
+    r.Tap(key::A);
+    assert(r.engine.Ui().kind == UiKind::CheckList && r.shell.Modal());
+    assert(r.engine.Applied(press) == 17 && !r.engine.Dirty(press));
+    assert(r.engine.DeferKeys() == (gohan::menu::key::A | gohan::menu::key::Start));
+    assert(r.engine.Revision() == before + 1);
+    // X は何もしない（枠は開いたまま、値も版の数も変わらない）。
+    r.Tap(key::X);
+    assert(r.engine.Ui().kind == UiKind::CheckList && r.engine.Applied(press) == 17 && r.engine.Revision() == before + 1);
+    // 2 つ下の X を加える。帯は 切替・閉じる（決定と取消は無い）。
+    r.Tap(key::Down);
+    r.Tap(key::Down);
+    r.Tap(key::A);
+    RecordingSurface frame = r.Draw();
+    assert(frame.HasText("切替") && frame.HasText("閉じる") && !frame.HasText("決定") && !frame.HasText("取消") && frame.dropped == 0);
+    assert(r.engine.Applied(press) == 21 && r.engine.DeferKeys() == (gohan::menu::key::A | gohan::menu::key::X | gohan::menu::key::Start));
+    // B で閉じる。それまでの切り替えは戻らない（設定画面に残り、版の数も残る）。
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal() && r.engine.InSettings());
+    assert(r.engine.Applied(press) == 21 && !r.engine.Dirty(press) && r.engine.Revision() == before + 2);
+    assert(r.engine.DeferKeys() == (gohan::menu::key::A | gohan::menu::key::X | gohan::menu::key::Start));
+}
+
 // 6. 設定画面の行は、R の操作のリスト・固定・お気に入り・ホットキーの対象にしない。
 void SettingsRowsAreNotListed() {
     Rig r(kMenuItems, kMenuItemCount);
@@ -318,13 +354,14 @@ void FixedCountRows() {
     RecordingSurface empty = r.Draw();
     assert(empty.HasText("0件") && empty.HasText("固定している項目はありません") && empty.dropped == 0);
     assert(FindCommand(empty, Command::Slice, "disband") != nullptr); // 選んだ灰色の行は帯を灰色に替える
-    // 0 件の行は見本（settings-fixed-empty）と同じ: 字に影を付けず、件数は通常の選択の影、指しは白。
+    // 0 件の行（K3）: 選んでいても字・件数・指しは選んでいない時と同じ色で、影は付けない。
     namespace ca = gohan::core::design::ca2;
     const int lx = ca::Row::X + ca::Row::Label[0], ly = ca::Row::Top + ca::Row::Label[1];
     assert(HasTextAt(empty, "固定中の項目", lx, ly));
     assert(!HasTextAt(empty, "固定中の項目", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1]));
-    assert(HasTextWithColor(empty, "0件", ca::Color::Sel::Shadow));
-    assert(FindCommand(empty, Command::Sprite, "chevron")->color == ca::Color::Sel::Text);
+    assert(HasTextWithColor(empty, "固定中の項目", ca::Color::Disabled::Text));
+    assert(HasTextWithColor(empty, "0件", ca::Color::Sub));
+    assert(FindCommand(empty, Command::Sprite, "chevron")->color == ca::Color::Text);
     assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
     assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), true, r.now));
     r.Frame();
@@ -338,6 +375,15 @@ void FixedCountRows() {
         if (c.kind == Command::Text && c.text.find("2件") != std::string::npos) count = &c;
     const Command *chevron = FindCommand(two, Command::Sprite, "chevron");
     assert(count && chevron && count->bounds.x + count->bounds.w == chevron->bounds.x - ca::Settings::Count);
+    // 0 件の行を選んでいない時（保持設定を選ぶ）も、字・件数・指しは同じ色（K3）。
+    assert(r.engine.SetFixed(Idx(MenuId::SampleHold), false, r.now));
+    assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), false, r.now));
+    assert(r.engine.Select(Idx(MenuId::SettingsKeep)));
+    r.Advance(400);
+    RecordingSurface away = r.Draw();
+    assert(!away.HasText("2件") && away.HasText("0件") && away.dropped == 0);
+    assert(HasTextAt(away, "固定中の項目", lx, ly) && HasTextWithColor(away, "固定中の項目", ca::Color::Disabled::Text));
+    assert(HasTextWithColor(away, "0件", ca::Color::Sub) && FindCommand(away, Command::Sprite, "chevron")->color == ca::Color::Text);
 }
 
 // 11. 固定中の項目の中の行: 鍵は付き、選んでも ◀ ▶ を出さない（D.12.4）。対照として、一覧の中の数値の行は矢印を出す。
@@ -415,11 +461,16 @@ void ButtonCheckListIcons() {
     RecordingSurface s = r.Draw();
     const int x = 236 + ca::Entry::Check::Button[0];       // 窓の x から
     const int top = 4 + ca::Entry::List::Top + ca::Entry::Check::Button[1];
-    const Command *a = FindCommand(s, Command::Sprite, "key.bar.a");
-    const Command *start = FindCommand(s, Command::Sprite, "key.paper.start");
+    // 下の帯の印（A など）は枠より先に描くので、枠の印は x で探す。
+    const Command *a = nullptr, *start = nullptr;
+    for (const Command &c : s.commands) {
+        if (c.kind == Command::Sprite && c.text == "key.bar.a" && c.bounds.x == x) a = &c;
+        if (c.kind == Command::Sprite && c.text == "key.paper.start" && c.bounds.x == x) start = &c;
+    }
     assert(a && a->bounds.x == x && a->bounds.y == top);
     assert(start && start->bounds.x == x && start->bounds.y == top + 4 * ca::Entry::List::Pitch);
-    assert(!s.HasText("Start") && !s.HasText("A") && s.HasText("決定") && s.HasText("取消") && s.dropped == 0);
+    // apply = immediate の枠の下の帯は 上下 えらぶ・A 切替・B 閉じる（決定と取消は無い。K4）。
+    assert(!s.HasText("Start") && !s.HasText("A") && s.HasText("切替") && s.HasText("閉じる") && !s.HasText("決定") && !s.HasText("取消") && s.dropped == 0);
 }
 
 // 14. 開閉の向き（D.12.4）: 一覧の深い所から START で開くと、設定画面は右から入り、一覧は左へ出る。
@@ -507,7 +558,7 @@ void BarWordPositions() {
 }
 
 // 16. 段 3b の直し（D.12.4）: enabled_if で灰色になった普通のフォルダは、灰色の行と同じ字の影を付け、指しは灰色の行の色（ink）。
-//     固定中の項目（0 件）の見た目は 10 のとおり（指しは通常の選択の色）。試験の表は小さく手で書く（見本の表は変えない）。
+//     固定中の項目（0 件）の見た目は 10 のとおり（選んでも色と影は変えない）。試験の表は小さく手で書く（見本の表は変えない）。
 void DisabledFolderLooksLikeDisabledRow() {
     namespace ca = gohan::core::design::ca2;
     ItemDef defs[3]{};
@@ -579,6 +630,7 @@ int main() {
     KeepToggles();
     EraseEverything();
     PressThroughKeys();
+    PressThroughFrameApplies();
     SettingsRowsAreNotListed();
     StartWaitsForDialog();
     FixedCountRows();

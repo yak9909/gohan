@@ -45,6 +45,8 @@ void OnProcessExit() { features.ShutdownAll(); }
 int main() {
     PluginMenu menu("gohan", 3, 0, 0, "日本版の無印＋更新に対応。作り直し中です。");
     menu.SynchronizeWithFrame(true);
+    // 起動時の CTRPF の「Plugin ready!」は出さない（公開の API。同梱の CTRPF は変えない）。
+    menu.ShowWelcomeMessage(false);
     menu += new MenuEntry("gohan（作り直し中）", nullptr, gohan::features::status::Show,
                           "版と骨格の状態を表示します。");
     // 終了は同じ段で登録と逆の順。描画の部品は、毎フレームのフックを止める前に資源を排出する。

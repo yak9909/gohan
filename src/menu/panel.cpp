@@ -313,9 +313,27 @@ void Panel::DrawLifted(Surface &s, const Engine &e, int dx, u32 now, float start
 
 void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
                          const u16 *items, int count, float start, float selected_index, u16 selected_item, bool readonly) {
-    // 帯も行の層に含める。縦の選択移動に、同じ横移動とフェードを重ねる。
     // 並べ替えで持ち上げた行は、帯も字も行の層の最後に描く（ほかの行より上に重なる。D.12.3）。
     const bool lifting = items == items_ && lifted_ != kNoItem && lifted_ == selected_item;
+    const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
+    const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
+                                    ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);
+    const int first = int(std::floor(start));
+    const int from = first < 0 ? 0 : first;
+    const int to = std::min(count, first + rows_ + 1);
+    // 順は 行の間の区切り → 選択の帯 → 行（D.2・2.4 の K2）。区切りは帯の下に隠れ、帯が動く間も帯の上には乗らない。
+    // お気に入りの行の下は、普通の行の破線と分けて 1 画素の実線（D.12.3）。
+    for (int n = from; n < to; ++n) {
+        const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
+        if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
+        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
+            s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
+                    ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1}, ca::Color::Fav::Rule);
+        else if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
+            s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
+                       ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
+    }
+    // 帯も行の層に含める。縦の選択移動に、同じ横移動とフェードを重ねる。
     if (count && !lifting) {
         const float row = std::clamp(selected_index - start, 0.f, float(rows_ - 1));
         const int offset = items == items_ ?
@@ -324,11 +342,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
         Selected(s, {dx + ca::Row::X + offset, Round(ca::Row::Top + row * ca::Row::Pitch), ca::Row::W, ca::Row::H},
                  e.View(selected_item).disabled);
     }
-    const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
-    const int clipBottom = std::min(ca::List::Rect[1] + ca::List::Rect[3] - ca::Margin,
-                                    ca::Row::Top + (rows_ - 1) * ca::Row::Pitch + ca::Row::H);
-    const int first = int(std::floor(start));
-    for (int n = first < 0 ? 0 : first; n <= first + rows_ && n < count; ++n) {
+    for (int n = from; n < to; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
         const float weight = Clamp01(1.f - std::abs(selected_index - float(n)));
@@ -337,13 +351,6 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
             Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
         if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now, readonly);
-        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
-            // お気に入りの行の下は、普通の行の破線と分けて 1 画素の実線（D.12.3）。
-            s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
-                    ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1}, ca::Color::Fav::Rule);
-        else if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
-            s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
-                       ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
     }
     if (lifting) DrawLifted(s, e, dx, now, start, selected_index);
 }
@@ -373,6 +380,10 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
+    // 0 件の「固定中の項目」は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
+    // 選択の重みを 0 にして描く。1 件以上の固定中の項目と、ほかの行は今のまま。
+    const bool empty_folder = d.control == Control::Folder && d.list == ListKind::Fixed && e.FixedCount() == 0;
+    if (empty_folder) weight = 0.f;
     const bool pill = d.control == Control::Toggle || v.button;
     // 押し切るボタン（display = buttons）は、選んだボタンの印の並びの幅で値の欄を決める。1 つも無ければ「なし」（D.12.4）。
     const bool buttons = d.control == Control::Multiselect && d.display == DisplayKind::Buttons;
@@ -397,9 +408,8 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     if (arrows) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
     const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
-    // 0 件の固定中の項目（灰色のフォルダ）は、字に影を付けない（見本の settings-fixed-empty）。
-    // 固定中の項目だけの決まり。enabled_if で灰色になった普通のフォルダは、灰色の行と同じ影を付ける。
-    const bool empty_folder = v.disabled && d.control == Control::Folder && d.list == ListKind::Fixed;
+    // 0 件の固定中の項目は、weight が 0 なので影も付かない（上の決まり）。
+    // enabled_if で灰色になった普通のフォルダは、灰色の行と同じ影を付ける。
     Ink(s, lx, ly, label, (shadow >> 24) != 0 && !empty_folder, ink, false, shadow);
     if (v.pending) s.Sprite(lx + s.Measure(label) + ca::Row::Pending::Mark[0], y + ca::Row::Pending::Mark[1], "dot",
                              selected ? ca::Color::Pending::SelectedDot : ca::Color::Pending::Dot);
@@ -407,7 +417,7 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
-        // 固定中の項目の件数と指し（D.12.4）。0 件の灰色の行でも通常の選択と同じ色と影（見本の settings-fixed-empty）。
+        // 固定中の項目の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
         // 指しの色を変えるのは固定中の項目だけ。enabled_if で灰色の普通のフォルダは、灰色の行の指し（ink）のまま。
         const bool fixed_list = d.list == ListKind::Fixed;
         const u32 folder_shadow = Fade(ca::Color::Sel::Shadow, weight);
@@ -516,6 +526,9 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
     } else if (kind == UiKind::Reorder) {
         // お気に入りの並べ替え（D.12.5）。n変更は出さない。
         hint(key::Up | key::Down, "動かす"); hint(key::A, "決定"); hint(key::B, "取消");
+    } else if (kind == UiKind::CheckList && e.Def(e.Ui().item).apply == ApplyKind::Immediate) {
+        // 押し切るボタンの枠（apply = immediate）: A の切り替えはその場で効く。決定と取消は無い（D.12.5、K4）。
+        hint(key::Up | key::Down, "えらぶ"); hint(key::A, "切替"); hint(key::B, "閉じる");
     } else if (kind == UiKind::List || kind == UiKind::CheckList) {
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, kind == UiKind::CheckList ? "切替" : "決定");
         if (kind == UiKind::CheckList) hint(key::X, "決定");

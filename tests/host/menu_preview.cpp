@@ -480,6 +480,13 @@ bool Scene(const std::filesystem::path &directory, int index, const std::string 
     u32 now = 0;
     Tick(shell, now);
     Settle(shell, now, 400);
+    if (name == "row-moving") {
+        // 下の行へ動かして 32 ms 後（選択の帯が行の間にある途中。破線は帯の下に隠れる）。
+        Tick(shell, now, key::Down);
+        Tick(shell, now);
+        Tick(shell, now);
+        return DrawShell(directory, index, shell, now);
+    }
     if (name.rfind("actions-", 0) == 0) {
         // R で開く（押した時刻 416 ms から開く）。離すと 432 ms。
         Tick(shell, now, key::R);
@@ -532,9 +539,11 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
     if (name == "settings-defer-entry-now") defs[kDefer].display = menu::DisplayKind::Default;
     g_money_readable = true;
     Engine engine(defs, kCount);
-    if (!BindRowGameValues(engine) || !SettingsState(engine, name != "settings-fixed-empty")) return false;
+    const bool empty = name.rfind("settings-fixed-empty", 0) == 0; // 0 件の場面（選んでいる・いない の両方）
+    if (!BindRowGameValues(engine) || !SettingsState(engine, !empty)) return false;
     if (!engine.OpenSettings(0)) return false;
-    const bool entry = name.rfind("settings-defer-entry", 0) == 0;
+    // 「entry-notice」は押し切るボタンの枠に通知を重ねる場面（枠の A と START を選んだ所）。
+    const bool entry = name.rfind("settings-defer-entry", 0) == 0 || name == "entry-notice";
     // 押し切るボタンは既定の START だけ。枠と押し切るボタンの行の場面だけ、A と START を選ぶ。
     if (entry || name == "settings-defer") {
         engine.SetValue(kDefer, 1 | 16);
@@ -544,15 +553,26 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
     if (name == "settings-fixed" || name == "settings-fixed-toggle") {
         Enter(engine, kFixedList);
         target = name == "settings-fixed" ? kMoney : kWall;
-    } else if (name == "settings-retain" || name == "settings-erase" || name == "settings-erase-confirm") {
+    } else if (name == "settings-retain" || name == "settings-erase" || name == "settings-erase-confirm" || name == "dialog-notice") {
         Enter(engine, kRetain);
         target = name == "settings-retain" ? kKeepToggles : kKeepErase;
     } else if (name == "settings-defer" || entry) {
         target = kDefer;
+    } else if (name == "settings-fixed-empty-unselected") {
+        // 0 件の行を選んでいない時（保持設定を選ぶ）。字・件数・指しは選んだ時と同じ色（決定 K3）。
+        target = kRetain;
     }
     if (!engine.Select(target)) return false;
-    if (entry || name == "settings-erase-confirm") engine.Press(key::A, 0); // 押し切るボタンの枠・消す確認
+    if (entry || name == "settings-erase-confirm" || name == "dialog-notice") engine.Press(key::A, 0); // 押し切るボタンの枠・消す確認
     Shell shell(engine, {});
+    // 通知の重なり（確認の窓・入力の枠の下に通知が来る場面）。5 件を 40 ms ずつ入れ、下から積んで窓の所まで重ねる。
+    if (name == "dialog-notice" || name == "entry-notice") {
+        shell.Notify(Note("値を固定", "所持金"), 0);
+        shell.Notify(Note("お気に入りに追加", "天気"), 40);
+        shell.Notify(Note("ONで固定", "壁を通り抜ける"), 80);
+        shell.Notify(Note("固定を外す", "所持金"), 120);
+        shell.Notify(Note("お気に入りから外す", "天気"), 160);
+    }
     u32 now = 0;
     Tick(shell, now);
     if (entry) {
@@ -662,12 +682,13 @@ bool Render(const std::filesystem::path &directory, int index, const std::string
     g_weather_value = 1;
     if (name == "settings-enter-060") return EnterScene(directory, index, 60);
     if (name == "settings-enter-120") return EnterScene(directory, index, 120);
+    if (name == "dialog-notice" || name == "entry-notice") return SettingsScene(directory, index, name);
     if (name.rfind("settings-", 0) == 0) return SettingsScene(directory, index, name);
     if (name == "fav-inside" || name == "fav-inside-actions" || name == "fav-folder-actions" || name == "fav-reorder" ||
         name == "fav-reorder-moved" || name == "fav-removed")
         return FavScene(directory, index, name);
     if (name.rfind("actions-", 0) == 0 || name == "fixed-notice" || name == "fav-added-notice" ||
-        name == "notice-long-name" || name == "lock-hold" || name == "bar-new")
+        name == "notice-long-name" || name == "lock-hold" || name == "bar-new" || name == "row-moving")
         return Scene(directory, index, name);
     ItemDef defs[kCount];
     DefineRowItems(defs);

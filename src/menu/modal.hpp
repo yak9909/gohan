@@ -27,7 +27,9 @@ struct DialogView {
     bool yes = true;    // 選んでいる答え（false は「キャンセル」）
 };
 DialogView ViewOf(const Engine &engine);
-// menu_amount: メニューの出現量（位置の補間）。appear: ダイアログ自身の出現量（0 で消える）。
+// 確認の後ろの暗幕。窓より前（説明の窓の上、下の帯と通知の下）に描く（今の見た目のまま）。
+void DrawDialogDim(Surface &surface, const DialogView &view, float appear);
+// 確認の窓。通知より上に描く（地は通知と同じ notice.window）。menu_amount: メニューの出現量（位置の補間）。appear: ダイアログ自身の出現量（0 で消える）。
 void DrawDialog(Surface &surface, const Engine &engine, const DialogView &view, float menu_amount, float appear);
 
 // ---- 入力の枠 ----

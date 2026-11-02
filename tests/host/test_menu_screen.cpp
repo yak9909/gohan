@@ -189,9 +189,16 @@ int main() {
     Press(CTRPluginFramework::Key::DPadDown); Frames(10);
     Press(CTRPluginFramework::Key::DPadDown); Frames(10);
     Press(CTRPluginFramework::Key::A); Frames(15); // 複数選択の枠（今は START が入っていて、カーソルは A）
-    Press(CTRPluginFramework::Key::A); Frames(5);  // A を加える（A と START）
-    Press(CTRPluginFramework::Key::X); Frames(15); // 決定でその場で効く
+    Press(CTRPluginFramework::Key::A); Frames(5);  // A を加える（A と START）。枠は開いたまま、その場で効く
     assert(Demand().defer == (block::part::A | block::part::Start));
+    Press(CTRPluginFramework::Key::X); Frames(15); // X は何もしない（枠は開いたまま）
+    assert(Demand().defer == (block::part::A | block::part::Start) && (Demand().block & block::group::Buttons) != 0);
+    Press(CTRPluginFramework::Key::A); Frames(5);  // A を外す。押した A はゲームへ渡らない（枠が開いている間は遮断が続く）
+    assert(Demand().defer == block::part::Start && (Demand().block & block::part::A) != 0);
+    Press(CTRPluginFramework::Key::A); Frames(5);  // A を戻す
+    assert(Demand().defer == (block::part::A | block::part::Start));
+    Press(CTRPluginFramework::Key::B); Frames(15); // 閉じる。切り替えは戻らない
+    assert(Demand().defer == (block::part::A | block::part::Start) && TopHasText("押し切るボタン"));
     // 設定画面を START で閉じ、一覧の元の位置へ戻す（以降の試験は一覧の上で行う）。
     Press(CTRPluginFramework::Key::Start); Frames(30);
     assert(!TopHasText("押し切るボタン") && TopHasText("GOHAN"));

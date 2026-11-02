@@ -97,7 +97,7 @@ void DialogAndHold() {
     r.Advance(300); s = r.Draw(); bool late = false;
     for (const auto &c : s.commands) late |= c.kind == Command::Fill && c.color == ca::Color::Hold::Late;
     assert(late); r.Advance(300); r.Release(); r.Advance(200); s = r.Draw(); Budget(s);
-    assert(r.engine.Dialog() == DialogKind::ApplyAll && Part(s, "window", 106, 71));
+    assert(r.engine.Dialog() == DialogKind::ApplyAll && Part(s, "notice.window", 106, 71)); // 確認の窓の地は通知と同じ（K1）
     assert(Part(s, "button.normal"));
     assert(s.HasText("確認") && s.HasText("全ての変更を適用しますか？"));
     r.TapAt(140, 126); assert(r.engine.Dialog() != DialogKind::None);
@@ -810,4 +810,47 @@ void RowMarks() {
     assert(SpriteAt(fs, "star.white", star_x + 1, star_y + 1, ca::Color::Sel::Shadow));
 }
 
-int main() { StartOpensAndClosesSettings(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); RowMarks(); std::puts("menu shell: ok"); }
+// 重なりの順（D.12.1・2.4 の K1）: 通知の字と箱は、確認の窓の字と箱より先に描く。確認の窓は通知の上。
+void DialogAboveNotice() {
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount); assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount)); Enter(r);
+    Notice notice{};
+    std::snprintf(notice.title, sizeof(notice.title), "%s", "通知の見本");
+    std::snprintf(notice.message, sizeof(notice.message), "%s", "確認の窓の下に出る");
+    r.shell.Notify(notice, r.now);
+    r.Advance(400);
+    assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
+    r.Tap(key::Select); // 変更が残っているので、閉じる確認を出す
+    r.Advance(400);
+    assert(r.engine.Dialog() == DialogKind::Close);
+    const RecordingSurface s = r.Draw(); Budget(s);
+    int notice_text = -1, notice_box = -1, question = -1, window = -1;
+    for (std::size_t i = 0; i < s.commands.size(); ++i) {
+        const Command &c = s.commands[i];
+        if (c.kind == Command::Text && c.text == "通知の見本" && notice_text < 0) notice_text = int(i);
+        if (c.kind == Command::Slice && c.text == "notice.window" && c.bounds.x == 246 && notice_box < 0) notice_box = int(i);
+        if (c.kind == Command::Text && c.text == "変更を適用しますか？") question = int(i);
+        if (c.kind == Command::Slice && c.text == "notice.window" && c.bounds.x == 106) window = int(i);
+    }
+    assert(notice_text >= 0 && notice_box >= 0 && question >= 0 && window >= 0);
+    assert(question > notice_text && window > notice_box); // 確認の窓の字と箱は、通知より後に描く
+}
+
+// 行の間の破線は選択の帯より先に描く（D.2・2.4 の K2）。選択が行の間を動く途中も、破線は帯の下に隠れる。
+void RuleBelowSelectionBand() {
+    sample::Get() = sample::State{};
+    Rig r(kMenuItems, kMenuItemCount); assert(r.engine.BindAll(sample::kBindings, sample::kBindingCount)); Enter(r);
+    r.Tap(key::Down); // 次の行へ動き始める（選択の帯は途中）
+    r.Advance(32);
+    const RecordingSurface s = r.Draw(); Budget(s);
+    int last_rule = -1, band = -1, rules = 0;
+    for (std::size_t i = 0; i < s.commands.size(); ++i) {
+        const Command &c = s.commands[i];
+        // 行の破線は一覧の中（x < 236）。説明の窓の破線は後に描くので数えない。
+        if (c.kind == Command::Pattern && c.text == "dash" && c.bounds.x < 236) { last_rule = int(i); ++rules; }
+        if (c.kind == Command::Slice && c.text == "selrim" && band < 0) band = int(i);
+    }
+    assert(rules >= 2 && band >= 0 && last_rule < band);
+}
+
+int main() { StartOpensAndClosesSettings(); DialogAboveNotice(); RuleBelowSelectionBand(); Scene(); DialogAndHold(); CancelCopyYields(); DialogExitHints(); ReopenViewport(); Notification(); TrimRules(); SpacingAndSelection(); DisabledAndViewport(); ValueGap(); DeviceCorrections(); FolderViewport(); NoticeIncomingRects(); NoticeBurst(); InputDemand(); IgnoreHeld(); RowMarks(); std::puts("menu shell: ok"); }
