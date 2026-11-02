@@ -2,24 +2,10 @@
 
 // 編集（value）・適用待ち・適用（applied）・差し戻し・値の固定。
 namespace gohan::menu {
-namespace {
-s32 Clamp(s32 value, s32 low, s32 high) { return value < low ? low : value > high ? high : value; }
-} // namespace
-
 bool Engine::SetValue(u16 item, s32 value) {
     if (!Has(item) || !HasValue(item) || Hidden(item) || Disabled(item)) return false;
     const ItemDef &d = defs_[item];
-    switch (d.control) {
-    case Control::Toggle:
-    case Control::Action: value = value ? 1 : 0; break;
-    case Control::Select:
-    case Control::Number:
-    case Control::Slider: value = Clamp(value, d.min, d.max); break;
-    case Control::Multiselect: value &= d.max; break;
-    case Control::Key: value &= 0x3FFF; break;
-    case Control::Folder: return false;
-    }
-    state_[item].value = value;
+    state_[item].value = NormalizeValue(d, value);
     // 設定の値（apply = immediate）は編集した時にその場で適用する（適用待ちを作らない）。
     if (d.apply == ApplyKind::Immediate) Commit(item, 0);
     return true;
@@ -191,6 +177,11 @@ bool Engine::SetFixed(u16 item, bool on, u32 now) {
 void Engine::DriveFixed() {
     for (u16 i = 0; i < count_; ++i) {
         auto &st = state_[i];
+        if (st.restore_wait) {
+            DriveRestore(i);
+            // ON のトグルの効果の入れ直しは戻しの中で済ませる（同じフレームに二度呼ばない）。
+            if (defs_[i].behavior == Behavior::State) continue;
+        }
         if (!st.fixed || !is_bound_[i]) continue;
         if (defs_[i].behavior == Behavior::State) {
             if (!st.applied || st.applied_hotkey || EffectOn(i)) continue;

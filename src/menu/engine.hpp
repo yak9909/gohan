@@ -3,6 +3,7 @@
 #include "menu/binding.hpp"
 #include "menu/hotkey.hpp"
 #include "menu/notice.hpp"
+#include "menu/persist.hpp"
 #include "menu/timing.hpp"
 #include "menu/types.hpp"
 
@@ -23,6 +24,7 @@ struct ItemState {
     bool available = true; // ゲームの値を読めた（source が game の項目）
     bool fixed = false;
     bool fixed_failed = false; // 固定の間の入れ直し失敗は 1 回だけ通知する
+    bool restore_wait = false; // 起動時の戻しを待っている（ゲームの値の読み取り・ON のトグルの効果）
     bool mode_active = false;
     bool hold_active = false;
     bool feedback = false; // 「実行した」表示の間
@@ -120,6 +122,13 @@ class Engine {
     void SetKeepToggles(bool on);
     bool KeepToggles() const { return keep_toggles_; }
 
+    // ---- 保存と起動時の戻し（ファイルには触れない。形式は persist.hpp） ----
+    persist::Rules PersistRules() const;
+    void Capture(persist::Saved &out) const; // 覚える物を写す（版の数が変わった時に保存する写し）
+    // 起動の直後に 1 回だけ呼ぶ（結び付けの後）。版の数は増やさない。待つ物は毎フレームの処理で戻し、全て片付いたら通知を 1 つ出す。
+    void Restore(const persist::Saved &saved);
+    std::size_t RestoreWaiting() const { return restore_waiting_; } // 戻しを待っている物の数
+
     // ---- 照会 ----
     bool Visible() const { return visible_; }
     std::size_t Count() const { return count_; }
@@ -188,6 +197,14 @@ class Engine {
     void Tick(u32 now, u16 held);
     void Poll();
     void OpenDialog(DialogKind kind, u16 item);
+    // engine_persist.cpp
+    void AppendRecord(persist::Saved &out, u16 item) const;
+    void RestoreRecord(const persist::Record &record);
+    void SetRestored(u16 item, s32 value);
+    bool RestoreWanted(u16 item) const;
+    void DriveRestore(u16 item);
+    void FinishRestore(u16 item, bool restored);
+    void NotifyRestore();
     // engine_settings.cpp
     void SavePosition(Position &to) const;
     void LoadPosition(const Position &from);
@@ -212,6 +229,11 @@ class Engine {
     std::size_t fixed_count_ = 0;
     u32 revision_ = 0;
     u32 erase_count_ = 0;
+    // 起動時の戻し: 待っている物・戻した数・戻せなかった数（通知の件数）。
+    u16 restore_waiting_ = 0;
+    u16 restore_done_ = 0;
+    u16 restore_failed_ = 0;
+    bool restore_notice_ = false; // 戻しの通知をまだ出していない
     bool keep_toggles_ = false;
     bool dev_visible_ = false;
     u16 reserved_ = 0;

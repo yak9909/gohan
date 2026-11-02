@@ -506,6 +506,71 @@ void BarWordPositions() {
     assert(!fixed.HasText("決定") && !fixed.FindText("変更"));
 }
 
+// 16. 段 3b の直し（D.12.4）: enabled_if で灰色になった普通のフォルダは、灰色の行と同じ字の影を付け、指しは灰色の行の色（ink）。
+//     固定中の項目（0 件）の見た目は 10 のとおり（指しは通常の選択の色）。試験の表は小さく手で書く（見本の表は変えない）。
+void DisabledFolderLooksLikeDisabledRow() {
+    namespace ca = gohan::core::design::ca2;
+    ItemDef defs[3]{};
+    // 0: 灰色のフォルダ（1 が ON の時だけ有効）。子は 2。
+    defs[0].key = "test.box";
+    defs[0].label = "灰色の箱";
+    defs[0].desc = "";
+    defs[0].control = Control::Folder;
+    defs[0].parent = kNoItem;
+    defs[0].first_child = 2;
+    defs[0].next = 1;
+    defs[0].cond = Cond{1, CondOp::Eq, 1};
+    // 1: 切り替え（既定 OFF）。
+    defs[1].key = "test.switch";
+    defs[1].label = "切り替え";
+    defs[1].desc = "";
+    defs[1].control = Control::Toggle;
+    defs[1].behavior = Behavior::State;
+    defs[1].persist = true;
+    defs[1].min = 0;
+    defs[1].max = 1;
+    defs[1].step = 1;
+    defs[1].parent = kNoItem;
+    defs[1].first_child = kNoItem;
+    defs[1].next = kNoItem;
+    // 2: 箱の中の行。
+    defs[2].key = "test.inner";
+    defs[2].label = "中";
+    defs[2].desc = "";
+    defs[2].control = Control::Toggle;
+    defs[2].behavior = Behavior::State;
+    defs[2].persist = true;
+    defs[2].min = 0;
+    defs[2].max = 1;
+    defs[2].step = 1;
+    defs[2].parent = 0;
+    defs[2].first_child = kNoItem;
+    defs[2].next = kNoItem;
+    Rig r(defs, 3);
+    r.Open();
+    assert(r.engine.Selected() == 1); // 灰色の箱は入れないので、一番上の選べる行（切り替え）
+    assert(r.engine.Select(0) && r.engine.Disabled(0)); // 灰色でもカーソルは置ける（一覧と同じ）
+    r.Advance(400);
+    const int lx = ca::Row::X + ca::Row::Label[0], ly = ca::Row::Top + ca::Row::Label[1];
+    RecordingSurface grey = r.Draw();
+    const Command *chevron = FindCommand(grey, Command::Sprite, "chevron");
+    assert(chevron && chevron->color == ca::Color::Disabled::Sel::Text); // 指しは灰色の行の色（段 3b より前と同じ）
+    assert(HasTextAt(grey, "灰色の箱", lx, ly));
+    assert(HasTextAt(grey, "灰色の箱", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1])); // 字の影は付ける
+    assert(grey.dropped == 0);
+    // 対照: 条件が成り立つと（切り替えを ON）、普通の選択中のフォルダの色と影になる。
+    assert(r.engine.Select(1));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.State(1).value == 1);
+    assert(r.engine.Select(0) && !r.engine.Disabled(0));
+    r.Advance(400);
+    RecordingSurface plain = r.Draw();
+    const Command *open = FindCommand(plain, Command::Sprite, "chevron");
+    assert(open && open->color == ca::Color::Sel::Text);
+    assert(HasTextAt(plain, "灰色の箱", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1]));
+}
+
 int main() {
     OpenCloseAndPosition();
     FixedListRules();
@@ -522,6 +587,7 @@ int main() {
     ButtonCheckListIcons();
     SettingsDirection();
     BarWordPositions();
+    DisabledFolderLooksLikeDisabledRow();
     std::puts("menu settings: ok");
     return 0;
 }

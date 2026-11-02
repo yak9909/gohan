@@ -50,6 +50,11 @@ S32_MAX = 2**31 - 1
 NO_ITEM = 0xFFFF
 MAX_ITEMS = 192  # src/core/limits.hpp の MenuItems と同じ
 MAX_OPTIONS = 31
+# 次の起動に残す物の形式（src/menu/persist.hpp）。大きさは spec の全項目から計算し、上限を超えたら誤り。
+PERSIST_BYTES = 16384  # src/core/limits.hpp の PersistBytes と同じ
+PERSIST_HEADER = 12  # persist.hpp の kHeaderBytes と同じ（印 4・版 2・旗 1・予備 1・押し切るボタン 2・記録の数 2）
+PERSIST_ID_MAX = 64  # persist.hpp の kMaxIdBytes と同じ（鍵の長さ 1〜64）
+PERSIST_FIELD_MAX = 8  # persist.hpp の kFieldBytesMax と同じ（値 4・ホットキー 2・並び 2）
 
 LOOKS = {'folder': 'フォルダ', 'toggle': 'トグル', 'select': '選択', 'multiselect': '複数選択', 'number': '数値',
          'slider': 'スライダー', 'action': '実行', 'key': 'キー'}
@@ -393,6 +398,11 @@ def resolve_cond(item: Item, by_id: dict[str, Item]) -> None:
     item.cond = (ref_id, COND_OPS[op], value)
 
 
+def persist_size(items: list[Item]) -> int:
+    """次の起動に残す物の大きさの最大。全項目が覚える欄を全て持つとして、鍵の長さと欄の最大を足す。"""
+    return PERSIST_HEADER + sum(1 + len(item.id.encode('utf-8')) + 1 + PERSIST_FIELD_MAX for item in items)
+
+
 def validate(items: list[Item]) -> None:
     if not items:
         raise SpecError('項目がありません')
@@ -403,11 +413,16 @@ def validate(items: list[Item]) -> None:
     for item in items:
         if item.id in by_id:
             raise SpecError(f'{item.id}: ID が重複しています')
+        if len(item.id.encode('utf-8')) > PERSIST_ID_MAX:
+            raise SpecError(f'{item.id}: id は {PERSIST_ID_MAX} 字までです（次の起動に残す鍵になります）')
         by_id[item.id] = item
         name = pascal(item.id)
         if name in names:
             raise SpecError(f'{item.id}: C++ の名前 {name} が {names[name].id} と重なります')
         names[name] = item
+    size = persist_size(items)
+    if size > PERSIST_BYTES:
+        raise SpecError(f'次の起動に残す物の大きさの最大が {size} バイトで、上限 {PERSIST_BYTES} バイトを超えます')
     groups: dict[str, Item] = {}
     hotkeys: dict[int, Item] = {}
     for item in items:

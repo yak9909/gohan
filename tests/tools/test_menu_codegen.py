@@ -2,6 +2,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -395,6 +396,47 @@ def test_too_many_items(tmp_path):
     text = ''.join(f'[[item]]\nid = "a{n}"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n'
                    for n in range(menu.MAX_ITEMS + 1))
     assert '多すぎます' in error(tmp_path, text)
+
+
+# ---- 次の起動に残す物の大きさ（src/menu/persist.hpp の形式。全項目の鍵の長さと欄の最大の合計が上限に収まる） ----
+
+def test_persist_limit_constants_match_the_headers():
+    """codegen の写しの定数が、C++ の定義と同じ。違えば静的検査の意味が無くなる。"""
+    persist_h = (ROOT / 'src/menu/persist.hpp').read_text(encoding='utf-8')
+    limits_h = (ROOT / 'src/core/limits.hpp').read_text(encoding='utf-8')
+    assert re.search(r'kHeaderBytes\s*=\s*12\b', persist_h) and menu.PERSIST_HEADER == 12
+    assert re.search(r'kMaxIdBytes\s*=\s*64\b', persist_h) and menu.PERSIST_ID_MAX == 64
+    assert re.search(r'kFieldBytesMax\s*=\s*8\b', persist_h) and menu.PERSIST_FIELD_MAX == 8
+    assert re.search(r'PersistBytes\s*=\s*16384\b', limits_h) and menu.PERSIST_BYTES == 16384
+
+
+def test_persist_size_counts_each_id_and_the_fields(tmp_path):
+    items = load(tmp_path, GOOD)
+    # 12 + 項目ごとに（鍵の長さ 1 ・鍵・欄の旗 1・欄の最大 8）。GOOD の鍵は root・root.flag・root.mode・root.amount・go。
+    expected = 12 + sum(1 + len(i.id) + 1 + 8 for i in items)
+    assert menu.persist_size(items) == expected == 97
+
+
+def test_id_longer_than_64_bytes_is_refused(tmp_path):
+    text = f'[[item]]\nid = "{"a" * 65}"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n'
+    assert '64 字' in error(tmp_path, text)
+    ok = f'[[item]]\nid = "{"a" * 64}"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n'
+    assert load(tmp_path, ok)[0].id == 'a' * 64
+
+
+def test_persist_size_over_the_limit_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(menu, 'PERSIST_BYTES', 40)
+    text = ''.join(f'[[item]]\nid = "k{n}"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n' for n in range(3))
+    message = error(tmp_path, text)
+    assert '上限' in message and '40' in message
+
+
+def test_worst_case_of_all_items_fits(tmp_path):
+    """項目の上限いっぱいで、鍵が最も長い場合でも上限に収まる（12 + 192 × 74 = 14220）。"""
+    ids = ['a' * 60 + f'{n:04d}' for n in range(menu.MAX_ITEMS)]
+    text = ''.join(f'[[item]]\nid = "{i}"\nlabel = "A"\ncontrol = "toggle"\nbehavior = "state"\n' for i in ids)
+    items = load(tmp_path, text)
+    assert len(items) == menu.MAX_ITEMS and menu.persist_size(items) == 12 + 192 * 74 <= menu.PERSIST_BYTES
 
 
 # ---- 結び付けは、spec と合わないとコンパイルで止まる（ホストの C++ コンパイラがある時だけ） ----

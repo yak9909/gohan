@@ -31,6 +31,16 @@ void NoticeEraseAll(Notice &notice) {
     core::TextWriter(notice.message, sizeof(notice.message)).Append("全て最初に戻しました");
 }
 
+void NoticeRestored(Notice &notice, unsigned count) {
+    Fill(notice, "前回の状態", false);
+    core::TextWriter(notice.message, sizeof(notice.message)).Unsigned(count).Append(" 件を戻しました");
+}
+
+void NoticeRestoreFailed(Notice &notice, unsigned restored, unsigned failed) {
+    Fill(notice, "前回の状態", true);
+    core::TextWriter(notice.message, sizeof(notice.message)).Unsigned(restored).Append(" 件を戻し、").Unsigned(failed).Append(" 件は失敗");
+}
+
 void NoticeEffect(Notice &notice, const char *label, bool on) {
     Fill(notice, label, !on);
     core::TextWriter(notice.message, sizeof(notice.message)).Append(label).Append(on ? "を有効にしました" : "を無効にしました");
