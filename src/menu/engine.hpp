@@ -81,6 +81,8 @@ class Engine {
     // ---- 入力 UI ----
     UiRequest Ui() const { return ui_; }
     void SubmitUi(s32 value, u32 now);
+    // 枠を開いたまま値を入れる（apply = immediate の複数選択だけ。押し切るボタンの枠の A）。要求は消さず、その場で適用する。
+    bool EditUi(s32 value);
     void CancelUi();
 
     // ---- 編集 ----

@@ -166,6 +166,8 @@ void CheckListEntry() {
     // 選択中の空き（a）は白い輪、入っている b は ON の箱。字は箱の右に描く。
     assert(s.HasSprite("check.ring") && s.HasSprite("check.on") && s.HasText("b") && s.HasText("決定") && s.HasText("取消"));
     assert(s.dropped == 0); // 箱と字を足しても、描画の予算では捨てない
+    // apply の無い複数選択は、枠を開いたまま値を入れられない（要求も消えない）。
+    assert(!f.e().EditUi(1) && f.e().Ui().kind == UiKind::CheckList);
     f.rig.Tap(key::A); // a を入れる
     s = f.Draw();
     assert(s.HasSprite("check.on.sel") && s.HasSprite("check.on"));

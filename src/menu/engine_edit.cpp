@@ -216,5 +216,13 @@ void Engine::SubmitUi(s32 value, u32 now) {
     Poll();
 }
 
+// 枠を開いたまま値を入れる（SubmitUi と違い、要求は消さない）。対象は apply = immediate の複数選択だけ。
+// 設定の値は SetValue が編集した時にその場で適用するので、適用待ちは作らず、版の数だけが増える。
+bool Engine::EditUi(s32 value) {
+    const UiRequest request = ui_;
+    if (request.kind != UiKind::CheckList || !Has(request.item) || defs_[request.item].apply != ApplyKind::Immediate) return false;
+    return SetValue(request.item, value);
+}
+
 void Engine::CancelUi() { ui_ = UiRequest{}; }
 } // namespace gohan::menu

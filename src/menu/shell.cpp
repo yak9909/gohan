@@ -98,20 +98,27 @@ void Shell::Draw(Surface &surface, u32 now) {
     const float appear = modal_.At(now);
     // 説明の窓は、入力の枠と R の操作のリストが出ている間は描かない。
     if (!entry_.Active() && !list_.Showing(now)) panel_.DrawDescription(surface, engine_, now);
-    if (engine_.Dialog() != DialogKind::None) DrawDialog(surface, engine_, ViewOf(engine_), menu_amount, appear);
-    else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
-    else if (!dialog_close_.Done(now)) DrawDialog(surface, engine_, closing_, menu_amount, dialog_close_.At(now));
+    // 重なりの順は 一覧 → 説明 → 暗幕 → 下の帯 → 通知 → 確認の窓・入力の枠 → R の操作のリスト（D.12.1・2.4）。
+    // 暗幕は今と同じく、説明の上・下の帯と通知の下に敷く（窓だけを通知より上に描く）。
     const bool dialog = engine_.Dialog() != DialogKind::None;
     const bool closing = !dialog_close_.Done(now);
+    if (dialog) DrawDialogDim(surface, ViewOf(engine_), appear);
+    else if (!entry_.Active() && closing) DrawDialogDim(surface, closing_, dialog_close_.At(now));
     // メニューごと閉じる場合は、確認の退場後に通常の帯のフェードの残りを出さない。
     const bool menu_bar = panel_.BarVisible(now) &&
                           (engine_.Visible() || entry_.Active() || closing_.kind == DialogKind::None);
     if (dialog || closing || menu_bar)
         panel_.DrawBar(surface, engine_, now, dialog || closing, closing ? dialog_close_.At(now) : appear);
     watch.Stop();
-    const game::frame_timing::Scope notice_watch(game::frame_timing::Stage::Notice);
-    notices_.Draw(surface, now, panel_.Visible(now));
-    // 重なりの順は 一覧 → 下の帯 → 通知 → R の操作のリスト（D.12.1）。
+    {
+        const game::frame_timing::Scope notice_watch(game::frame_timing::Stage::Notice);
+        notices_.Draw(surface, now, panel_.Visible(now));
+    }
+    // 確認の窓と入力の枠は通知より上、R の操作のリストは一番上（D.12.1）。
+    const game::frame_timing::Scope rest(game::frame_timing::Stage::Menu);
+    if (dialog) DrawDialog(surface, engine_, ViewOf(engine_), menu_amount, appear);
+    else if (entry_.Active()) entry_.Draw(surface, menu_amount, appear, engine_.Visible());
+    else if (closing) DrawDialog(surface, engine_, closing_, menu_amount, dialog_close_.At(now));
     list_.Draw(surface, now, panel_.SelectedRowY(now));
 }
 } // namespace gohan::menu

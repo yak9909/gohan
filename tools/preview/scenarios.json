@@ -2828,6 +2828,11 @@
       "contains": ["走り続ける", "固定中"]
     },
     {
+      "name": "row-moving",
+      "label": "選択の帯 / 行の間を動く途中（破線は帯の下）",
+      "contains": ["所持金", "壁を通り抜ける"]
+    },
+    {
       "name": "settings-top",
       "label": "設定画面 / 一番上（START で開く）",
       "contains": ["設定", "固定中の項目", "3件", "保持設定", "押し切るボタン", "閉じる"]
@@ -2854,8 +2859,13 @@
     },
     {
       "name": "settings-fixed-empty",
-      "label": "設定画面 / 固定中の項目が 0 件",
+      "label": "設定画面 / 固定中の項目が 0 件（選んでいる・色は選んでいない時と同じ）",
       "contains": ["0件", "固定している項目はありません"]
+    },
+    {
+      "name": "settings-fixed-empty-unselected",
+      "label": "設定画面 / 固定中の項目が 0 件（選んでいない時）",
+      "contains": ["0件", "固定中の項目", "保持設定"]
     },
     {
       "name": "settings-retain",
@@ -2866,6 +2876,11 @@
       "name": "settings-erase",
       "label": "設定画面 / 保存を全て消す（実行の行）",
       "contains": ["保存を全て消す", "決定"]
+    },
+    {
+      "name": "dialog-notice",
+      "label": "確認の窓 / 通知が出ている時（窓は通知の上）",
+      "contains": ["保存を全て消しますか？", "お気に入りに追加", "キャンセル"]
     },
     {
       "name": "settings-erase-confirm",
@@ -2879,18 +2894,23 @@
     },
     {
       "name": "settings-defer-entry",
-      "label": "設定画面 / 押し切るボタンの枠（案、X を選択）",
-      "contains": ["押し切るボタン", "切替", "決定", "取消"]
+      "label": "設定画面 / 押し切るボタンの枠（X の行を選択。X は何もしない・下の帯は切替と閉じる）",
+      "contains": ["押し切るボタン", "切替", "閉じる"]
     },
     {
       "name": "settings-defer-entry-checked",
-      "label": "設定画面 / 押し切るボタンの枠（案、START を選択）",
-      "contains": ["押し切るボタン", "切替", "取消"]
+      "label": "設定画面 / 押し切るボタンの枠（START を選択。切り替えはその場で効く）",
+      "contains": ["押し切るボタン", "切替", "閉じる"]
     },
     {
       "name": "settings-defer-entry-now",
-      "label": "設定画面 / 押し切るボタンの枠（今の枠・比べるため）",
-      "contains": ["押し切るボタン", "切替", "取消"]
+      "label": "設定画面 / 押し切るボタンの枠（文字の箇条の版・比べるため）",
+      "contains": ["押し切るボタン", "切替", "閉じる"]
+    },
+    {
+      "name": "entry-notice",
+      "label": "入力の枠 / 通知が出ている時（枠は通知の上）",
+      "contains": ["押し切るボタン", "切替", "閉じる", "お気に入りに追加"]
     },
     {
       "name": "bar-new",
