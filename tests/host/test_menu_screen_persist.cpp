@@ -6,6 +6,7 @@
 #include "core/mailbox.hpp"
 #include "features/menu_screen/menu_screen.hpp"
 #include "features/menu_screen/persist_image.hpp"
+#include "features/menu_screen/persist_policy.hpp"
 #include "game/lyt/renderer.hpp"
 #include "menu/engine.hpp"
 #include "menu/persist.hpp"
@@ -170,6 +171,15 @@ void EraseWhileOpen() {
     Tap(Key::A);
 }
 
+// 読み込み（GohanData::Load）の中で、毎フレームの処理が動くかを見る。登録より前なら、フレームの境界を回しても
+// 毎フレームの処理（ボタンを読む）は動かない。登録の後なら、境界で動く（試験の対照）。
+int load_probe_reads = -1;
+void ProbeLoad() {
+    const int before = Fake::keyReads;
+    core::frame::Dispatch();
+    load_probe_reads = Fake::keyReads - before;
+}
+
 void Begin(const std::string &scenario) {
     auto &feature = menu_screen::Feature();
     if (scenario == "broken") {
@@ -178,9 +188,45 @@ void Begin(const std::string &scenario) {
     } else if (scenario == "valid") {
         Fake::gohanFile = ValidSection();
     }
+    Fake::onLoad = ProbeLoad;
     assert(renderer::RendererFeature().Wire() && feature.Wire());
-    // 読み込みは Wire の中で 1 回。
+    // 読み込みは Wire の中で 1 回。毎フレームの処理の登録より前に動いた（フレームを回しても読み込みの中では動かなかった）。
     assert(Fake::gohanLoads == 1);
+    assert(load_probe_reads == 0);
+    Fake::onLoad = nullptr;
+    // 対照: 登録の後は、フレームの境界で毎フレームの処理が動く（ボタンを読む）。
+    const int before = Fake::keyReads;
+    core::frame::Dispatch();
+    assert(Fake::keyReads > before);
+}
+
+// 終了の待ちは上限まで。毎フレームの保存の部分を取ったままでも、終了は戻る。
+void ScenarioShutdownGate() {
+    Frames(20);
+    assert(menu_screen::Gate().TryEnter()); // 毎フレームの保存の部分が取ったまま（ここでは試験が取る）
+    const int sleeps = Fake::sleeps;
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps - sleeps == 99); // 上限の 100 回まで、1 ms ずつ待って戻る
+    assert(menu_screen::Gate().Stopped());
+    assert(Fake::gohanSaves == 0);
+    std::puts("menu screen persist (shutdown with the gate held): ok");
+}
+
+// 作業が Scheduled のまま動かなくても、終了は上限まで待って戻る。書き手は外さないので、作業が後で動けば書ける。
+void ScenarioShutdownStuck() {
+    Frames(30);
+    Fake::taskHold = true; // 作業は Scheduled のまま（作業のスレッドが動くまで）
+    ToggleKeepAndClose(true);
+    assert(Fake::taskStarts == 1 && Fake::gohanSaves == 0);
+    const int sleeps = Fake::sleeps;
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps - sleeps == 99); // 作業が終わるまで、上限まで 1 ms ずつ待つ
+    assert(Fake::gohanSaves == 0);
+    Fake::taskHold = false;
+    Fake::RunHeldTask(); // 作業のスレッドが後で動く。書き手はまだ登録されている
+    assert(Fake::gohanSaves == 1);
+    assert(ReadBack().keep_toggles);
+    std::puts("menu screen persist (shutdown with a stuck task): ok");
 }
 
 void ScenarioEmpty(bool broken) {
@@ -310,29 +356,23 @@ void ScenarioSave() {
     Frames(40);
     assert(Fake::gohanSaves == 7);
 
-    // 9. 終了: 新しい頼みはしない。動いている保存は書き手が戻るまで待つ。
-    Fake::taskHold = true;
-    ToggleKeepAndClose();
-    assert(Fake::gohanSaves == 7);
-    menu_screen::Feature().Shutdown();
-    assert(Fake::gohanSaves == 8); // 予約のまま残っていた保存を終了の中で待つ
-    Fake::taskHold = false;
-    Frames(3);
-    assert(Fake::gohanSaves == 8);
     std::puts("menu screen persist (save timing): ok");
 }
 } // namespace
 
 int main(int argc, char **argv) {
     const std::string scenario = argc > 1 ? argv[1] : "";
-    assert(scenario == "empty" || scenario == "broken" || scenario == "valid" || scenario == "save");
+    assert(scenario == "empty" || scenario == "broken" || scenario == "valid" || scenario == "save" ||
+           scenario == "shutdown-gate" || scenario == "shutdown-task");
     Begin(scenario);
     if (scenario == "empty") ScenarioEmpty(false);
     else if (scenario == "broken") ScenarioEmpty(true);
     else if (scenario == "valid") {
         ScenarioValid();
         menu_screen::Feature().Shutdown();
-    } else ScenarioSave();
+    } else if (scenario == "save") ScenarioSave();
+    else if (scenario == "shutdown-gate") ScenarioShutdownGate();
+    else ScenarioShutdownStuck();
     renderer::RendererFeature().Shutdown();
     return 0;
 }

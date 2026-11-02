@@ -357,8 +357,10 @@ namespace CTRPluginFramework
 
                 header.size = settings.Tell();
 
+                // 見出しは成否によらず必ず書き直す（CTRPF の欄の位置と大きさを残すため）。成否はその後でまとめる。
                 settings.Rewind();
-                ok = sectionOk && settings.Write(&header, sizeof(Header)) == 0;
+                const bool headerOk = settings.Write(&header, sizeof(Header)) == 0;
+                ok = sectionOk && headerOk;
             }
         }
 

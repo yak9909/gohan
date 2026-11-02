@@ -103,13 +103,34 @@ void TestFailureRetry() {
     assert(p.WantsPublish(View(2, 0, 2, false, true)));
 }
 
-void TestStop() {
-    SavePolicy p;
-    p.Begin(1, 0);
-    p.Published(View(2, 0, 0, false, true));
-    p.Stop();
-    assert(!p.WantsStart());
-    assert(!p.WantsPublish(View(3, 1, 0, false, true)));
+// 門: 毎フレームの処理は試すだけで入る（取れていれば入れない）。終了は上限まで待ち、要求のフラグは止めるだけ。
+int gate_sleeps = 0;
+SaveGate *gate_under_test = nullptr;
+void CountGateSleep() { ++gate_sleeps; }
+void ReleaseGateAfterSecondSleep() {
+    if (++gate_sleeps == 2) gate_under_test->Leave();
+}
+
+void TestGate() {
+    SaveGate gate;
+    assert(!gate.Stopped());
+    assert(gate.TryEnter());
+    assert(!gate.TryEnter()); // 取っている間は入れない（毎フレームの処理は何もしない）
+    gate_sleeps = 0;
+    assert(!gate.Acquire(CountGateSleep, 5) && gate_sleeps == 4); // 上限まで待って戻る
+    gate.Leave();
+    gate_sleeps = 0;
+    assert(gate.Acquire(CountGateSleep, 5) && gate_sleeps == 0); // 空いていれば待たない
+    gate.Leave();
+    // 待ちの間に解放されたら、その後の試行で取る。
+    assert(gate.TryEnter());
+    gate_under_test = &gate;
+    gate_sleeps = 0;
+    assert(gate.Acquire(ReleaseGateAfterSecondSleep, 5) && gate_sleeps == 2);
+    gate.Leave();
+    // 停止の要求はフラグで渡す（取れなくても、以後は見える）。
+    gate.RequestStop();
+    assert(gate.Stopped());
 }
 
 // 書き手: 写しが無ければ空、最新の写しを返す、同じ世代でも毎回返す、Busy の上限で必ず戻る。
@@ -163,7 +184,7 @@ int main() {
     TestBusyResend();
     TestStartPending();
     TestFailureRetry();
-    TestStop();
+    TestGate();
     TestCopy();
     std::puts("menu save: ok");
     return 0;

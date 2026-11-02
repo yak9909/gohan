@@ -60,11 +60,10 @@ using CTRPluginFramework::GohanData;
 using CTRPluginFramework::Task;
 // Busy の上限（1 ms ずつ待つ）。CTRPF のメニューの間はゲームのスレッドが止まるので、上限で必ず戻る。
 constexpr unsigned kBusyAttempts = 100;
-menu::persist::Saved load_saved;    // 読み込みの検査の結果（Wire の中だけ）
-menu::persist::Saved capture_saved; // 写しの組み立て（ゲームのスレッドだけ）
+// 読み込みの検査（Wire の中）と写しの組み立て（毎フレームの処理）で使う。両方は重ならない（読み込みは登録より前）。
+menu::persist::Saved saved;
 Image staging;                      // 写しの組み立て（ゲームのスレッドだけ）
-SavePolicy save_policy;             // ゲームのスレッド（save_mutex の中だけ）
-core::SpinMutex save_mutex;         // 毎フレームの保存の部分と、終了の処理を直列にする
+SavePolicy save_policy;             // ゲームのスレッド（Gate() の中だけ）
 std::optional<Task> save_task;      // 作業のスレッド（Wire で作る。静的な初期化では CTRPF を使わない）
 menu::persist::SaveStats save_stats; // 作業のスレッドだけが書く
 menu::persist::SaveStats observed;   // ゲームのスレッドが読んだ結果（失敗の観測）
@@ -85,8 +84,8 @@ void WriteSection(std::vector<u8> &out) {
 // 読み手（Wire の中。GohanData::Load から同じスレッドで呼ばれる）。欄が正しい時だけ戻す。
 // 偽（大きさ 0・壊れた欄）なら何もしない。そのまま Restore すると、押し切るボタンが「なし」になるため。
 void ReadSection(const u8 *data, u32 size) {
-    if (!menu::persist::Decode(data, size, menu::kMenuItems, menu::kMenuItemCount, engine.PersistRules(), load_saved)) return;
-    engine.Restore(load_saved);
+    if (!menu::persist::Decode(data, size, menu::kMenuItems, menu::kMenuItemCount, engine.PersistRules(), saved)) return;
+    engine.Restore(saved);
 }
 
 // 作業のスレッド: 写しを書く。結果を数えて、状態表示と失敗の後の頼み直しに渡す。
@@ -103,8 +102,8 @@ std::int32_t SaveRun(void *) {
 
 // 写しを作って Mailbox へ出す（ゲームのスレッド）。Busy なら偽（次のフレームで出し直す）。
 bool PublishCapture() {
-    engine.Capture(capture_saved);
-    const std::size_t size = menu::persist::Encode(capture_saved, menu::kMenuItems, menu::kMenuItemCount, staging.bytes,
+    engine.Capture(saved);
+    const std::size_t size = menu::persist::Encode(saved, menu::kMenuItems, menu::kMenuItemCount, staging.bytes,
                                                    sizeof(staging.bytes));
     // 大きさは静的に検査している（PersistBytes に収まる）。入らないのは表の誤りなので、この頼みは出さずに終える。
     if (size == 0) return true;
@@ -117,17 +116,19 @@ bool Settled(u32 now) { return !engine.Visible() && !shell.Modal() && !shell.pan
 
 // 保存の時機（7.3）。毎フレームの処理の最後に呼ぶ。Start は頼んだ時だけ試し、失敗した・Busy の時は次のフレームで試す。
 void SaveStep(u32 now) {
-    if (!save_mutex.TryLock()) return; // 終了の処理が始まっている
-    menu::persist::ReadSaveStats(observed, observed_generation);
-    SaveView view;
-    view.revision = engine.Revision();
-    view.erase_count = engine.EraseCount();
-    view.failures = observed.failures;
-    view.visible = engine.Visible();
-    view.settled = Settled(now);
-    if (save_policy.WantsPublish(view) && PublishCapture()) save_policy.Published(view);
-    if (save_policy.WantsStart() && save_task->Start() == 0) save_policy.Started();
-    save_mutex.Unlock();
+    if (!Gate().TryEnter()) return; // 終了の処理が取っている
+    if (!Gate().Stopped()) {
+        menu::persist::ReadSaveStats(observed, observed_generation);
+        SaveView view;
+        view.revision = engine.Revision();
+        view.erase_count = engine.EraseCount();
+        view.failures = observed.failures;
+        view.visible = engine.Visible();
+        view.settled = Settled(now);
+        if (save_policy.WantsPublish(view) && PublishCapture()) save_policy.Published(view);
+        if (save_policy.WantsStart() && save_task->Start() == 0) save_policy.Started();
+    }
+    Gate().Leave();
 }
 
 // フレームの最後だけが要求を更新する。Busy は次のフレームで再送する。
@@ -183,12 +184,23 @@ void FrameStep() {
     PublishDemand();
 }
 
-// 終了（7.3）: 新しい頼みはしない。動いている保存は書き手が戻るまで待つ。最後に書き手を外す（CTRPF は未登録の欄を残す）。
+// 作業が終わるまで 1 ms ずつ、上限まで待つ。終わったら真。作業が Scheduled のまま動かない時も、ここで必ず戻る。
+bool WaitTask() {
+    for (unsigned n = 0; n < kBusyAttempts; ++n) {
+        const u32 status = save_task->Status();
+        if (status == static_cast<u32>(Task::Idle) || status == static_cast<u32>(Task::Finished)) return true;
+        if (n + 1 < kBusyAttempts) SleepOneMs();
+    }
+    return false;
+}
+
+// 終了（7.3）: 新しい頼みは止める。毎フレームの保存の部分と動いている作業は、上限まで待つ。
+// 作業が終わらなかった時は書き手を外さない（書き手を外すには CTRPF の排他を取るので、作業が中で止まっていると待つため）。
 void StopSaving() {
-    save_mutex.Lock();
-    save_policy.Stop();
-    save_mutex.Unlock();
-    if (save_task) save_task->Wait();
+    Gate().RequestStop();
+    // 取れたら戻さない（以後の毎フレームの処理は、TryEnter で入らない）。取れなくても、停止の要求で新しい頼みは出ない。
+    Gate().Acquire(SleepOneMs, kBusyAttempts);
+    if (save_task && !WaitTask()) return;
     GohanData::SetHandlers(nullptr, nullptr);
 }
 
@@ -207,7 +219,8 @@ bool Wire() {
     GohanData::Load();
     // 戻した後の版を保存済みとする。起動直後には頼まない。
     save_policy.Begin(engine.Revision(), engine.EraseCount());
-    save_task.emplace(SaveRun, nullptr, Task::SysCore);
+    // 作業の affinity は AppCore（コア 0 の 2 本のハンドラー）。SysCore の bit を含まない（7.3）。
+    save_task.emplace(SaveRun, nullptr, Task::AppCore);
     const auto change = core::frame::Global().Add(FrameStep, 50);
     if (change.result != core::frame::Result::Queued && change.result != core::frame::Result::Unchanged) {
         GohanData::SetHandlers(nullptr, nullptr);

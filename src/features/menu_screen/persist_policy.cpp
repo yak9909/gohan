@@ -7,7 +7,6 @@ void SavePolicy::Begin(menu::u32 revision, menu::u32 erase_count) {
 }
 
 bool SavePolicy::WantsPublish(const SaveView &view) {
-    if (stopped_) return false;
     // 失敗の報告は、次に閉じた時にもう一度頼むための印。開いている間に来た失敗は、閉じた時に試す。
     if (view.failures != failures_) {
         failures_ = view.failures;
@@ -27,8 +26,17 @@ void SavePolicy::Published(const SaveView &view) {
     start_ = true;
 }
 
-void SavePolicy::Stop() {
-    stopped_ = true;
-    start_ = false;
+bool SaveGate::Acquire(void (*sleep_ms)(), unsigned attempts) {
+    for (unsigned n = 0; n < attempts; ++n) {
+        if (mutex_.TryLock()) return true;
+        if (n + 1 < attempts && sleep_ms) sleep_ms();
+    }
+    return false;
 }
+
+namespace {
+SaveGate gate;
+} // namespace
+
+SaveGate &Gate() { return gate; }
 } // namespace gohan::features::menu_screen

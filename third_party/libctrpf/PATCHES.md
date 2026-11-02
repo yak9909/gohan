@@ -26,8 +26,9 @@
 - CTRPF メニューを閉じる通常の保存にも、登録された書き出し関数を使う。
   書き出し関数が未登録の場合、または空を返した場合（写しが無い・Busy の上限に達した）は、
   既存の有効な追加欄を残す。追加欄は、ファイルを TRUNCATE で開く前にいつも読む。
-- `Preferences::WriteSettings` の本体は変えず、gohan の欄が書けたかを静的変数 `g_lastSaveOk` に残す（`g_fileLock` の中でだけ読み書きする）。
-  `GohanData::Save` は同じ再帰 Mutex を取ってから `WriteSettings` を呼び、その結果を返す。`Preferences.hpp` の宣言は変えていない。
+- `Preferences::WriteSettings` は、見出しを成否によらず必ず書き直す（CTRPF の欄の位置と `size` を残すため）。
+  その後で、追加欄と見出しの書き込みの成否をまとめ、静的変数 `g_lastSaveOk` に残す（`g_fileLock` の中でだけ読み書きする）。
+  `GohanData::Save` は同じ再帰 Mutex を取ってから `WriteSettings` を呼び、`g_lastSaveOk` を返す。`Preferences.hpp` の宣言は変えていない。
 - 複数のメニュースレッドからの読み書きとハンドラー登録は、共通の再帰 Mutex で排他する。
   呼び出しを入れ子にしても同じロックを使う。
 - 保存処理のコメントは、動作の説明に整理する。

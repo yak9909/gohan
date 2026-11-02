@@ -1,4 +1,6 @@
 #pragma once
+#include "core/signal.hpp"
+#include "core/sync.hpp"
 #include "menu/types.hpp"
 
 // 保存の時機（docs/design/menu-item-actions.md 7.3）。CTRPF に依存しない判断だけを持つ。
@@ -25,8 +27,6 @@ class SavePolicy {
     // 作業を起こすべきか（写しを出した後、作業を起こせるまで真。作業が動いている間は起こせないので、続けて真）。
     bool WantsStart() const { return start_; }
     void Started() { start_ = false; }
-    // 終了: 新しい頼みはしない。
-    void Stop();
 
   private:
     menu::u32 revision_ = 0;
@@ -35,6 +35,27 @@ class SavePolicy {
     bool stale_ = false; // 失敗した: 次に閉じた時にもう一度頼む
     bool hold_ = false;  // 失敗の後は、開くまで閉じた時の頼みをしない（失敗を続けて試さないため）
     bool start_ = false;
-    bool stopped_ = false;
 };
+
+// 毎フレームの保存の部分と終了の処理を直列にする。ロックは試すだけにし、取れない時は上限まで 1 ms ずつ待つ
+// （スピンで待たない。優先度の高いスレッドが同じコアで回っても、持っている側が先に進める）。
+// 終了の要求はフラグで渡す（ロックを取らない）。
+class SaveGate {
+  public:
+    // 毎フレームの処理: 取れなければ何もしない（終了の処理が取っている）。
+    bool TryEnter() { return mutex_.TryLock(); }
+    void Leave() { mutex_.Unlock(); }
+    // 終了の処理: 取れるまで sleep_ms で待つ（試行は attempts 回まで）。取れたら真。
+    bool Acquire(void (*sleep_ms)(), unsigned attempts);
+    // 終了の要求。以後、毎フレームの処理は新しい頼みをしない。
+    void RequestStop() { stop_.Set(); }
+    bool Stopped() const { return stop_.Get(); }
+
+  private:
+    core::SpinMutex mutex_;
+    core::Signal stop_;
+};
+
+// 保存の門（毎フレームの処理と終了の処理が使う唯一の物）。
+SaveGate &Gate();
 } // namespace gohan::features::menu_screen

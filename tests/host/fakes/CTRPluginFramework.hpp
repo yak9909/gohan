@@ -55,6 +55,9 @@ struct Fake {
     static inline bool saveFails = false; // 書き込みに失敗する（書き手の写しは作れても、欄は残す）
     static inline bool taskHold = false;  // 作業を予約だけして、RunHeldTask まで動かさない（作業のスレッドを模す）
     static inline std::shared_ptr<FakeTaskState> heldTask;
+    // 読み込み（GohanData::Load）の入口で試験が呼ぶ。毎フレームの処理の登録より前かを確かめる。
+    static inline void (*onLoad)() = nullptr;
+    static inline int keyReads = 0; // ボタンを読んだ回数（毎フレームの処理が動いたかを数える）
     // 予約された作業を、呼び手のスレッドで動かす（作業のスレッドが動いた時を模す）。
     static void RunHeldTask();
 };
@@ -75,7 +78,10 @@ enum Key {
     ZR = 1 << 15,
 };
 struct Controller {
-    static std::uint32_t GetKeysDown(bool = true) { return Fake::keys; }
+    static std::uint32_t GetKeysDown(bool = true) {
+        ++Fake::keyReads;
+        return Fake::keys;
+    }
 };
 struct Point {
     unsigned x, y;
@@ -129,9 +135,13 @@ struct Process {
 };
 // 作業（Task）の代役。Start は同じスレッドで直ちに動かす。Fake::taskHold が真の時は予約だけして、
 // Start の二度目は動作中の -1 を返す（CTRPF の Scheduler と同じ答え）。
+// 状態の値は実機の Task::Status と同じ。Wait は代役に無い（実機の Wait は、作業が Scheduled のまま
+// 残ると戻らないため、gohan は Status を上限つきで見る）。
 class Task {
   public:
     enum Affinity { AppCore = 1 << 0, SysCore = 1 << 1, NewAppCore = 1 << 2 };
+    // enum Status は Status の関数と名前が重なるので、値だけを静的な定数で持つ。
+    static constexpr std::uint32_t Idle = 0, Scheduled = 1, Processing = 2, Finished = 4;
     explicit Task(std::int32_t (*func)(void *), void *arg = nullptr, std::int32_t affinity = -1)
         : state_(std::make_shared<FakeTaskState>()) {
         state_->func = func;
@@ -139,26 +149,17 @@ class Task {
         affinity_ = affinity;
     }
     int Start() const {
-        if (state_->flags == 1 || state_->flags == 2) return -1;
+        if (state_->flags == Scheduled || state_->flags == Processing) return -1;
         ++Fake::taskStarts;
-        state_->flags = 1;
+        state_->flags = Scheduled;
         if (Fake::taskHold) {
-            Fake::heldTask = state_;
+            Fake::heldTask = state_; // 作業のスレッドが動くまで Scheduled のまま残る（Fake::RunHeldTask）
             return 0;
         }
-        state_->flags = 2;
+        state_->flags = Processing;
         state_->result = state_->func(state_->arg);
-        state_->flags = 4;
+        state_->flags = Finished;
         return 0;
-    }
-    std::int32_t Wait() const {
-        if (state_->flags == 1) {
-            Fake::heldTask.reset();
-            state_->flags = 2;
-            state_->result = state_->func(state_->arg);
-            state_->flags = 4;
-        }
-        return state_->result;
     }
     std::uint32_t Status() const { return state_->flags; }
 
@@ -181,6 +182,7 @@ class GohanData {
     }
     static bool Load() {
         ++Fake::gohanLoads;
+        if (Fake::onLoad) Fake::onLoad();
         const bool found = !Fake::gohanFile.empty();
         if (reader_) reader_(found ? Fake::gohanFile.data() : nullptr, found ? static_cast<std::uint32_t>(Fake::gohanFile.size()) : 0);
         return found;

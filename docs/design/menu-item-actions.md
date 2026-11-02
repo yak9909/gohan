@@ -350,6 +350,7 @@ u8  欄の旗  bit0 値 / bit1 ホットキー / bit2 固定 / bit3 ON / bit4 �
 - 写しはゲームのスレッドで作り、`core::Mailbox` で渡す（16 KiB の固定長。競合したら次のフレームで再送）。
 - ファイルの書き込みはゲームのスレッドでしない。CTRPF の `Task` で作業のスレッドを 1 本持ち、`GohanData::Save()` を呼ぶ。書き手のコールバックは Mailbox から最新の写しを写す（Busy なら 1 ms 待って再試行。作業のスレッドなので待ってよい）。保存の途中に次の頼みが来たら、終わった後にもう 1 回だけ書く。
 - 失敗は状態表示（開発版）に残し、通知は出さない（次に閉じた時に再び試す）。
+- 作業の affinity は `Task::AppCore`（コア 0 の 2 本）。SysCore の bit を含まない。`Task::AppCores` は古い 3DS で `AppCore | SysCore` に丸められ（CTRPF の `Scheduler::Schedule`）、SysCore のコアに割り当てられる可能性が残るため。gohan と同梱の CTRPF のソースは `APT_SetAppCpuTimeLimit` を呼んでいない。
 
 ### 7.4 読み込み
 
