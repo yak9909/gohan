@@ -324,7 +324,7 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
     for (int n = from; n < to; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
-        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && items[n] == kFavoritesFolder)
+        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && e.ListOf(items[n]) == ListKind::Favorites)
             s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                     ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1}, ca::Color::Fav::Rule);
         else if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
@@ -358,28 +358,37 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
     const int right = x + ca::Row::W + ca::Row::Value::Right;
-    if (item == kFavoritesFolder) {
-        // お気に入りのフォルダ: 金の淡い地・星・名前・件数・>（D.12.3）。選択中は地を描かず、星と字に白と影。
-        const u32 ink = MixColor(ca::Color::Text, ca::Color::Sel::Text, weight);
-        const u32 shadow = Fade(ca::Color::Sel::Shadow, weight);
-        // 選択の重みで薄め、選択中（重み 1）は描かない。
-        if (weight < 1.f)
+    if (e.ListOf(item) == ListKind::Favorites) {
+        // お気に入りの仮のフォルダ（一番上の一覧と設定画面の「お気に入り」。D.12.3・D.12.4・M1）:
+        // 金の淡い地・星・名前・件数・>。選択中は地を描かず、星と字に白と影。
+        // 0 件（設定画面の灰色で入らない行）は、地を描かず、星を薄く・名前を灰色にし、選んでも色と影を変えない（K3・L4）。
+        const bool empty = e.ListCount(item) == 0;
+        const float w = empty ? 0.f : weight;
+        const u32 ink = MixColor(ca::Color::Text, ca::Color::Sel::Text, w);
+        const u32 label_ink = empty ? ca::Color::Disabled::Text : ink;
+        const u32 shadow = Fade(ca::Color::Sel::Shadow, w);
+        // 選択の重みで薄め、選択中（重み 1）は描かない。0 件は地を描かない。
+        if (!empty && w < 1.f)
             s.Fill({x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1], ca::Row::W + ca::Fav::Row::Fill[2], ca::Fav::Row::Fill[3]},
-                   Fade(ca::Color::Fav::Fill, 1.f - weight));
+                   Fade(ca::Color::Fav::Fill, 1.f - w));
         const int sx = x + ca::Fav::Row::Star[0], sy = y + ca::Fav::Row::Star[1];
-        if (weight > 0.5f) s.Sprite(sx + 1, sy + 1, "star.white", ca::Color::Sel::Shadow);
-        s.Sprite(sx, sy, weight > 0.5f ? "star.white" : "star");
+        if (empty) {
+            s.Sprite(sx, sy, "star", Fade(0xFFFFFFFFu, ca::Color::Disabled::Alpha));
+        } else {
+            if (w > 0.5f) s.Sprite(sx + 1, sy + 1, "star.white", ca::Color::Sel::Shadow);
+            s.Sprite(sx, sy, w > 0.5f ? "star.white" : "star");
+        }
         const int lx = x + ca::Fav::Row::Label[0], ly = y + ca::Fav::Row::Label[1];
-        Ink(s, lx, ly, d.label, (shadow >> 24) != 0, ink, false, shadow);
+        Ink(s, lx, ly, d.label, (shadow >> 24) != 0, label_ink, false, shadow);
         char count[24];
-        core::TextWriter(count, sizeof(count)).Unsigned(e.FavoriteCount()).Append("件");
+        core::TextWriter(count, sizeof(count)).Unsigned(e.ListCount(item)).Append("件");
         Ink(s, right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count), ly, count, (shadow >> 24) != 0,
-            MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, shadow);
+            MixColor(ca::Color::Sub, ca::Color::Sel::Text, w), false, shadow);
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
-    // 0 件の仮のフォルダ（固定中の項目・お気に入り）は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
-    // 選択の重みを 0 にして描く。1 件以上の仮のフォルダと、ほかの行は今のまま。
+    // 0 件の固定中の項目は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
+    // 選択の重みを 0 にして描く。1 件以上の固定中の項目と、ほかの行は今のまま。
     const ListKind list = e.ListOf(item);
     const bool empty_folder = list != ListKind::None && e.ListCount(item) == 0;
     if (empty_folder) weight = 0.f;
@@ -416,8 +425,9 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
-        // 仮のフォルダ（固定中の項目・お気に入り）の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
+        // 仮のフォルダ（固定中の項目）の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
         // 指しの色を変えるのは仮のフォルダだけ。enabled_if で灰色の普通のフォルダは、灰色の行の指し（ink）のまま。
+        // お気に入りの仮のフォルダ（一番上と設定画面）は、上の分岐で描く（M1）。
         const bool listed = list != ListKind::None;
         const u32 folder_shadow = Fade(ca::Color::Sel::Shadow, weight);
         // 件数の位置と色は一番上のお気に入りと同じ。0 件でも「0件」を出す。

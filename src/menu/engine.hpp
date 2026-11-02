@@ -93,9 +93,11 @@ class Engine {
     void Discard(u16 item);
     void DiscardAll();
     bool SetFixed(u16 item, bool on, u32 now);
-    // 固定した順（仮のフォルダ「固定中の項目」の並び。保存の並びにも使う）。
+    // 固定した順（仮のフォルダ「固定中の項目」の並び。保存では固定の記録の順になる）。
     std::size_t FixedCount() const { return fixed_count_; }
     const u16 *FixedOrder() const { return fixed_order_; }
+    // 固定中の項目の並べ替えの決定（SetFavoriteOrder と同じ検査。並びが変わった時だけ版の数を増やす。通知は出さない）。
+    bool SetFixedOrder(const u16 *items, std::size_t count);
     // 仮のフォルダの種類と件数。一番上のお気に入り（kFavoritesFolder）と設定画面の「お気に入り」「固定中の項目」が対象。
     // 種類が None の物は普通のフォルダか項目（件数は 0）。
     ListKind ListOf(u16 folder) const;

@@ -554,17 +554,21 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
         engine.Commit(kDefer, 0);
     }
     u16 target = kFixedList;
-    if (name == "settings-fixed" || name == "settings-fixed-toggle" || name == "settings-fixed-bar" || name == "settings-fixed-select") {
+    if (name == "settings-fixed" || name == "settings-fixed-toggle" || name == "settings-fixed-bar" || name == "settings-fixed-select" ||
+        name == "settings-fixed-reorder") {
         Enter(engine, kFixedList);
-        target = name == "settings-fixed" || name == "settings-fixed-bar" ? kMoney : name == "settings-fixed-select" ? kWeather : kWall;
+        target = name == "settings-fixed" || name == "settings-fixed-bar" || name == "settings-fixed-reorder" ? kMoney :
+                 name == "settings-fixed-select" ? kWeather : kWall;
     } else if (name.rfind("settings-favorites", 0) == 0) {
-        // 設定画面の「お気に入り」（段 5b）: 0 件（灰色）・3 件（件数）・中の一覧（下の帯）・中の並べ替え。
+        // 設定画面の「お気に入り」（M1）: 0 件（灰色）・4 件（一番上と同じ 4 件。見た目は一番上の行と同じ）・選んでいない時・中の一覧（下の帯）・中の並べ替え。
         // 一番上のお気に入りと同じ並びを、設定画面の行から入って見る。
-        if (name != "settings-favorites-empty") {
-            for (u16 item : {kWall, kMoney, kWeather})
+        const bool none = name.find("empty") != std::string::npos;
+        if (!none) {
+            for (u16 item : {kWall, kMoney, kWeather, kMap})
                 if (!engine.SetFavorite(item, true)) return false;
         }
-        target = kFavList;
+        // 選んでいない時は、すぐ上の「固定中の項目」を選ぶ（お気に入りの行は選ばない）。
+        target = name.find("unselected") != std::string::npos ? kFixedList : kFavList;
         if (name == "settings-favorites-inside" || name == "settings-favorites-reorder") {
             Enter(engine, kFavList);
             target = name == "settings-favorites-inside" ? kMoney : kWeather;
@@ -580,7 +584,9 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
     }
     if (!engine.Select(target)) return false;
     // 並べ替えは選んだ行で要求する（要求の間は Select が効かないので、選んだ後に出す）。
+    // お気に入りの中の並べ替え（4 件）と、固定中の項目の並べ替え（固定は 3 件。段 5c の M2）。
     if (name == "settings-favorites-reorder" && !engine.RunAction(kWeather, menu::ActionKind::Reorder, 0)) return false;
+    if (name == "settings-fixed-reorder" && !engine.RunAction(kMoney, menu::ActionKind::Reorder, 0)) return false;
     if (entry || name == "settings-erase-confirm" || name == "dialog-notice") engine.Press(key::A, 0); // 押し切るボタンの枠・消す確認
     Shell shell(engine, {});
     // 通知の重なり（確認の窓・入力の枠の下に通知が来る場面）。5 件を 40 ms ずつ入れ、下から積んで窓の所まで重ねる。

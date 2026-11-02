@@ -3,7 +3,7 @@
 #include "menu/timing.hpp"
 #include <algorithm>
 
-// お気に入りの並べ替え。写しの入れ替えと、持ち上げ・下ろしの動き（D.12.3）。描画は Panel が行う。
+// 仮のフォルダの並べ替え。写しの入れ替えと、持ち上げ・下ろしの動き（D.12.3）。描画は Panel が行う。
 namespace gohan::menu {
 namespace {
 constexpr u16 kDirections[2] = {key::Up, key::Down};
@@ -12,8 +12,8 @@ constexpr float kLift = static_cast<float>(ca::Fav::Reorder::Lift);
 
 void Reorder::Begin(const Engine &engine, u16 held, u32 now) {
     item_ = engine.Ui().item;
-    count_ = engine.FavoriteCount();
-    std::copy_n(engine.FavoriteOrder(), count_, items_);
+    list_ = engine.ListOf(engine.Folder());
+    Copy(engine);
     index_ = 0;
     for (std::size_t n = 0; n < count_; ++n)
         if (items_[n] == item_) {
@@ -27,11 +27,29 @@ void Reorder::Begin(const Engine &engine, u16 held, u32 now) {
     lift_.Go(kLift, now, timing::kSelectionMoveMs);
 }
 
+// 今の仮のフォルダの並びを写す（覚えた種類の並び。固定中の項目なら固定の並び、お気に入りならお気に入りの並び）。
+void Reorder::Copy(const Engine &engine) {
+    if (list_ == ListKind::Fixed) {
+        count_ = engine.FixedCount();
+        std::copy_n(engine.FixedOrder(), count_, items_);
+    } else if (list_ == ListKind::Favorites) {
+        count_ = engine.FavoriteCount();
+        std::copy_n(engine.FavoriteOrder(), count_, items_);
+    } else {
+        count_ = 0;
+    }
+}
+
+// 写しを、覚えた種類の並びへ書き戻す。並びが変わった時だけ版の数が増える（エンジンの規則）。
+void Reorder::Commit(Engine &engine) {
+    if (list_ == ListKind::Fixed) engine.SetFixedOrder(items_, count_);
+    else if (list_ == ListKind::Favorites) engine.SetFavoriteOrder(items_, count_);
+}
+
 void Reorder::Close(const Engine &engine, u32 now) {
     open_ = false;
-    // 写しは捨てる（A の後はエンジンの並びと同じ。B の後は並べ替えの前の並び）。
-    count_ = engine.FavoriteCount();
-    std::copy_n(engine.FavoriteOrder(), count_, items_);
+    // 写しは捨てる（A の後は書き戻した並びと同じ。B の後は並べ替えの前の並び）。
+    Copy(engine);
     lift_.Go(0.0f, now, timing::kSelectionMoveMs);
 }
 
@@ -78,7 +96,7 @@ void Reorder::Step(Engine &engine, u32 now, u16 held) {
     }
     if ((pressed & key::A) != 0) {
         // 決める。版の数は並びが変わった時だけ増える（エンジンの規則）。
-        engine.SetFavoriteOrder(items_, count_);
+        Commit(engine);
         engine.CancelUi();
         Close(engine, now);
     }

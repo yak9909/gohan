@@ -2938,9 +2938,19 @@
       "contains": ["お気に入り", "0件", "お気に入りはありません"]
     },
     {
+      "name": "settings-favorites-unselected",
+      "label": "設定画面 / お気に入り（4 件・選んでいない時。一番上の行と同じ金の地・星・件数・指し。段 5c の M1）",
+      "contains": ["お気に入り", "4件", "保持設定", "固定中の項目"]
+    },
+    {
+      "name": "settings-favorites-empty-unselected",
+      "label": "設定画面 / お気に入り（0 件・選んでいない時。地なし・薄い星・灰色の名前。段 5c の M1）",
+      "contains": ["お気に入り", "0件", "保持設定"]
+    },
+    {
       "name": "settings-favorites-count",
-      "label": "設定画面 / お気に入り（3 件の行。一番上と同じ並び）",
-      "contains": ["お気に入り", "3件", "保持設定"]
+      "label": "設定画面 / お気に入り（4 件・選んだ時。一番上と同じ並び。段 5c の M1）",
+      "contains": ["お気に入り", "4件", "保持設定"]
     },
     {
       "name": "settings-favorites-inside",
@@ -2951,6 +2961,11 @@
       "name": "settings-favorites-reorder",
       "label": "設定画面 / お気に入りの中の並べ替え（一番上と同じ並びを動かす）",
       "contains": ["並べ替え中", "動かす", "天気"]
+    },
+    {
+      "name": "settings-fixed-reorder",
+      "label": "設定画面 / 固定中の項目の並べ替え（2 件以上の時の R の「並べ替え」。段 5c の M2）",
+      "contains": ["並べ替え中", "動かす", "所持金"]
     }
   ]
 }
