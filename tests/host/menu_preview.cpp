@@ -578,8 +578,9 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
         target = name == "settings-retain" ? kKeepToggles : kKeepErase;
     } else if (name == "settings-defer" || entry) {
         target = kDefer;
-    } else if (name == "settings-fixed-empty-unselected") {
-        // 0 件の行を選んでいない時（保持設定を選ぶ）。字・件数・指しは選んだ時と同じ色（決定 K3）。
+    } else if (name == "settings-fixed-empty-unselected" || name == "settings-fixed-count-unselected") {
+        // 固定中の項目の行を選んでいない時（保持設定を選ぶ）。0 件は字・件数・指しが選んだ時と同じ色（決定 K3）。
+        // 1 件以上は淡い青の地・鍵・青の実線（決定 M3）。
         target = kRetain;
     }
     if (!engine.Select(target)) return false;
