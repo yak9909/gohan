@@ -145,12 +145,15 @@ bool SavedFixedOn(const persist::Saved &saved, const char *key) {
 }
 
 // 設定画面は、同じ起動の中で最後の位置を覚える（D.8）。最初の一回は一番上の「固定中の項目」から
-// 下へ一つ進んで「保持設定」に入る。二回目以降は、前回の位置（保持設定）から始まる。
+// 下へ二つ進んで（「お気に入り」を越えて）「保持設定」に入る。二回目以降は、前回の位置（保持設定）から始まる。
 // 「トグルを全て保持」を切り替えて閉じる。first は、設定画面を初めて開く時だけ真。
 void ToggleKeepAndClose(bool first = false) {
     Tap(Key::Select);   // 開く
     Tap(Key::Start);    // 設定画面（前回の位置）
-    if (first) Tap(Key::DPadDown); // 保持設定
+    if (first) {        // 保持設定（固定中の項目 → お気に入り → 保持設定）
+        Tap(Key::DPadDown);
+        Tap(Key::DPadDown);
+    }
     Tap(Key::A);        // 保持設定の中へ（前回の位置は一番上のトグル）
     Tap(Key::A);        // トグルを全て保持（ON と OFF を切り替える）
     Tap(Key::B);        // 設定画面へ戻る（カーソルは保持設定）
@@ -279,7 +282,8 @@ void ScenarioSave() {
     // 2. 開いている間に変えても頼まない（閉じ切るまで）。
     Tap(Key::Select);
     Tap(Key::Start);
-    Tap(Key::DPadDown);
+    Tap(Key::DPadDown); // お気に入り
+    Tap(Key::DPadDown); // 保持設定
     Tap(Key::A);
     Tap(Key::A); // トグルを全て保持: ON
     Frames(20);

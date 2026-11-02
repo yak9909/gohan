@@ -241,6 +241,7 @@ screen = [400, 240]
 "text.state.locked_off" = "固定中: 外すまでOFFのままです"
 "text.state.reorder" = "並べ替え中"
 "text.state.fixed_empty" = "固定している項目はありません"
+"text.state.favorites_empty" = "お気に入りはありません"
 "text.state.location" = "場所: " # 説明の窓の「場所」（お気に入りの中の項目。親の道筋を続ける）
 "text.location_top" = "一番上の一覧" # 最上位の項目の場所
 

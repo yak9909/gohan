@@ -2,19 +2,30 @@
 
 // 効果・実行・画面・ホットキーの発火・毎フレームの処理・排他。
 namespace gohan::menu {
+// 固定できる物（docs/design/menu-item-actions.md の 3.1）。ゲームの値は lockable、設定の値は次の起動に残せる数値・スライダー・選択・複数選択・
+// 値のトグル（persist が真。キーと設定画面の行は除く）、効果のトグルは次の起動に残せる状態・押下中。
 bool Engine::CanFix(u16 item) const {
-    if (!Has(item)) return false;
+    if (!Has(item) || InSettingsTree(item)) return false;
     const auto &d = defs_[item];
-    return (d.behavior == Behavior::Value && d.source == Source::Game && d.lockable) ||
-           (d.control == Control::Toggle && d.persist &&
-            (d.behavior == Behavior::State || d.behavior == Behavior::Hold));
+    if (d.behavior == Behavior::Value) {
+        if (d.source == Source::Game) return d.lockable;
+        return d.persist && (d.control == Control::Number || d.control == Control::Slider ||
+                             d.control == Control::Select || d.control == Control::Multiselect ||
+                             d.control == Control::Toggle);
+    }
+    return d.control == Control::Toggle && d.persist &&
+           (d.behavior == Behavior::State || d.behavior == Behavior::Hold);
 }
 
+// 版の数を増やす変化の対象（覚える物が変わる時）。固定した物・キーの項目・設定画面の行は覚える。
+// 固定していない設定の値は覚えない（次の起動では既定に戻るので、保存の中身は変わらない）。
+// 「トグルを全て保持」の時は、次の起動に残すトグルの ON を覚える。
 bool Engine::RemembersValue(u16 item) const {
     const auto &d = defs_[item];
-    return state_[item].fixed || (d.persist &&
-        (d.source == Source::Setting || (keep_toggles_ && d.control == Control::Toggle &&
-        (d.behavior == Behavior::State || d.behavior == Behavior::Hold))));
+    if (state_[item].fixed) return true;
+    if (!d.persist) return false;
+    if (d.control == Control::Key || InSettingsTree(item)) return true;
+    return keep_toggles_ && d.control == Control::Toggle && (d.behavior == Behavior::State || d.behavior == Behavior::Hold);
 }
 
 // トグルを全て保持。項目の値（設定画面の「トグルを全て保持」）と同じになるように、適用値も合わせる。
@@ -37,13 +48,13 @@ bool Engine::SetFavorite(u16 item, bool on) {
     if (on) {
         favorites_[favorite_count_++] = item;
     } else {
-        // 消す行の次（末尾なら手前）を、ID の大小によらず選ぶ。
+        // 消す行の次（末尾なら手前）を、ID の大小によらず選ぶ。一番上のお気に入りと設定画面のお気に入りは同じ。
         for (std::size_t level = 1; level <= depth_; ++level) {
-            if (stack_[level] != kFavoritesFolder || selection_[level] != item) continue;
-            u16 target = NextVisible(kFavoritesFolder, item);
+            const u16 list = stack_[level];
+            if (!IsFavoritesList(list) || selection_[level] != item) continue;
+            u16 target = NextVisible(list, item);
             if (target == kNoItem)
-                for (u16 i = FirstVisible(kFavoritesFolder); i != item && i != kNoItem;
-                     i = NextVisible(kFavoritesFolder, i)) target = i;
+                for (u16 i = FirstVisible(list); i != item && i != kNoItem; i = NextVisible(list, i)) target = i;
             selection_[level] = target;
         }
         std::size_t at = 0;
@@ -52,6 +63,8 @@ bool Engine::SetFavorite(u16 item, bool on) {
         --favorite_count_;
     }
     ++revision_;
+    // 設定画面のお気に入りで最後の 1 件を外したら、親へ戻り「お気に入り」の行を選ぶ（一番上は RestorePosition が寄せる）。
+    LeaveEmptyList(Folder());
     RestorePosition();
     Notice notice;
     NoticeItemAction(notice, on ? "お気に入りに追加" : "お気に入りから外す", defs_[item].label);
@@ -91,9 +104,11 @@ std::size_t Engine::Actions(u16 item, ItemAction *out) const {
     }
     add(IsFavorite(item) ? ActionKind::RemoveFavorite : ActionKind::AddFavorite,
         IsFavorite(item) ? "お気に入りから外す" : "お気に入りに追加", false);
-    const u16 first = FirstVisible(kFavoritesFolder);
-    if (Folder() == kFavoritesFolder && IsFavorite(item) && first != kNoItem &&
-        NextVisible(kFavoritesFolder, first) != kNoItem) add(ActionKind::Reorder, "並べ替え", false);
+    // 並べ替えは、お気に入りの中（一番上も設定画面も）で、2 件以上ある時だけ。
+    const u16 list = Folder();
+    const u16 first = FirstVisible(list);
+    if (IsFavoritesList(list) && IsFavorite(item) && first != kNoItem && NextVisible(list, first) != kNoItem)
+        add(ActionKind::Reorder, "並べ替え", false);
     if (d.control != Control::Folder && d.control != Control::Key) {
         add(ActionKind::SetHotkey, st.hotkey ? "ホットキーを変更" : "ホットキーを設定", Disabled(item));
         if (st.hotkey) add(ActionKind::RemoveHotkey, "ホットキーを外す", Disabled(item));
@@ -111,7 +126,10 @@ bool Engine::RunAction(u16 item, ActionKind kind, u32 now) {
     ui_ = {};
     switch (kind) {
     case ActionKind::Fix: return SetFixed(item, true, now);
-    case ActionKind::Unfix: return SetFixed(item, false, now);
+    // 固定中の項目の一覧で外すと、行が消えるので選択を動かす（お気に入りと同じ動き）。
+    case ActionKind::Unfix:
+        if (IsFixedList(Folder()) && Selected() == item) return RemoveFixedRow(item, now);
+        return SetFixed(item, false, now);
     case ActionKind::AddFavorite: return SetFavorite(item, true);
     case ActionKind::RemoveFavorite: return SetFavorite(item, false);
     case ActionKind::Reorder: ui_ = {UiKind::Reorder, item}; return true;

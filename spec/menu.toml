@@ -81,7 +81,7 @@ step       = 0.5
 source     = "setting"
 enabled_if = "sample.mode != 'マス単位'"
 
-# 値（ゲーム）: 開いた時に 1 回読み、適用で書く。固定できる。
+# 値（ゲーム）: 開いた時に 1 回読み、適用で書く。既定で固定できる（lockable = false で固定できなくする）。
 [[item.item.item]]
 id       = "sample.wallet"
 label    = "見本の所持金"
@@ -89,7 +89,6 @@ desc     = "見本の値です。ゲームの値のかわりに見本の変数�
 control  = "number"
 range    = [0, 99999]
 source   = "game"
-lockable = true
 
 # 開発用: 開発版だけに出る。
 [[item.item.item]]
@@ -106,13 +105,21 @@ label   = "設定"
 desc    = "メニュー全体の設定です。次の起動に残す物と、押し切るボタンを決めます。"
 control = "folder"
 
-# 仮のフォルダ: 固定中の項目を固定した順に並べる（行は元の項目。A で固定を外す）。
+# 仮のフォルダ: 固定中の項目を固定した順に並べる（行は元の項目。R で固定を外す）。
 [[settings.item]]
 id      = "settings.fixed"
 label   = "固定中の項目"
-desc    = "固定している項目の一覧です。A で固定を外せます。"
+desc    = "固定している項目の一覧です。R で固定を外せます。"
 control = "folder"
 list    = "fixed"
+
+# 仮のフォルダ: 一番上の一覧のお気に入りと同じ並びを共有する（行は元の項目。R で外す・並べ替え）。
+[[settings.item]]
+id      = "settings.favorites"
+label   = "お気に入り"
+desc    = "お気に入りの項目の一覧です。R で外す・並べ替えができます。"
+control = "folder"
+list    = "favorites"
 
 [[settings.item]]
 id      = "settings.keep"

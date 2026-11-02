@@ -41,12 +41,11 @@ class Panel {
     // root は道筋の先頭（設定画面の根。一覧の中は kNoItem で「GOHAN」）。
     void DrawHeading(Surface &surface, const Engine &engine, int menu_x, const u16 *path, int depth, int count, int selected_index, u16 root);
     void DrawRows(Surface &surface, const Engine &engine, int menu_x, u32 now);
-    // readonly は固定中の項目の中（編集できない行。選んでも ◀ ▶ を出さない）。
     void DrawRowLayer(Surface &surface, const Engine &engine, int menu_x, u32 now,
-                      const u16 *items, int count, float start, float selected, u16 selected_item, bool readonly);
+                      const u16 *items, int count, float start, float selected, u16 selected_item);
     // 並べ替えで持ち上げた行（帯・影・字・印）。行の層の最後に、ほかの行より上に描く（D.12.3）。
     void DrawLifted(Surface &surface, const Engine &engine, int menu_x, u32 now, float start, float selected_index);
-    void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now, bool readonly);
+    void DrawRow(Surface &surface, const Engine &engine, u16 item, int menu_x, int y, int offset, bool selected, float weight, u32 now);
     void DrawScrollBar(Surface &surface, int menu_x, u32 now);
     void DrawFooter(Surface &surface, const Engine &engine, int menu_x, bool dialog);
     void DrawHoldBar(Surface &surface, const Engine &engine, int menu_x, u32 now);
@@ -92,9 +91,6 @@ class Panel {
     bool settings_shown_ = false; // 前の同期で設定画面を出していたか（出入りの向きを決める）
     u16 root_ = kNoItem;
     u16 old_root_ = kNoItem;
-    // 固定中の項目の中か（行の矢印を出さない）。旧い側も覚える。
-    bool readonly_ = false;
-    bool old_readonly_ = false;
     // 並べ替えで持ち上げた行（選んでいる行で、並べ替えの間か下ろす動きの途中）と、持ち上げた量（画素）。
     u16 lifted_ = kNoItem;
     float lift_ = 0.f;

@@ -180,10 +180,18 @@ bool Decode(const u8 *data, std::size_t size, const ItemDef *defs, std::size_t c
                 kept |= kFixed | kValue;
                 r.value = NormalizeValue(d, value);
             }
-        } else if (d.behavior == Behavior::Value && d.persist && (fields & kValue)) {
-            // 設定の値（キーの項目を含む）。
-            kept |= kValue;
-            r.value = NormalizeValue(d, value);
+        } else if (d.behavior == Behavior::Value && d.persist) {
+            if (d.control == Control::Key) {
+                // キーの項目は、ホットキーと同じく持ち越す（固定はできない）。
+                if (fields & kValue) {
+                    kept |= kValue;
+                    r.value = NormalizeValue(d, value);
+                }
+            } else if ((fields & kFixed) && (fields & kValue)) {
+                // 設定の値は固定した物だけ。前の版が書いた kFixed の無い kValue は、固定していない物なので捨てる。
+                kept |= kFixed | kValue;
+                r.value = NormalizeValue(d, value);
+            }
         }
         if (kept & kOn) {
             // 同じ group の ON は 1 つだけ（最初に読んだ物を残す。排他の決まり）。
