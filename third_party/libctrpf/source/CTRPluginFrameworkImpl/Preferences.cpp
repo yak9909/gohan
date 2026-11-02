@@ -36,6 +36,8 @@ namespace CTRPluginFramework
     static GohanData::ReadFn    g_gohanReader = nullptr;
     static Mutex                g_fileLock;
     static const u32            g_gohanSectionVersion = 1;
+    // 直前の書き込みで gohan の欄が書けたか。g_fileLock の中でだけ読み書きする。
+    static bool                 g_lastSaveOk = true;
 
     // 今のファイルにある gohan の欄を読む（無ければ偽）
     static bool     ReadGohanSection(std::vector<u8> &section);
@@ -303,10 +305,12 @@ namespace CTRPluginFramework
         File    settings;
         int     mode = File::READ | File::WRITE | File::CREATE | File::TRUNCATE | File::SYNC;
         Header  header = { 0 };
+        bool    ok = false;
 
-        // 書き出し関数が未登録なら、既存の追加欄を保持して保存する。
+        // 既存の gohan の欄は、ファイルを TRUNCATE で開く前にいつも読む。
+        // 書き手が空を返した時（写しが無い・Busy の上限）は、この欄を残す。
         std::vector<u8>     preserved;
-        const bool          havePreserved = g_gohanWriter == nullptr && ReadGohanSection(preserved);
+        const bool          havePreserved = ReadGohanSection(preserved);
 
         std::copy(g_signature, g_signature + 8, header.sig);
         header.version = SETTINGS_VERSION;
@@ -326,30 +330,43 @@ namespace CTRPluginFramework
             PluginMenuImpl::WriteHotkeysToFile(header, settings);
 
             // gohan section: reserved[0] magic, [1] version, [2] offset, [3] size
-            if (g_gohanWriter != nullptr || havePreserved)
             {
                 std::vector<u8>     section;
+                bool                sectionOk = true;
 
                 if (g_gohanWriter != nullptr)
+                {
                     g_gohanWriter(section);
-                else
+                    // 正しい写しは見出しの 12 バイトを持つので、空は書けなかった（失敗）。
+                    sectionOk = !section.empty();
+                }
+                if (section.empty() && havePreserved)
                     section.swap(preserved);
-                header.reserved[0] = GohanData::Magic;
-                header.reserved[1] = g_gohanSectionVersion;
-                header.reserved[2] = static_cast<u32>(settings.Tell());
-                header.reserved[3] = static_cast<u32>(section.size());
-                if (!section.empty() && settings.Write(section.data(), section.size()) != 0)
-                    header.reserved[0] = 0;
+                if (!section.empty())
+                {
+                    header.reserved[0] = GohanData::Magic;
+                    header.reserved[1] = g_gohanSectionVersion;
+                    header.reserved[2] = static_cast<u32>(settings.Tell());
+                    header.reserved[3] = static_cast<u32>(section.size());
+                    if (settings.Write(section.data(), section.size()) != 0)
+                    {
+                        header.reserved[0] = 0;
+                        sectionOk = false;
+                    }
+                }
+
+                header.size = settings.Tell();
+
+                // 見出しは成否によらず必ず書き直す（CTRPF の欄の位置と大きさを残すため）。成否はその後でまとめる。
+                settings.Rewind();
+                const bool headerOk = settings.Write(&header, sizeof(Header)) == 0;
+                ok = sectionOk && headerOk;
             }
-
-            header.size = settings.Tell();
-
-            settings.Rewind();
-            settings.Write(&header, sizeof(Header));
         }
 
     error:
 
+        g_lastSaveOk = ok;
         PluginMenuActionReplay::SaveCodes();
         OSDImpl::DrawSaveIcon = false;
     }
@@ -392,9 +409,12 @@ namespace CTRPluginFramework
         return found;
     }
 
-    void    GohanData::Save(void)
+    bool    GohanData::Save(void)
     {
+        // 書き込みの結果は g_fileLock の中で受け渡す（同じ再帰 Mutex を入れ子で取る）。
+        Lock    lock(g_fileLock);
         Preferences::WriteSettings();
+        return g_lastSaveOk;
     }
 
     void    Preferences::ApplyBacklight(void)

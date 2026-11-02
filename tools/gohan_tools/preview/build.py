@@ -26,10 +26,13 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
     if screen != 'top':
         raise ValueError('CA2 のメニューは上画面だけに描きます')
     engine = [root / 'src/menu' / (name + '.cpp') for name in (
-        'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'engine_settings', 'engine_persist', 'persist', 'hotkey',
-        'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'action_list', 'reorder', 'shell', 'sample_items')]
+        'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'engine_settings', 'engine_persist', 'persist',
+        'persist_status', 'hotkey', 'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'action_list', 'reorder', 'shell',
+        'sample_items')]
+    # 次の起動に持ち越す物の保存の時機と写し（menu_screen の一部）。
+    save = [root / 'src/features/menu_screen' / (name + '.cpp') for name in ('persist_image', 'persist_policy')]
     sources = [root / 'tests/host/menu_preview.cpp', root / 'src/game/lyt/scene.cpp',
-               feature, root / 'src/ui/input/buttons.cpp',
+               feature, *save, root / 'src/ui/input/buttons.cpp',
                root / 'tests/host/input_hook_stub.cpp',
                *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format', 'input_block')],
                *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')),

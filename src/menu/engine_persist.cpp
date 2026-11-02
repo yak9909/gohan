@@ -42,7 +42,7 @@ void Engine::Capture(persist::Saved &out) const {
         if (!state_[i].fixed) AppendRecord(out, i);
 }
 
-// 項目の覚える欄を書く。覚える物が無ければ書かない。隠れている項目（開発版の項目を製品版で出している時）は書かない。
+// 項目の覚える欄を書く。覚える物が無ければ書かない。隠れている項目（開発版の項目を製品版で出していない時）は書かない。
 void Engine::AppendRecord(persist::Saved &out, u16 item) const {
     if (!Has(item) || out.count >= core::limits::MenuItems || InSettingsTree(item) || Hidden(item)) return;
     const ItemDef &d = defs_[item];
