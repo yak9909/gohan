@@ -281,18 +281,26 @@ using menu::Source;
 namespace key = menu::key;
 using menu::u16;
 using menu::u32;
+// 見本（gohan-56 の mock の kSettled）と同じ時刻。タイトルの背景は時刻で動くので、比べる絵はこの時刻で描く。
+constexpr u32 kSettledMs = 1000;
+// お気に入りの場面の描く時刻。カーソルの揺れは（時刻 % 800）が 400 未満の半分で止まるので、見本（1000 ms）と同じ揺れにそろえる。
+constexpr u32 kFavSettledMs = 2400;
 
+// 設定画面の項目（段 3）は、一覧の鎖（kPlayer から辿る next）の外に置く。一覧には出ない。
 enum : u16 {
     kPlayer, kWall, kStop, kSpeed, kRun, kMoney, kSavings, kWeather, kSpin, kPocket, kMap, kLoan, kTools,
-    kVillage, kHouse, kDisplay, kButtons, kCount
+    kVillage, kHouse, kDisplay, kButtons,
+    kSettings, kFixedList, kRetain, kKeepToggles, kKeepErase, kDefer, kCount
 };
 const char *const kWeatherOptions[] = {"晴れ", "雨", "雪", "曇り"};
 const char *const kButtonOptions[] = {"A", "B", "X", "Y", "START"};
 
 // 所持金を読めるか（操作のリストの灰色の見本だけ読めない）。場面ごとに Render の前に決める。
 bool g_money_readable = true;
-bool ReadMoney(menu::s32 *value) { *value = 48210; return g_money_readable; }
-bool ReadWeather(menu::s32 *value) { *value = 1; return true; }
+// ゲームの仮の値。一覧の場面は所持金 48210・天気は雨。設定画面の場面は見本と同じく所持金 99999・天気は晴れ（Render が戻す）。
+menu::s32 g_money_value = 48210, g_weather_value = 1;
+bool ReadMoney(menu::s32 *value) { *value = g_money_value; return g_money_readable; }
+bool ReadWeather(menu::s32 *value) { *value = g_weather_value; return true; }
 menu::Result WriteNothing(menu::s32) { return menu::Result::Ok; }
 
 ItemDef MakeRowItem(const char *label, const char *desc, Control control, Behavior behavior, Source source,
@@ -333,9 +341,28 @@ void DefineRowItems(ItemDef (&d)[kCount]) {
     d[kWeather].option_count = 4; d[kWeather].options = kWeatherOptions; d[kWeather].min = 0; d[kWeather].max = 3;
     d[kButtons].option_count = 5; d[kButtons].options = kButtonOptions;
     d[kButtons].min = 0; d[kButtons].max = 31; d[kButtons].def = 17; d[kButtons].persist = true;
+    // 設定画面（D.12.4・5 節）。文言と既定は spec/menu.toml の [[settings]] と同じ。
+    d[kSettings] = MakeRowItem("設定", "メニュー全体の設定です。次の起動に残す物と、押し切るボタンを決めます。", Control::Folder, Behavior::None, Source::None,
+                               none, kFixedList, none);
+    d[kFixedList] = MakeRowItem("固定中の項目", "固定している項目の一覧です。A で固定を外せます。", Control::Folder, Behavior::None, Source::None,
+                                kSettings, none, kRetain);
+    d[kFixedList].list = menu::ListKind::Fixed;
+    d[kRetain] = MakeRowItem("保持設定", "次の起動に残す物を決めます。", Control::Folder, Behavior::None, Source::None,
+                             kSettings, kKeepToggles, kDefer);
+    d[kKeepToggles] = MakeRowItem("トグルを全て保持", "ON にすると、ON のトグルを全て次の起動でも ON にします。押している間だけ動く物も入り、1 回だけ動く物は入りません。OFF の間は、固定したトグルだけを戻します。",
+                                  Control::Toggle, Behavior::Value, Source::Setting, kRetain, none, kKeepErase);
+    d[kKeepToggles].apply = menu::ApplyKind::Immediate;
+    d[kKeepErase] = MakeRowItem("保存を全て消す", "固定・お気に入り・ホットキー・設定の値・この画面の設定を全て最初に戻し、保存も消します。",
+                                Control::Action, Behavior::Trigger, Source::None, kRetain, none, none);
+    d[kKeepErase].confirm = menu::Confirm::Menu;
+    d[kDefer] = MakeRowItem("押し切るボタン", "選んだボタンは、押している間ゲームに渡さず、はなした時に 1 回だけ渡します。START+十字上 などのホットキーでゲームが動かないようにします。",
+                            Control::Multiselect, Behavior::Value, Source::Setting, kSettings, none, none);
+    d[kDefer].option_count = 5; d[kDefer].options = kButtonOptions;
+    d[kDefer].display = menu::DisplayKind::Buttons; d[kDefer].apply = menu::ApplyKind::Immediate;
+    d[kDefer].min = 0; d[kDefer].max = 31; d[kDefer].def = 16; d[kDefer].persist = true; // 既定は START だけ
 }
 
-// 所持金と天気だけは、ゲームの値を読めるようにする（固定と鍵の表示に要る）。
+// 所持金と天気だけは、ゲームの値を読めるようにする（固定と鍵の表示に要る）。設定画面の根も結ぶ。
 bool BindRowGameValues(Engine &engine) {
     menu::Bound money{};
     money.item = kMoney; money.behavior = Behavior::Value; money.source = Source::Game;
@@ -343,7 +370,11 @@ bool BindRowGameValues(Engine &engine) {
     menu::Bound weather{};
     weather.item = kWeather; weather.behavior = Behavior::Value; weather.source = Source::Game;
     weather.game.read = ReadWeather; weather.game.write = WriteNothing;
-    return engine.Bind(money) && engine.Bind(weather);
+    if (!engine.Bind(money) || !engine.Bind(weather)) return false;
+    Engine::SettingsItems items;
+    items.root = kSettings; items.erase = kKeepErase; items.keep = kKeepToggles; items.press_through = kDefer;
+    engine.BindSettings(items);
+    return true;
 }
 
 // 段 2b の見本（操作のリスト・通知・固定の見本）。製品の Engine と Shell を、時刻と押すボタンで進めて描く。
@@ -363,6 +394,13 @@ void Tick(menu::Shell &shell, u32 &now, u16 keys = 0) {
 }
 void Settle(menu::Shell &shell, u32 &now, u32 until) {
     while (now < until) Tick(shell, now);
+}
+// ちょうど until の時刻まで進める。タイトルの背景は時刻で動くので、見本（kSettled = 1000）と同じ時刻で描く。
+void SettleTo(menu::Shell &shell, u32 &now, u32 until) {
+    while (now + 16 < until) Tick(shell, now);
+    now = until;
+    menu::Input in;
+    shell.Step(now, in, false);
 }
 bool DrawShell(const std::filesystem::path &directory, int index, menu::Shell &shell, u32 now) {
     renderer::Canvas canvas;
@@ -461,7 +499,96 @@ bool Scene(const std::filesystem::path &directory, int index, const std::string 
             return DrawShell(directory, index, shell, 416 + offset);
         }
     }
-    Settle(shell, now, 1500);
+    // 下の帯の見本（bar-new）は見本と同じ時刻で描く。ほかは従来どおり 1500 ms。
+    if (name == "bar-new") SettleTo(shell, now, kSettledMs);
+    else Settle(shell, now, 1500);
+    return DrawShell(directory, index, shell, now);
+}
+
+// 設定画面（段 3・D.12.4・D.12.5）の見本の状態。固定中の項目は所持金・壁（ON・ホットキー付き）・天気の 3 件。
+// 押し切るボタンは A と START。ゲームの値は開いた時に読むので、固定はその後に付ける。
+bool SettingsState(Engine &engine, bool fixed) {
+    engine.SetValue(kWall, 1);
+    engine.SetHotkey(kWall, key::L | key::Up);
+    engine.Commit(kWall, 0);
+    engine.SetValue(kDefer, 16); // 既定は START だけ（ビット 4）
+    engine.Commit(kDefer, 0);
+    engine.Open(0);
+    if (!fixed) return true;
+    return engine.SetFixed(kMoney, true, 0) && engine.SetFixed(kWall, true, 0) && engine.SetFixed(kWeather, true, 0);
+}
+void Enter(Engine &engine, u16 folder) {
+    engine.Select(folder);
+    engine.Press(key::A, 0);
+}
+// 設定画面の場面。一覧から START で入った後の、行の選択・入る先・枠・確認を見本と同じに作る。
+bool SettingsScene(const std::filesystem::path &directory, int index, const std::string &name) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    // 固定中の項目の値（見本の設定画面と同じ）。
+    g_money_value = 99999;
+    g_weather_value = 0;
+    // 「今の枠」は、比べるための文字の箇条（今の製品の枠の見た目）。
+    if (name == "settings-defer-entry-now") defs[kDefer].display = menu::DisplayKind::Default;
+    g_money_readable = true;
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine) || !SettingsState(engine, name != "settings-fixed-empty")) return false;
+    if (!engine.OpenSettings(0)) return false;
+    const bool entry = name.rfind("settings-defer-entry", 0) == 0;
+    // 押し切るボタンは既定の START だけ。枠と押し切るボタンの行の場面だけ、A と START を選ぶ。
+    if (entry || name == "settings-defer") {
+        engine.SetValue(kDefer, 1 | 16);
+        engine.Commit(kDefer, 0);
+    }
+    u16 target = kFixedList;
+    if (name == "settings-fixed" || name == "settings-fixed-toggle") {
+        Enter(engine, kFixedList);
+        target = name == "settings-fixed" ? kMoney : kWall;
+    } else if (name == "settings-retain" || name == "settings-erase" || name == "settings-erase-confirm") {
+        Enter(engine, kRetain);
+        target = name == "settings-retain" ? kKeepToggles : kKeepErase;
+    } else if (name == "settings-defer" || entry) {
+        target = kDefer;
+    }
+    if (!engine.Select(target)) return false;
+    if (entry || name == "settings-erase-confirm") engine.Press(key::A, 0); // 押し切るボタンの枠・消す確認
+    Shell shell(engine, {});
+    u32 now = 0;
+    Tick(shell, now);
+    if (entry) {
+        // 枠の行を動かす: 2 つ下は X（空き）、4 つ下は START（選んだ物）。A は押さない。
+        const int downs = name == "settings-defer-entry" ? 2 : name == "settings-defer-entry-checked" ? 4 : 0;
+        for (int i = 0; i < downs; ++i) {
+            menu::Input down{}; down.held = key::Down;
+            shell.Step(now += 40, down, false);
+            shell.Step(now += 40, {}, false);
+        }
+    }
+    SettleTo(shell, now, kSettledMs);
+    return DrawShell(directory, index, shell, now);
+}
+// 一覧から START で設定画面へ入る途中の場面。START を押した時刻から ms 後の絵（開く動きは 200 ms・32 画素）。
+// 見本は「開く途中」の絵を kSettled（1000 ms）の時刻に描いているので、押す時刻を 1000 − ms にそろえる。
+bool EnterScene(const std::filesystem::path &directory, int index, u32 ms) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    g_money_readable = true;
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine) || !SettingsState(engine, true)) return false;
+    engine.Select(kPlayer);
+    engine.Press(key::A, 0);
+    engine.Select(kMoney);
+    Shell shell(engine, {});
+    u32 now = 0;
+    Tick(shell, now);
+    Settle(shell, now, 400);
+    SettleTo(shell, now, kSettledMs - ms - 16); // 一覧は十分に静止させてから、START を 1000 − ms に押す
+    menu::Input start{};
+    start.held = key::Start;
+    now = kSettledMs - ms;
+    shell.Step(now, start, false);
+    now = kSettledMs;
+    shell.Step(now, {}, false);
     return DrawShell(directory, index, shell, now);
 }
 
@@ -491,7 +618,7 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
     Tick(shell, now);
     Wait(shell, now, 400);
     if (name == "fav-inside") {
-        Wait(shell, now, 1100);
+        SettleTo(shell, now, kFavSettledMs);
         return DrawShell(directory, index, shell, now);
     }
     // R で操作のリストを開く（押した時刻から 2 フレーム。開く動きは 160 ms）。
@@ -507,13 +634,13 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
         }
     }
     if (name == "fav-inside-actions" || name == "fav-folder-actions") {
-        Wait(shell, now, 1100);
+        SettleTo(shell, now, kFavSettledMs);
         return DrawShell(directory, index, shell, now);
     }
     if (name == "fav-removed") {
         Tick(shell, now, key::A); // お気に入りから外す（天気）。選択は次の村へ。
         Tick(shell, now);
-        Wait(shell, now, 500);    // 通知は 500 ms 経った所を見る
+        SettleTo(shell, now, kFavSettledMs); // 通知は出た後の静止した所を見る（見本は 500 ms 経った所）
         return DrawShell(directory, index, shell, now);
     }
     // 並べ替え: A で持ち上げる（リストは閉じる）。
@@ -525,11 +652,17 @@ bool FavScene(const std::filesystem::path &directory, int index, const std::stri
         Tick(shell, now);
         Wait(shell, now, 300);
     }
-    Wait(shell, now, 500);
+    SettleTo(shell, now, kFavSettledMs);
     return DrawShell(directory, index, shell, now);
 }
 
 bool Render(const std::filesystem::path &directory, int index, const std::string &name) {
+    // 場面ごとに仮の値を既定へ戻す（設定画面の場面が、後の一覧の場面の値を変えないように）。
+    g_money_value = 48210;
+    g_weather_value = 1;
+    if (name == "settings-enter-060") return EnterScene(directory, index, 60);
+    if (name == "settings-enter-120") return EnterScene(directory, index, 120);
+    if (name.rfind("settings-", 0) == 0) return SettingsScene(directory, index, name);
     if (name == "fav-inside" || name == "fav-inside-actions" || name == "fav-folder-actions" || name == "fav-reorder" ||
         name == "fav-reorder-moved" || name == "fav-removed")
         return FavScene(directory, index, name);

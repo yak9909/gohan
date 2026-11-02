@@ -291,6 +291,13 @@ void Entry::DrawList(Surface &s, const Rect &b, float alpha) const {
             if (selected) s.Sprite(bx + 1, by + 1, on ? "check.solid" : "check.ring", Fade(ca::Color::Sel::Shadow, alpha));
             s.Sprite(bx, by, selected ? (on ? "check.on.sel" : "check.ring") : (on ? "check.on" : "check.off"),
                      Fade(0xFFFFFFFFu, alpha));
+            if (def_->display == DisplayKind::Buttons) {
+                // 押し切るボタンの選択肢は、字の代わりにボタンの印を並べる（D.12.4）。選んだ行は帯の色、そうでなければ紙の色。
+                FadedSurface faded(s, alpha);
+                KeyIcons(faded, b.x + ca::Entry::Check::Button[0], y + ca::Entry::Check::Button[1],
+                         ButtonKeyOf(def_->options[option]), selected);
+                continue;
+            }
             const int tx = b.x + ca::Entry::Check::Text[0], ty = y + ca::Entry::Check::Text[1];
             char trimmed[kLineBytes];
             Ink(s, tx, ty, Trim(s, def_->options[option], b.w - ca::Entry::Check::Text[0] - ca::Margin, trimmed, sizeof(trimmed)),

@@ -28,7 +28,22 @@ inline void Ink(Surface &s, int x, int y, std::string_view text, bool selected, 
                          shadow, numeric);
     s.Text(x, y, text, color, numeric);
 }
-// 組み合わせの印を、中央をそろえて並べる。
+// ボタン名（"A"・"Start" など。大文字小文字は問わない）のボタンのビット。ボタンでなければ 0。
+inline u16 ButtonKeyOf(const char *name) {
+    u16 bit = 0;
+    return ParseHotkey(name, bit) ? bit : 0;
+}
+// 1 つのボタンの印の幅（KeyIcons が描く幅と同じ）。START は 23、L・R は 13、ほかは 11。
+inline int KeyWidth(Surface &s, u16 bit) {
+    if (bit == key::Start) return ca::Part::KeyStart[0];
+    if (bit & (key::L | key::R)) return ca::Icon::Button::Shoulder[0];
+    if (bit & (key::ZL | key::ZR | key::Select)) {
+        char text[64]; FormatHotkey(bit, text, sizeof(text));
+        return s.Measure(text);
+    }
+    return ca::Icon::Button::Round[0];
+}
+// 組み合わせの印を、中央をそろえて並べる。START は印（23×11）で描き、先頭に置く（D.12.5）。
 inline int KeyIcons(Surface &s, int x, int y, u16 mask, bool bar = false) {
     constexpr u16 keys[] = {key::L, key::R, key::Up, key::Down, key::Left, key::Right, key::A, key::B, key::X, key::Y};
     constexpr const char *names[] = {"l", "r", "up", "down", "left", "right", "a", "b", "x", "y"};
@@ -40,6 +55,7 @@ inline int KeyIcons(Surface &s, int x, int y, u16 mask, bool bar = false) {
         if (x != start) { s.Sprite(x + gap, y + plusY, prefix + "plus"); x += ca::Icon::Plus[0] + 2 * gap; }
         s.Sprite(x, y, prefix + name); x += width;
     };
+    if (mask & key::Start) { icon("start", ca::Part::KeyStart[0]); mask &= ~key::Start; }
     if ((mask & (key::Up | key::Down)) == (key::Up | key::Down)) { icon("ud", ca::Icon::Dpad[0]); mask &= ~(key::Up | key::Down); }
     if ((mask & (key::Left | key::Right)) == (key::Left | key::Right)) { icon("lr", ca::Icon::Dpad[0]); mask &= ~(key::Left | key::Right); }
     for (unsigned n = 0; n < 10; ++n) if (mask & keys[n]) icon(names[n], n < 2 ? ca::Icon::Button::Shoulder[0] : ca::Icon::Button::Round[0]);

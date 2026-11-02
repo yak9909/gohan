@@ -48,6 +48,25 @@ class AuditSurface final : public RecordingSurface {
 
 int scenes = 0;
 
+namespace ca2 = gohan::core::design::ca2;
+// 予算（spec の budget.max と budget.folder。D.12.7）。単一の一覧の基準値は板・文字枠・記録（budget.max の 0・4・5）。
+const std::size_t kMaxRects = ca2::Budget::Max[0], kMaxTexts = ca2::Budget::Max[4], kMaxBytes = ca2::Budget::Max[5];
+const std::size_t kFolderRects = ca2::Budget::Folder[0], kFolderTexts = ca2::Budget::Folder[1], kFolderBytes = ca2::Budget::Folder[2];
+
+struct Measured {
+    std::size_t rects, texts, bytes;
+    int dropped, truncated;
+};
+// 今の場面を実際の Canvas へ描き、板・文字枠・記録と、捨てた指示・切った文字を数える。
+Measured Measure(Rig &rig) {
+    gohan::ui::renderer::Canvas canvas;
+    canvas.Begin(gohan::ui::renderer::Screen::Top);
+    gohan::features::menu_screen::CanvasSurface real(canvas, gohan::ui::renderer::Screen::Top);
+    rig.shell.Draw(real, rig.now);
+    const auto &d = canvas.Data().screens[0];
+    return {d.rectangles, d.texts, d.estimatedBytes, real.dropped(), real.truncated()};
+}
+
 void Audit(Rig &rig) {
     AuditSurface surface;
     rig.shell.Draw(surface, rig.now);
@@ -251,6 +270,56 @@ int main() {
             r.Frame();
         }
         std::printf("フォルダと7通知の重なり: 板=%zu 文字枠=%zu 記録=%zu\n", maxRects, maxTexts, maxBytes);
+    }
+    // 設定画面（D.12.7）。固定中の項目 3 件の設定画面は一覧と同じ基準値（spec の budget.max の 板・文字枠・記録）に収まり、
+    // 開く途中は切り替えの基準値（budget.folder）に収まる。押し切るボタンの枠（A と START を選んだ場面）も基準値の内。
+    // 測るのは実際の Canvas の数。捨てた指示と切った文字は 0。
+    {
+        sample::Get() = sample::State{};
+        Rig s(kMenuItems, kMenuItemCount);
+        assert(s.engine.BindAll(sample::kBindings, sample::kBindingCount));
+        s.engine.BindSettings({Idx(kSettingsRoot), Idx(MenuId::SettingsKeepErase), Idx(MenuId::SettingsKeepToggles),
+                               Idx(MenuId::SettingsPressThrough)});
+        s.Open();
+        assert(s.engine.SetFixed(Idx(MenuId::SampleHold), true, s.now));
+        assert(s.engine.SetFixed(Idx(MenuId::SampleFlag), true, s.now));
+        assert(s.engine.SetFixed(Idx(MenuId::SampleWallet), true, s.now));
+        // 開く途中の一覧は Sample の中の 7 行（一覧から START で入る。見本の 10 行に近い大きさ）。
+        assert(s.engine.Select(Idx(MenuId::Sample)));
+        s.Tap(key::A);
+        s.Advance(400);
+        // 開く途中（START を押してから約 64 ms・128 ms。開く動きは 200 ms）。
+        s.Hold(key::Start);
+        s.in.held = 0;
+        s.Advance(48);
+        const Measured enter60 = Measure(s);
+        s.Advance(64);
+        const Measured enter120 = Measure(s);
+        s.Advance(400);
+        const Measured settled = Measure(s);
+        std::printf("設定画面 / 開く途中 64 ms: 板=%zu 文字枠=%zu 記録=%zu 捨て=%d 切り=%d\n", enter60.rects, enter60.texts,
+                    enter60.bytes, enter60.dropped, enter60.truncated);
+        std::printf("設定画面 / 開く途中 128 ms: 板=%zu 文字枠=%zu 記録=%zu 捨て=%d 切り=%d\n", enter120.rects, enter120.texts,
+                    enter120.bytes, enter120.dropped, enter120.truncated);
+        std::printf("設定画面 / 静止: 板=%zu 文字枠=%zu 記録=%zu 捨て=%d 切り=%d\n", settled.rects, settled.texts, settled.bytes,
+                    settled.dropped, settled.truncated);
+        for (const Measured &m : {enter60, enter120})
+            assert(m.rects <= kFolderRects && m.texts <= kFolderTexts && m.bytes <= kFolderBytes && m.dropped == 0 && m.truncated == 0);
+        assert(settled.rects <= kMaxRects && settled.texts <= kMaxTexts && settled.bytes <= kMaxBytes &&
+               settled.dropped == 0 && settled.truncated == 0);
+        // 押し切るボタンの枠（A と START を選んだ場面）。
+        s.Advance(400);
+        assert(s.engine.Select(Idx(MenuId::SettingsPressThrough)));
+        s.engine.SetValue(Idx(MenuId::SettingsPressThrough), 1 | 16);
+        s.engine.Commit(Idx(MenuId::SettingsPressThrough), s.now);
+        s.Tap(key::A);
+        s.Advance(400);
+        assert(s.engine.Ui().kind == UiKind::CheckList);
+        const Measured check = Measure(s);
+        std::printf("押し切るボタンの枠（A と START）: 板=%zu 文字枠=%zu 記録=%zu 捨て=%d 切り=%d\n", check.rects, check.texts,
+                    check.bytes, check.dropped, check.truncated);
+        assert(check.rects <= kMaxRects && check.texts <= kMaxTexts && check.bytes <= kMaxBytes &&
+               check.dropped == 0 && check.truncated == 0);
     }
     // 狙いの場面が描かれたこと（描かれていない場面の文字は確かめられない）。
     for (const char *marker : {"GOHAN", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",

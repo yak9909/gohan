@@ -283,6 +283,229 @@ void StartWaitsForDialog() {
 }
 } // namespace
 
+// 描画の指示を種類と名前で探す（先頭の 1 つ）。
+const Command *FindCommand(const RecordingSurface &s, Command::Kind kind, const std::string &name) {
+    for (const Command &c : s.commands)
+        if (c.kind == kind && c.text == name) return &c;
+    return nullptr;
+}
+// 字の描画指示を、文字と位置で探す（影と本体を区別するため）。
+bool HasTextAt(const RecordingSurface &s, const std::string &text, int x, int y) {
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == text && c.bounds.x == x && c.bounds.y == y) return true;
+    return false;
+}
+// 字の描画指示を、文字と色で探す。
+bool HasTextWithColor(const RecordingSurface &s, const std::string &text, u32 color) {
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == text && c.color == color) return true;
+    return false;
+}
+// 下の帯の語（字の高さが帯の字の行にあるもの）。
+const Command *BarWord(const RecordingSurface &s, const std::string &word) {
+    namespace ca = gohan::core::design::ca2;
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == word && c.bounds.y == ca::Bar::Rect[1] + ca::Bar::Changed[1]) return &c;
+    return nullptr;
+}
+
+// 10. 固定中の項目の件数・0 件の行（D.12.4）。件数は「n件」で、0 件の時は灰色の帯で入れない。
+void FixedCountRows() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    OpenSettings(r);
+    // 0 件で開くと、固定中の項目（灰色）の行を選んでいる。件数は 0 件、説明の状態に理由。
+    RecordingSurface empty = r.Draw();
+    assert(empty.HasText("0件") && empty.HasText("固定している項目はありません") && empty.dropped == 0);
+    assert(FindCommand(empty, Command::Slice, "disband") != nullptr); // 選んだ灰色の行は帯を灰色に替える
+    // 0 件の行は見本（settings-fixed-empty）と同じ: 字に影を付けず、件数は通常の選択の影、指しは白。
+    namespace ca = gohan::core::design::ca2;
+    const int lx = ca::Row::X + ca::Row::Label[0], ly = ca::Row::Top + ca::Row::Label[1];
+    assert(HasTextAt(empty, "固定中の項目", lx, ly));
+    assert(!HasTextAt(empty, "固定中の項目", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1]));
+    assert(HasTextWithColor(empty, "0件", ca::Color::Sel::Shadow));
+    assert(FindCommand(empty, Command::Sprite, "chevron")->color == ca::Color::Sel::Text);
+    assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
+    assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), true, r.now));
+    r.Frame();
+    RecordingSurface two = r.Draw();
+    assert(two.HasText("2件") && !two.HasText("固定している項目はありません") && two.dropped == 0);
+    assert(FindCommand(two, Command::Slice, "disband") == nullptr);
+    // 件数は指しの左へ、設定の件数の画素の分だけ空けて置く（お気に入りの件数と同じ位置）。
+    // 選択中の行は影を先に描くので、本文は同じ字の最後の描画指示。
+    const Command *count = nullptr;
+    for (const Command &c : two.commands)
+        if (c.kind == Command::Text && c.text.find("2件") != std::string::npos) count = &c;
+    const Command *chevron = FindCommand(two, Command::Sprite, "chevron");
+    assert(count && chevron && count->bounds.x + count->bounds.w == chevron->bounds.x - ca::Settings::Count);
+}
+
+// 11. 固定中の項目の中の行: 鍵は付き、選んでも ◀ ▶ を出さない（D.12.4）。対照として、一覧の中の数値の行は矢印を出す。
+void FixedRowsHaveNoArrows() {
+    Rig c(kMenuItems, kMenuItemCount);
+    Prepare(c);
+    assert(c.engine.Select(Idx(MenuId::Sample)));
+    c.Tap(key::A);
+    c.Advance(400);
+    assert(c.engine.Select(Idx(MenuId::SampleValues)));
+    c.Tap(key::A);
+    c.Advance(400);
+    assert(c.engine.Select(Idx(MenuId::SampleWallet)));
+    c.Advance(400); // 選ぶ動きが終わってから描く（選んだ行の印と矢印は、動きの後に出る）
+    assert(c.Draw().HasSprite("arrow_l")); // 対照: 一覧の数値の行は左右で値が変わるので矢印を出す
+
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    assert(r.engine.SetFixed(Idx(MenuId::SampleWallet), true, r.now));
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFixed);
+    assert(r.engine.Folder() == Idx(MenuId::SettingsFixed) && r.engine.Select(Idx(MenuId::SampleWallet)));
+    r.Advance(400);
+    RecordingSurface s = r.Draw();
+    assert(s.HasSprite("lock") && !s.HasSprite("arrow_l") && !s.HasSprite("arrow_r") && s.dropped == 0);
+}
+
+// 12. 押し切るボタンの行の印（D.12.4）: 選んだボタンの印を右詰めで並べ、間を 2 画素空ける。
+//     右端は値の右端から 4 画素内側、印の y は行 + 1。1 つも無ければ「なし」。選んだ行は帯の色の印。
+void ButtonRowIcons() {
+    namespace ca = gohan::core::design::ca2;
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    OpenSettings(r);
+    const u16 row = Idx(MenuId::SettingsPressThrough);
+    const int edge = ca::Row::X + ca::Row::W + ca::Row::Value::Right + ca::Row::Value::Text[0]; // 印の右端（排他）
+    const int y = ca::Row::Top + 2 * ca::Row::Pitch + ca::Row::Buttons[1];                     // 押し切るボタンは 3 行目
+    // 既定は START だけ。印 1 つを右詰め（右端の START は 23 画素）。
+    RecordingSurface one = r.Draw();
+    const Command *start = FindCommand(one, Command::Sprite, "key.paper.start");
+    assert(start && start->bounds.x == edge - 23 && start->bounds.y == y && !one.HasText("なし"));
+    // 5 つ全部: A・B・X・Y・START を左から、間を空けて並べる。
+    assert(r.engine.SetValue(row, 31));
+    r.Frame();
+    RecordingSurface five = r.Draw();
+    const int a = edge - (11 * 4 + 23 + 2 * 4);
+    const char *names[] = {"key.paper.a", "key.paper.b", "key.paper.x", "key.paper.y", "key.paper.start"};
+    const int xs[] = {a, a + 13, a + 26, a + 39, a + 52};
+    for (int i = 0; i < 5; ++i) {
+        const Command *c = FindCommand(five, Command::Sprite, names[i]);
+        assert(c && c->bounds.x == xs[i] && c->bounds.y == y);
+    }
+    assert(five.dropped == 0);
+    // 1 つも無ければ「なし」。選んだ行の印は帯の色。
+    assert(r.engine.SetValue(row, 0));
+    assert(r.engine.Select(row));
+    r.Advance(400);
+    RecordingSurface none = r.Draw();
+    assert(none.HasText("なし") && none.dropped == 0 && !none.HasSprite("arrow_l") && !none.HasSprite("arrow_r")); // 選んでも ◀ ▶ は出さない
+    assert(r.engine.SetValue(row, 16));
+    r.Frame();
+    assert(r.Draw().HasSprite("key.bar.start") && !r.Draw().HasSprite("key.paper.start"));
+}
+
+// 13. 押し切るボタンの枠（D.12.4）: 字の代わりに印を並べる。選んだ行は帯の色、START は紙の色。字は出さない。
+void ButtonCheckListIcons() {
+    namespace ca = gohan::core::design::ca2;
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    OpenSettings(r);
+    assert(r.engine.Select(Idx(MenuId::SettingsPressThrough)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::CheckList);
+    RecordingSurface s = r.Draw();
+    const int x = 236 + ca::Entry::Check::Button[0];       // 窓の x から
+    const int top = 4 + ca::Entry::List::Top + ca::Entry::Check::Button[1];
+    const Command *a = FindCommand(s, Command::Sprite, "key.bar.a");
+    const Command *start = FindCommand(s, Command::Sprite, "key.paper.start");
+    assert(a && a->bounds.x == x && a->bounds.y == top);
+    assert(start && start->bounds.x == x && start->bounds.y == top + 4 * ca::Entry::List::Pitch);
+    assert(!s.HasText("Start") && !s.HasText("A") && s.HasText("決定") && s.HasText("取消") && s.dropped == 0);
+}
+
+// 14. 開閉の向き（D.12.4）: 一覧の深い所から START で開くと、設定画面は右から入り、一覧は左へ出る。
+//     閉じる時は逆。題は旧い側も旧い道筋（GOHAN）で描き、新しい側は「設定」。
+void SettingsDirection() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    assert(r.engine.Select(Idx(MenuId::Sample)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Select(Idx(MenuId::SampleValues)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 2);
+    r.Hold(key::Start);
+    const u32 press = r.now;
+    r.in.held = 0;
+    r.now = press + 60;
+    r.shell.Step(r.now, r.in, false);
+    assert(r.engine.InSettings());
+    RecordingSurface mid = r.Draw();
+    assert(mid.HasText("GOHAN") && mid.HasText("設定") && mid.dropped == 0);
+    const Command *entering = mid.FindText("固定中の項目");
+    r.Advance(400);
+    RecordingSurface rest = r.Draw();
+    const Command *settled = rest.FindText("固定中の項目");
+    assert(entering && settled && entering->bounds.x > settled->bounds.x); // 右から入る
+    assert(!rest.HasText("GOHAN"));
+
+    // 閉じる: 設定画面は右へ出て、一覧は左から戻る。
+    r.Hold(key::Start);
+    const u32 close = r.now;
+    r.in.held = 0;
+    r.now = close + 60;
+    r.shell.Step(r.now, r.in, false);
+    assert(!r.engine.InSettings() && r.engine.Depth() == 2);
+    RecordingSurface back = r.Draw();
+    const Command *returning = back.FindText("見本の所持金");
+    r.Advance(400);
+    RecordingSurface main = r.Draw();
+    const Command *main_rest = main.FindText("見本の所持金");
+    assert(returning && main_rest && returning->bounds.x < main_rest->bounds.x);
+}
+
+// 15. 下の帯の語の位置（D.12.5）。一覧の値の行は 25・65・97・137・177・217・257・309（START 設定まで）、n変更は 366。
+//     設定画面は A・B・START の 25・65・117 で、n変更は出さない。固定中の項目の中は A が「外す」。
+void BarWordPositions() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    // 数値の行（左右で値）を選ぶ。Sample > SampleValues の中にある。
+    assert(r.engine.Select(Idx(MenuId::Sample)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Select(Idx(MenuId::SampleValues)));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Select(Idx(MenuId::SampleAmount)) && r.engine.Depth() == 2);
+    r.Advance(400);
+    const RecordingSurface list = r.Draw();
+    const char *words[] = {"決定", "値", "戻る", "適用", "戻し", "キー", "操作", "設定"};
+    const int xs[] = {25, 65, 97, 137, 177, 217, 257, 309};
+    for (int i = 0; i < 8; ++i) {
+        const Command *c = BarWord(list, words[i]);
+        assert(c && c->bounds.x == xs[i]);
+    }
+    assert(list.FindText("変更") && list.FindText("変更")->bounds.x == 366);
+    OpenSettings(r);
+    assert(r.engine.Select(Idx(MenuId::SettingsKeep)));
+    r.Frame();
+    const RecordingSurface root = r.Draw();
+    assert(BarWord(root, "決定") && BarWord(root, "決定")->bounds.x == 25);
+    assert(BarWord(root, "戻る") && BarWord(root, "戻る")->bounds.x == 65);
+    assert(BarWord(root, "閉じる") && BarWord(root, "閉じる")->bounds.x == 117);
+    assert(!root.FindText("変更") && !root.HasText("値"));
+    // 固定中の項目の中: A は「外す」。下の帯は同じ 3 つの位置。
+    assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
+    EnterRow(r, MenuId::SettingsFixed);
+    assert(r.engine.Folder() == Idx(MenuId::SettingsFixed));
+    r.Frame();
+    const RecordingSurface fixed = r.Draw();
+    assert(BarWord(fixed, "外す") && BarWord(fixed, "外す")->bounds.x == 25);
+    assert(BarWord(fixed, "戻る") && BarWord(fixed, "戻る")->bounds.x == 65);
+    assert(BarWord(fixed, "閉じる") && BarWord(fixed, "閉じる")->bounds.x == 117);
+    assert(!fixed.HasText("決定") && !fixed.FindText("変更"));
+}
+
 int main() {
     OpenCloseAndPosition();
     FixedListRules();
@@ -293,6 +516,12 @@ int main() {
     PressThroughKeys();
     SettingsRowsAreNotListed();
     StartWaitsForDialog();
+    FixedCountRows();
+    FixedRowsHaveNoArrows();
+    ButtonRowIcons();
+    ButtonCheckListIcons();
+    SettingsDirection();
+    BarWordPositions();
     std::puts("menu settings: ok");
     return 0;
 }
