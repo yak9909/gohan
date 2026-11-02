@@ -53,6 +53,7 @@ struct Fake {
     static inline std::vector<std::uint8_t> gohanFile; // 設定ファイルの gohan の欄（空なら無い）
     static inline int gohanLoads = 0, gohanSaves = 0, sleeps = 0, taskStarts = 0;
     static inline bool saveFails = false; // 書き込みに失敗する（書き手の写しは作れても、欄は残す）
+    static inline void (*sleepHook)() = nullptr; // Sleep のたびに呼ぶ（待ちの間に別のスレッドが進むことを模す）
     static inline bool taskHold = false;  // 作業を予約だけして、RunHeldTask まで動かさない（作業のスレッドを模す）
     static inline std::shared_ptr<FakeTaskState> heldTask;
     // 読み込み（GohanData::Load）の入口で試験が呼ぶ。毎フレームの処理の登録より前かを確かめる。
@@ -99,6 +100,7 @@ constexpr Time Milliseconds(int amount) { return Time{amount}; }
 inline void Sleep(Time time) {
     Fake::nowMs += time.ms;
     ++Fake::sleeps;
+    if (Fake::sleepHook) Fake::sleepHook();
 }
 struct Clock {
     Time GetElapsedTime() const { return {Fake::nowMs}; }

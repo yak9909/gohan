@@ -11,4 +11,7 @@ bool RequestToggle();
 // 自前のメニューが使える間は、Select 単独を自前のメニューに譲る。Select+十字上は従来どおり CTRPF のメニューを開く。
 // 自前のメニューが使えない（毎フレームの処理か描画が導入されていない）間は常に true。
 bool ShouldOpenCtrpfMenu();
+// CTRPF の終了の合図のスレッドから呼ぶ。新しい保存の頼みを止め、動いている保存の作業を上限（約 1 秒）まで待つ。
+// ゲームを止めず、描画にも CTRPF の排他にも触らない。続く Shutdown は、ここで待った分を余計に待たない。
+void StopSavingForExit();
 } // namespace gohan::features::menu_screen

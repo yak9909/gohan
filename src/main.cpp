@@ -37,15 +37,12 @@ bool OpenCtrpfMenu() {
     return allow;
 }
 
-// 登録表のロック（WireAll の最中の終了など）を待つ上限（1 ms ずつ）。超えたら終了の処理は諦めて戻る。
-constexpr unsigned kShutdownLockAttempts = 3000;
-
-void SleepOneMs() { CTRPluginFramework::Sleep(CTRPluginFramework::Milliseconds(1)); }
-
-// CTRPF の終了の合図（PLG_ABOUT_TO_EXIT）のスレッドで動く。CTRPF が作業の管理と fs を閉じる前に、機能を止める。
-// ほかの合図（スリープ・HOME・入れ替え）では何もしない。2 回目の ShutdownAll は何もしない。
+// CTRPF の終了の合図（PLG_ABOUT_TO_EXIT）のスレッドで動く。CTRPF が作業の管理と fs を閉じる前に、保存の作業だけを書き切らせる。
+// features.ShutdownAll は呼ばない: ゲームのフックの Shutdown は Process::Pause（上限の無い WaitFramePaused）を通り、
+// 終了の途中でコマが止まっていると合図の返答まで届かなくなるおそれがある。ShutdownAll は menu.Run() の後だけ。
+// ほかの合図（スリープ・HOME・入れ替え）では何もしない。
 void OnProcessEvent(CTRPluginFramework::Process::Event event) {
-    if (event == CTRPluginFramework::Process::Event::EXIT) features.ShutdownAll(SleepOneMs, kShutdownLockAttempts);
+    if (event == CTRPluginFramework::Process::Event::EXIT) gohan::features::menu_screen::StopSavingForExit();
 }
 } // namespace
 
@@ -78,8 +75,7 @@ int main() {
 #endif
     features.WireAll();
     menu.Run();
-    // 保険。終了の合図で済んでいれば何もしない。
-    features.ShutdownAll(SleepOneMs, kShutdownLockAttempts);
+    features.ShutdownAll();
     return 0;
 }
 } // namespace CTRPluginFramework

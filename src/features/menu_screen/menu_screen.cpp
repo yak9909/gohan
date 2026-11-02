@@ -61,7 +61,7 @@ using CTRPluginFramework::Task;
 // Busy の上限（1 ms ずつ待つ）。CTRPF のメニューの間はゲームのスレッドが止まるので、上限で必ず戻る。
 constexpr unsigned kBusyAttempts = 100;
 // 終了の時に、動いている保存の作業が書き切るのを待つ上限（1 ms ずつ、約 1 秒）。ゲームの終了の直前の保存を落とさないため。
-// Busy の上限とは別。終了の合図で動くので、CTRPF が fs を閉じる前に戻る。作業が止まったままでも、ここで必ず戻る。
+// Busy の上限とは別。StopSavingForExit が終了の合図で待つので、CTRPF が fs を閉じる前に戻る。作業が止まったままでも、ここで必ず戻る。
 constexpr unsigned kSaveWaitAttempts = 1000;
 // 読み込みの検査（Wire の中）と写しの組み立て（毎フレームの処理）で使う。両方は重ならない（読み込みは登録より前）。
 menu::persist::Saved saved;
@@ -187,23 +187,32 @@ void FrameStep() {
     PublishDemand();
 }
 
-// 作業が終わるまで 1 ms ずつ、kSaveWaitAttempts まで待つ。終わったら真。作業が Scheduled のまま動かない時も、ここで必ず戻る。
-bool WaitTask() {
-    for (unsigned n = 0; n < kSaveWaitAttempts; ++n) {
+// 作業が終わるまで 1 ms ずつ、attempts 回まで待つ（1 回なら待たずに調べるだけ）。終わったら真。
+// 作業が Scheduled のまま動かない時も、ここで必ず戻る。
+bool WaitTask(unsigned attempts) {
+    for (unsigned n = 0; n < attempts; ++n) {
         const u32 status = save_task->Status();
         if (status == static_cast<u32>(Task::Idle) || status == static_cast<u32>(Task::Finished)) return true;
-        if (n + 1 < kSaveWaitAttempts) SleepOneMs();
+        if (n + 1 < attempts) SleepOneMs();
     }
     return false;
 }
 
+// StopSavingForExit の結果。後の StopSaving が、同じ待ちを繰り返さないために読む。
+core::Signal exit_tried;   // 門と作業の待ちを一通り試した
+core::Signal exit_gate;    // 門を取った（以後の毎フレームの処理は入らない）
+core::Signal exit_settled; // 動いている作業が無い（終わった）
+
 // 終了（7.3）: 新しい頼みは止める。毎フレームの保存の部分（kBusyAttempts）と動いている作業（kSaveWaitAttempts）は、上限まで待つ。
 // 作業が終わらなかった時は書き手を外さない（書き手を外すには CTRPF の排他を取るので、作業が中で止まっていると待つため）。
+// 終了の合図で StopSavingForExit が済んでいれば、その結果を使い、待ちは繰り返さない（調べるだけ）。
 void StopSaving() {
     Gate().RequestStop();
+    const unsigned gate_attempts = exit_tried.Get() ? 1 : kBusyAttempts;
+    const unsigned task_attempts = exit_tried.Get() ? 1 : kSaveWaitAttempts;
     // 取れたら戻さない（以後の毎フレームの処理は、TryEnter で入らない）。取れなくても、停止の要求で新しい頼みは出ない。
-    Gate().Acquire(SleepOneMs, kBusyAttempts);
-    if (save_task && !WaitTask()) return;
+    if (!exit_gate.Get()) Gate().Acquire(SleepOneMs, gate_attempts);
+    if (save_task && !exit_settled.Get() && !WaitTask(task_attempts)) return;
     GohanData::SetHandlers(nullptr, nullptr);
 }
 
@@ -256,6 +265,16 @@ const core::Feature feature{"menu.screen", Wire, Shutdown, core::ShutdownStage::
 const core::Feature &Feature() { return feature; }
 
 bool RequestToggle() { return toggle_request.TrySubmit(true); }
+
+void StopSavingForExit() {
+    if (exit_tried.Get()) return;
+    Gate().RequestStop();
+    // Wire が済んでいなければ、作業はまだ無い。停止の要求だけ置く（以後の保存の頼みは出ない）。後の Shutdown が待つ。
+    if (!running.Get()) return;
+    if (Gate().Acquire(SleepOneMs, kBusyAttempts)) exit_gate.Set();
+    if (WaitTask(kSaveWaitAttempts)) exit_settled.Set();
+    exit_tried.Set();
+}
 
 bool ShouldOpenCtrpfMenu() {
     // 読み手は CTRPF のメニューのスレッドだけ。

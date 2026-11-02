@@ -28,22 +28,10 @@ bool FeatureRegistry::WireAll() {
     return success;
 }
 
-bool FeatureRegistry::ShutdownAll(void (*sleep_ms)(), unsigned attempts) {
-    // 待ちは上限つき。終了の合図のスレッドは、他のスレッドが抱えたロックを回って待たない。
-    bool locked = false;
-    for (unsigned n = 0; n < attempts && !locked; ++n) {
-        locked = mutex_.TryLock();
-        if (!locked && n + 1 < attempts && sleep_ms)
-            sleep_ms();
-    }
-    if (!locked)
-        return false;
-    struct Unlock {
-        SpinMutex &mutex;
-        ~Unlock() { mutex.Unlock(); }
-    } unlock{mutex_};
+void FeatureRegistry::ShutdownAll() {
+    LockGuard lock(mutex_);
     if (stopped_)
-        return true;
+        return;
     stopped_ = true;
     // 同じ段は登録と逆の順。失敗した Wire は自分で原状に戻す契約。
     for (auto stage : {ShutdownStage::GameHooks, ShutdownStage::DrawHooks, ShutdownStage::Other}) {
@@ -54,6 +42,5 @@ bool FeatureRegistry::ShutdownAll(void (*sleep_ms)(), unsigned attempts) {
             }
         }
     }
-    return true;
 }
 } // namespace gohan::core

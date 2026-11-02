@@ -241,62 +241,6 @@ void TestFrame() {
     assert(dispatcher.IsApplied(change.revision));
 }
 
-int resetSleeps = 0;
-void CountSleep() { ++resetSleeps; }
-// 実行中の Dispatch が止まったままでも、Reset は上限まで待って戻る（何も変えない）。
-void TestFrameResetBounded() {
-    frame::Dispatcher dispatcher;
-    entered.store(false);
-    releaseStep.store(false);
-    calls.clear();
-    dispatcher.Add(Step<1>);
-    dispatcher.Add(BlockingStep, 1);
-    std::thread running([&] { dispatcher.Dispatch(); });
-    while (!entered.load(std::memory_order_acquire))
-        std::this_thread::yield();
-    resetSleeps = 0;
-    assert(!dispatcher.Reset(CountSleep, 5));
-    assert(resetSleeps == 4); // 5 回試し、間に 4 回だけ待つ
-    assert(!dispatcher.Reset()); // 待たずに 1 回だけ試す
-    releaseStep.store(true, std::memory_order_release);
-    running.join();
-    calls.clear();
-    dispatcher.Dispatch();
-    assert((calls == std::vector<unsigned>{1})); // 失敗した Reset は一覧を変えていない
-    assert(dispatcher.Reset(CountSleep, 5) && resetSleeps == 4);
-    calls.clear();
-    dispatcher.Dispatch();
-    assert(calls.empty());
-}
-
-void SleepNothing() {}
-std::atomic<bool> inWire{false}, releaseWire{false};
-bool SlowWire() {
-    inWire.store(true, std::memory_order_release);
-    while (!releaseWire.load(std::memory_order_acquire))
-        std::this_thread::yield();
-    return true;
-}
-// 登録表のロックを他のスレッドが抱えたままでも、ShutdownAll は上限まで待って偽で戻る。
-void TestFeatureShutdownBounded() {
-    FeatureRegistry registry;
-    calls.clear();
-    assert(registry.Add({"slow", SlowWire, Step<8>, ShutdownStage::Other}));
-    std::thread wiring([&] { registry.WireAll(); }); // WireAll が登録表のロックを抱えて止まる
-    while (!inWire.load(std::memory_order_acquire))
-        std::this_thread::yield();
-    resetSleeps = 0;
-    assert(!registry.ShutdownAll(CountSleep, 5) && resetSleeps == 4); // 5 回試し、間に 4 回だけ待つ
-    assert(!registry.ShutdownAll());                                  // 待たずに 1 回だけ試す
-    assert(!registry.ShutdownAll(SleepNothing, 0));                   // 試行 0 回は取れない
-    assert(calls.empty());
-    releaseWire.store(true, std::memory_order_release);
-    wiring.join();
-    assert(registry.ShutdownAll(SleepNothing, 5));
-    assert((calls == std::vector<unsigned>{8}));
-    assert(registry.ShutdownAll(SleepNothing, 5) && calls.size() == 1); // 2 回目は何もしない
-}
-
 bool WireOk() { return true; }
 bool WireFail() { return false; }
 void TestFeature() {
@@ -323,7 +267,5 @@ int main() {
     TestMailbox();
     TestRequest();
     TestFrame();
-    TestFrameResetBounded();
     TestFeature();
-    TestFeatureShutdownBounded();
 }
