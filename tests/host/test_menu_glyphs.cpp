@@ -321,10 +321,33 @@ int main() {
         assert(check.rects <= kMaxRects && check.texts <= kMaxTexts && check.bytes <= kMaxBytes &&
                check.dropped == 0 && check.truncated == 0);
     }
+    // 設定画面のお気に入り（段 5b・L4）: 0 件の説明（「お気に入りはありません」）と、中の一覧の下の帯（START 閉じる・n変更）。
+    // 字形の表と、捨てた指示・切った文字の検査は Audit で行う。
+    {
+        sample::Get() = sample::State{};
+        Rig s(kMenuItems, kMenuItemCount);
+        assert(s.engine.BindAll(sample::kBindings, sample::kBindingCount));
+        s.engine.BindSettings({Idx(kSettingsRoot), Idx(MenuId::SettingsKeepErase), Idx(MenuId::SettingsKeepToggles),
+                               Idx(MenuId::SettingsPressThrough)});
+        s.Open();
+        s.Tap(key::Start);
+        s.Advance(400);
+        assert(s.engine.InSettings() && s.engine.Select(Idx(MenuId::SettingsFavorites)));
+        s.Advance(400);
+        Audit(s); // 0 件: 灰色の行と説明「お気に入りはありません」
+        assert(s.engine.SetFavorite(Idx(MenuId::SampleFlag), true) && s.engine.SetFavorite(Idx(MenuId::SampleHold), true));
+        s.Advance(400);
+        Audit(s); // 2 件: 行の「2件」
+        s.Tap(key::A);
+        s.Advance(400);
+        assert(s.engine.Depth() == 1 && s.engine.Folder() == Idx(MenuId::SettingsFavorites));
+        s.Advance(400);
+        Audit(s); // 中の一覧: 下の帯は START 閉じる・n変更
+    }
     // 狙いの場面が描かれたこと（描かれていない場面の文字は確かめられない）。
     for (const char *marker : {"GOHAN", "待機", "予約", "OK", "起動中", "開く", "全適用", "全戻し", "---", "決定", "取消",
                                "ボタンを押す", "変更を適用しますか？", "を実行しますか？", "キャンセル",
-                               "を有効にしました", "を実行しました", "決定", "ホットキー"}) {
+                               "を有効にしました", "を実行しました", "決定", "ホットキー", "お気に入りはありません", "閉じる"}) {
         if (seen.find(marker) == std::string::npos) std::fprintf(stderr, "描かれていない場面: %s\n", marker);
         assert(seen.find(marker) != std::string::npos);
     }

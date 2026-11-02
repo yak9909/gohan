@@ -686,7 +686,9 @@ void TestFixed() {
     Engine &e = h->engine;
     const u16 wallet = Idx(MenuId::Wallet);
     e.Open(h->now);
-    assert(!e.SetFixed(Idx(MenuId::Weather), true, h->now)); // lockable でない項目は固定できない
+    // 固定できない項目: キーの項目と、実行のトグル。ゲームの選択（天気）は lockable の既定で固定できる。
+    assert(!e.SetFixed(Idx(MenuId::Keyc), true, h->now) && !e.SetFixed(Idx(MenuId::Once), true, h->now));
+    assert(e.SetFixed(Idx(MenuId::Weather), true, h->now) && e.SetFixed(Idx(MenuId::Weather), false, h->now));
     assert(e.SetFixed(wallet, true, h->now)); // 編集値を適用値にして 1 回書く
     assert(g.wallet_writes == 1 && e.State(wallet).fixed && e.View(wallet).locked);
     h->Frame();
@@ -1083,14 +1085,15 @@ void TestItemActionsTable() {
     auto h = Make();
     auto &e = h->engine;
     e.Open(h->now);
+    // 固定できる物（3.1）: 状態・押下中（persist）、ゲームの値（lockable は既定で真）、設定の数値・選択・複数選択（persist）。
     struct Case { MenuId id; bool fix; bool hotkey; };
     const Case cases[] = {
         {MenuId::Folder, false, false}, {MenuId::Plain, true, true},
         {MenuId::Move, true, true}, {MenuId::Once, false, true},
-        {MenuId::Wallet, true, true}, {MenuId::Weather, false, true},
-        {MenuId::Num, false, true}, {MenuId::Act, false, true},
+        {MenuId::Wallet, true, true}, {MenuId::Weather, true, true},
+        {MenuId::Num, true, true}, {MenuId::Act, false, true},
         {MenuId::EdA, false, true}, {MenuId::Keyc, false, false},
-        {MenuId::How, false, true}, {MenuId::Multi, false, true},
+        {MenuId::How, true, true}, {MenuId::Multi, true, true},
     };
     for (const auto &c : cases) {
         const auto item = Idx(c.id);
@@ -1116,10 +1119,11 @@ void TestItemActionsTable() {
     defs[Idx(MenuId::Num)].control = Control::Slider;
     auto custom = std::make_unique<Engine>(defs.data(), defs.size());
     ItemAction out[kMaxActions];
+    // persist が偽の状態・押下中は固定できない。数値（スライダーに替えた物）は persist が真のままなので固定できる。
     for (auto id : {MenuId::Plain, MenuId::Move, MenuId::Num}) {
         custom->Actions(Idx(id), out);
-        assert(out[0].kind == ActionKind::AddFavorite);
-        assert(!custom->SetFixed(Idx(id), true, 0));
+        assert(out[0].kind == ActionKind::AddFavorite || id == MenuId::Num);
+        assert(custom->SetFixed(Idx(id), true, 0) == (id == MenuId::Num));
     }
     assert(e.Actions(kFavoritesFolder, out) == 0 && e.Actions(kNoItem, out) == 0);
     assert(Is(e.Def(kFavoritesFolder).desc, "お気に入りに追加した項目を並べます。中の行の R で、外す・並べ替えができます。"));
@@ -1141,8 +1145,10 @@ void TestItemActionsTable() {
     assert(!e.RunAction(wallet, ActionKind::Fix, h->now));
     assert(!e.RunAction(wallet, ActionKind::RemoveHotkey, h->now));
     e.SetValue(Idx(MenuId::How), 1);
+    // 設定の値は固定できる（段 5b）。無効の間は「値を固定」が灰色で、お気に入りは使える。
     n = e.Actions(Idx(MenuId::Amount), out);
-    assert(n == 2 && !out[0].disabled && out[1].disabled);
+    assert(n == 3 && out[0].kind == ActionKind::Fix && out[0].disabled && out[1].kind == ActionKind::AddFavorite && !out[1].disabled);
+    assert(out[2].kind == ActionKind::SetHotkey && out[2].disabled);
     // enabled_if で無効のトグルでも固定解除とお気に入りは使える。
     defs[plain].cond = {Idx(MenuId::How), CondOp::Eq, 1};
     defs[plain].persist = true;
@@ -1305,7 +1311,8 @@ void TestFavoriteActionsAndResume() {
     e.Select(Idx(MenuId::Devx)); e.RequestClose(h->now);
     e.SetDevVisible(false); e.Open(h->now);
     assert(e.Folder() == kFavoritesFolder && e.Selected() == num);
-    assert(e.Actions(num, out) == 3); // 見える行が 1 件なら並べ替えを出さない
+    // 見える行が 1 件なら並べ替えを出さない（固定・お気に入りから外す・ホットキーの変更と外す）。
+    assert(e.Actions(num, out) == 4 && out[0].kind == ActionKind::Fix && out[1].kind == ActionKind::RemoveFavorite);
 }
 
 void TestFavoriteCapacity() {
@@ -1338,8 +1345,10 @@ void TestActionRequestsAndRevision() {
     assert(e.Revision() == before); // 固定も全保持もない ON は保存しない
     e.SetKeepToggles(true); const auto keeping = e.Revision();
     e.SetValue(plain, 0); e.Commit(plain, h->now); assert(e.Revision() == keeping + 1);
+    // 固定していない設定の値は、適用しても版の数を増やさない（起動のたびに既定へ戻るので、保存の中身は変わらない）。
     e.SetValue(num, 15); const auto setting = e.Revision(); e.Commit(num, h->now);
-    assert(e.Revision() == setting + 1);
+    assert(e.Revision() == setting);
+    assert(e.SetFixed(num, true, h->now) && e.Revision() == setting + 1); // 固定すると覚える
     h->Tap(key::Start); assert(e.Ui().kind == UiKind::Settings); e.CancelUi();
     h->Push(key::X); h->Push(key::X | key::R | key::Start);
     assert(e.Ui().kind == UiKind::None); h->Release(500);

@@ -69,7 +69,7 @@ bool Engine::Hidden(u16 item) const {
 bool Engine::Disabled(u16 item) const {
     if (item == kFavoritesFolder) return false;
     if (!Has(item)) return true;
-    if (IsFixedList(item)) return fixed_count_ == 0; // 固定中の項目が 1 つも無い時は灰色で入れない
+    if (ListOf(item) != ListKind::None) return ListCount(item) == 0; // 仮のフォルダは 0 件の時は灰色で入れない
     const ItemDef &d = defs_[item];
     if (d.source == Source::Game && !state_[item].available) return true;
     return !CondHolds(d.cond);
@@ -111,13 +111,35 @@ const ItemState &Engine::State(u16 item) const {
     return item == kFavoritesFolder ? empty : state_[item];
 }
 
-bool Engine::IsFixedList(u16 folder) const { return Has(folder) && defs_[folder].list == ListKind::Fixed; }
+ListKind Engine::ListOf(u16 folder) const {
+    if (folder == kFavoritesFolder) return ListKind::Favorites;
+    return Has(folder) ? defs_[folder].list : ListKind::None;
+}
 
-bool Engine::CanSelect(u16 item) const { return IsFixedList(item) || !Disabled(item); }
+std::size_t Engine::ListCount(u16 folder) const {
+    switch (ListOf(folder)) {
+    case ListKind::Fixed: return fixed_count_;
+    case ListKind::Favorites: return favorite_count_;
+    case ListKind::None: break;
+    }
+    return 0;
+}
+
+// 設定画面の中で、仮のフォルダ（固定中の項目・お気に入り）の外の行。その下の仮のフォルダの中は一覧と同じ扱い。
+bool Engine::InSettingsRows() const {
+    if (!in_settings_) return false;
+    return depth_ == 0 || ListOf(stack_[1]) == ListKind::None;
+}
+
+// 0 件の仮のフォルダも選べる（灰色で入れないだけ）。
+bool Engine::CanSelect(u16 item) const { return ListOf(item) != ListKind::None || !Disabled(item); }
 
 u16 Engine::FirstChild(u16 folder) const {
-    if (folder == kFavoritesFolder) return favorite_count_ ? favorites_[0] : kNoItem;
-    if (IsFixedList(folder)) return fixed_count_ ? fixed_order_[0] : kNoItem;
+    switch (ListOf(folder)) {
+    case ListKind::Favorites: return favorite_count_ ? favorites_[0] : kNoItem;
+    case ListKind::Fixed: return fixed_count_ ? fixed_order_[0] : kNoItem;
+    case ListKind::None: break;
+    }
     if (folder == kNoItem) {
         if (FirstVisible(kFavoritesFolder) != kNoItem) return kFavoritesFolder;
         return count_ ? 0 : kNoItem;
@@ -126,15 +148,16 @@ u16 Engine::FirstChild(u16 folder) const {
 }
 
 u16 Engine::NextChild(u16 folder, u16 item) const {
-    if (folder == kFavoritesFolder) {
+    switch (ListOf(folder)) {
+    case ListKind::Favorites:
         for (std::size_t n = 0; n + 1 < favorite_count_; ++n)
             if (favorites_[n] == item) return favorites_[n + 1];
         return kNoItem;
-    }
-    if (IsFixedList(folder)) {
+    case ListKind::Fixed:
         for (std::size_t n = 0; n + 1 < fixed_count_; ++n)
             if (fixed_order_[n] == item) return fixed_order_[n + 1];
         return kNoItem;
+    case ListKind::None: break;
     }
     if (folder == kNoItem && item == kFavoritesFolder) return count_ ? 0 : kNoItem;
     return Has(item) ? defs_[item].next : kNoItem;
@@ -281,7 +304,7 @@ void Engine::Activate(u16 item, u32 now) {
     const ItemDef &d = Def(item);
     if (d.control == Control::Folder) {
         if (depth_ + 1 >= timing::kMaxDepth) return;
-        if (IsFixedList(item) && fixed_count_ == 0) return; // 空の仮のフォルダには入らない
+        if (ListOf(item) != ListKind::None && ListCount(item) == 0) return; // 空の仮のフォルダには入らない
         ++depth_;
         stack_[depth_] = item;
         selection_[depth_] = FirstVisible(item);

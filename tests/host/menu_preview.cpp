@@ -290,7 +290,7 @@ constexpr u32 kFavSettledMs = 2400;
 enum : u16 {
     kPlayer, kWall, kStop, kSpeed, kRun, kMoney, kSavings, kWeather, kSpin, kPocket, kMap, kLoan, kTools,
     kVillage, kHouse, kDisplay, kButtons,
-    kSettings, kFixedList, kRetain, kKeepToggles, kKeepErase, kDefer, kCount
+    kSettings, kFixedList, kFavList, kRetain, kKeepToggles, kKeepErase, kDefer, kCount
 };
 const char *const kWeatherOptions[] = {"晴れ", "雨", "雪", "曇り"};
 const char *const kButtonOptions[] = {"A", "B", "X", "Y", "START"};
@@ -344,9 +344,13 @@ void DefineRowItems(ItemDef (&d)[kCount]) {
     // 設定画面（D.12.4・5 節）。文言と既定は spec/menu.toml の [[settings]] と同じ。
     d[kSettings] = MakeRowItem("設定", "メニュー全体の設定です。次の起動に残す物と、押し切るボタンを決めます。", Control::Folder, Behavior::None, Source::None,
                                none, kFixedList, none);
-    d[kFixedList] = MakeRowItem("固定中の項目", "固定している項目の一覧です。A で固定を外せます。", Control::Folder, Behavior::None, Source::None,
-                                kSettings, none, kRetain);
+    d[kFixedList] = MakeRowItem("固定中の項目", "固定している項目の一覧です。R で固定を外せます。", Control::Folder, Behavior::None, Source::None,
+                                kSettings, none, kFavList);
     d[kFixedList].list = menu::ListKind::Fixed;
+    // 設定画面の「お気に入り」（段 5b）。一番上のお気に入りと同じ並びを共有する。
+    d[kFavList] = MakeRowItem("お気に入り", "お気に入りの項目の一覧です。R で外す・並べ替えができます。", Control::Folder, Behavior::None, Source::None,
+                              kSettings, none, kRetain);
+    d[kFavList].list = menu::ListKind::Favorites;
     d[kRetain] = MakeRowItem("保持設定", "次の起動に残す物を決めます。", Control::Folder, Behavior::None, Source::None,
                              kSettings, kKeepToggles, kDefer);
     d[kKeepToggles] = MakeRowItem("トグルを全て保持", "ON にすると、ON のトグルを全て次の起動でも ON にします。押している間だけ動く物も入り、1 回だけ動く物は入りません。OFF の間は、固定したトグルだけを戻します。",
@@ -550,9 +554,21 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
         engine.Commit(kDefer, 0);
     }
     u16 target = kFixedList;
-    if (name == "settings-fixed" || name == "settings-fixed-toggle") {
+    if (name == "settings-fixed" || name == "settings-fixed-toggle" || name == "settings-fixed-bar" || name == "settings-fixed-select") {
         Enter(engine, kFixedList);
-        target = name == "settings-fixed" ? kMoney : kWall;
+        target = name == "settings-fixed" || name == "settings-fixed-bar" ? kMoney : name == "settings-fixed-select" ? kWeather : kWall;
+    } else if (name.rfind("settings-favorites", 0) == 0) {
+        // 設定画面の「お気に入り」（段 5b）: 0 件（灰色）・3 件（件数）・中の一覧（下の帯）・中の並べ替え。
+        // 一番上のお気に入りと同じ並びを、設定画面の行から入って見る。
+        if (name != "settings-favorites-empty") {
+            for (u16 item : {kWall, kMoney, kWeather})
+                if (!engine.SetFavorite(item, true)) return false;
+        }
+        target = kFavList;
+        if (name == "settings-favorites-inside" || name == "settings-favorites-reorder") {
+            Enter(engine, kFavList);
+            target = name == "settings-favorites-inside" ? kMoney : kWeather;
+        }
     } else if (name == "settings-retain" || name == "settings-erase" || name == "settings-erase-confirm" || name == "dialog-notice") {
         Enter(engine, kRetain);
         target = name == "settings-retain" ? kKeepToggles : kKeepErase;
@@ -563,6 +579,8 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
         target = kRetain;
     }
     if (!engine.Select(target)) return false;
+    // 並べ替えは選んだ行で要求する（要求の間は Select が効かないので、選んだ後に出す）。
+    if (name == "settings-favorites-reorder" && !engine.RunAction(kWeather, menu::ActionKind::Reorder, 0)) return false;
     if (entry || name == "settings-erase-confirm" || name == "dialog-notice") engine.Press(key::A, 0); // 押し切るボタンの枠・消す確認
     Shell shell(engine, {});
     // 通知の重なり（確認の窓・入力の枠の下に通知が来る場面）。5 件を 40 ms ずつ入れ、下から積んで窓の所まで重ねる。
@@ -585,6 +603,26 @@ bool SettingsScene(const std::filesystem::path &directory, int index, const std:
         }
     }
     SettleTo(shell, now, kSettledMs);
+    return DrawShell(directory, index, shell, now);
+}
+// 一覧の設定の値（所持金ではなく貯金。ゲームではない数値）の R の操作のリスト。段 5b: 設定の値も固定できるので「値を固定」が出る。
+bool ActionsSettingScene(const std::filesystem::path &directory, int index) {
+    ItemDef defs[kCount];
+    DefineRowItems(defs);
+    g_money_readable = true;
+    Engine engine(defs, kCount);
+    if (!BindRowGameValues(engine)) return false;
+    engine.Open(0);
+    engine.Select(kPlayer);
+    engine.Press(key::A, 0);
+    engine.Select(kSavings);
+    Shell shell(engine, {});
+    u32 now = 0;
+    Tick(shell, now);
+    Tick(shell, now, key::R);
+    Tick(shell, now);
+    Settle(shell, now, now + 200); // 開く動き（160 ms）が終わるまで
+    SettleTo(shell, now, kFavSettledMs);
     return DrawShell(directory, index, shell, now);
 }
 // 一覧から START で設定画面へ入る途中の場面。START を押した時刻から ms 後の絵（開く動きは 200 ms・32 画素）。
@@ -687,6 +725,7 @@ bool Render(const std::filesystem::path &directory, int index, const std::string
     if (name == "fav-inside" || name == "fav-inside-actions" || name == "fav-folder-actions" || name == "fav-reorder" ||
         name == "fav-reorder-moved" || name == "fav-removed")
         return FavScene(directory, index, name);
+    if (name == "actions-setting-value") return ActionsSettingScene(directory, index);
     if (name.rfind("actions-", 0) == 0 || name == "fixed-notice" || name == "fav-added-notice" ||
         name == "notice-long-name" || name == "lock-hold" || name == "bar-new" || name == "row-moving")
         return Scene(directory, index, name);

@@ -100,20 +100,28 @@ void Engine::LeaveSettings(u32 now) {
     RestorePosition();
 }
 
-// 固定中の項目の一覧の A: 固定を外す。行が消えるので、選択は次の行へ（最後の行なら前の行へ）。
-void Engine::RemoveFixedRow(u16 item, u32 now) {
+// 設定画面の仮のフォルダで行を外して空になったら、親へ戻り、その仮のフォルダの行を選ぶ（空のフォルダには残らない）。
+// 一番上のお気に入りは行ごと消えるので、ここでは何もしない（RestorePosition が先頭の行へ寄せる）。
+void Engine::LeaveEmptyList(u16 folder) {
+    if (folder == kFavoritesFolder || ListOf(folder) == ListKind::None || ListCount(folder) != 0 || depth_ == 0 ||
+        Folder() != folder)
+        return;
+    --depth_;
+    selection_[depth_] = folder;
+}
+
+// 固定中の項目の一覧の R「固定を外す」。行が消えるので、選択は次の行へ（最後の行なら前の行へ）。
+// 最後の 1 件を外したら、親へ戻り「固定中の項目」の行を選ぶ（お気に入りと同じ）。
+bool Engine::RemoveFixedRow(u16 item, u32 now) {
     const u16 folder = Folder();
-    if (!IsFixedList(folder) || Selected() != item) return;
     u16 target = NextVisible(folder, item);
     if (target == kNoItem)
         for (u16 i = FirstVisible(folder); i != item && i != kNoItem; i = NextVisible(folder, i)) target = i;
-    if (SetFixed(item, false, now)) selection_[depth_] = target;
-    // 最後の 1 件を外したら、一番上（親）へ戻り、「固定中の項目」の行を選んだままにする（空のフォルダには残らない）。
-    if (fixed_count_ == 0 && depth_ > 0) {
-        --depth_;
-        selection_[depth_] = folder;
-    }
+    if (!SetFixed(item, false, now)) return false;
+    selection_[depth_] = target;
+    LeaveEmptyList(folder);
     RestorePosition();
+    return true;
 }
 
 // 保存を全て消す: 固定・お気に入り・ホットキー・設定の値（設定画面の設定を含む）を最初に戻す。

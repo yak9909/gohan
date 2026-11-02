@@ -439,6 +439,150 @@ def test_worst_case_of_all_items_fits(tmp_path):
     assert len(items) == menu.MAX_ITEMS and menu.persist_size(items) == 12 + 192 * 74 <= menu.PERSIST_BYTES
 
 
+# ---- 固定できる物（docs/design/menu-item-actions.md の 3.1・11 節の決定 G）と、仮のフォルダ（お気に入り・固定中の項目） ----
+
+GAME_VALUE = '''
+[[item]]
+id = "g"
+label = "ゲーム"
+control = "number"
+range = [0, 9]
+source = "game"
+'''
+
+
+def test_game_values_are_lockable_by_default(tmp_path):
+    assert load(tmp_path, GAME_VALUE)[0].lockable is True
+    off = GAME_VALUE + 'lockable = false\n'
+    assert load(tmp_path, off)[0].lockable is False
+    assert menu.can_fix(load(tmp_path, GAME_VALUE)[0]) and not menu.can_fix(load(tmp_path, off)[0])
+
+
+def test_setting_values_are_not_lockable_by_default(tmp_path):
+    items = load(tmp_path, GOOD)
+    amount = items[3]
+    assert amount.source == 'setting' and amount.lockable is False
+    assert menu.can_fix(amount)  # 設定の値は次の起動に残せるので固定できる（既定の persist は真）
+
+
+def test_fixable_items_follow_the_engine_rules(tmp_path):
+    # 固定できる: 状態・押下中（persist）、設定の数値・選択・複数選択、ゲームの値（lockable）。
+    # 固定できない: 実行・画面・キー・設定画面の行・persist = false の物。
+    text = '''
+[[item]]
+id = "t"
+label = "T"
+control = "folder"
+  [[item.item]]
+  id = "t.state"
+  label = "状態"
+  control = "toggle"
+  behavior = "state"
+  [[item.item]]
+  id = "t.hold"
+  label = "押下中"
+  control = "toggle"
+  behavior = "hold"
+  [[item.item]]
+  id = "t.quiet"
+  label = "持ち越さない"
+  control = "toggle"
+  behavior = "state"
+  persist = false
+  [[item.item]]
+  id = "t.select"
+  label = "選択"
+  control = "select"
+  options = ["a", "b"]
+  [[item.item]]
+  id = "t.multi"
+  label = "複数"
+  control = "multiselect"
+  options = ["a"]
+  [[item.item]]
+  id = "t.slider"
+  label = "スライダー"
+  control = "slider"
+  range = [0, 9]
+  [[item.item]]
+  id = "t.quiet_value"
+  label = "持ち越さない値"
+  control = "number"
+  range = [0, 9]
+  persist = false
+  [[item.item]]
+  id = "t.key"
+  label = "キー"
+  control = "key"
+  [[item.item]]
+  id = "t.run"
+  label = "実行"
+  control = "action"
+  behavior = "trigger"
+  [[item.item]]
+  id = "t.screen"
+  label = "画面"
+  control = "action"
+  behavior = "mode"
+  [[item.item]]
+  id = "t.value"
+  label = "値のトグル"
+  control = "toggle"
+  behavior = "value"
+  [[item.item]]
+  id = "t.quiet_flag"
+  label = "持ち越さない値のトグル"
+  control = "toggle"
+  behavior = "value"
+  persist = false
+'''
+    items = load(tmp_path, text)
+    fixable = {i.id: menu.can_fix(i) for i in items if i.control != 'folder'}
+    assert fixable == {'t.state': True, 't.hold': True, 't.quiet': False, 't.select': True, 't.multi': True,
+                       't.slider': True, 't.quiet_value': False, 't.key': False, 't.run': False, 't.screen': False,
+                       't.value': True, 't.quiet_flag': False}
+
+
+def test_settings_rows_are_never_fixable(tmp_path):
+    path = tmp_path / 'menu.toml'
+    path.write_text(SETTINGS_GOOD, encoding='utf-8')
+    items = menu.load(path)
+    rows = {i.id: menu.can_fix(i) for i in items if i.settings and i.control != 'folder'}
+    assert rows == {'settings.keep.toggles': False, 'settings.keep.erase': False, 'settings.press': False}
+
+
+def test_docs_mark_the_fixable_items(tmp_path):
+    items = load(tmp_path, GAME_VALUE)
+    assert '固定できる' in menu.render_docs(items)
+    assert '固定できる' not in menu.render_docs(load(tmp_path, GAME_VALUE + 'lockable = false\n'))
+
+
+FAVORITES_SETTINGS = SETTINGS_GOOD.replace('  [[settings.item]]\n  id = "settings.keep"',
+                                           '  [[settings.item]]\n  id = "settings.favorites"\n  label = "お気に入り"\n'
+                                           '  control = "folder"\n  list = "favorites"\n  [[settings.item]]\n  id = "settings.keep"')
+
+
+def test_favorites_list_is_allowed_only_in_settings(tmp_path):
+    path = tmp_path / 'menu.toml'
+    path.write_text(FAVORITES_SETTINGS, encoding='utf-8')
+    items = menu.load(path)
+    favorites = next(i for i in items if i.id == 'settings.favorites')
+    assert favorites.list_kind == 'favorites' and favorites.settings and favorites.children == []
+    table = menu.render_table(items)
+    assert '.list = ListKind::Favorites' in table
+    assert 'お気に入り' in menu.render_docs(items) and '中身はお気に入り' in menu.render_docs(items)
+    # 一覧の中の仮のフォルダは書けない（設定画面の中だけ）。
+    for kind in ('favorites', 'fixed'):
+        outside = f'[[item]]\nid = "f"\nlabel = "F"\ncontrol = "folder"\nlist = "{kind}"\n'
+        assert 'list は設定画面の中のフォルダだけ' in error(tmp_path, outside)
+    assert 'list' in error(tmp_path, '[[item]]\nid = "f"\nlabel = "F"\ncontrol = "folder"\nlist = "unknown"\n')
+
+
+def test_favorites_list_cannot_have_children(tmp_path):
+    text = FAVORITES_SETTINGS.replace('  list = "favorites"\n', '  list = "favorites"\n  [[settings.item.item]]\n  id = "settings.favorites.x"\n  label = "X"\n  control = "toggle"\n  behavior = "state"\n', 1)
+    assert '子の項目' in error(tmp_path, text)
+
+
 # ---- 結び付けは、spec と合わないとコンパイルで止まる（ホストの C++ コンパイラがある時だけ） ----
 BIND_SPEC = '''
 [[item]]

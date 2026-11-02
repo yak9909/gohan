@@ -1,6 +1,7 @@
 // 設定画面（段 3）を、実際のエンジン・Shell で確かめる。
-// 開閉と位置（START・B・SELECT・同じ起動中の位置）、固定中の項目（順・A で外す・選択の寄せ・0 件は選べて入れない）、
-// 設定画面の中の X・L（効かない）、
+// 開閉と位置（START・B・SELECT・同じ起動中の位置）、固定中の項目（順・R で外す・A は決定・選択の寄せ・0 件は選べて入れない）、
+// 固定中の設定の値（左右・X で適用）、設定画面のお気に入り（0 件・並べ替えと外す・親へ戻る）、
+// 設定画面の行の中の X・L（効かない）、
 // トグルを全て保持（その場で効く・版の数）、保存を全て消す（既定はキャンセル・全部を戻す・効果は残す）、
 // 押し切るボタン（決定・既定・ボタンの対応）、設定画面の行の対象外、確認の中の START。
 #include "menu/paint.hpp"
@@ -75,8 +76,8 @@ void OpenCloseAndPosition() {
     assert(r.engine.Visible() && !r.engine.InSettings() && r.engine.Depth() == 0 && r.engine.Selected() == start);
 }
 
-// 2. 固定中の項目: 固定した順に並ぶ。行は元の項目で、左右・Y・R は効かない。A で外し、選択は次の行（最後なら前の行）。
-//    0 件の時は灰色で入れない。
+// 2. 固定中の項目: 固定した順に並ぶ。行は元の項目で、一覧と同じく A は決定（固定は外れない）・左右・X・L・Y・R が効く。
+//    外すのは R の「固定を外す」だけ。選択は次の行（最後なら前の行）。最後の 1 件を外したら親へ戻る。0 件の時は灰色で入れない。
 void FixedListRules() {
     Rig r(kMenuItems, kMenuItemCount);
     Prepare(r);
@@ -90,23 +91,53 @@ void FixedListRules() {
     u16 rows[8]{};
     assert(r.engine.Children(r.engine.Folder(), rows, 8) == 2 && rows[0] == Idx(MenuId::SampleHold) &&
            rows[1] == Idx(MenuId::SampleFlag));
-    r.Tap(key::Right);
-    r.Tap(key::Y);
-    r.Tap(key::R);
-    assert(r.engine.Ui().kind == UiKind::None && r.engine.Dialog() == DialogKind::None && r.engine.Depth() == 1);
-    // 最初の行を外す: 行が消え、選択は次の行（今は最後の行）。
+    // A は決定: トグルの ON/OFF を編集するだけで、固定は外れない（適用待ちは L で戻す）。
     assert(r.engine.Selected() == Idx(MenuId::SampleHold));
     r.Tap(key::A);
+    assert(r.engine.State(Idx(MenuId::SampleHold)).fixed && r.engine.FixedCount() == 2 && r.engine.Dirty(Idx(MenuId::SampleHold)));
+    // 適用待ちがある時に閉じようとすると、閉じる時の確認が出る（一覧と同じ）。B で取り消すと残る。
+    r.Tap(key::Select);
+    assert(r.engine.Dialog() == DialogKind::Close);
+    r.Tap(key::B);
+    assert(r.engine.Dialog() == DialogKind::None && r.engine.Visible() && r.engine.Dirty(Idx(MenuId::SampleHold)));
+    r.Tap(key::L);
+    assert(!r.engine.Dirty(Idx(MenuId::SampleHold)) && r.engine.State(Idx(MenuId::SampleHold)).fixed);
+    // Y は一覧と同じくホットキーの割り当てを開く（行は元の項目なので、普通の項目と同じ）。
+    r.Tap(key::Y);
+    assert(r.engine.Ui().kind == UiKind::Key && r.engine.Ui().item == Idx(MenuId::SampleHold));
+    r.Tap(key::Select); // キーの枠は SELECT で取り消す
+    assert(r.engine.Ui().kind == UiKind::None);
+    // R の「固定を外す」で外す: 行が消え、選択は次の行（今は最後の行）。
+    assert(r.engine.Selected() == Idx(MenuId::SampleHold));
+    r.Tap(key::R);
+    assert(r.engine.Ui().kind == UiKind::Actions);
+    r.Tap(key::A);
+    r.Advance(400);
     assert(r.engine.FixedCount() == 1 && !r.engine.State(Idx(MenuId::SampleHold)).fixed &&
            r.engine.Selected() == Idx(MenuId::SampleFlag));
-    // 最後の行を外す: 選択は前の行へ（残りは 1 つ）。
+    // 最後の行を外す: 並びは [SampleFlag, SampleHold] に戻す。最後の SampleHold を外すと、選択は前の SampleFlag へ。
     assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
     r.Tap(key::Down);
     assert(r.engine.Selected() == Idx(MenuId::SampleHold));
+    r.Tap(key::R);
     r.Tap(key::A);
-    assert(r.engine.FixedCount() == 1 && r.engine.Selected() == Idx(MenuId::SampleFlag));
+    r.Advance(400);
+    assert(r.engine.FixedCount() == 1 && !r.engine.State(Idx(MenuId::SampleHold)).fixed &&
+           r.engine.Selected() == Idx(MenuId::SampleFlag));
+    // 先頭の SampleFlag を外す（残りは SampleHold）: 選択は残った行へ。
+    assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
+    r.Tap(key::Down);
+    assert(r.engine.Selected() == Idx(MenuId::SampleHold));
+    r.Tap(key::Up);
+    assert(r.engine.Selected() == Idx(MenuId::SampleFlag));
+    r.Tap(key::R);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.FixedCount() == 1 && r.engine.Selected() == Idx(MenuId::SampleHold));
     // 残りを全て外すと、フォルダは灰色になり、入れない。一番上へ戻り、「固定中の項目」の行を選んだままにする。
+    r.Tap(key::R);
     r.Tap(key::A);
+    r.Advance(400);
     assert(r.engine.FixedCount() == 0 && r.engine.Depth() == 0 && r.engine.Folder() == Idx(kSettingsRoot));
     assert(r.engine.Selected() == Idx(MenuId::SettingsFixed) && r.engine.Disabled(Idx(MenuId::SettingsFixed)));
     assert(r.engine.Select(Idx(MenuId::SettingsFixed)));
@@ -119,6 +150,105 @@ void FixedListRules() {
     assert(r.Draw().HasText("固定している項目はありません"));
 }
 
+// 2d. 固定中の項目の中の設定の値: 左右で変わり、X で適用すると固定値が新しくなる（固定は外れない）。
+//     固定中の項目の中の数値は ◀ ▶ を出す（一覧と同じ）。
+void FixedSettingValueRules() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const auto amount = Idx(MenuId::SampleAmount);
+    assert(r.engine.SetFixed(amount, true, r.now));
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFixed);
+    assert(r.engine.Select(amount));
+    r.Advance(400);
+    assert(r.Draw().HasSprite("arrow_l") && r.Draw().HasSprite("arrow_r") && r.Draw().HasSprite("lock"));
+    const s32 before = r.engine.State(amount).value;
+    r.Tap(key::Right);
+    assert(r.engine.State(amount).value > before && r.engine.Dirty(amount) && r.engine.State(amount).fixed);
+    r.Tap(key::X);
+    assert(!r.engine.Dirty(amount) && r.engine.State(amount).fixed && r.engine.State(amount).fixed_value == r.engine.Applied(amount));
+    assert(r.engine.Applied(amount) > before);
+}
+
+// 2e. 設定画面のお気に入り（段 5b）: 0 件の時は灰色で入れず、件数は 0件・説明は「お気に入りはありません」。
+//     1 件以上なら、一番上のお気に入りと同じ並びを共有し、中で R の「お気に入りから外す」・「並べ替え」が効く。
+//     最後の 1 件を外したら親へ戻り、「お気に入り」の行を選ぶ。B で戻る。
+void SettingsFavoritesRules() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const auto flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold);
+    const auto favorites = Idx(MenuId::SettingsFavorites);
+    // 0 件: 灰色で入れない。選ぶことはできる。説明は「お気に入りはありません」。
+    OpenSettings(r);
+    assert(r.engine.Folder() == Idx(kSettingsRoot) && r.engine.Disabled(favorites));
+    assert(r.engine.Select(favorites)); // 灰色でもカーソルは置ける
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 0 && r.engine.Selected() == favorites);
+    r.Frame();
+    assert(r.Draw().HasText("お気に入りはありません") && r.Draw().HasText("0件"));
+    // 2 件にする。一番上のお気に入りと同じ並び（追加した順）。
+    assert(r.engine.SetFavorite(flag, true) && r.engine.SetFavorite(hold, true));
+    r.Frame();
+    assert(!r.engine.Disabled(favorites) && r.Draw().HasText("2件"));
+    assert(r.engine.Select(favorites));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 1 && r.engine.Folder() == favorites);
+    u16 rows[8]{};
+    assert(r.engine.Children(favorites, rows, 8) == 2 && rows[0] == flag && rows[1] == hold);
+    assert(r.Draw().HasText("設定 > お気に入り"));
+    // R の「お気に入りから外す」（hold は操作の 2 番目）: 選択は次の行。
+    assert(r.engine.Select(hold));
+    r.Tap(key::R);
+    r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.FavoriteCount() == 1 && !r.engine.IsFavorite(hold) && r.engine.Folder() == favorites);
+    // 最後の 1 件を外す: 親へ戻り、「お気に入り」の行を選ぶ（選択は今の行の動き）。
+    r.Tap(key::R);
+    r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.FavoriteCount() == 0 && r.engine.Depth() == 0 && r.engine.Selected() == favorites);
+    assert(r.engine.Disabled(favorites));
+    // 同じ起動中に閉じて開き直しても、空のお気に入りには入らない（崩れない）。
+    r.Tap(key::Start);
+    r.Advance(400);
+    OpenSettings(r);
+    assert(r.engine.Depth() == 0 && r.engine.Selected() == favorites);
+    // 1 件にして入り、B で親へ戻る。
+    assert(r.engine.SetFavorite(flag, true));
+    r.Frame();
+    assert(r.engine.Select(favorites));
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 1 && r.engine.Folder() == favorites);
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.InSettings() && r.engine.Depth() == 0 && r.engine.Folder() == Idx(kSettingsRoot));
+}
+
+// 2f. 固定中の項目の位置を、外から外しても崩れない（同じ起動中の位置は D.8）。
+void RememberedPositionSurvivesOutsideChanges() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
+    assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), true, r.now));
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFixed);
+    assert(r.engine.Select(Idx(MenuId::SampleFlag)));
+    r.Tap(key::Start);
+    r.Advance(400);
+    assert(!r.engine.InSettings());
+    assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), false, r.now)); // 一覧の外（ホットキーなど）で外す
+    OpenSettings(r);
+    assert(r.engine.InSettings() && r.engine.Depth() == 1 && r.engine.Folder() == Idx(MenuId::SettingsFixed));
+    assert(r.engine.Selected() == Idx(MenuId::SampleHold));
+    r.Frame();
+    assert(r.Draw().dropped == 0);
+}
+
 // 2b. 0 件の「固定中の項目」は灰色で入れないが、選べる行。0 件で初めて開くと先頭の行（固定中の項目）を選び、A では入らない。
 void EmptyFixedListIsSelectable() {
     Rig r(kMenuItems, kMenuItemCount);
@@ -129,8 +259,11 @@ void EmptyFixedListIsSelectable() {
     r.Tap(key::A);
     r.Advance(400);
     assert(r.engine.Depth() == 0 && r.engine.Selected() == Idx(MenuId::SettingsFixed));
+    r.Tap(key::Down); // 次は「お気に入り」（0 件でも選べる）
+    assert(r.engine.Selected() == Idx(MenuId::SettingsFavorites));
     r.Tap(key::Down);
     assert(r.engine.Selected() == Idx(MenuId::SettingsKeep));
+    r.Tap(key::Up);
     r.Tap(key::Up);
     assert(r.engine.Selected() == Idx(MenuId::SettingsFixed));
 }
@@ -317,6 +450,97 @@ void StartWaitsForDialog() {
     r.Advance(400);
     assert(!r.engine.InSettings() && r.engine.Visible());
 }
+// 2g. 設定画面のお気に入りの中の「並べ替え」（段 5b の採点の直し）: 上下と A で並びが変わり、一番上のお気に入りの並びも同じになる。
+//     B なら並びは変わらない（版の数も変わらない）。
+void SettingsFavoritesReorder() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const auto flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold), stamp = Idx(MenuId::SampleStamp);
+    assert(r.engine.SetFavorite(flag, true) && r.engine.SetFavorite(hold, true) && r.engine.SetFavorite(stamp, true));
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFavorites);
+    assert(r.engine.Folder() == Idx(MenuId::SettingsFavorites));
+    // hold の R の操作（OFFで固定・お気に入りから外す・並べ替え）: 「並べ替え」は 3 番目。
+    assert(r.engine.Select(hold));
+    r.Tap(key::R);
+    r.Tap(key::Down);
+    r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::Reorder);
+    // 上へ 1 つ（hold と flag を入れ替える）。A で決める。
+    r.Tap(key::Up);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::None);
+    assert(r.engine.FavoriteCount() == 3 && r.engine.FavoriteOrder()[0] == hold && r.engine.FavoriteOrder()[1] == flag &&
+           r.engine.FavoriteOrder()[2] == stamp);
+    // 一番上のお気に入りの並びも同じ（並びは共有）。
+    u16 top[8]{};
+    assert(r.engine.Children(gohan::menu::kFavoritesFolder, top, 8) == 3 && top[0] == hold && top[1] == flag && top[2] == stamp);
+    u16 inside[8]{};
+    assert(r.engine.Children(Idx(MenuId::SettingsFavorites), inside, 8) == 3 && inside[0] == hold && inside[2] == stamp);
+    // B で取り消す: flag を下へ動かしてから B。並びも版の数も変わらない。
+    const auto revision = r.engine.Revision();
+    assert(r.engine.Select(flag));
+    r.Tap(key::R);
+    r.Tap(key::Down);
+    r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::Reorder);
+    r.Tap(key::Down);
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.Ui().kind == UiKind::None);
+    assert(r.engine.FavoriteOrder()[0] == hold && r.engine.FavoriteOrder()[1] == flag && r.engine.FavoriteOrder()[2] == stamp);
+    assert(r.engine.Revision() == revision && r.engine.Folder() == Idx(MenuId::SettingsFavorites));
+}
+
+// 2h. 設定画面のお気に入りの中のフォルダ（段 5b の採点の直し）: 設定 > お気に入り > 見本の値 に入り、B で 設定 > お気に入り へ戻る。
+//     同じ起動中に閉じて開いても、深い所の位置を保つ。
+void SettingsFavoritesFolderPath() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const auto values = Idx(MenuId::SampleValues), amount = Idx(MenuId::SampleAmount), favorites = Idx(MenuId::SettingsFavorites);
+    assert(r.engine.SetFavorite(values, true));
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFavorites);
+    assert(r.engine.Depth() == 1 && r.engine.Folder() == favorites && r.engine.Selected() == values);
+    // 見本の値（フォルダ）に入る。道筋は 設定 > お気に入り > 見本の値。
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 2 && r.engine.Folder() == values);
+    assert(r.Draw().HasText("設定 > お気に入り > 見本の値"));
+    // 中の行を選んで、B で お気に入り へ戻る（道筋は 設定 > お気に入り）。
+    assert(r.engine.Select(amount));
+    r.Advance(400);
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.InSettings() && r.engine.Depth() == 1 && r.engine.Folder() == favorites);
+    assert(r.Draw().HasText("設定 > お気に入り") && !r.Draw().HasText("設定 > お気に入り > 見本の値"));
+    // もう一度入って、深い所（見本の値の中の金額）を選ぶ。
+    r.Tap(key::A);
+    r.Advance(400);
+    assert(r.engine.Depth() == 2 && r.engine.Folder() == values && r.engine.Select(amount));
+    // SELECT でメニューごと閉じて、開き直すと同じ行（同じ起動中の位置）。
+    r.Tap(key::Select);
+    assert(!r.engine.Visible());
+    r.Open();
+    assert(!r.engine.InSettings() && r.engine.Visible());
+    OpenSettings(r);
+    assert(r.engine.Depth() == 2 && r.engine.Folder() == values && r.engine.Selected() == amount);
+    // START で閉じて開き直しても、同じ位置。
+    r.Tap(key::Start);
+    r.Advance(400);
+    OpenSettings(r);
+    assert(r.engine.Depth() == 2 && r.engine.Folder() == values && r.engine.Selected() == amount);
+    // 空になったら、お気に入りの行へ寄せる（崩れない）。
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.SetFavorite(values, false) && r.engine.FavoriteCount() == 0);
+    assert(r.engine.Depth() == 0 && r.engine.Selected() == favorites && r.engine.Disabled(favorites));
+}
 } // namespace
 
 // 描画の指示を種類と名前で探す（先頭の 1 つ）。
@@ -387,7 +611,7 @@ void FixedCountRows() {
 }
 
 // 11. 固定中の項目の中の行: 鍵は付き、選んでも ◀ ▶ を出さない（D.12.4）。対照として、一覧の中の数値の行は矢印を出す。
-void FixedRowsHaveNoArrows() {
+void FixedRowsShowArrows() {
     Rig c(kMenuItems, kMenuItemCount);
     Prepare(c);
     assert(c.engine.Select(Idx(MenuId::Sample)));
@@ -403,12 +627,19 @@ void FixedRowsHaveNoArrows() {
     Rig r(kMenuItems, kMenuItemCount);
     Prepare(r);
     assert(r.engine.SetFixed(Idx(MenuId::SampleWallet), true, r.now));
+    assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), true, r.now));
     OpenSettings(r);
     EnterRow(r, MenuId::SettingsFixed);
     assert(r.engine.Folder() == Idx(MenuId::SettingsFixed) && r.engine.Select(Idx(MenuId::SampleWallet)));
     r.Advance(400);
     RecordingSurface s = r.Draw();
-    assert(s.HasSprite("lock") && !s.HasSprite("arrow_l") && !s.HasSprite("arrow_r") && s.dropped == 0);
+    // 固定中の数値は左右で値が変わるので、◀ ▶ を出す（段 5b の直し）。
+    assert(s.HasSprite("lock") && s.HasSprite("arrow_l") && s.HasSprite("arrow_r") && s.dropped == 0);
+    // 固定中のトグルは左右では変わらないので、選んでも矢印は出さない。
+    assert(r.engine.Select(Idx(MenuId::SampleFlag)));
+    r.Advance(400);
+    RecordingSurface toggle = r.Draw();
+    assert(toggle.HasSprite("lock") && !toggle.HasSprite("arrow_l") && !toggle.HasSprite("arrow_r") && toggle.dropped == 0);
 }
 
 // 12. 押し切るボタンの行の印（D.12.4）: 選んだボタンの印を右詰めで並べ、間を 2 画素空ける。
@@ -420,7 +651,7 @@ void ButtonRowIcons() {
     OpenSettings(r);
     const u16 row = Idx(MenuId::SettingsPressThrough);
     const int edge = ca::Row::X + ca::Row::W + ca::Row::Value::Right + ca::Row::Value::Text[0]; // 印の右端（排他）
-    const int y = ca::Row::Top + 2 * ca::Row::Pitch + ca::Row::Buttons[1];                     // 押し切るボタンは 3 行目
+    const int y = ca::Row::Top + 3 * ca::Row::Pitch + ca::Row::Buttons[1];                     // 押し切るボタンは 4 行目（固定中の項目・お気に入りの次）
     // 既定は START だけ。印 1 つを右詰め（右端の START は 23 画素）。
     RecordingSurface one = r.Draw();
     const Command *start = FindCommand(one, Command::Sprite, "key.paper.start");
@@ -545,16 +776,18 @@ void BarWordPositions() {
     assert(BarWord(root, "戻る") && BarWord(root, "戻る")->bounds.x == 65);
     assert(BarWord(root, "閉じる") && BarWord(root, "閉じる")->bounds.x == 117);
     assert(!root.FindText("変更") && !root.HasText("値"));
-    // 固定中の項目の中: A は「外す」。下の帯は同じ 3 つの位置。
+    // 固定中の項目の中: 一覧と同じ案内（A は決定・R は操作・START は閉じる）。n変更も出す（段 5b）。
+    // 閉じるは n変更と重ならない位置にある。
     assert(r.engine.SetFixed(Idx(MenuId::SampleHold), true, r.now));
     EnterRow(r, MenuId::SettingsFixed);
     assert(r.engine.Folder() == Idx(MenuId::SettingsFixed));
     r.Frame();
     const RecordingSurface fixed = r.Draw();
-    assert(BarWord(fixed, "外す") && BarWord(fixed, "外す")->bounds.x == 25);
-    assert(BarWord(fixed, "戻る") && BarWord(fixed, "戻る")->bounds.x == 65);
-    assert(BarWord(fixed, "閉じる") && BarWord(fixed, "閉じる")->bounds.x == 117);
-    assert(!fixed.HasText("決定") && !fixed.FindText("変更"));
+    assert(BarWord(fixed, "決定") && BarWord(fixed, "決定")->bounds.x == 25);
+    assert(BarWord(fixed, "戻る") && BarWord(fixed, "閉じる"));
+    assert(BarWord(fixed, "外す") == nullptr && fixed.FindText("変更")); // 下の帯に「外す」は出さない（説明の窓の「外すまで」とは別）
+    const Command *close = BarWord(fixed, "閉じる"), *changed = fixed.FindText("変更");
+    assert(close && changed && close->bounds.x + close->bounds.w < changed->bounds.x);
 }
 
 // 16. 段 3b の直し（D.12.4）: enabled_if で灰色になった普通のフォルダは、灰色の行と同じ字の影を付け、指しは灰色の行の色（ink）。
@@ -625,6 +858,9 @@ void DisabledFolderLooksLikeDisabledRow() {
 int main() {
     OpenCloseAndPosition();
     FixedListRules();
+    FixedSettingValueRules();
+    SettingsFavoritesRules();
+    RememberedPositionSurvivesOutsideChanges();
     EmptyFixedListIsSelectable();
     XAndLDoNothingInSettings();
     KeepToggles();
@@ -634,7 +870,9 @@ int main() {
     SettingsRowsAreNotListed();
     StartWaitsForDialog();
     FixedCountRows();
-    FixedRowsHaveNoArrows();
+    FixedRowsShowArrows();
+    SettingsFavoritesReorder();
+    SettingsFavoritesFolderPath();
     ButtonRowIcons();
     ButtonCheckListIcons();
     SettingsDirection();

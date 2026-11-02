@@ -112,10 +112,11 @@ void RoundTrip() {
     assert(e.SetValue(flag, 1) && e.Commit(flag, a.now) && sample::Get().flag);
     assert(e.SetFixed(flag, true, a.now));
     assert(e.SetValue(wallet, 77) && e.SetFixed(wallet, true, a.now) && sample::Get().wallet == 77);
-    // 持ち越す設定: トグルを全て保持（ON）・固定していない ON の押下中・量 7.0・方法（マス単位）・画面 A のホットキー・押し切る A と X。
+    // 持ち越す設定: トグルを全て保持（ON）・固定していない ON の押下中・量 7.0（固定する）・方法（マス単位。固定しないので持ち越さない）・画面 A のホットキー・押し切る A と X。
     assert(e.SetValue(keep, 1) && e.KeepToggles());
     assert(e.SetValue(hold, 1) && e.Commit(hold, a.now));
     assert(e.SetValue(amount, 70) && e.Commit(amount, a.now));
+    assert(e.SetFixed(amount, true, a.now) && e.State(amount).fixed_value == 70);
     assert(e.SetValue(mode, 1) && e.Commit(mode, a.now));
     assert(e.SetHotkey(editor, key::ZL) && e.Commit(editor, a.now));
     assert(e.SetValue(press, 5) && e.DeferKeys() == (key::A | key::X)); // 選択肢の番号 0 と 2（A と X）
@@ -128,8 +129,9 @@ void RoundTrip() {
     e.Capture(saved);
     assert(saved.keep_toggles && saved.press_keys == (key::A | key::X));
     // 固定の並びは記録の順。フラグ（固定の ON・お気に入り・ホットキー 0）→ 所持金（固定の値）。
-    assert(saved.count == 7);
-    assert(saved.records[0].item == flag && saved.records[1].item == wallet);
+    // 固定の並びは記録の順（フラグ・所持金・量）。続けて、固定していない物を項目の順（押下中・お気に入り・ホットキーの画面）。
+    assert(saved.count == 6);
+    assert(saved.records[0].item == flag && saved.records[1].item == wallet && saved.records[2].item == amount);
     const persist::Record *r = Find(saved, flag);
     assert(r && r->fields == (persist::kHotkey | persist::kFavorite | persist::kFixed | persist::kOn) && r->hotkey == 0 && r->order == 0);
     r = Find(saved, wallet);
@@ -140,12 +142,10 @@ void RoundTrip() {
     assert(r && r->fields == persist::kFavorite && r->order == 1);
     r = Find(saved, editor);
     assert(r && r->fields == persist::kHotkey && r->hotkey == key::ZL);
-    r = Find(saved, mode);
-    assert(r && r->fields == persist::kValue && r->value == 1);
-    r = Find(saved, amount);
-    assert(r && r->fields == persist::kValue && r->value == 70);
-    // 持ち越さない物は書かれない: 見本のフォルダ・設定画面の項目（押し切るボタンとトグルを全て保持はヘッダー）・既定のままの物。
-    assert(!Find(saved, Idx(MenuId::SampleValues)) && !Find(saved, keep) && !Find(saved, press));
+    r = Find(saved, amount); // 固定した設定の値は、固定の旗と値を書く（既定と同じでも書く）
+    assert(r && r->fields == (persist::kFixed | persist::kValue) && r->value == 70);
+    // 持ち越さない物は書かれない: 見本のフォルダ・設定画面の項目（押し切るボタンとトグルを全て保持はヘッダー）・固定していない設定の値（方法）・既定のままの物。
+    assert(!Find(saved, Idx(MenuId::SampleValues)) && !Find(saved, keep) && !Find(saved, press) && !Find(saved, mode));
     assert(!Find(saved, Idx(MenuId::SampleDevNote)));
 
     // 書いて、読んで、同じ物になる。
@@ -162,18 +162,19 @@ void RoundTrip() {
     assert(b.engine.RestoreWaiting() == 2);
     assert(b.engine.Revision() == 0); // 戻しでは版の数を増やさない
     assert(b.engine.KeepToggles() && b.engine.DeferKeys() == (key::A | key::X));
-    assert(b.engine.Applied(amount) == 70 && b.engine.Applied(mode) == 1 && b.engine.State(editor).hotkey == key::ZL);
+    assert(b.engine.Applied(amount) == 70 && b.engine.Applied(mode) == 0 && b.engine.State(editor).hotkey == key::ZL);
     assert(b.engine.Applied(hold) == 1 && b.engine.State(flag).hotkey == 0 && b.engine.State(flag).applied_hotkey == 0);
-    assert(b.engine.FixedCount() == 2 && b.engine.FixedOrder()[0] == flag && b.engine.FixedOrder()[1] == wallet);
+    assert(b.engine.FixedCount() == 3 && b.engine.FixedOrder()[0] == flag && b.engine.FixedOrder()[1] == wallet &&
+           b.engine.FixedOrder()[2] == amount && b.engine.State(amount).fixed);
     assert(b.engine.FavoriteCount() == 2 && b.engine.FavoriteOrder()[0] == flag && b.engine.FavoriteOrder()[1] == stamp);
     persist::Saved again;
     b.engine.Capture(again);
     assert(SameSaved(saved, again));
     b.Frame();
     assert(b.engine.RestoreWaiting() == 0 && sample::Get().flag && sample::Get().wallet == 77 && b.engine.Revision() == 0);
-    // 通知は 1 つ。戻した数は 3（フラグ・押下中・所持金）。効果の通知は出さない。
+    // 通知は 1 つ。戻した数は 4（フラグ・押下中・所持金・固定した量）。効果の通知は出さない。
     assert(b.sink.notices.size() == 1);
-    assert(Is(b.sink.notices[0].title, "前回の状態") && Is(b.sink.notices[0].message, "3 件を戻しました") && !b.sink.notices[0].red);
+    assert(Is(b.sink.notices[0].title, "前回の状態") && Is(b.sink.notices[0].message, "4 件を戻しました") && !b.sink.notices[0].red);
 }
 
 // 2. 持ち越さない物: ゲームの値は固定していなければ書かない（読めても書かない）。
@@ -183,6 +184,11 @@ void UnfixedGameValueIsNotWritten() {
     persist::Saved saved;
     f.engine.Capture(saved);
     assert(saved.count == 0 && !saved.keep_toggles && saved.press_keys == key::Start);
+    // 固定していない設定の値（適用した後でも）は書かない（段 5b。起動のたびに既定へ戻る）。
+    assert(f.engine.SetValue(Idx(MenuId::SampleAmount), 70) && f.engine.Commit(Idx(MenuId::SampleAmount), f.now));
+    assert(f.engine.SetValue(Idx(MenuId::SampleMode), 1) && f.engine.Commit(Idx(MenuId::SampleMode), f.now));
+    f.engine.Capture(saved);
+    assert(saved.count == 0);
 }
 
 // 3. 壊れた入力: 落ちず、既定か、その欄だけ捨てて読む。
@@ -203,15 +209,16 @@ void BrokenInputs() {
     // 空の入力（記録が無い）は読める。
     assert(Load(Header(0), saved) && saved.count == 0);
     // 記録の数が実際より多い（途中で切れた）時は、読めた分だけ残す。
+    // 設定の値は固定した物だけ（kFixed と kValue の両方）。
     Buffer short_count = Header(3);
-    Put(short_count, "sample.amount", persist::kValue, 70);
+    Put(short_count, "sample.amount", persist::kFixed | persist::kValue, 70);
     assert(Load(short_count, saved) && saved.count == 1 && saved.records[0].value == 70);
 
     // 鍵の長さが 0 と 65: その記録だけ捨て、次の記録は読む（欄の長さは読んでいるので、ずれない）。
     Buffer lengths = Header(3);
     PutRaw(lengths, 0, "", persist::kValue, 5);
     PutRaw(lengths, 65, std::string(65, 's'), persist::kValue, 6);
-    Put(lengths, "sample.amount", persist::kValue, 70);
+    Put(lengths, "sample.amount", persist::kFixed | persist::kValue, 70);
     assert(Load(lengths, saved) && saved.count == 1 && saved.records[0].item == Idx(MenuId::SampleAmount) && saved.records[0].value == 70);
 
     // 未知の鍵・種類の合わない欄・設定画面の物・フォルダのホットキー・値のないトリガー。
@@ -224,13 +231,14 @@ void BrokenInputs() {
     Put(kinds, "settings.press_through", persist::kValue, key::A);
     Put(kinds, "sample.wallet", persist::kValue, 5);                  // ゲームの値は固定していなければ持たない
     Put(kinds, "sample.hold", persist::kOn);                          // 固定していない ON は、トグルを全て保持が OFF なら持たない
+    Put(kinds, "sample.amount", persist::kValue, 1);                  // 固定の旗の無い設定の値は持たない（前の版の書き方。段 5b）
     assert(Load(kinds, saved) && saved.count == 1 && saved.records[0].item == Idx(MenuId::SampleFlag) &&
            saved.records[0].fields == persist::kFixed);
 
     // 範囲外の値は範囲に収める（SetValue と同じ）。見本の量は 0.1〜99.9（整数では 1〜999）、方法は 0〜1。
     Buffer ranges = Header(2);
-    Put(ranges, "sample.amount", persist::kValue, 9999);
-    Put(ranges, "sample.mode", persist::kValue, 9);
+    Put(ranges, "sample.amount", persist::kFixed | persist::kValue, 9999);
+    Put(ranges, "sample.mode", persist::kFixed | persist::kValue, 9);
     assert(Load(ranges, saved) && saved.count == 2 && saved.records[0].value == 999 && saved.records[1].value == 1);
 
     // 押し切るボタン: 選択肢に無いボタン（L）は捨てる。
@@ -249,8 +257,8 @@ void BrokenInputs() {
     assert(Find(saved, Idx(MenuId::SampleFlag))->hotkey == 0);
     // 同じ項目の 2 つ目の記録は捨てる（最初の物を残す）。
     Buffer twice = Header(2);
-    Put(twice, "sample.amount", persist::kValue, 70);
-    Put(twice, "sample.amount", persist::kValue, 60);
+    Put(twice, "sample.amount", persist::kFixed | persist::kValue, 70);
+    Put(twice, "sample.amount", persist::kFixed | persist::kValue, 60);
     assert(Load(twice, saved) && saved.count == 1 && saved.records[0].value == 70);
     // 2 つの記録が同じ物を指す時は、両方とも捨てる（順番に依らない）。
     Buffer same = Header(2);
@@ -274,7 +282,7 @@ void BrokenInputs() {
 // 4. 途中で切れた入力: どの長さで切っても落ちず、読めた物は正しい項目だけ。
 void TruncatedInputs() {
     Buffer whole = Header(4);
-    Put(whole, "sample.amount", persist::kValue, 70);
+    Put(whole, "sample.amount", persist::kFixed | persist::kValue, 70);
     Put(whole, "sample.flag", persist::kFixed | persist::kOn | persist::kHotkey, 0, key::L | key::Up);
     Put(whole, "sample.wallet", persist::kFixed | persist::kValue, 5);
     Put(whole, "sample.stamp", persist::kFavorite, 0, 0, 0);
@@ -597,7 +605,7 @@ void RestoreFailureIsCountedOnce() {
     assert(sink.notices.size() == 1);
 }
 
-// 数える物が無ければ通知は出さない（設定の値・ホットキー・お気に入りだけ）。OFF の固定は数えない（既定が ON の物も）。
+// 数える物が無ければ通知は出さない（固定していない設定の値・ホットキー・お気に入りだけ）。OFF の固定は数えない（既定が ON の物も）。
 void NoNoticeWithoutCountedItems() {
     Sink sink;
     Engine e(kMenuItems, kMenuItemCount);
@@ -607,11 +615,11 @@ void NoNoticeWithoutCountedItems() {
     e.SetNoticeSink({Collect, &sink});
     persist::Saved saved;
     saved.count = 3;
-    saved.records[0] = {Idx(MenuId::SampleAmount), persist::kValue, 70, 0, 0};
+    saved.records[0] = {Idx(MenuId::SampleAmount), persist::kValue, 70, 0, 0}; // 固定の旗の無い設定の値は、読まずに捨てる（既定のまま）
     saved.records[1] = {Idx(MenuId::SampleStamp), persist::kFavorite, 0, 0, 0};
     saved.records[2] = {Idx(MenuId::SampleFlag), persist::kFixed, 0, 0, 0}; // OFF の固定
     e.Restore(saved);
-    assert(e.RestoreWaiting() == 0 && e.Applied(Idx(MenuId::SampleAmount)) == 70 && e.FavoriteCount() == 1);
+    assert(e.RestoreWaiting() == 0 && e.Applied(Idx(MenuId::SampleAmount)) == e.Def(Idx(MenuId::SampleAmount)).def && e.FavoriteCount() == 1);
     assert(!e.EffectOn(Idx(MenuId::SampleFlag)) && e.Applied(Idx(MenuId::SampleFlag)) == 0 && g_calls == 0);
     u32 now = 1000;
     e.Frame(now += 16, 0);
@@ -695,12 +703,21 @@ void RevisionFollowsRememberedValues() {
     assert(e.SetHotkey(editor, key::ZL) && e.Revision() == r);
     assert(e.Commit(editor, f.now) && e.Revision() == r + 1);
     r = e.Revision();
-    // 設定の値: 編集だけでは増えない。適用で増える。
+    // 固定していない設定の値: 編集も適用も版の数を増やさない（起動のたびに既定へ戻るので、保存の中身は変わらない）。
     assert(e.SetValue(amount, 70) && e.Revision() == r);
+    assert(e.Commit(amount, f.now) && e.Revision() == r);
+    assert(e.SetValue(mode, 1) && e.Commit(mode, f.now) && e.Revision() == r);
+    assert(e.SetValue(mode, 0) && e.Commit(mode, f.now) && e.Revision() == r); // 量を有効に戻す（固定の条件）
+    // 固定した設定の値: 固定は増える。固定中の適用で固定値が変わるので増える（保存の中身が変わる）。
+    assert(e.SetFixed(amount, true, f.now) && e.Revision() == r + 1);
+    r = e.Revision();
+    assert(e.SetValue(amount, 60) && e.Revision() == r);
     assert(e.Commit(amount, f.now) && e.Revision() == r + 1);
     r = e.Revision();
-    assert(e.SetValue(mode, 1) && e.Commit(mode, f.now) && e.Revision() == r + 1);
+    assert(e.SetValue(mode, 1) && e.Commit(mode, f.now) && e.Revision() == r);
+    assert(e.SetFixed(amount, false, f.now) && e.Revision() == r + 1);
     r = e.Revision();
+    assert(e.SetValue(mode, 0) && e.Commit(mode, f.now) && e.Revision() == r);
     // 実行（覚えない）: 増えない。見本の実行は動く。
     assert(e.SetValue(Idx(MenuId::SampleStamp), 1) && e.Commit(Idx(MenuId::SampleStamp), f.now) && e.Revision() == r);
     assert(sample::Get().stamps == 1);
@@ -739,10 +756,206 @@ void RestoreDoesNotBumpRevision() {
     saved.keep_toggles = true;
     saved.press_keys = key::Start;
     saved.count = 1;
-    saved.records[0] = {Idx(MenuId::SampleAmount), persist::kValue, 70, 0, 0};
+    saved.records[0] = {Idx(MenuId::SampleAmount), persist::kFixed | persist::kValue, 70, 0, 0};
     f.engine.Restore(saved);
     f.Frame(4);
     assert(f.engine.Revision() == 0 && f.engine.Applied(Idx(MenuId::SampleAmount)) == 70 && f.engine.KeepToggles());
+}
+
+// 固定した設定の値は、既定と同じ値でも往復で固定のまま戻る（戻した数に数える）。固定を外して保存すると、次は何も書かない（既定）。
+void FixedDefaultValueRoundTrips() {
+    Fixture a;
+    Engine &e = a.engine;
+    const u16 amount = Idx(MenuId::SampleAmount);
+    const s32 def = e.Def(amount).def;
+    assert(e.SetFixed(amount, true, a.now) && e.State(amount).fixed_value == def);
+    persist::Saved saved;
+    e.Capture(saved);
+    assert(saved.count == 1 && saved.records[0].item == amount && saved.records[0].value == def &&
+           saved.records[0].fields == (persist::kFixed | persist::kValue));
+    Buffer buffer(core::limits::PersistBytes);
+    const std::size_t size = persist::Encode(saved, kMenuItems, kMenuItemCount, buffer.data(), buffer.size());
+    persist::Saved decoded;
+    assert(persist::Decode(buffer.data(), size, kMenuItems, kMenuItemCount, e.PersistRules(), decoded) && decoded.count == 1);
+    Fixture b;
+    b.engine.Restore(decoded);
+    assert(b.engine.FixedCount() == 1 && b.engine.State(amount).fixed && b.engine.RestoreWaiting() == 0 && b.engine.Applied(amount) == def);
+    b.Frame();
+    assert(b.sink.notices.size() == 1 && Is(b.sink.notices[0].message, "1 件を戻しました") && b.engine.Revision() == 0);
+    // 固定を外して保存すると、次は何も書かない（既定で始める）。
+    assert(e.SetFixed(amount, false, a.now));
+    persist::Saved none;
+    e.Capture(none);
+    assert(none.count == 0);
+}
+
+// ---- 値のトグル（設定の値のトグル。spec には無いので、ここの手書きの表で確かめる） ----
+int g_toggle_applied = 0, g_toggle_effect = 0;
+s32 g_toggle_last = -1;
+void ToggleApplied(s32 value) {
+    ++g_toggle_applied;
+    g_toggle_last = value;
+}
+Result ToggleEffect(bool) {
+    ++g_toggle_effect;
+    return Result::Ok;
+}
+// 値のトグル: 設定の値（Value・Setting）で、表示は ON/OFF。効果（Patch）は持たない。
+ItemDef ValueToggleDef(const char *key_name, s32 def, bool persist) {
+    ItemDef d{};
+    d.key = key_name;
+    d.label = key_name;
+    d.desc = "";
+    d.control = Control::Toggle;
+    d.behavior = Behavior::Value;
+    d.source = Source::Setting;
+    d.persist = persist;
+    d.def = def;
+    d.min = 0;
+    d.max = 1;
+    d.step = 1;
+    d.parent = kNoItem;
+    d.first_child = kNoItem;
+    d.next = kNoItem;
+    return d;
+}
+// 値のトグルを結ぶ: 適用された値は setting.applied へ届く。効果（patch）は、値のトグルでは呼ばれないことを確かめる。
+Bound ValueToggleBinding(u16 item) {
+    Bound bound{};
+    bound.item = item;
+    bound.behavior = Behavior::Value;
+    bound.source = Source::Setting;
+    bound.setting.applied = ToggleApplied;
+    bound.patch.set = ToggleEffect;
+    return bound;
+}
+
+// 値のトグルを固定して保存し、読み直すと固定のまま戻る。効果は呼ばない。固定を外して保存すると、次は既定。
+void ValueToggleFixedRoundTrip() {
+    ItemDef defs[2] = {ValueToggleDef("vt.lamp", 0, true), ValueToggleDef("vt.quiet", 0, false)};
+    Engine e(defs, 2);
+    assert(e.Bind(ValueToggleBinding(0)));
+    e.Open(1000);
+    g_toggle_applied = g_toggle_effect = 0;
+    // 編集して適用: 値は設定の変数へ届く（applied）。効果は呼ばない。
+    assert(e.SetValue(0, 1) && e.Commit(0, 1000));
+    assert(g_toggle_applied == 1 && g_toggle_last == 1 && g_toggle_effect == 0);
+    // 固定の言葉は今の ON/OFF（ON なら「ONで固定」）。固定すると、固定を外すに変わる。
+    ItemAction out[kMaxActions];
+    assert(e.Actions(0, out) >= 1 && out[0].kind == ActionKind::Fix && Is(out[0].label, "ONで固定") && !out[0].disabled);
+    assert(e.SetFixed(0, true, 1000) && e.State(0).fixed && e.FixedCount() == 1);
+    assert(e.Actions(0, out) >= 1 && out[0].kind == ActionKind::Unfix && Is(out[0].label, "固定を外す"));
+    assert(g_toggle_effect == 0);
+    // 次は固定中のまま保存する（固定の旗と、ON の値）。
+    persist::Saved saved;
+    e.Capture(saved);
+    assert(saved.count == 1 && saved.records[0].item == 0 && saved.records[0].value == 1 &&
+           saved.records[0].fields == (persist::kFixed | persist::kValue));
+    Buffer buffer(core::limits::PersistBytes);
+    const std::size_t size = persist::Encode(saved, defs, 2, buffer.data(), buffer.size());
+    assert(size > 0);
+    persist::Saved decoded;
+    assert(persist::Decode(buffer.data(), size, defs, 2, persist::Rules{}, decoded) && decoded.count == 1);
+    // 読み直す: 固定のまま、ON で戻り、設定の変数へ届く。待つ物は無く、戻した数に 1 つ数えて通知は 1 つ。効果は呼ばない。
+    Engine b(defs, 2);
+    Sink sink;
+    b.SetNoticeSink({Collect, &sink});
+    assert(b.Bind(ValueToggleBinding(0)));
+    g_toggle_applied = g_toggle_effect = 0;
+    b.Restore(decoded);
+    assert(b.State(0).fixed && b.Applied(0) == 1 && b.FixedCount() == 1 && b.RestoreWaiting() == 0);
+    assert(g_toggle_applied == 1 && g_toggle_last == 1 && g_toggle_effect == 0);
+    b.Open(1000);
+    b.Frame(1016, 0);
+    assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "1 件を戻しました") && g_toggle_effect == 0);
+    // 固定しない値のトグル（persist が偽）は、固定できない。
+    assert(!e.SetFixed(1, true, 1000) && !e.State(1).fixed);
+    // 固定を外して保存すると、次は何も書かない（既定の OFF で始める）。
+    assert(e.SetFixed(0, false, 1000));
+    persist::Saved none;
+    e.Capture(none);
+    assert(none.count == 0);
+    Engine c(defs, 2);
+    assert(c.Bind(ValueToggleBinding(0)));
+    c.Open(1000);
+    assert(c.Applied(0) == 0 && !c.State(0).fixed);
+}
+
+// 既定と同じ値（OFF）で固定した値のトグルも、往復で固定のまま戻る（既定と同じでも書く）。
+void ValueToggleAtDefaultRoundTrip() {
+    ItemDef defs[1] = {ValueToggleDef("vt.lamp", 0, true)};
+    Engine e(defs, 1);
+    assert(e.Bind(ValueToggleBinding(0)));
+    e.Open(1000);
+    g_toggle_applied = 0;
+    assert(e.SetFixed(0, true, 1000) && e.Applied(0) == 0 && g_toggle_applied == 1 && g_toggle_last == 0);
+    persist::Saved saved;
+    e.Capture(saved);
+    assert(saved.count == 1 && saved.records[0].fields == (persist::kFixed | persist::kValue) && saved.records[0].value == 0);
+    Buffer buffer(core::limits::PersistBytes);
+    const std::size_t size = persist::Encode(saved, defs, 1, buffer.data(), buffer.size());
+    persist::Saved decoded;
+    assert(persist::Decode(buffer.data(), size, defs, 1, persist::Rules{}, decoded) && decoded.count == 1);
+    Engine b(defs, 1);
+    assert(b.Bind(ValueToggleBinding(0)));
+    b.Restore(decoded);
+    assert(b.State(0).fixed && b.Applied(0) == 0 && b.RestoreWaiting() == 0);
+}
+
+// ---- キーの項目（ホットキーと同じく、固定しなくても持ち越す。既定と同じなら書かない）。手書きの表 ----
+ItemDef KeyDef(const char *key_name, s32 def) {
+    ItemDef d{};
+    d.key = key_name;
+    d.label = key_name;
+    d.desc = "";
+    d.control = Control::Key;
+    d.behavior = Behavior::Value;
+    d.source = Source::Setting;
+    d.persist = true;
+    d.def = def;
+    d.min = 0;
+    d.max = 0x3FFF;
+    d.step = 1;
+    d.parent = kNoItem;
+    d.first_child = kNoItem;
+    d.next = kNoItem;
+    return d;
+}
+
+void KeyItemsRoundTripWithoutFixing() {
+    ItemDef defs[2] = {KeyDef("kb.jump", key::A), KeyDef("kb.dash", key::B)};
+    Engine e(defs, 2);
+    e.Open(1000);
+    const u32 revision = e.Revision();
+    // 既定と違う値を適用すると、覚える物として版の数が増える（固定はしていない）。
+    assert(e.SetValue(0, key::X) && e.Commit(0, 1000));
+    assert(e.Revision() == revision + 1 && !e.State(0).fixed && e.Applied(0) == key::X);
+    // 既定と同じ値は書かない。
+    assert(e.SetValue(1, key::B));
+    e.Commit(1, 1000); // 変わらない: 適用しても何も変わらない
+    assert(e.Applied(1) == key::B);
+    persist::Saved saved;
+    e.Capture(saved);
+    assert(saved.count == 1 && saved.records[0].item == 0 && saved.records[0].fields == persist::kValue &&
+           saved.records[0].value == key::X);
+    Buffer buffer(core::limits::PersistBytes);
+    const std::size_t size = persist::Encode(saved, defs, 2, buffer.data(), buffer.size());
+    persist::Saved decoded;
+    assert(persist::Decode(buffer.data(), size, defs, 2, persist::Rules{}, decoded) && decoded.count == 1);
+    // 読み直す: 固定していなくても値が残る。戻すのは待たず、数えない（通知は出ない）。
+    Engine b(defs, 2);
+    Sink sink;
+    b.SetNoticeSink({Collect, &sink});
+    b.Restore(decoded);
+    assert(b.Applied(0) == key::X && b.Applied(1) == key::B && b.RestoreWaiting() == 0 && b.Revision() == 0);
+    b.Open(1000);
+    b.Frame(1016, 0);
+    assert(sink.notices.empty());
+    // 既定に戻した値は、次の保存では書かない。
+    assert(e.SetValue(0, key::A) && e.Commit(0, 1000));
+    persist::Saved again;
+    e.Capture(again);
+    assert(again.count == 0);
 }
 } // namespace
 
@@ -767,6 +980,10 @@ int main() {
     HotkeyAndHoldCountAtOnce();
     RevisionFollowsRememberedValues();
     RestoreDoesNotBumpRevision();
+    FixedDefaultValueRoundTrips();
+    ValueToggleFixedRoundTrip();
+    ValueToggleAtDefaultRoundTrip();
+    KeyItemsRoundTripWithoutFixing();
     std::puts("menu persist: ok");
     return 0;
 }

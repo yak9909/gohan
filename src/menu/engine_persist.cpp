@@ -70,10 +70,16 @@ void Engine::AppendRecord(persist::Saved &out, u16 item) const {
             r.fields |= persist::kValue;
             r.value = st.fixed_value;
         }
-    } else if (d.behavior == Behavior::Value && d.persist && st.applied != d.def) {
-        // 設定の値（キーを含む）。既定と違う物だけ書く（既定は spec が決める）。
+    } else if (d.control == Control::Key) {
+        // キーの項目は、ホットキーと同じく既定と違う物だけ書く（既定は spec が決める）。
+        if (d.persist && st.applied != d.def) {
+            r.fields |= persist::kValue;
+            r.value = st.applied;
+        }
+    } else if (d.behavior == Behavior::Value && st.fixed) {
+        // 設定の値は固定した物だけ（既定と同じ値でも書く。固定のまま往復させるため）。固定していない物は書かない。
         r.fields |= persist::kValue;
-        r.value = st.applied;
+        r.value = st.fixed_value;
     }
     if (r.fields == 0) return;
     out.records[out.count++] = r;
@@ -146,7 +152,19 @@ void Engine::RestoreRecord(const persist::Record &r) {
         }
         return;
     }
-    if (d.behavior == Behavior::Value && (r.fields & persist::kValue)) SetRestored(item, r.value);
+    if (d.behavior == Behavior::Value && d.control == Control::Key) {
+        // キーの項目は、ホットキーと同じく持ち越す（固定はできない）。
+        if (r.fields & persist::kValue) SetRestored(item, r.value);
+        return;
+    }
+    // 設定の値は固定した物だけ。固定と固定値・固定の並びを入れ、その場で戻るので待たずに「戻した」に数える（通知の n に入る）。
+    if (d.behavior == Behavior::Value && fixed && (r.fields & persist::kValue)) {
+        st.fixed = true;
+        st.fixed_value = r.value;
+        fixed_order_[fixed_count_++] = item;
+        SetRestored(item, r.value);
+        ++restore_done_;
+    }
 }
 
 void Engine::SetRestored(u16 item, s32 value) {

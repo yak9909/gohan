@@ -2916,6 +2916,41 @@
       "name": "bar-new",
       "label": "下の帯 / 案（R 操作・START 設定）",
       "contains": ["操作", "戻る", "キー", "設定"]
+    },
+    {
+      "name": "actions-setting-value",
+      "label": "R のリスト / 固定できる設定の値（値を固定。段 5b）",
+      "contains": ["値を固定", "お気に入りに追加", "ホットキーを設定", "えらぶ"]
+    },
+    {
+      "name": "settings-fixed-select",
+      "label": "設定画面 / 固定中の項目の中の選択（◀ ▶ を出す。段 5b）",
+      "contains": ["天気", "晴れ", "場所: プレイヤー"]
+    },
+    {
+      "name": "settings-fixed-bar",
+      "label": "設定画面 / 固定中の項目の中の下の帯（START 閉じる と n変更 が重ならない。段 5b）",
+      "contains": ["所持金", "閉じる", "変更", "場所: プレイヤー"]
+    },
+    {
+      "name": "settings-favorites-empty",
+      "label": "設定画面 / お気に入り（0 件・灰色で入らない・説明は「お気に入りはありません」。段 5b）",
+      "contains": ["お気に入り", "0件", "お気に入りはありません"]
+    },
+    {
+      "name": "settings-favorites-count",
+      "label": "設定画面 / お気に入り（3 件の行。一番上と同じ並び）",
+      "contains": ["お気に入り", "3件", "保持設定"]
+    },
+    {
+      "name": "settings-favorites-inside",
+      "label": "設定画面 / お気に入りの中（道筋は 設定 > お気に入り・下の帯は START 閉じる・n変更）",
+      "contains": ["設定 > お気に入り", "閉じる", "変更", "所持金"]
+    },
+    {
+      "name": "settings-favorites-reorder",
+      "label": "設定画面 / お気に入りの中の並べ替え（一番上と同じ並びを動かす）",
+      "contains": ["並べ替え中", "動かす", "天気"]
     }
   ]
 }

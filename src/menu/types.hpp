@@ -29,8 +29,9 @@ enum class MenuKind : u8 { Immediate, OnApply };
 enum class Confirm : u8 { None, Hotkey, Menu };
 // 実行の入力。実行する前に値を受け取る。
 enum class InputKind : u8 { None, Number, Hex };
-// フォルダの中身の出どころ。Fixed は固定中の項目（仮のフォルダ。固定した順にエンジンが並べる）。
-enum class ListKind : u8 { None, Fixed };
+// フォルダの中身の出どころ。Fixed は固定中の項目、Favorites はお気に入り（どちらも仮のフォルダ。エンジンが並べる）。
+// 設定画面の中だけに置ける（codegen が検査する）。
+enum class ListKind : u8 { None, Fixed, Favorites };
 // 設定の値の適用。Immediate は適用待ちを経ず、編集した時にその場で効く。
 enum class ApplyKind : u8 { Pending, Immediate };
 // 表示。Buttons は複数選択の選択肢をボタンの印で見せる（選択肢の名前がボタンの名前）。

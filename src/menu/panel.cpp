@@ -74,7 +74,6 @@ void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
         old_view_ = previous_view;
         old_selection_ = selection_.At(now);
         old_root_ = root_;
-        old_readonly_ = readonly_;
         // 一覧と設定画面の出入りは、入る方を進む向き・出る方を戻る向きにする（一覧の深さに関わらず）。
         // それ以外は、新しいフォルダが前のフォルダの子なら進む向き。
         const bool switched = engine.InSettings() != settings_shown_;
@@ -94,7 +93,6 @@ void Panel::Sync(const Engine &engine, u32 now, const Reorder &reorder) {
         count_ = static_cast<int>(reorder.Count());
         std::copy(reorder.Items(), reorder.Items() + count_, items_);
     } else count_ = static_cast<int>(engine.Children(engine.Folder(), items_, core::limits::MenuItems + 1));
-    readonly_ = engine.Folder() != kNoItem && engine.Def(engine.Folder()).list == ListKind::Fixed;
     int index = 0;
     while (index < count_ && items_[index] != engine.Selected()) ++index;
     if (index >= count_) index = 0;
@@ -270,11 +268,11 @@ void Panel::DrawRows(Surface &s, const Engine &e, int dx, u32 now) {
         const float p = folder_phase_.At(now);
         FadedSurface old(s, 1.f - p), next(s, p);
         if (p < 1.f) DrawRowLayer(old, e, dx - folder_direction_ * Round(timing::kFolderDistance * p), now,
-                                  old_items_, old_count_, old_view_, old_selection_, old_selected_, old_readonly_);
+                                  old_items_, old_count_, old_view_, old_selection_, old_selected_);
         if (p > 0.f) DrawRowLayer(next, e, dx + folder_direction_ * Round(timing::kFolderDistance * (1.f - p)), now,
-                                  items_, count_, start, selection_.At(now), e.Selected(), readonly_);
+                                  items_, count_, start, selection_.At(now), e.Selected());
     } else {
-        DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected(), readonly_);
+        DrawRowLayer(s, e, dx, now, items_, count_, start, selection_.At(now), e.Selected());
     }
     if (clipped) s.EndClip();
     // 指の列は横移動させず、切り抜いた旧・新の行より後に重ねる。
@@ -308,11 +306,11 @@ void Panel::DrawLifted(Surface &s, const Engine &e, int dx, u32 now, float start
     const float alpha = static_cast<float>(ca::Fav::Reorder::ShadowAlpha) * lift_ / static_cast<float>(ca::Fav::Reorder::Lift);
     s.Box({x + shadow[0], by + shadow[1], ca::Row::W + shadow[2], shadow[3]}, "field", Fade(ca::Color::Sel::Shadow, alpha));
     Selected(s, {x, by - lift, ca::Row::W, ca::Row::H}, false);
-    DrawRow(s, e, lifted_, dx, by - lift, offset, true, 1.f, now, readonly_);
+    DrawRow(s, e, lifted_, dx, by - lift, offset, true, 1.f, now);
 }
 
 void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
-                         const u16 *items, int count, float start, float selected_index, u16 selected_item, bool readonly) {
+                         const u16 *items, int count, float start, float selected_index, u16 selected_item) {
     // 並べ替えで持ち上げた行は、帯も字も行の層の最後に描く（ほかの行より上に重なる。D.12.3）。
     const bool lifting = items == items_ && lifted_ != kNoItem && lifted_ == selected_item;
     const int clipTop = ca::Row::Top + ca::Hotkey::Mark::SelectedOffset[1];
@@ -350,12 +348,12 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
         const int offset = selected && items == items_ ?
             Round(ca::Time::Bounce::Confirm[1] * action_.At(now, timing::kActivationBounceMs, .30f)) +
             Round(value_.direction * ca::Time::Bounce::Value[1] * value_.At(now, timing::kValueBounceMs, .28f)) : 0;
-        if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now, readonly);
+        if (!(lifting && items[n] == lifted_)) DrawRow(s, e, items[n], dx, y, offset, selected, weight, now);
     }
     if (lifting) DrawLifted(s, e, dx, now, start, selected_index);
 }
 
-void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now, bool readonly) {
+void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int offset, bool selected, float weight, u32 now) {
     const RowView v = e.View(item); if (!v.def) return;
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
@@ -380,9 +378,10 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
-    // 0 件の「固定中の項目」は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
-    // 選択の重みを 0 にして描く。1 件以上の固定中の項目と、ほかの行は今のまま。
-    const bool empty_folder = d.control == Control::Folder && d.list == ListKind::Fixed && e.FixedCount() == 0;
+    // 0 件の仮のフォルダ（固定中の項目・お気に入り）は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
+    // 選択の重みを 0 にして描く。1 件以上の仮のフォルダと、ほかの行は今のまま。
+    const ListKind list = e.ListOf(item);
+    const bool empty_folder = list != ListKind::None && e.ListCount(item) == 0;
     if (empty_folder) weight = 0.f;
     const bool pill = d.control == Control::Toggle || v.button;
     // 押し切るボタン（display = buttons）は、選んだボタンの印の並びの幅で値の欄を決める。1 つも無ければ「なし」（D.12.4）。
@@ -400,8 +399,8 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     // ◀ ▶ は左右で値が変わる行（数値・スライダー・選択）の選択中だけ。鍵は ◀ の左 2 画素へ（D.12.2）。
     // 並べ替えで持ち上げた行では左右で値を変えないので出さない（D.12.3）。
     const bool adjustable = d.control == Control::Number || d.control == Control::Slider || d.control == Control::Select;
-    // 固定中の項目の中は編集できないので、選んでも矢印を出さない（D.12.4）。
-    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable && item != lifted_ && !readonly;
+    // ◀ ▶ は選んだ行が左右で値を変えられる時（固定中の項目の中も同じ）。
+    const bool arrows = selected && !v.disabled && !pill && v.value[0] && adjustable && item != lifted_;
     const int lockX = arrows ? vx + ca::Row::Value::ArrowLeft - 2 - ca::Row::Lock::Mark[2] : vx + ca::Row::Lock::Mark[0];
     int valueLeft = v.value[0] ? vx : right + ca::Row::Folder::Mark[0];
     if (v.locked) valueLeft = std::min(valueLeft, lockX);
@@ -417,19 +416,19 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
-        // 固定中の項目の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
-        // 指しの色を変えるのは固定中の項目だけ。enabled_if で灰色の普通のフォルダは、灰色の行の指し（ink）のまま。
-        const bool fixed_list = d.list == ListKind::Fixed;
+        // 仮のフォルダ（固定中の項目・お気に入り）の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
+        // 指しの色を変えるのは仮のフォルダだけ。enabled_if で灰色の普通のフォルダは、灰色の行の指し（ink）のまま。
+        const bool listed = list != ListKind::None;
         const u32 folder_shadow = Fade(ca::Color::Sel::Shadow, weight);
-        // 固定中の項目の件数（D.12.4）。位置と色はお気に入りの件数と同じ。0 件でも「0件」を出す。
-        if (fixed_list) {
+        // 件数の位置と色は一番上のお気に入りと同じ。0 件でも「0件」を出す。
+        if (listed) {
             char count[24];
-            core::TextWriter(count, sizeof(count)).Unsigned(e.FixedCount()).Append("件");
+            core::TextWriter(count, sizeof(count)).Unsigned(e.ListCount(item)).Append("件");
             Ink(s, right + ca::Row::Folder::Mark[0] - ca::Settings::Count - s.Measure(count), ly, count, (folder_shadow >> 24) != 0,
                 MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, folder_shadow);
         }
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron",
-                 fixed_list ? MixColor(ca::Color::Text, ca::Color::Sel::Text, weight) : ink);
+                 listed ? MixColor(ca::Color::Text, ca::Color::Sel::Text, weight) : ink);
         return;
     }
     if (pill) {
@@ -533,10 +532,9 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         hint(key::Up | key::Down, "えらぶ"); hint(key::A, kind == UiKind::CheckList ? "切替" : "決定");
         if (kind == UiKind::CheckList) hint(key::X, "決定");
         hint(key::B, "取消");
-    } else if (e.InSettings()) {
-        // 設定画面（5.2）。固定中の項目の中では A が「外す」。n変更は出さない。
-        const bool fixed = e.Def(e.Folder()).list == ListKind::Fixed;
-        hint(key::A, fixed ? "外す" : "決定"); hint(key::B, "戻る"); hint(key::Start, "閉じる");
+    } else if (e.InSettingsRows()) {
+        // 設定画面の行（5.2）。n変更は出さない。仮のフォルダ（固定中の項目・お気に入り）の中は、一覧と同じ案内になる。
+        hint(key::A, "決定"); hint(key::B, "戻る"); hint(key::Start, "閉じる");
     } else if (kind != UiKind::None) {
         const auto &d = e.Def(e.Ui().item);
         char number[16]; FormatNumber(d.format, d.step > 0 ? d.step : 1, number, sizeof(number));
@@ -553,8 +551,8 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
         hint(key::B, "戻る"); hint(key::X, "適用"); hint(key::L, "戻し"); hint(key::Y, "キー");
         // 操作の無い行（お気に入りのフォルダの行）では R を出さない（D.12.5）。
         if (e.Selected() != kNoItem && e.Actions(e.Selected(), nullptr) > 0) hint(key::R, "操作");
-        // 一覧の START で設定画面（5.2）。
-        if (e.HasSettings()) hint(key::Start, "設定");
+        // 一覧の START で設定画面（5.2）。設定画面の仮のフォルダの中では START で閉じる。
+        if (e.HasSettings()) hint(key::Start, e.InSettings() ? "閉じる" : "設定");
     }
     int x = bar.x + ca::Bar::Hint::Icon[0];
     for (int n = 0; n < count; ++n) {
@@ -571,8 +569,9 @@ void Panel::DrawFooter(Surface &s, const Engine &e, int dx, bool dialog) {
             x += (align - (x + width + ca::Bar::Hint::LabelGap - end) % align) % align;
         }
     }
-    // 設定画面と、その他の画面（確認・入力の枠・R の操作のリスト）は n変更を出さない（D.12.5）。
-    if (kind != UiKind::None || dialog || e.InSettings()) return;
+    // 設定画面の行と、その他の画面（確認・入力の枠・R の操作のリスト）は n変更を出さない（D.12.5）。
+    // 設定画面の仮のフォルダの中は一覧と同じく出す。
+    if (kind != UiKind::None || dialog || e.InSettingsRows()) return;
     char changed[24]; core::TextWriter(changed, sizeof(changed)).Unsigned(e.DirtyCount()).Append(ca::Text::ChangedSuffix);
     s.Text(bar.x + bar.w + ca::Bar::Changed[0] - s.Measure(changed), bar.y + ca::Bar::Changed[1], changed,
            e.DirtyCount() ? ca::Color::Bar::Changed : ca::Color::Bar::Unchanged);
@@ -616,17 +615,19 @@ void Panel::DrawDescription(Surface &s, const Engine &e, u32 now) {
                          !std::strcmp(row.value, "OFF") ? ca::Text::State::LockedOff : ca::Text::State::LockedOn;
     // 並べ替えの間に選んでいる行は「並べ替え中」（今の状態より先。D.12.2）。下ろす動きの途中は出さない。
     const bool reordering = reordering_ && item == lifted_;
-    // 固定中の項目が 1 つも無い仮のフォルダ（灰色で入れない）は、そのことを状態で言う（設定画面の 5.1）。
-    const bool fixed_empty = d.list == ListKind::Fixed && e.FixedCount() == 0;
-    const char *state = reordering ? ca::Text::State::Reorder : fixed_empty ? ca::Text::State::FixedEmpty : row.disabled ? ca::Text::State::Disabled :
+    // 0 件の仮のフォルダ（灰色で入れない）は、そのことを状態で言う（設定画面の 5.1）。
+    const ListKind list = e.ListOf(item);
+    const char *empty_state = list == ListKind::Fixed ? ca::Text::State::FixedEmpty : ca::Text::State::FavoritesEmpty;
+    const bool list_empty = list != ListKind::None && e.ListCount(item) == 0;
+    const char *state = reordering ? ca::Text::State::Reorder : list_empty ? empty_state : row.disabled ? ca::Text::State::Disabled :
                         !std::strcmp(row.value, "予約") ? ca::Text::State::Reserved :
                         row.pending ? ca::Text::State::Pending : row.locked ? locked : !std::strcmp(row.value, "待機") ? ca::Text::State::Wait :
                         !std::strcmp(row.value, "ON") ? ca::Text::State::On : "";
     char states[ca::Desc::State[1]][kLineBytes];
     const int ns = Wrap(s, state, ca::Desc::Body[5], states, ca::Desc::State[1], nullptr);
-    // お気に入りと固定中の項目の中の項目は、状態の下に場所（親の道筋）を出す（D.12.2）。
+    // お気に入りと固定中の項目の中の項目は、状態の下に場所（親の道筋）を出す（D.12.2）。一番上と設定画面の仮のフォルダは同じ。
     char place[kLineBytes * 2], places[ca::Desc::State[1]][kLineBytes];
-    const bool located = e.Folder() == kFavoritesFolder || (e.Folder() != kNoItem && e.Def(e.Folder()).list == ListKind::Fixed);
+    const bool located = e.ListOf(e.Folder()) != ListKind::None;
     const int nl = located ?
         Wrap(s, Place(e, item, place, sizeof(place)), ca::Desc::Body[5], places, ca::Desc::State[1], nullptr) : 0;
     const bool extra = hotkey || state[0] || nl > 0;

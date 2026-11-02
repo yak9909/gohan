@@ -38,7 +38,7 @@ FORMATS = ['decimal', 'hex', 'decimal1']
 MENUS = ['immediate', 'on_apply']
 CONFIRMS = ['none', 'hotkey', 'menu']
 INPUTS = ['none', 'number', 'hex']
-LISTS = ['fixed']  # 仮のフォルダ（子の並びをエンジンが持つ）。固定中の項目だけ。
+LISTS = ['fixed', 'favorites']  # 仮のフォルダ（子の並びをエンジンが持つ）。設定画面の中だけに置く（固定中の項目・お気に入り）。
 APPLIES = ['immediate']  # 設定の値の適用待ちを経ない
 DISPLAYS = ['buttons']  # 複数選択の選択肢をボタンの印で見せる
 # ボタンの名前（display = "buttons" の選択肢）。大文字小文字は問わない。BUTTON_BIT と同じ 14 個。
@@ -311,8 +311,10 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
         item.hotkey_text = hotkey
         item.hotkey = parse_hotkey(hotkey, where)
 
-    item.lockable = want_type(entry, 'lockable', bool, where, False)
-    if item.lockable and not (behavior == 'value' and source == 'game'):
+    # ゲームの値は既定で固定できる（lockable = false で固定できなくする）。ほかの項目に書けるのは偽だけ。
+    game_value = behavior == 'value' and source == 'game'
+    item.lockable = want_type(entry, 'lockable', bool, where, game_value)
+    if item.lockable and not game_value:
         raise SpecError(f'{where}: lockable はゲームから読む値（source = "game"）の項目だけです')
     item.group = want_type(entry, 'group', str, where, '')
     if item.group and behavior not in ('state', 'mode'):
@@ -462,6 +464,10 @@ def load(path: Path) -> list[Item]:
     # 設定画面の根は、一覧の根と別の列にする（一覧の最後の項目の次に繋がないように）。
     flatten(roots, NO_ITEM, items)
     flatten(setting_roots, NO_ITEM, items)
+    # 仮のフォルダ（固定中の項目・お気に入り）は設定画面の中だけに置ける（一覧の中の行はエンジンの並びで変わる）。
+    for item in items:
+        if item.list_kind and not item.settings:
+            raise SpecError(f'{item.id}: list は設定画面の中のフォルダだけに書けます')
     validate(items)
     return items
 
@@ -470,6 +476,17 @@ def mark_settings(item: Item) -> None:
     item.settings = True
     for child in item.children:
         mark_settings(child)
+
+
+def can_fix(item: Item) -> bool:
+    """値の固定ができる項目か（エンジンの CanFix と同じ決まり）。ゲームの値は lockable、設定の値は次の起動に残せる物（キーと設定画面の行を除く。値のトグルも含む）、効果のトグルは次の起動に残せる状態・押下中。"""
+    if item.settings or item.control in ('folder', 'key'):
+        return False
+    if item.behavior == 'value':
+        if item.source == 'game':
+            return item.lockable
+        return item.persist and item.control in ('number', 'slider', 'select', 'multiselect', 'toggle')
+    return item.control == 'toggle' and item.behavior in ('state', 'hold') and item.persist
 
 
 def settings_root(items: list[Item]) -> Item | None:
@@ -613,7 +630,7 @@ def render_docs(items: list[Item]) -> str:
         if item.confirm == 'menu':
             notes.append('メニューで確認')
         if item.list_kind:
-            notes.append('中身は固定中の項目')
+            notes.append('中身は' + ('固定中の項目' if item.list_kind == 'fixed' else 'お気に入り'))
         if item.apply:
             notes.append('適用待ちなし')
         if item.display:
@@ -622,8 +639,8 @@ def render_docs(items: list[Item]) -> str:
             notes.append('入力: ' + ('16進' if item.input == 'hex' else '数値'))
         if item.group:
             notes.append('排他: ' + item.group)
-        if item.lockable:
-            notes.append('値の固定可')
+        if can_fix(item):
+            notes.append('固定できる')
         if item.enabled_if:
             notes.append('有効条件: ' + item.enabled_if)
         if item.control not in ('folder',) and not item.persist:

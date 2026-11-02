@@ -96,6 +96,10 @@ class Engine {
     // 固定した順（仮のフォルダ「固定中の項目」の並び。保存の並びにも使う）。
     std::size_t FixedCount() const { return fixed_count_; }
     const u16 *FixedOrder() const { return fixed_order_; }
+    // 仮のフォルダの種類と件数。一番上のお気に入り（kFavoritesFolder）と設定画面の「お気に入り」「固定中の項目」が対象。
+    // 種類が None の物は普通のフォルダか項目（件数は 0）。
+    ListKind ListOf(u16 folder) const;
+    std::size_t ListCount(u16 folder) const;
 
     // ---- 設定画面 ----
     // 設定画面の項目（spec の [[settings]] の根・保存を全て消す・トグルを全て保持・押し切るボタン）を結ぶ。
@@ -108,6 +112,8 @@ class Engine {
     void BindSettings(const SettingsItems &items);
     bool OpenSettings(u32 now); // 一覧で START を押した時。Shell が UiKind::Settings の要求を受けて呼ぶ
     bool InSettings() const { return in_settings_; }
+    // 設定画面の行（保持設定など。仮のフォルダ「固定中の項目」「お気に入り」の外）の中か。X・L を始めず、帯は設定画面の案内。
+    bool InSettingsRows() const;
     bool HasSettings() const { return settings_.root != kNoItem; }
     bool InSettingsTree(u16 item) const;
     u16 DeferKeys() const;      // 押し切るボタン（key のビット。既定は START だけ）
@@ -171,7 +177,8 @@ class Engine {
     bool HasValue(u16 item) const;
     bool CanFix(u16 item) const;
     bool RemembersValue(u16 item) const;
-    bool IsFixedList(u16 folder) const;
+    bool IsFixedList(u16 folder) const { return ListOf(folder) == ListKind::Fixed; }
+    bool IsFavoritesList(u16 folder) const { return ListOf(folder) == ListKind::Favorites; }
     // カーソルを置ける行か。灰色の行は飛ばすが、0 件の仮のフォルダ（灰色で入れないだけ）は選べる。
     bool CanSelect(u16 item) const;
     u16 FirstChild(u16 folder) const;
@@ -213,7 +220,9 @@ class Engine {
     void SavePosition(Position &to) const;
     void LoadPosition(const Position &from);
     void LeaveSettings(u32 now);
-    void RemoveFixedRow(u16 item, u32 now);
+    // 設定画面の仮のフォルダ（固定中の項目・お気に入り）で、行を外して空になったら、親へ戻り、その仮のフォルダの行を選ぶ。
+    void LeaveEmptyList(u16 folder);
+    bool RemoveFixedRow(u16 item, u32 now);
     void EraseAll(u32 now);
     // engine_input.cpp
     void Repeat(u16 held, u16 pressed, u32 now);
