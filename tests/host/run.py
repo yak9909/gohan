@@ -27,10 +27,14 @@ def main() -> int:
     # core の描画予算も設計表から取るため、最初のコンパイルより前に生成する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
 
-    def run(sources, output, includes=('src',), defines=()):
+    def build_exe(sources, output, includes=('src',), defines=()):
         out = build / (output + exe)
         subprocess.run([compiler, *flags, *defines, *(f'-I{i}' for i in includes), '-Ibuild/gen', *sources, '-o', str(out)], cwd=root, check=True)
-        subprocess.run([str(out)], cwd=root, check=True)
+        return out
+
+    def run(sources, output, includes=('src',), defines=(), args=()):
+        out = build_exe(sources, output, includes, defines)
+        subprocess.run([str(out), *args], cwd=root, check=True)
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
@@ -38,7 +42,7 @@ def main() -> int:
         run(['tests/host/test_frame_timing.cpp', 'src/core/format.cpp'],
             'test_frame_timing_dev' if dev else 'test_frame_timing',
             defines=('-DGOHAN_DEV=1',) if dev else ())
-        run(['tests/host/test_status.cpp', 'src/features/status/status.cpp', 'src/core/format.cpp'],
+        run(['tests/host/test_status.cpp', 'src/features/status/status.cpp', 'src/core/format.cpp', 'src/menu/persist_status.cpp'],
             'test_status_dev' if dev else 'test_status', ('tests/host/status_fakes', 'src'),
             ('-DGOHAN_DEV=1',) if dev else ())
     run(['tests/host/test_input_block.cpp', 'src/core/input_block.cpp'], 'test_input_block')
@@ -96,12 +100,22 @@ def main() -> int:
             run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')],
                 Path(test).stem, ('src', 'tests/host', str(gen.relative_to(root))))
 
-    # ゲーム中のメニュー: 毎フレームの処理から描画指示まで。入力・時計・ゲーム側の描画は代役。
-    run(['tests/host/test_menu_screen.cpp', 'src/features/menu_screen/menu_screen.cpp', 'src/ui/input/buttons.cpp',
-         'tests/host/input_hook_stub.cpp', 'src/core/input_block.cpp',
-         'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen, 'src/menu/sample_items.cpp', *renderer,
-         'build/host/gen-sample/menu_table.cpp'],
+    # 次の起動に持ち越す物の保存の時機（CTRPF に依存しない判断と、写しの受け渡し）。
+    run(['tests/host/test_menu_save.cpp', 'src/features/menu_screen/persist_policy.cpp',
+         'src/features/menu_screen/persist_image.cpp'], 'test_menu_save', ('src',))
+    # ゲーム中のメニュー: 毎フレームの処理から描画指示まで。入力・時計・ゲーム側の描画・次の起動の保存は代役。
+    game_menu = ['src/features/menu_screen/menu_screen.cpp', 'src/ui/input/buttons.cpp',
+                 'tests/host/input_hook_stub.cpp', 'src/core/input_block.cpp',
+                 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen, 'src/menu/sample_items.cpp', *renderer,
+                 'build/host/gen-sample/menu_table.cpp', 'src/features/menu_screen/persist_image.cpp',
+                 'src/features/menu_screen/persist_policy.cpp', 'src/menu/persist_status.cpp']
+    run(['tests/host/test_menu_screen.cpp', *game_menu],
         'test_menu_screen', ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))
+    # 次の起動の戻しと保存の時機: 起動の状態（空・壊れた欄・正しい欄）と、保存の流れを、別の起動で試す。
+    persist_exe = build_exe(['tests/host/test_menu_screen_persist.cpp', *game_menu], 'test_menu_screen_persist',
+                            ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))
+    for scenario in ('empty', 'broken', 'valid', 'save'):
+        subprocess.run([str(persist_exe), scenario], cwd=root, check=True)
     # 描く文字がすべて字形の表にあるか（無い文字は実機で何も出ない）。
     run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
          'src/menu/sample_items.cpp', *renderer, 'build/host/gen-sample/menu_table.cpp'],

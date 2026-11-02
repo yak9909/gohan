@@ -1,8 +1,10 @@
 #pragma once
 #include <cassert>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <map>
+#include <vector>
 
 // 実機やゲームのデータに触らない、フック導入の境界だけの代役。
 namespace CTRPluginFramework {
@@ -10,6 +12,13 @@ enum class HookResult { Success, Failed };
 enum HookFlags { USE_LR_TO_RETURN = 1, EXECUTE_OI_BEFORE_CB = 2, EXECUTE_OI_AFTER_CB = 4,
                  HOOK_DEFAULT_PARAMS = USE_LR_TO_RETURN | EXECUTE_OI_BEFORE_CB };
 struct FakeHook { std::uintptr_t callback = 0; std::uint32_t flags = 0; bool enabled = false; };
+// 作業（Task）の状態。実際の作業のスレッドの代わりに、試験が Fake::RunHeldTask で動かす。
+struct FakeTaskState {
+    std::int32_t (*func)(void *) = nullptr;
+    void *arg = nullptr;
+    unsigned flags = 0; // 0: 待機、1: 予約（動くのを待つ）、2: 動作中、4: 終了（CTRPF の Task::Status と同じ値）
+    std::int32_t result = 0;
+};
 struct Fake {
     static inline std::string bytes = "123456789";
     static inline std::uint64_t title = 0x0004000000086200ULL;
@@ -40,6 +49,14 @@ struct Fake {
     static inline bool touching = false;
     static inline unsigned touchX = 0, touchY = 0;
     static inline int nowMs = 0;
+    // 次の起動に持ち越す物（GohanData・Task の代役）。
+    static inline std::vector<std::uint8_t> gohanFile; // 設定ファイルの gohan の欄（空なら無い）
+    static inline int gohanLoads = 0, gohanSaves = 0, sleeps = 0, taskStarts = 0;
+    static inline bool saveFails = false; // 書き込みに失敗する（書き手の写しは作れても、欄は残す）
+    static inline bool taskHold = false;  // 作業を予約だけして、RunHeldTask まで動かさない（作業のスレッドを模す）
+    static inline std::shared_ptr<FakeTaskState> heldTask;
+    // 予約された作業を、呼び手のスレッドで動かす（作業のスレッドが動いた時を模す）。
+    static void RunHeldTask();
 };
 enum Key {
     A = 1,
@@ -71,6 +88,12 @@ struct Time {
     int ms;
     int AsMilliseconds() const { return ms; }
 };
+constexpr Time Milliseconds(int amount) { return Time{amount}; }
+// 待つ間も時計は進む（実機の 1 ms の待ちを模す）。
+inline void Sleep(Time time) {
+    Fake::nowMs += time.ms;
+    ++Fake::sleeps;
+}
 struct Clock {
     Time GetElapsedTime() const { return {Fake::nowMs}; }
 };
@@ -104,6 +127,88 @@ struct Process {
         return true;
     }
 };
+// 作業（Task）の代役。Start は同じスレッドで直ちに動かす。Fake::taskHold が真の時は予約だけして、
+// Start の二度目は動作中の -1 を返す（CTRPF の Scheduler と同じ答え）。
+class Task {
+  public:
+    enum Affinity { AppCore = 1 << 0, SysCore = 1 << 1, NewAppCore = 1 << 2 };
+    explicit Task(std::int32_t (*func)(void *), void *arg = nullptr, std::int32_t affinity = -1)
+        : state_(std::make_shared<FakeTaskState>()) {
+        state_->func = func;
+        state_->arg = arg;
+        affinity_ = affinity;
+    }
+    int Start() const {
+        if (state_->flags == 1 || state_->flags == 2) return -1;
+        ++Fake::taskStarts;
+        state_->flags = 1;
+        if (Fake::taskHold) {
+            Fake::heldTask = state_;
+            return 0;
+        }
+        state_->flags = 2;
+        state_->result = state_->func(state_->arg);
+        state_->flags = 4;
+        return 0;
+    }
+    std::int32_t Wait() const {
+        if (state_->flags == 1) {
+            Fake::heldTask.reset();
+            state_->flags = 2;
+            state_->result = state_->func(state_->arg);
+            state_->flags = 4;
+        }
+        return state_->result;
+    }
+    std::uint32_t Status() const { return state_->flags; }
+
+  private:
+    std::shared_ptr<FakeTaskState> state_;
+    std::int32_t affinity_ = -1;
+};
+
+// 設定ファイルの gohan の欄の代役。書き手と読み手は実機と同じ約束（空の写しは失敗、欄が無ければ大きさ 0）。
+class GohanData {
+  public:
+    using WriteFn = void (*)(std::vector<std::uint8_t> &out);
+    using ReadFn = void (*)(const std::uint8_t *data, std::uint32_t size);
+    static inline const char *FileName = "GohanCTRPFData.bin";
+    static constexpr std::uint32_t Magic = 0x4E484F47;
+
+    static void SetHandlers(WriteFn writer, ReadFn reader) {
+        writer_ = writer;
+        reader_ = reader;
+    }
+    static bool Load() {
+        ++Fake::gohanLoads;
+        const bool found = !Fake::gohanFile.empty();
+        if (reader_) reader_(found ? Fake::gohanFile.data() : nullptr, found ? static_cast<std::uint32_t>(Fake::gohanFile.size()) : 0);
+        return found;
+    }
+    static bool Save() {
+        ++Fake::gohanSaves;
+        if (!writer_) return true;
+        std::vector<std::uint8_t> out;
+        writer_(out);
+        if (out.empty() || Fake::saveFails) return false; // 空の写しや書き込みの失敗は、既存の欄を残す
+        Fake::gohanFile = out;
+        return true;
+    }
+
+  private:
+    static inline WriteFn writer_ = nullptr;
+    static inline ReadFn reader_ = nullptr;
+};
+
+inline void Fake::RunHeldTask() {
+    const auto held = heldTask;
+    heldTask.reset();
+    if (!held || held->flags != 1) return;
+    held->flags = 2;
+    held->result = held->func(held->arg);
+    held->flags = 4;
+}
+
 class Hook {
   public:
     bool IsEnabled() const { return enabled_; }

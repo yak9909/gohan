@@ -4,6 +4,7 @@
 #include "game/frame_hook.hpp"
 #include "game/frame_timing.hpp"
 #include "game/input_hook.hpp"
+#include "menu/persist_status.hpp"
 #include "ui/renderer/renderer.hpp"
 #include <CTRPluginFramework.hpp>
 #ifdef GOHAN_DEV
@@ -30,6 +31,8 @@ void Compose(core::TextWriter &writer) {
     writer.Append("\n").Append(gohan::ui::renderer::MemoryStatusText());
     writer.Append("\n");
     game::frame_timing::AppendStatus(writer);
+    writer.Append("\n");
+    menu::persist::AppendSaveStatus(writer);
 #endif
 }
 } // namespace
