@@ -60,6 +60,9 @@ using CTRPluginFramework::GohanData;
 using CTRPluginFramework::Task;
 // Busy の上限（1 ms ずつ待つ）。CTRPF のメニューの間はゲームのスレッドが止まるので、上限で必ず戻る。
 constexpr unsigned kBusyAttempts = 100;
+// 終了の時に、動いている保存の作業が書き切るのを待つ上限（1 ms ずつ、約 1 秒）。ゲームの終了の直前の保存を落とさないため。
+// Busy の上限とは別。終了の合図で動くので、CTRPF が fs を閉じる前に戻る。作業が止まったままでも、ここで必ず戻る。
+constexpr unsigned kSaveWaitAttempts = 1000;
 // 読み込みの検査（Wire の中）と写しの組み立て（毎フレームの処理）で使う。両方は重ならない（読み込みは登録より前）。
 menu::persist::Saved saved;
 Image staging;                      // 写しの組み立て（ゲームのスレッドだけ）
@@ -184,17 +187,17 @@ void FrameStep() {
     PublishDemand();
 }
 
-// 作業が終わるまで 1 ms ずつ、上限まで待つ。終わったら真。作業が Scheduled のまま動かない時も、ここで必ず戻る。
+// 作業が終わるまで 1 ms ずつ、kSaveWaitAttempts まで待つ。終わったら真。作業が Scheduled のまま動かない時も、ここで必ず戻る。
 bool WaitTask() {
-    for (unsigned n = 0; n < kBusyAttempts; ++n) {
+    for (unsigned n = 0; n < kSaveWaitAttempts; ++n) {
         const u32 status = save_task->Status();
         if (status == static_cast<u32>(Task::Idle) || status == static_cast<u32>(Task::Finished)) return true;
-        if (n + 1 < kBusyAttempts) SleepOneMs();
+        if (n + 1 < kSaveWaitAttempts) SleepOneMs();
     }
     return false;
 }
 
-// 終了（7.3）: 新しい頼みは止める。毎フレームの保存の部分と動いている作業は、上限まで待つ。
+// 終了（7.3）: 新しい頼みは止める。毎フレームの保存の部分（kBusyAttempts）と動いている作業（kSaveWaitAttempts）は、上限まで待つ。
 // 作業が終わらなかった時は書き手を外さない（書き手を外すには CTRPF の排他を取るので、作業が中で止まっていると待つため）。
 void StopSaving() {
     Gate().RequestStop();

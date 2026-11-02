@@ -71,10 +71,16 @@ bool Wire() {
     return true;
 }
 
+// 一覧を空にする待ちの上限（1 ms ずつ）。止められたゲームのスレッドが毎フレームの処理の途中で止まっていても戻る。
+constexpr unsigned kResetAttempts = 100;
+
+void SleepOneMs() { CTRPluginFramework::Sleep(CTRPluginFramework::Milliseconds(1)); }
+
 void Shutdown() {
     PauseGuard pause;
     hook.Disable();
-    core::frame::Global().Reset();
+    // 空にできなくても、フックは外れているので以後は呼ばれない。
+    core::frame::Global().Reset(SleepOneMs, kResetAttempts);
     status.TryPublish(Status::Stopped);
 }
 

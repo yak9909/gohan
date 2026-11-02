@@ -223,7 +223,7 @@ void ScenarioShutdownStuck() {
     assert(Fake::taskStarts == 1 && Fake::gohanSaves == 0);
     const int sleeps = Fake::sleeps;
     menu_screen::Feature().Shutdown();
-    assert(Fake::sleeps - sleeps == 99); // 作業が終わるまで、上限まで 1 ms ずつ待つ
+    assert(Fake::sleeps - sleeps == 999); // 作業の待ちは 1 秒（1000 回、1 ms ずつ）。ロックの待ちは別（取れるので待たない）
     assert(Fake::gohanSaves == 0);
     Fake::taskHold = false;
     Fake::RunHeldTask(); // 作業のスレッドが後で動く。書き手はまだ登録されている

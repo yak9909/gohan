@@ -22,8 +22,9 @@ class Dispatcher {
     // Remove の世代の反映確認後、その関数の資源を解放できる。
     bool IsApplied(std::uint32_t revision) const;
     void Dispatch();
-    // 呼び出し元がフックを外し、実行中の Dispatch が無い時だけ使う。
-    void Reset();
+    // 呼び出し元がフックを外した後に使う。実行中の Dispatch（止められたゲームのスレッドが抱えたままの物）が
+    // 終わるのを、1 回試して待つなら sleep_ms で、attempts 回まで待つ。取れなければ何も変えずに偽を返す。
+    bool Reset(void (*sleep_ms)() = nullptr, unsigned attempts = 1);
 
   private:
     struct Entry {

@@ -37,12 +37,21 @@ bool OpenCtrpfMenu() {
     return allow;
 }
 
+// 登録表のロック（WireAll の最中の終了など）を待つ上限（1 ms ずつ）。超えたら終了の処理は諦めて戻る。
+constexpr unsigned kShutdownLockAttempts = 3000;
+
+void SleepOneMs() { CTRPluginFramework::Sleep(CTRPluginFramework::Milliseconds(1)); }
+
+// CTRPF の終了の合図（PLG_ABOUT_TO_EXIT）のスレッドで動く。CTRPF が作業の管理と fs を閉じる前に、機能を止める。
+// ほかの合図（スリープ・HOME・入れ替え）では何もしない。2 回目の ShutdownAll は何もしない。
+void OnProcessEvent(CTRPluginFramework::Process::Event event) {
+    if (event == CTRPluginFramework::Process::Event::EXIT) features.ShutdownAll(SleepOneMs, kShutdownLockAttempts);
+}
 } // namespace
 
 namespace CTRPluginFramework {
-void OnProcessExit() { features.ShutdownAll(); }
-
 int main() {
+    Process::SetProcessEventCallback(OnProcessEvent);
     PluginMenu menu("gohan", 3, 0, 0, "日本版の無印＋更新に対応。作り直し中です。");
     menu.SynchronizeWithFrame(true);
     // 起動時の CTRPF の「Plugin ready!」は出さない（公開の API。同梱の CTRPF は変えない）。
@@ -69,7 +78,8 @@ int main() {
 #endif
     features.WireAll();
     menu.Run();
-    features.ShutdownAll();
+    // 保険。終了の合図で済んでいれば何もしない。
+    features.ShutdownAll(SleepOneMs, kShutdownLockAttempts);
     return 0;
 }
 } // namespace CTRPluginFramework

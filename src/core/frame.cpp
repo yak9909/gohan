@@ -68,11 +68,31 @@ void Dispatcher::Dispatch() {
     dispatching_.Unlock();
 }
 
-void Dispatcher::Reset() {
-    LockGuard dispatchLock(dispatching_);
-    LockGuard changesLock(changes_);
+namespace {
+// 取れるまで、試行は attempts 回まで。取れたら真（取ったまま戻る）。
+bool AcquireBounded(SpinMutex &mutex, void (*sleep_ms)(), unsigned attempts) {
+    for (unsigned n = 0; n < attempts; ++n) {
+        if (mutex.TryLock())
+            return true;
+        if (n + 1 < attempts && sleep_ms)
+            sleep_ms();
+    }
+    return false;
+}
+} // namespace
+
+bool Dispatcher::Reset(void (*sleep_ms)(), unsigned attempts) {
+    if (!AcquireBounded(dispatching_, sleep_ms, attempts))
+        return false;
+    if (!AcquireBounded(changes_, sleep_ms, attempts)) {
+        dispatching_.Unlock();
+        return false;
+    }
     desiredCount_ = activeCount_ = 0;
     applied_.store(++revision_, std::memory_order_release);
+    changes_.Unlock();
+    dispatching_.Unlock();
+    return true;
 }
 
 namespace {
