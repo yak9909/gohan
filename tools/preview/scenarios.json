@@ -2863,6 +2863,16 @@
       "contains": ["0件", "固定している項目はありません"]
     },
     {
+      "name": "settings-fixed-count",
+      "label": "設定画面 / 固定中の項目（1 件以上・選んだ時。地なし・白い鍵と影・白い字。段 5d の M3）",
+      "contains": ["固定中の項目", "件", "保持設定"]
+    },
+    {
+      "name": "settings-fixed-count-unselected",
+      "label": "設定画面 / 固定中の項目（1 件以上・選んでいない時。淡い青の地・鍵・青の実線。お気に入りの行と同じ作り。段 5d の M3）",
+      "contains": ["固定中の項目", "件", "保持設定"]
+    },
+    {
       "name": "settings-fixed-empty-unselected",
       "label": "設定画面 / 固定中の項目が 0 件（選んでいない時）",
       "contains": ["0件", "固定中の項目", "保持設定"]

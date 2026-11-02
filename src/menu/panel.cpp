@@ -324,9 +324,11 @@ void Panel::DrawRowLayer(Surface &s, const Engine &e, int dx, u32 now,
     for (int n = from; n < to; ++n) {
         const int y = Round(ca::Row::Top + (n - start) * ca::Row::Pitch);
         if (y + ca::Row::H < clipTop || y >= clipBottom) continue;
-        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && e.ListOf(items[n]) == ListKind::Favorites)
+        const ListKind kind = e.ListOf(items[n]);
+        if (n + 1 < count && y + ca::Row::Pitch < clipBottom && kind != ListKind::None)
             s.Fill({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
-                    ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1}, ca::Color::Fav::Rule);
+                    ca::Row::Rule[1] - ca::Row::Rule[0] + 1, 1},
+                   kind == ListKind::Favorites ? ca::Color::Fav::Rule : ca::Color::Fix::Rule);
         else if (n + 1 < count && y + ca::Row::Pitch < clipBottom)
             s.Pattern({dx + ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2],
                        ca::Row::Rule[1] - ca::Row::Rule[0] + 1, ca::Row::Rule[3]}, "dash", ca::Color::Rule);
@@ -358,10 +360,12 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     const auto &d = *v.def;
     const int x = dx + ca::Row::X + offset;
     const int right = x + ca::Row::W + ca::Row::Value::Right;
-    if (e.ListOf(item) == ListKind::Favorites) {
-        // お気に入りの仮のフォルダ（一番上の一覧と設定画面の「お気に入り」。D.12.3・D.12.4・M1）:
-        // 金の淡い地・星・名前・件数・>。選択中は地を描かず、星と字に白と影。
-        // 0 件（設定画面の灰色で入らない行）は、地を描かず、星を薄く・名前を灰色にし、選んでも色と影を変えない（K3・L4）。
+    const ListKind list = e.ListOf(item);
+    if (list != ListKind::None) {
+        // 仮のフォルダ（お気に入り: 一番上の一覧と設定画面。固定中の項目: 設定画面。D.12.3・D.12.4・M1・M3）:
+        // 淡い地（お気に入りは金、固定中は青）・印（星 / 鍵）・名前・件数・>。選択中は地を描かず、印と字に白と影。
+        // 0 件（設定画面の灰色で入らない行）は、地を描かず、印を薄く・名前を灰色にし、選んでも色と影を変えない（K3・L4）。
+        const bool fav = list == ListKind::Favorites;
         const bool empty = e.ListCount(item) == 0;
         const float w = empty ? 0.f : weight;
         const u32 ink = MixColor(ca::Color::Text, ca::Color::Sel::Text, w);
@@ -370,13 +374,23 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         // 選択の重みで薄め、選択中（重み 1）は描かない。0 件は地を描かない。
         if (!empty && w < 1.f)
             s.Fill({x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1], ca::Row::W + ca::Fav::Row::Fill[2], ca::Fav::Row::Fill[3]},
-                   Fade(ca::Color::Fav::Fill, 1.f - w));
-        const int sx = x + ca::Fav::Row::Star[0], sy = y + ca::Fav::Row::Star[1];
-        if (empty) {
-            s.Sprite(sx, sy, "star", Fade(0xFFFFFFFFu, ca::Color::Disabled::Alpha));
+                   Fade(fav ? ca::Color::Fav::Fill : ca::Color::Fix::Fill, 1.f - w));
+        if (fav) {
+            const int sx = x + ca::Fav::Row::Star[0], sy = y + ca::Fav::Row::Star[1];
+            if (empty) {
+                s.Sprite(sx, sy, "star", Fade(0xFFFFFFFFu, ca::Color::Disabled::Alpha));
+            } else {
+                if (w > 0.5f) s.Sprite(sx + 1, sy + 1, "star.white", ca::Color::Sel::Shadow);
+                s.Sprite(sx, sy, w > 0.5f ? "star.white" : "star");
+            }
         } else {
-            if (w > 0.5f) s.Sprite(sx + 1, sy + 1, "star.white", ca::Color::Sel::Shadow);
-            s.Sprite(sx, sy, w > 0.5f ? "star.white" : "star");
+            const int kx = x + ca::Fix::Row::Lock[0], ky = y + ca::Fix::Row::Lock[1];
+            if (empty) {
+                s.Sprite(kx, ky, "lock", Fade(ca::Color::Locked, ca::Color::Disabled::Alpha));
+            } else if (w > 0.5f) {
+                s.Sprite(kx + 1, ky + 1, "lock", ca::Color::Sel::Shadow);
+                s.Sprite(kx, ky, "lock", 0xFFFFFFFFu);
+            } else s.Sprite(kx, ky, "lock", ca::Color::Locked);
         }
         const int lx = x + ca::Fav::Row::Label[0], ly = y + ca::Fav::Row::Label[1];
         Ink(s, lx, ly, d.label, (shadow >> 24) != 0, label_ink, false, shadow);
@@ -387,11 +401,6 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
         s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
-    // 0 件の固定中の項目は、選んでも字・件数・指しの色と影を変えない（選んでいない時と同じ。帯は disband。2026-11-02 の決定 K3）。
-    // 選択の重みを 0 にして描く。1 件以上の固定中の項目と、ほかの行は今のまま。
-    const ListKind list = e.ListOf(item);
-    const bool empty_folder = list != ListKind::None && e.ListCount(item) == 0;
-    if (empty_folder) weight = 0.f;
     const bool pill = d.control == Control::Toggle || v.button;
     // 押し切るボタン（display = buttons）は、選んだボタンの印の並びの幅で値の欄を決める。1 つも無ければ「なし」（D.12.4）。
     const bool buttons = d.control == Control::Multiselect && d.display == DisplayKind::Buttons;
@@ -416,29 +425,15 @@ void Panel::DrawRow(Surface &s, const Engine &e, u16 item, int dx, int y, int of
     if (arrows) valueLeft = std::min(valueLeft, vx + ca::Row::Value::ArrowLeft);
     const auto label = Trim(s, d.label, valueLeft - lx - ca::Row::Gap::Min -
                            (v.pending ? ca::Row::Pending::Mark[2] + ca::Row::Pending::Mark[0] : 0), trimmed, sizeof(trimmed));
-    // 0 件の固定中の項目は、weight が 0 なので影も付かない（上の決まり）。
-    // enabled_if で灰色になった普通のフォルダは、灰色の行と同じ影を付ける。
-    Ink(s, lx, ly, label, (shadow >> 24) != 0 && !empty_folder, ink, false, shadow);
+    Ink(s, lx, ly, label, (shadow >> 24) != 0, ink, false, shadow);
     if (v.pending) s.Sprite(lx + s.Measure(label) + ca::Row::Pending::Mark[0], y + ca::Row::Pending::Mark[1], "dot",
                              selected ? ca::Color::Pending::SelectedDot : ca::Color::Pending::Dot);
     if (e.State(item).hotkey && d.control != Control::Folder)
         s.Sprite(x + (selected ? ca::Hotkey::Mark::SelectedOffset[0] : 0), y + (selected ? ca::Hotkey::Mark::SelectedOffset[1] : 0),
                  selected ? "hotkey.selected" : "hotkey", selected ? 0xFFFFFFFFu : ca::Hotkey::Mark::Color);
     if (d.control == Control::Folder) {
-        // 仮のフォルダ（固定中の項目）の件数と指し（D.12.4）。0 件の時は weight が 0 なので、選んでも選んでいない時と同じ色（K3）。
-        // 指しの色を変えるのは仮のフォルダだけ。enabled_if で灰色の普通のフォルダは、灰色の行の指し（ink）のまま。
-        // お気に入りの仮のフォルダ（一番上と設定画面）は、上の分岐で描く（M1）。
-        const bool listed = list != ListKind::None;
-        const u32 folder_shadow = Fade(ca::Color::Sel::Shadow, weight);
-        // 件数の位置と色は一番上のお気に入りと同じ。0 件でも「0件」を出す。
-        if (listed) {
-            char count[24];
-            core::TextWriter(count, sizeof(count)).Unsigned(e.ListCount(item)).Append("件");
-            Ink(s, right + ca::Row::Folder::Mark[0] - ca::Settings::Count - s.Measure(count), ly, count, (folder_shadow >> 24) != 0,
-                MixColor(ca::Color::Sub, ca::Color::Sel::Text, weight), false, folder_shadow);
-        }
-        s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron",
-                 listed ? MixColor(ca::Color::Text, ca::Color::Sel::Text, weight) : ink);
+        // 普通のフォルダ。指しは行の字の色（enabled_if で灰色なら灰色の行の指し）。仮のフォルダは上の分岐で描く。
+        s.Sprite(right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1], "chevron", ink);
         return;
     }
     if (pill) {

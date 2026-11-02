@@ -571,7 +571,10 @@ const Command *BarWord(const RecordingSurface &s, const std::string &word) {
     return nullptr;
 }
 
+void CheckFixRow(const RecordingSurface &s, bool selected, bool empty, const std::string &count);
+
 // 10. 固定中の項目の件数・0 件の行（D.12.4）。件数は「n件」で、0 件の時は灰色の帯で入れない。
+//     見た目はお気に入りの行と同じ作りで、淡い青の地・鍵・青の実線（M3）。
 void FixedCountRows() {
     Rig r(kMenuItems, kMenuItemCount);
     Prepare(r);
@@ -582,7 +585,8 @@ void FixedCountRows() {
     assert(FindCommand(empty, Command::Slice, "disband") != nullptr); // 選んだ灰色の行は帯を灰色に替える
     // 0 件の行（K3）: 選んでいても字・件数・指しは選んでいない時と同じ色で、影は付けない。
     namespace ca = gohan::core::design::ca2;
-    const int lx = ca::Row::X + ca::Row::Label[0], ly = ca::Row::Top + ca::Row::Label[1];
+    const int lx = ca::Row::X + ca::Fav::Row::Label[0], ly = ca::Row::Top + ca::Fav::Row::Label[1];
+    CheckFixRow(empty, true, true, "0件");
     assert(HasTextAt(empty, "固定中の項目", lx, ly));
     assert(!HasTextAt(empty, "固定中の項目", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1]));
     assert(HasTextWithColor(empty, "固定中の項目", ca::Color::Disabled::Text));
@@ -594,13 +598,16 @@ void FixedCountRows() {
     RecordingSurface two = r.Draw();
     assert(two.HasText("2件") && !two.HasText("固定している項目はありません") && two.dropped == 0);
     assert(FindCommand(two, Command::Slice, "disband") == nullptr);
-    // 件数は指しの左へ、設定の件数の画素の分だけ空けて置く（お気に入りの件数と同じ位置）。
-    // 選択中の行は影を先に描くので、本文は同じ字の最後の描画指示。
-    const Command *count = nullptr;
-    for (const Command &c : two.commands)
-        if (c.kind == Command::Text && c.text.find("2件") != std::string::npos) count = &c;
-    const Command *chevron = FindCommand(two, Command::Sprite, "chevron");
-    assert(count && chevron && count->bounds.x + count->bounds.w == chevron->bounds.x - ca::Settings::Count);
+    // 選んだ行（地なし・白い鍵と影・白い字）。件数の位置と実線も確かめる。
+    CheckFixRow(two, true, false, "2件");
+    // 選んでいない時（お気に入りを選ぶ）: 青の地・鍵・青の実線。
+    assert(r.engine.Select(Idx(MenuId::SettingsFavorites)));
+    r.Advance(400);
+    RecordingSurface unsel = r.Draw();
+    CheckFixRow(unsel, false, false, "2件");
+    assert(unsel.dropped == 0);
+    assert(r.engine.Select(Idx(MenuId::SettingsFixed)));
+    r.Advance(400);
     // 0 件の行を選んでいない時（保持設定を選ぶ）も、字・件数・指しは同じ色（K3）。
     assert(r.engine.SetFixed(Idx(MenuId::SampleHold), false, r.now));
     assert(r.engine.SetFixed(Idx(MenuId::SampleFlag), false, r.now));
@@ -610,6 +617,7 @@ void FixedCountRows() {
     assert(!away.HasText("2件") && away.HasText("0件") && away.dropped == 0);
     assert(HasTextAt(away, "固定中の項目", lx, ly) && HasTextWithColor(away, "固定中の項目", ca::Color::Disabled::Text));
     assert(HasTextWithColor(away, "0件", ca::Color::Sub) && FindCommand(away, Command::Sprite, "chevron")->color == ca::Color::Text);
+    CheckFixRow(away, false, true, "0件");
 }
 
 // 11. 固定中の項目の中の行: 鍵は付き、選んでも ◀ ▶ を出さない（D.12.4）。対照として、一覧の中の数値の行は矢印を出す。
@@ -924,6 +932,44 @@ void CheckFavRow(const RecordingSurface &s, bool selected, bool empty, const std
     const Command *rule = CommandAt(s, Command::Fill, ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2]);
     assert(rule && rule->color == ca::Color::Fav::Rule && rule->bounds.h == 1 && rule->bounds.w == ca::Row::Rule[1] - ca::Row::Rule[0] + 1);
     // 選んだ行の帯: 0 件は disband、ほかは今の帯（selrim）。
+    if (selected && empty) assert(FindCommand(s, Command::Slice, "disband") != nullptr);
+    if (selected && !empty) assert(FindCommand(s, Command::Slice, "selrim") != nullptr);
+}
+
+// 設定画面の「固定中の項目」の行を、お気に入りの行と同じ作りで確かめる（M3）。鍵は星の幅の中央。区切りは青の実線。
+void CheckFixRow(const RecordingSurface &s, bool selected, bool empty, const std::string &count) {
+    namespace ca = gohan::core::design::ca2;
+    const Command *name = ListName(s, "固定中の項目");
+    assert(name);
+    const int x = name->bounds.x - ca::Fav::Row::Label[0], y = name->bounds.y - ca::Fav::Row::Label[1];
+    const int right = x + ca::Row::W + ca::Row::Value::Right;
+    // 地: 選んでいる時と 0 件では描かない。
+    const Command *fill = CommandAt(s, Command::Fill, x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1]);
+    const bool has_fill = fill && fill->color == ca::Color::Fix::Fill;
+    assert(has_fill == (!selected && !empty));
+    if (has_fill) assert(fill->bounds.w == ca::Row::W + ca::Fav::Row::Fill[2] && fill->bounds.h == ca::Fav::Row::Fill[3]);
+    // 鍵: 選んでいる時は白と右下 1 の影、0 件は薄い鍵、ほかは color.locked。
+    const int kx = x + ca::Fix::Row::Lock[0], ky = y + ca::Fix::Row::Lock[1];
+    const Command *lock = CommandAt(s, Command::Sprite, kx, ky);
+    assert(lock && lock->text == "lock");
+    if (empty) assert(lock->color == Fade(ca::Color::Locked, ca::Color::Disabled::Alpha));
+    else assert(lock->color == (selected ? 0xFFFFFFFFu : ca::Color::Locked));
+    if (selected && !empty) {
+        const Command *shadow = CommandAt(s, Command::Sprite, kx + 1, ky + 1);
+        assert(shadow && shadow->text == "lock" && shadow->color == ca::Color::Sel::Shadow);
+    }
+    assert(name->color == (empty ? ca::Color::Disabled::Text : selected ? ca::Color::Sel::Text : ca::Color::Text));
+    assert(TextCountInList(s, "固定中の項目") == (selected && !empty ? 2 : 1));
+    const int count_x = right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count);
+    const Command *number = nullptr;
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == count && c.bounds.x == count_x && c.bounds.y == name->bounds.y) number = &c;
+    assert(number && number->bounds.y == name->bounds.y);
+    assert(number->color == (selected && !empty ? ca::Color::Sel::Text : ca::Color::Sub));
+    const Command *chevron = CommandAt(s, Command::Sprite, right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1]);
+    assert(chevron && chevron->text == "chevron" && chevron->color == (selected && !empty ? ca::Color::Sel::Text : ca::Color::Text));
+    const Command *rule = CommandAt(s, Command::Fill, ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2]);
+    assert(rule && rule->color == ca::Color::Fix::Rule && rule->bounds.h == 1 && rule->bounds.w == ca::Row::Rule[1] - ca::Row::Rule[0] + 1);
     if (selected && empty) assert(FindCommand(s, Command::Slice, "disband") != nullptr);
     if (selected && !empty) assert(FindCommand(s, Command::Slice, "selrim") != nullptr);
 }
