@@ -4,6 +4,8 @@
 // 設定画面の行の中の X・L（効かない）、
 // トグルを全て保持（その場で効く・版の数）、保存を全て消す（既定はキャンセル・全部を戻す・効果は残す）、
 // 押し切るボタン（決定・既定・ボタンの対応）、設定画面の行の対象外、確認の中の START。
+// 段 5c: 設定画面のお気に入りの行は一番上と同じ部品と位置（選んだ・選んでいない・0 件）、固定中の項目の並べ替え（A・B・版の数・
+// お気に入りの並びと互いに変えない）、固定の並びの保存の往復（記録の順・符号化と復号）、SetFixedOrder の検査。
 #include "menu/paint.hpp"
 #include "menu/sample_items.hpp"
 #include "menu_ids.hpp"
@@ -855,6 +857,262 @@ void DisabledFolderLooksLikeDisabledRow() {
     assert(HasTextAt(plain, "灰色の箱", lx + ca::Color::Sel::ShadowOffset[0], ly + ca::Color::Sel::ShadowOffset[1]));
 }
 
+// 描画の指示を、種類と位置で探す（先頭の 1 つ）。
+const Command *CommandAt(const RecordingSurface &s, Command::Kind kind, int x, int y) {
+    for (const Command &c : s.commands)
+        if (c.kind == kind && c.bounds.x == x && c.bounds.y == y) return &c;
+    return nullptr;
+}
+// 金の淡い地（お気に入りの行の地）が、その位置に描かれているか。
+bool FavFillAt(const RecordingSurface &s, int x, int y) {
+    namespace ca = gohan::core::design::ca2;
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Fill && c.bounds.x == x && c.bounds.y == y && c.color == ca::Color::Fav::Fill) return true;
+    return false;
+}
+// 一覧の行の名前の字（影より後の本体。説明の窓の題は右の列なので除く）。
+const Command *ListName(const RecordingSurface &s, const std::string &text) {
+    const Command *found = nullptr;
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == text && c.bounds.x < 200) found = &c;
+    return found;
+}
+int TextCountInList(const RecordingSurface &s, const std::string &text) {
+    int n = 0;
+    for (const Command &c : s.commands) n += c.kind == Command::Text && c.text == text && c.bounds.x < 200;
+    return n;
+}
+
+// お気に入りの行（一番上の一覧と設定画面の「お気に入り」）の部品を、名前の字からの差で確かめる（M1）。
+// selected: 選んでいる。empty: 0 件（灰色で入らない行）。count: 件数の字（「3件」「0件」）。
+void CheckFavRow(const RecordingSurface &s, bool selected, bool empty, const std::string &count) {
+    namespace ca = gohan::core::design::ca2;
+    const Command *name = ListName(s, "お気に入り");
+    assert(name);
+    const int x = name->bounds.x - ca::Fav::Row::Label[0], y = name->bounds.y - ca::Fav::Row::Label[1];
+    const int right = x + ca::Row::W + ca::Row::Value::Right;
+    // 地（金の淡い地）: 選んでいる時と 0 件では描かない。
+    assert(FavFillAt(s, x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1]) == (!selected && !empty));
+    if (!selected && !empty) {
+        const Command *fill = CommandAt(s, Command::Fill, x + ca::Fav::Row::Fill[0], y + ca::Fav::Row::Fill[1]);
+        assert(fill && fill->bounds.w == ca::Row::W + ca::Fav::Row::Fill[2] && fill->bounds.h == ca::Fav::Row::Fill[3]);
+    }
+    // 星: 選んでいる時は白い星と右下 1 の影。0 件は薄い星。
+    const int sx = x + ca::Fav::Row::Star[0], sy = y + ca::Fav::Row::Star[1];
+    const Command *star = CommandAt(s, Command::Sprite, sx, sy);
+    assert(star);
+    if (empty) assert(star->text == "star" && star->color == Fade(0xFFFFFFFFu, ca::Color::Disabled::Alpha));
+    else assert(star->text == (selected ? "star.white" : "star"));
+    if (selected && !empty) {
+        const Command *shadow = CommandAt(s, Command::Sprite, sx + 1, sy + 1);
+        assert(shadow && shadow->text == "star.white" && shadow->color == ca::Color::Sel::Shadow);
+    }
+    // 名前: 0 件は灰色。ほかは今の色（選んでいる時は白）。影は選んでいる時だけ 1 つ増える（0 件は選んでも増えない）。
+    assert(name->color == (empty ? ca::Color::Disabled::Text : selected ? ca::Color::Sel::Text : ca::Color::Text));
+    assert(TextCountInList(s, "お気に入り") == (selected && !empty ? 2 : 1));
+    // 件数: 一番上と同じ位置（右端 = 指しの左 − 件数の差）。色は副の色、選んだ時は白。
+    const int count_x = right + ca::Row::Folder::Mark[0] - ca::Fav::Row::Count - s.Measure(count);
+    const Command *number = nullptr;
+    for (const Command &c : s.commands)
+        if (c.kind == Command::Text && c.text == count && c.bounds.x == count_x) number = &c;
+    assert(number && number->bounds.y == name->bounds.y);
+    assert(number->color == (selected && !empty ? ca::Color::Sel::Text : ca::Color::Sub));
+    // 指し（>）: 字の色（選んでいる時は白）。0 件でも色は変えない。
+    const Command *chevron = CommandAt(s, Command::Sprite, right + ca::Row::Folder::Mark[0], y + ca::Row::Folder::Mark[1]);
+    assert(chevron && chevron->text == "chevron" && chevron->color == (selected && !empty ? ca::Color::Sel::Text : ca::Color::Text));
+    // 区切り: 金の実線（一覧の行の下。破線ではない）。
+    const Command *rule = CommandAt(s, Command::Fill, ca::Row::Rule[0], y + ca::Row::H + ca::Row::Rule[2]);
+    assert(rule && rule->color == ca::Color::Fav::Rule && rule->bounds.h == 1 && rule->bounds.w == ca::Row::Rule[1] - ca::Row::Rule[0] + 1);
+    // 選んだ行の帯: 0 件は disband、ほかは今の帯（selrim）。
+    if (selected && empty) assert(FindCommand(s, Command::Slice, "disband") != nullptr);
+    if (selected && !empty) assert(FindCommand(s, Command::Slice, "selrim") != nullptr);
+}
+
+// 行の R の操作の中の位置（無ければ -1）。
+int ActionIndex(Rig &r, u16 item, ActionKind kind) {
+    ItemAction out[kMaxActions];
+    const std::size_t count = r.engine.Actions(item, out);
+    for (std::size_t n = 0; n < count; ++n)
+        if (out[n].kind == kind) return static_cast<int>(n);
+    return -1;
+}
+// 行を選び、R で操作のリストを開き、「並べ替え」へ下りて A で持ち上げる。
+void OpenReorderRow(Rig &r, u16 item) {
+    assert(r.engine.Select(item));
+    r.Tap(key::R);
+    r.Advance(200);
+    const int at = ActionIndex(r, item, ActionKind::Reorder);
+    assert(at >= 0 && r.engine.Ui().kind == UiKind::Actions);
+    for (int n = 0; n < at; ++n) r.Tap(key::Down);
+    r.Tap(key::A);
+    r.Advance(200);
+    assert(r.engine.Ui().kind == UiKind::Reorder && r.shell.Modal());
+}
+// 固定の並び・お気に入りの並びが、期待の 3 項目と同じ順か。
+bool FixedIs(const Engine &e, u16 a, u16 b, u16 c) {
+    return e.FixedCount() == 3 && e.FixedOrder()[0] == a && e.FixedOrder()[1] == b && e.FixedOrder()[2] == c;
+}
+bool FavoritesIs(const Engine &e, u16 a, u16 b, u16 c) {
+    return e.FavoriteCount() == 3 && e.FavoriteOrder()[0] == a && e.FavoriteOrder()[1] == b && e.FavoriteOrder()[2] == c;
+}
+
+// 2i. お気に入りの行（M1）: 設定画面の「お気に入り」は、一番上のお気に入りの行と同じ部品を同じ位置に描く。
+//     選んでいない時は金の淡い地、選んだ時は地を描かず白い星と字に影。0 件は地なし・薄い星・灰色の名前で、選んでも変えない。
+void FavoritesRowLooksLikeTop() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const u16 flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold), amount = Idx(MenuId::SampleAmount);
+    for (u16 item : {flag, hold, amount}) assert(r.engine.SetFavorite(item, true));
+    // 一番上の一覧: 選んでいない時（先頭の次の行を選ぶ）と、選んだ時。
+    assert(r.engine.Select(r.engine.NextVisible(kNoItem, gohan::menu::kFavoritesFolder)));
+    r.Advance(400);
+    RecordingSurface top = r.Draw();
+    CheckFavRow(top, false, false, "3件");
+    assert(top.dropped == 0);
+    assert(r.engine.Select(gohan::menu::kFavoritesFolder));
+    r.Advance(400);
+    RecordingSurface top_selected = r.Draw();
+    CheckFavRow(top_selected, true, false, "3件");
+    assert(top_selected.dropped == 0);
+    // 設定画面の「お気に入り」（3 件）: 固定中の項目を選ぶ（選んでいない）と、お気に入りを選ぶ（選んだ）。
+    OpenSettings(r);
+    assert(r.engine.Select(Idx(MenuId::SettingsFixed)));
+    r.Advance(400);
+    RecordingSurface inside = r.Draw();
+    CheckFavRow(inside, false, false, "3件");
+    assert(inside.dropped == 0);
+    assert(r.engine.Select(Idx(MenuId::SettingsFavorites)));
+    r.Advance(400);
+    RecordingSurface inside_selected = r.Draw();
+    CheckFavRow(inside_selected, true, false, "3件");
+    assert(inside_selected.dropped == 0);
+    // 0 件（設定画面だけ。灰色で入らない）: 選んでいない時と選んだ時で、色と影は変わらない。
+    Rig e(kMenuItems, kMenuItemCount);
+    Prepare(e);
+    OpenSettings(e);
+    assert(e.engine.Select(Idx(MenuId::SettingsFixed)));
+    e.Advance(400);
+    CheckFavRow(e.Draw(), false, true, "0件");
+    assert(e.engine.Select(Idx(MenuId::SettingsFavorites)));
+    e.Advance(400);
+    RecordingSurface empty = e.Draw();
+    CheckFavRow(empty, true, true, "0件");
+    assert(empty.HasText("お気に入りはありません") && empty.dropped == 0);
+}
+
+// 2j. 固定中の項目の並べ替え（M2）: 2 件以上の時だけ、設定画面の固定中の行の R に「並べ替え」（お気に入りの操作の次）。
+//     上下と A で固定の順が変わり（版の数 +1）、B では変わらない。お気に入りの並びとは別で、互いに変えない。
+void FixedListReorder() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const u16 flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold), amount = Idx(MenuId::SampleAmount);
+    // 1 件だけなら「並べ替え」は出ない。一番上の一覧の固定中の行にも出ない（設定画面の外）。
+    assert(r.engine.SetFixed(hold, true, r.now));
+    assert(ActionIndex(r, hold, ActionKind::Reorder) < 0);
+    assert(r.engine.SetFixed(flag, true, r.now) && r.engine.SetFixed(amount, true, r.now));
+    assert(ActionIndex(r, hold, ActionKind::Reorder) < 0);
+    OpenSettings(r);
+    EnterRow(r, MenuId::SettingsFixed);
+    // 3 件: 固定中の行の R は、固定を外す・お気に入りに追加・並べ替え の順（並べ替えは 3 番目）。
+    assert(r.engine.Select(hold) && ActionIndex(r, hold, ActionKind::Reorder) == 2);
+    // 固定の順 [hold, flag, amount] の flag を上へ 1 つ（[flag, hold, amount]）。A で決める。版の数は 1 増え、お気に入りは変わらない。
+    const u32 revision = r.engine.Revision();
+    OpenReorderRow(r, flag);
+    r.Tap(key::Up);
+    r.Advance(120);
+    auto s = r.Draw();
+    assert(s.HasText("並べ替え中") && s.HasText("動かす") && s.HasText("決定") && s.HasText("取消") && s.dropped == 0);
+    r.Tap(key::A);
+    r.Advance(300);
+    assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
+    assert(FixedIs(r.engine, flag, hold, amount) && r.engine.Revision() == revision + 1 && r.engine.FavoriteCount() == 0);
+    u16 rows[8]{};
+    assert(r.engine.Children(r.engine.Folder(), rows, 8) == 3 && rows[0] == flag && rows[1] == hold && rows[2] == amount);
+    // B で取り消す: amount を上へ動かしてから B。並びも版の数も変わらない。
+    const u32 before = r.engine.Revision();
+    OpenReorderRow(r, amount);
+    r.Tap(key::Up);
+    r.Advance(120);
+    r.Tap(key::B);
+    r.Advance(300);
+    assert(r.engine.Ui().kind == UiKind::None && !r.shell.Modal());
+    assert(FixedIs(r.engine, flag, hold, amount) && r.engine.Revision() == before);
+    // お気に入りを同じ 3 件にする（順は flag・hold・amount）。お気に入りの並べ替えは固定の並びを変えない。
+    for (u16 item : {flag, hold, amount}) assert(r.engine.SetFavorite(item, true));
+    r.Tap(key::B);
+    r.Advance(400);
+    assert(r.engine.InSettings() && r.engine.Depth() == 0);
+    EnterRow(r, MenuId::SettingsFavorites);
+    assert(r.engine.Folder() == Idx(MenuId::SettingsFavorites));
+    const u32 with_favorites = r.engine.Revision();
+    OpenReorderRow(r, amount);
+    r.Tap(key::Up);
+    r.Advance(120);
+    r.Tap(key::A);
+    r.Advance(300);
+    assert(FavoritesIs(r.engine, flag, amount, hold) && FixedIs(r.engine, flag, hold, amount));
+    assert(r.engine.Revision() == with_favorites + 1);
+    // 固定の並べ替えはお気に入りの並びを変えない（固定の順の flag を下へ動かす: [hold, flag, amount]）。
+    r.Tap(key::B);
+    r.Advance(400);
+    EnterRow(r, MenuId::SettingsFixed);
+    OpenReorderRow(r, flag);
+    r.Tap(key::Down);
+    r.Advance(120);
+    r.Tap(key::A);
+    r.Advance(300);
+    assert(FixedIs(r.engine, hold, flag, amount) && FavoritesIs(r.engine, flag, amount, hold));
+    assert(r.engine.Ui().kind == UiKind::None);
+}
+
+// 2k. 固定の並べ替えは保存の記録の順として残る（形式は変えない）。書き出した記録の順が固定の並びで、読み直すと決めた順に戻る。
+void FixedOrderSurvivesRestore() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const u16 flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold), amount = Idx(MenuId::SampleAmount);
+    assert(r.engine.SetFixed(hold, true, r.now) && r.engine.SetFixed(flag, true, r.now) && r.engine.SetFixed(amount, true, r.now));
+    const u16 order[3] = {amount, flag, hold};
+    assert(r.engine.SetFixedOrder(order, 3) && FixedIs(r.engine, amount, flag, hold));
+    persist::Saved saved;
+    r.engine.Capture(saved);
+    assert(saved.count >= 3 && saved.records[0].item == amount && saved.records[1].item == flag && saved.records[2].item == hold);
+    // 保存の形式に書き、読み直す（別の起動）: 固定の並びは決めた順に戻る。
+    static u8 bytes[gohan::core::limits::PersistBytes];
+    const std::size_t size = persist::Encode(saved, kMenuItems, kMenuItemCount, bytes, sizeof(bytes));
+    assert(size > 0);
+    Rig b(kMenuItems, kMenuItemCount);
+    assert(b.engine.BindAll(sample::kBindings, sample::kBindingCount));
+    b.engine.BindSettings(Settings());
+    persist::Saved loaded;
+    assert(persist::Decode(bytes, size, kMenuItems, kMenuItemCount, b.engine.PersistRules(), loaded));
+    b.engine.Restore(loaded);
+    assert(FixedIs(b.engine, amount, flag, hold));
+}
+
+// 2l. 固定の並べ替えの決定（SetFixedOrder）の検査: 数・固定していない項目・重なり・空は捨てる（何も変えない）。
+//     同じ並びは版の数を増やさない。固定の並びを変えても、固定を外すと残りの順は変わらない。
+void SetFixedOrderChecks() {
+    Rig r(kMenuItems, kMenuItemCount);
+    Prepare(r);
+    const u16 flag = Idx(MenuId::SampleFlag), hold = Idx(MenuId::SampleHold), amount = Idx(MenuId::SampleAmount);
+    const u16 values = Idx(MenuId::SampleValues);
+    assert(r.engine.SetFixed(hold, true, r.now) && r.engine.SetFixed(flag, true, r.now) && r.engine.SetFixed(amount, true, r.now));
+    const u32 revision = r.engine.Revision();
+    const u16 short_order[2] = {flag, hold}, twice[3] = {flag, flag, amount}, not_fixed[3] = {flag, hold, values};
+    assert(!r.engine.SetFixedOrder(nullptr, 3));
+    assert(!r.engine.SetFixedOrder(short_order, 2));
+    assert(!r.engine.SetFixedOrder(twice, 3));
+    assert(!r.engine.SetFixedOrder(not_fixed, 3));
+    assert(r.engine.Revision() == revision && FixedIs(r.engine, hold, flag, amount));
+    const u16 same[3] = {hold, flag, amount};
+    assert(r.engine.SetFixedOrder(same, 3) && r.engine.Revision() == revision);
+    const u16 turned[3] = {amount, hold, flag};
+    assert(r.engine.SetFixedOrder(turned, 3) && r.engine.Revision() == revision + 1 && FixedIs(r.engine, amount, hold, flag));
+    // 並べ替えの後に外すと、残りの順は変わらない。
+    assert(r.engine.SetFixed(hold, false, r.now));
+    assert(r.engine.FixedCount() == 2 && r.engine.FixedOrder()[0] == amount && r.engine.FixedOrder()[1] == flag);
+}
+
 int main() {
     OpenCloseAndPosition();
     FixedListRules();
@@ -878,6 +1136,10 @@ int main() {
     SettingsDirection();
     BarWordPositions();
     DisabledFolderLooksLikeDisabledRow();
+    FavoritesRowLooksLikeTop();
+    FixedListReorder();
+    FixedOrderSurvivesRestore();
+    SetFixedOrderChecks();
     std::puts("menu settings: ok");
     return 0;
 }

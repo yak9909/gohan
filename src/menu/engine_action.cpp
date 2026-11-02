@@ -87,6 +87,22 @@ bool Engine::SetFavoriteOrder(const u16 *items, std::size_t count) {
     return true;
 }
 
+// 固定の並べ替えの決定（M2）。SetFavoriteOrder と同じ検査。固定の並びは保存の固定の記録の順になるので、形式は変わらない。
+bool Engine::SetFixedOrder(const u16 *items, std::size_t count) {
+    if (count != fixed_count_ || (count && !items)) return false;
+    bool changed = false;
+    for (std::size_t n = 0; n < count; ++n) {
+        if (!Has(items[n]) || !state_[items[n]].fixed) return false;
+        for (std::size_t p = 0; p < n; ++p)
+            if (items[p] == items[n]) return false;
+        changed = changed || items[n] != fixed_order_[n];
+    }
+    if (!changed) return true;
+    for (std::size_t n = 0; n < count; ++n) fixed_order_[n] = items[n];
+    ++revision_;
+    return true;
+}
+
 std::size_t Engine::Actions(u16 item, ItemAction *out) const {
     // 設定画面の行は、R の操作のリスト・固定・お気に入り・ホットキーの対象にしない。
     if (!Has(item) || Hidden(item) || InSettingsTree(item)) return 0;
@@ -104,11 +120,13 @@ std::size_t Engine::Actions(u16 item, ItemAction *out) const {
     }
     add(IsFavorite(item) ? ActionKind::RemoveFavorite : ActionKind::AddFavorite,
         IsFavorite(item) ? "お気に入りから外す" : "お気に入りに追加", false);
-    // 並べ替えは、お気に入りの中（一番上も設定画面も）で、2 件以上ある時だけ。
+    // 並べ替えは、お気に入りの中（一番上も設定画面も）と、設定画面の固定中の項目の中で、2 件以上ある時だけ（M2）。
+    // 普通の一覧の固定中の行には出さない（並ぶ位置はお気に入りの中と同じ。お気に入りの操作の次）。
     const u16 list = Folder();
-    const u16 first = FirstVisible(list);
-    if (IsFavoritesList(list) && IsFavorite(item) && first != kNoItem && NextVisible(list, first) != kNoItem)
-        add(ActionKind::Reorder, "並べ替え", false);
+    const ListKind kind = ListOf(list);
+    const bool member = kind == ListKind::Favorites ? IsFavorite(item) : kind == ListKind::Fixed && st.fixed;
+    const u16 first = member ? FirstVisible(list) : kNoItem;
+    if (first != kNoItem && NextVisible(list, first) != kNoItem) add(ActionKind::Reorder, "並べ替え", false);
     if (d.control != Control::Folder && d.control != Control::Key) {
         add(ActionKind::SetHotkey, st.hotkey ? "ホットキーを変更" : "ホットキーを設定", Disabled(item));
         if (st.hotkey) add(ActionKind::RemoveHotkey, "ホットキーを外す", Disabled(item));
