@@ -24,6 +24,7 @@ persist::Rules Engine::PersistRules() const {
     persist::Rules rules;
     rules.reserved = reserved_;
     rules.settings_root = settings_.root;
+    rules.dev_visible = dev_visible_;
     if (Has(settings_.press_through)) {
         const ItemDef &d = defs_[settings_.press_through];
         for (std::size_t n = 0; n < d.option_count; ++n) rules.press_valid = static_cast<u16>(rules.press_valid | KeyOfOption(d.options[n]));
@@ -41,9 +42,9 @@ void Engine::Capture(persist::Saved &out) const {
         if (!state_[i].fixed) AppendRecord(out, i);
 }
 
-// 項目の覚える欄を書く。覚える物が無ければ書かない。
+// 項目の覚える欄を書く。覚える物が無ければ書かない。隠れている項目（開発版の項目を製品版で出している時）は書かない。
 void Engine::AppendRecord(persist::Saved &out, u16 item) const {
-    if (!Has(item) || out.count >= core::limits::MenuItems || InSettingsTree(item)) return;
+    if (!Has(item) || out.count >= core::limits::MenuItems || InSettingsTree(item) || Hidden(item)) return;
     const ItemDef &d = defs_[item];
     const ItemState &st = state_[item];
     persist::Record r;
@@ -88,12 +89,14 @@ void Engine::Restore(const persist::Saved &saved) {
     if (Has(settings_.press_through))
         SetRestored(settings_.press_through, static_cast<s32>(OptionMask(defs_[settings_.press_through], saved.press_keys)));
     for (std::size_t n = 0; n < saved.count; ++n) RestoreRecord(saved.records[n]);
-    // お気に入りの並び: Decode が 0 から振り直した順。
-    for (std::size_t n = 0; n < saved.count; ++n) {
-        const persist::Record &r = saved.records[n];
-        if ((r.fields & persist::kFavorite) && r.order < core::limits::MenuItems) {
-            favorites_[r.order] = r.item;
-            ++favorite_count_;
+    // お気に入りの並び: Decode が 0 から振り直した順（連番）。隠れた項目を飛ばしても、残りの順は変えない。
+    for (std::size_t rank = 0; rank < saved.count; ++rank) {
+        for (std::size_t n = 0; n < saved.count; ++n) {
+            const persist::Record &r = saved.records[n];
+            if ((r.fields & persist::kFavorite) && static_cast<std::size_t>(r.order) == rank) {
+                if (!Hidden(r.item)) favorites_[favorite_count_++] = r.item;
+                break;
+            }
         }
     }
     // 戻しでは効果の通知を出さない（今の効果を覚えておく）。
@@ -102,9 +105,10 @@ void Engine::Restore(const persist::Saved &saved) {
 }
 
 // 1 項目を入れる。戻しの待ちは、ゲームの値（読めるまで）と ON のトグルの効果（入るまで）だけ。
+// 隠れている項目（開発版の項目を製品版で出していない）は、何も入れず、数えもしない。
 void Engine::RestoreRecord(const persist::Record &r) {
     const u16 item = r.item;
-    if (!Has(item)) return;
+    if (!Has(item) || Hidden(item)) return;
     const ItemDef &d = defs_[item];
     ItemState &st = state_[item];
     if (r.fields & persist::kHotkey) st.hotkey = st.applied_hotkey = r.hotkey;

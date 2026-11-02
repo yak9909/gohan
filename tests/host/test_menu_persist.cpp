@@ -199,7 +199,7 @@ void BrokenInputs() {
     Buffer version = Header(0);
     version[4] = 2;
     assert(!Load(version, saved));
-    assert(!Load(Header(kMenuItemCount + 1), saved));
+    assert(!Load(Header(core::limits::MenuItems + 1), saved)); // 項目の上限（192）を超える記録の数
     // 空の入力（記録が無い）は読める。
     assert(Load(Header(0), saved) && saved.count == 0);
     // 記録の数が実際より多い（途中で切れた）時は、読めた分だけ残す。
@@ -340,6 +340,25 @@ const ItemDef *SmallTable() {
     static const ItemDef table[3] = {Toggle("lamp", 1, 0), Toggle("rad_a", 0, 1), Toggle("rad_b", 0, 1)};
     return table;
 }
+ItemDef WithHotkey(ItemDef d, u16 hotkey) {
+    d.hotkey = hotkey;
+    return d;
+}
+ItemDef WithDev(ItemDef d) {
+    d.dev = true;
+    return d;
+}
+// 重なりの連鎖の表: A は既定 L+Up、B は既定なし、C は既定 R。
+const ItemDef *ChainTable() {
+    static const ItemDef table[3] = {WithHotkey(Toggle("chain.a", 0, 0), key::L | key::Up), Toggle("chain.b", 0, 0),
+                                     WithHotkey(Toggle("chain.c", 0, 0), key::R)};
+    return table;
+}
+// 開発版の表: lamp（ホットキーなし）と、開発版の hidden.x（既定 L+Up）。
+const ItemDef *DevTable() {
+    static const ItemDef table[2] = {Toggle("lamp", 0, 0), WithDev(WithHotkey(Toggle("hidden.x", 0, 0), key::L | key::Up))};
+    return table;
+}
 bool LoadSmall(const Buffer &d, persist::Saved &saved) {
     return persist::Decode(d.data(), d.size(), SmallTable(), 3, persist::Rules{}, saved);
 }
@@ -381,6 +400,98 @@ void SmallRoundTrip() {
     rules.press_valid = key::Start; // 押し切るボタンの選択肢（この表では START）
     assert(persist::Decode(buffer.data(), size, SmallTable(), 3, rules, back));
     assert(SameSaved(saved, back));
+}
+
+// 7b. 表より記録が多い入力（記録の数は項目の上限まで）: 知っている鍵の記録は読み、未知の鍵の記録だけ捨てる。
+void MoreRecordsThanTheTable() {
+    persist::Saved saved;
+    Buffer more = Header(5);
+    Put(more, "no.such.1", persist::kValue, 1);
+    Put(more, "lamp", persist::kFixed);
+    Put(more, "no.such.2", persist::kFixed);
+    Put(more, "rad_a", persist::kFixed | persist::kOn);
+    Put(more, "no.such.3", persist::kFixed);
+    assert(LoadSmall(more, saved) && saved.count == 2);
+    assert(saved.records[0].item == 0 && saved.records[0].fields == persist::kFixed);
+    assert(saved.records[1].item == 1 && saved.records[1].fields == (persist::kFixed | persist::kOn));
+    // 上限（192）を超える記録の数は、全体を既定で始める。
+    assert(!LoadSmall(Header(core::limits::MenuItems + 1), saved) && saved.count == 0);
+}
+
+// 7c. 重なりの連鎖: 捨てて既定に戻った項目の既定が、別の記録と新しく重なる時も、重なりが無くなるまで判定する。
+void HotkeyChainsAreResolved() {
+    persist::Rules rules;
+    rules.reserved = key::Select;
+    rules.settings_root = kNoItem;
+    persist::Saved saved;
+    // A の R は C の既定 R と重なる → 捨てて A は既定 L+Up に戻る。すると B の L+Up は A の既定と重なる → 捨てる。
+    Buffer chain = Header(2);
+    Put(chain, "chain.a", persist::kHotkey, 0, key::R);
+    Put(chain, "chain.b", persist::kHotkey, 0, key::L | key::Up);
+    assert(persist::Decode(chain.data(), chain.size(), ChainTable(), 3, rules, saved) && saved.count == 0);
+    // 重ならない物は残る: B を別のボタン（下）にすると、A の R を捨てても B は残る。
+    Buffer free_one = Header(2);
+    Put(free_one, "chain.a", persist::kHotkey, 0, key::R);
+    Put(free_one, "chain.b", persist::kHotkey, 0, key::Down);
+    assert(persist::Decode(free_one.data(), free_one.size(), ChainTable(), 3, rules, saved) && saved.count == 1);
+    assert(saved.records[0].item == 1 && saved.records[0].hotkey == key::Down);
+}
+
+// 7d. 開発版の項目: 出していない時は、記録を読まず、その既定のホットキーも重なりに数えない。出している時は読む。
+void DevItemsFollowTheirVisibility() {
+    persist::Rules hidden;
+    hidden.reserved = key::Select;
+    hidden.settings_root = kNoItem;
+    persist::Rules shown = hidden;
+    shown.dev_visible = true;
+    persist::Saved saved;
+    Buffer dev = Header(2);
+    Put(dev, "hidden.x", persist::kFixed | persist::kOn);
+    Put(dev, "lamp", persist::kHotkey, 0, key::L | key::Up);
+    // 出していない: hidden.x の記録は捨てる。その既定の L+Up は重なりに数えず、lamp の L+Up は残る。
+    assert(persist::Decode(dev.data(), dev.size(), DevTable(), 2, hidden, saved) && saved.count == 1);
+    assert(saved.records[0].item == 0 && saved.records[0].hotkey == (key::L | key::Up));
+    // 出している: hidden.x の記録を読む。その既定の L+Up と重なる lamp の L+Up は捨てる（記録が無くなる）。
+    assert(persist::Decode(dev.data(), dev.size(), DevTable(), 2, shown, saved) && saved.count == 1);
+    assert(saved.records[0].item == 1 && saved.records[0].fields == (persist::kFixed | persist::kOn));
+}
+
+// 7e. 開発版の項目（sample.dev_note）の記録: 出していない時は入れず・数えず、お気に入りの残りの順は保つ。出している時は入る。
+void HiddenItemsAreNotRestored() {
+    persist::Saved saved;
+    saved.count = 2;
+    saved.records[0] = {Idx(MenuId::SampleDevNote), persist::kFixed | persist::kOn | persist::kFavorite, 0, 0, 0};
+    saved.records[1] = {Idx(MenuId::SampleStamp), persist::kFavorite, 0, 0, 1};
+    {
+        Sink sink;
+        Engine e(kMenuItems, kMenuItemCount);
+        sample::Get() = sample::State{};
+        assert(e.BindAll(sample::kBindings, sample::kBindingCount));
+        e.SetNoticeSink({Collect, &sink});
+        e.Restore(saved); // 既定: 開発版の項目は出していない
+        assert(e.RestoreWaiting() == 0 && e.FixedCount() == 0 && e.Applied(Idx(MenuId::SampleDevNote)) == 0);
+        assert(e.FavoriteCount() == 1 && e.FavoriteOrder()[0] == Idx(MenuId::SampleStamp));
+        u32 now = 1000;
+        e.Frame(now += 16, 0);
+        assert(sink.notices.empty());
+        persist::Saved written;
+        e.Capture(written);
+        assert(!Find(written, Idx(MenuId::SampleDevNote)));
+    }
+    {
+        Sink sink;
+        Engine e(kMenuItems, kMenuItemCount);
+        sample::Get() = sample::State{};
+        assert(e.BindAll(sample::kBindings, sample::kBindingCount));
+        e.SetDevVisible(true);
+        e.SetNoticeSink({Collect, &sink});
+        e.Restore(saved); // 開発版の項目を出している
+        assert(e.Applied(Idx(MenuId::SampleDevNote)) == 1 && e.FixedCount() == 1 && e.FavoriteCount() == 2);
+        assert(e.FavoriteOrder()[0] == Idx(MenuId::SampleDevNote) && e.FavoriteOrder()[1] == Idx(MenuId::SampleStamp));
+        u32 now = 1000;
+        e.Frame(now += 16, 0);
+        assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "1 件を戻しました"));
+    }
 }
 
 // 8. 全てのバイト列の切り方と、1 バイトずつの書き換えで、落ちない（読めた物は正しい項目で、欄の旗の矛盾は残らない）。
@@ -643,6 +754,10 @@ int main() {
     EncodeAndLookup();
     SmallTableRules();
     SmallRoundTrip();
+    MoreRecordsThanTheTable();
+    HotkeyChainsAreResolved();
+    DevItemsFollowTheirVisibility();
+    HiddenItemsAreNotRestored();
     MutatedInputs();
     RestoreWaitsForReadableGame();
     RestoreWaitsForPatch();

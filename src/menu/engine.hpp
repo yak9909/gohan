@@ -125,7 +125,9 @@ class Engine {
     // ---- 保存と起動時の戻し（ファイルには触れない。形式は persist.hpp） ----
     persist::Rules PersistRules() const;
     void Capture(persist::Saved &out) const; // 覚える物を写す（版の数が変わった時に保存する写し）
-    // 起動の直後に 1 回だけ呼ぶ（結び付けの後）。版の数は増やさない。待つ物は毎フレームの処理で戻し、全て片付いたら通知を 1 つ出す。
+    // 起動の直後に 1 回だけ呼ぶ（結び付け・SetReservedHotkeys・SetDevVisible の後で、最初のフレームの前）。
+    // 版の数は増やさない。待つ物は毎フレームの処理で戻し、全て片付いたら通知を 1 つ出す。
+    // 隠れている項目（開発版の項目を出していない時の dev の項目）の記録は、何も入れず数えない。
     void Restore(const persist::Saved &saved);
     std::size_t RestoreWaiting() const { return restore_waiting_; } // 戻しを待っている物の数
 

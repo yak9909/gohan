@@ -35,6 +35,17 @@ bool InSettings(const ItemDef *defs, std::size_t count, u16 item, u16 root) {
     return false;
 }
 
+// 項目が隠れているか（項目か親が開発版で、開発版の項目を出していない）。エンジンの Hidden と同じ決まり。
+bool Hidden(const ItemDef *defs, std::size_t count, u16 item, bool dev_visible) {
+    if (dev_visible) return false;
+    u16 i = item;
+    for (std::size_t guard = 0; guard < count && i != kNoItem && i < count; ++guard) {
+        if (defs[i].dev) return true;
+        i = defs[i].parent;
+    }
+    return false;
+}
+
 // 読んだ後（まだ捨てる前）の、項目のホットキー。記録が無ければ既定。
 u16 HotkeyOf(const ItemDef *defs, const u8 *slot, const Saved &saved, u16 item) {
     const u8 index = slot[item];
@@ -106,8 +117,9 @@ bool Decode(const u8 *data, std::size_t size, const ItemDef *defs, std::size_t c
     for (std::size_t n = 0; n < 4; ++n)
         if (data[n] != static_cast<u8>(kMagic[n])) return false;
     if (ReadU16(data + 4) != kVersion) return false;
+    // 記録の数は項目の上限まで。表の項目数より多くても、知っている鍵の記録は読む（未知の鍵の記録はその記録だけ捨てる）。
     const std::size_t total = ReadU16(data + 10);
-    if (total > count) return false; // 記録は項目ごとに 1 つ。これより多いのは壊れている
+    if (total > core::limits::MenuItems) return false;
     saved.keep_toggles = (data[6] & kKeepToggles) != 0;
     saved.press_keys = static_cast<u16>(ReadU16(data + 8) & rules.press_valid);
 
@@ -141,7 +153,9 @@ bool Decode(const u8 *data, std::size_t size, const ItemDef *defs, std::size_t c
         // 鍵の長さが 1〜64 でない・未知の鍵・設定画面の物・2 つ目の記録は、この記録だけを捨てる（欄の長さは読んだ）。
         if (id_bytes == 0 || id_bytes > kMaxIdBytes) continue;
         const u16 item = FindItem(defs, count, reinterpret_cast<const char *>(id), id_bytes);
-        if (item == kNoItem || slot[item] != 0 || InSettings(defs, count, item, rules.settings_root)) continue;
+        if (item == kNoItem || slot[item] != 0 || InSettings(defs, count, item, rules.settings_root) ||
+            Hidden(defs, count, item, rules.dev_visible))
+            continue;
         const ItemDef &d = defs[item];
         Record r;
         r.item = item;
@@ -201,23 +215,31 @@ bool Decode(const u8 *data, std::size_t size, const ItemDef *defs, std::size_t c
     }
     for (std::size_t a = 0; a < favorite_count; ++a) saved.records[favorites[a]].order = static_cast<u16>(a);
 
-    // 重なるホットキー: 読んだ後の他の項目（記録が無ければ既定）と同じ物は捨てる。判定は捨てる前の値で行うので、順番に依らない。
-    bool drop[core::limits::MenuItems] = {};
-    for (std::size_t k = 0; k < saved.count; ++k) {
-        const Record &r = saved.records[k];
-        if (!(r.fields & kHotkey) || r.hotkey == 0) continue;
-        for (u16 j = 0; j < count; ++j) {
-            if (j == r.item || HotkeyOf(defs, slot, saved, j) != r.hotkey) continue;
-            drop[k] = true;
-            break;
+    // 重なるホットキー: 他の項目の今のホットキー（記録が無ければ既定）と同じ物は捨てる。
+    // 1 回の判定で重なる物を全て同時に捨て、捨てた後にまだ重なる物が残れば、重なりが無くなるまで同じ判定を繰り返す
+    // （捨てた物は既定に戻り、別の記録と新しく重なるかもしれない）。捨てるたびに記録の欄が 1 つ減るので、必ず終わる。
+    for (;;) {
+        bool drop[core::limits::MenuItems] = {};
+        bool any = false;
+        for (std::size_t k = 0; k < saved.count; ++k) {
+            const Record &r = saved.records[k];
+            if (!(r.fields & kHotkey) || r.hotkey == 0) continue;
+            for (u16 j = 0; j < count; ++j) {
+                if (j == r.item || Hidden(defs, count, j, rules.dev_visible) || HotkeyOf(defs, slot, saved, j) != r.hotkey) continue;
+                drop[k] = true;
+                any = true;
+                break;
+            }
         }
+        if (!any) break;
+        for (std::size_t k = 0; k < saved.count; ++k)
+            if (drop[k]) saved.records[k].fields = static_cast<u8>(saved.records[k].fields & ~kHotkey);
     }
+    // 欄が無くなった記録は書かない（既定のまま）。残った記録の順は変えない。
     std::size_t kept_count = 0;
     for (std::size_t k = 0; k < saved.count; ++k) {
-        Record r = saved.records[k];
-        if (drop[k]) r.fields = static_cast<u8>(r.fields & ~kHotkey);
-        if (r.fields == 0) continue; // 欄が無くなった記録は書かない（既定のまま）
-        saved.records[kept_count++] = r;
+        if (saved.records[k].fields == 0) continue;
+        saved.records[kept_count++] = saved.records[k];
     }
     saved.count = kept_count;
     return true;

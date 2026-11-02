@@ -49,6 +49,7 @@ struct Rules {
     u16 reserved = 0;            // ホットキーに使えないボタン（SELECT）
     u16 press_valid = 0;         // 押し切るボタンに使えるボタン（選択肢の名前のボタン）
     u16 settings_root = kNoItem; // 設定画面の根。その下の項目は持ち越さない
+    bool dev_visible = false;    // 開発版の項目を出している時だけ真。隠れた項目の記録は読まず、重なりの判定にも数えない
 };
 
 // 鍵（spec の id）で項目を引く。無ければ kNoItem。
@@ -57,8 +58,9 @@ u16 FindItem(const ItemDef *defs, std::size_t count, const char *key, std::size_
 // 書き出す（リトルエンディアン）。入らない・鍵が不正な時は 0。
 std::size_t Encode(const Saved &saved, const ItemDef *defs, std::size_t count, u8 *out, std::size_t capacity);
 
-// 読み込む。印・版・記録の数が合わない時は false（saved は空。既定で始める）。
+// 読み込む。印・版・記録の数（項目数の上限を超える時）が合わない時は false（saved は空。既定で始める）。
 // 欄の誤り（未知の鍵・種類の合わない欄・予約や重なるホットキー）はその欄だけ捨てる。値は NormalizeValue で範囲に収める。
 // 途中で切れた記録は、それ以降を読まずに捨てる（それより前の記録は残す）。
+// 隠れている項目（開発版の項目で、rules.dev_visible が偽）の記録は読まない。
 bool Decode(const u8 *data, std::size_t size, const ItemDef *defs, std::size_t count, const Rules &rules, Saved &saved);
 } // namespace gohan::menu::persist
