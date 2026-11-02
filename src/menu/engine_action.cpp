@@ -276,6 +276,7 @@ void Engine::Tick(u32 now, u16 held) {
         if (st.feedback && static_cast<s32>(now - st.feedback_until) >= 0) st.feedback = false;
     }
     DriveFixed();
+    NotifyRestore();
     Poll();
 }
 } // namespace gohan::menu

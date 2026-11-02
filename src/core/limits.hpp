@@ -12,6 +12,8 @@ inline constexpr unsigned InputDeferWindowMs = 300;
 // メニュー（src/menu/）。項目数は codegen の上限と同じにする。
 inline constexpr std::size_t MenuItems = 192;
 inline constexpr std::size_t MenuText = 96;
+// 次の起動に残す物の形式の大きさの上限（バイト）。codegen が spec の全項目から計算した大きさがこれに収まることを検査する。
+inline constexpr std::size_t PersistBytes = 16384;
 
 // 自前描画の予算。上画面の板・文字枠・記録量は CA2 の設計表から取る。
 // ゲーム側の構造体やヒープの大きさとは独立。

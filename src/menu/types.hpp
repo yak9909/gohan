@@ -76,6 +76,21 @@ struct ItemDef {
     Cond cond;
 };
 
+// 値を項目の範囲に収める（編集・持ち越しの読み込みで同じ規則）。値を持たない項目（フォルダ・実行・画面）には使わない。
+inline s32 NormalizeValue(const ItemDef &d, s32 value) {
+    switch (d.control) {
+    case Control::Toggle:
+    case Control::Action: return value ? 1 : 0;
+    case Control::Select:
+    case Control::Number:
+    case Control::Slider: return value < d.min ? d.min : value > d.max ? d.max : value;
+    case Control::Multiselect: return value & d.max;
+    case Control::Key: return value & 0x3FFF;
+    case Control::Folder: break;
+    }
+    return value;
+}
+
 // 生成した MenuId ごとの宣言（結び付けの検査に使う）。menu_ids.hpp が特殊化を出す。
 template <auto Id> struct Spec;
 } // namespace gohan::menu

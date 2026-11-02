@@ -28,8 +28,9 @@ def main():
                         ('menu', ['--spec', 'spec/menu.toml', '--out', str(out / 'gen')])]:
         subprocess.run([sys.executable, f'tools/gohan_tools/codegen/{tool}.py', *extra], cwd=tree, check=True)
     engine = [f'src/menu/{name}.cpp' for name in (
-        'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'hotkey',
-        'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'shell', 'sample_items')]
+        'engine_core', 'engine_edit', 'engine_action', 'engine_input', 'engine_view', 'engine_settings', 'engine_persist',
+        'persist', 'hotkey', 'notice', 'value_text', 'surface', 'notices', 'panel', 'modal', 'action_list', 'reorder',
+        'shell', 'sample_items')]
     sources = [root / 'tests/host/bench_notice.cpp',
                *[tree / f'src/core/{name}.cpp' for name in ('frame', 'feature', 'utf', 'format')],
                *[tree / name for name in engine],
