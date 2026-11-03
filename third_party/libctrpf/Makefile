@@ -140,5 +140,7 @@ $(OUTPUT): $(OFILES) $(BUILD_ROOT)/libcwav/libcwav.a $(BUILD_ROOT)/libncsnd/libn
 	@printf 'create ../$(notdir $(OUTPUT))\naddlib libctrpf-core.a\naddlib ../libcwav/libcwav.a\naddlib ../libncsnd/libncsnd.a\nsave\nend\n' | $(AR) -M
 # 版と日時の埋め込みを次回更新する。
 	@rm -f PluginMenuTools.o
+include $(SOURCE_ROOT)/depfix.mk
+$(call fix_deps,$(OFILES:.o=.d))
 -include $(OFILES:.o=.d)
 endif

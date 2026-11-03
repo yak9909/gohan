@@ -101,4 +101,6 @@ clean:
 	rm -rf build out
 
 FORCE:
+include third_party/libctrpf/depfix.mk
+$(call fix_deps,$(OBJECTS:.o=.d))
 -include $(OBJECTS:.o=.d)

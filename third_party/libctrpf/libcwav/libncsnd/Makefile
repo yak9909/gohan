@@ -28,5 +28,7 @@ CFILES := $(notdir $(wildcard $(SOURCE_ROOT)/source/*.c))
 OFILES := $(CFILES:.c=.o)
 DEPSDIR := $(CURDIR)
 $(BUILD_ROOT)/libncsnd.a: $(OFILES)
+include $(SOURCE_ROOT)/../../depfix.mk
+$(call fix_deps,$(OFILES:.o=.d))
 -include $(OFILES:.o=.d)
 endif

@@ -46,6 +46,10 @@
 - 結合書庫には CTRPF・libcwav・libncsnd の全オブジェクトを含める。
   結合前の書庫も `build/` に保持する。ビルド日時を持つ `PluginMenuTools.o` は
   ビルド後に取り除き、次のビルド時に作り直す。
+- 依存ファイル（`.d`）に Windows のドライブ付きパス（`A:/…`、`-I` が `C:\…` の時は `C:…`）が
+  残ると、MSYS の make がコロンを区切りと読んで「multiple target patterns」で止まる。
+  `depfix.mk`・`depfix.sed` を追加し、3 つの Makefile（CTRPF・libcwav・libncsnd）が
+  `-include` の前に `.d` を `/a/…`・`/c/…` へ書き直す。依存は残るので再コンパイルの判定は変わらない。
 - `clean` は対応する `build/` 配下だけを削除する。依存ソースや開発環境は削除しない。
   CTRPF の `install`・`install-upstream`、音声ライブラリの `install`・`uninstall` は無効にする。
   配布用アーカイブをソース側へ作る `dist` 系の手順は設けない。
