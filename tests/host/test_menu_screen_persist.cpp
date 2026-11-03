@@ -223,13 +223,101 @@ void ScenarioShutdownStuck() {
     assert(Fake::taskStarts == 1 && Fake::gohanSaves == 0);
     const int sleeps = Fake::sleeps;
     menu_screen::Feature().Shutdown();
-    assert(Fake::sleeps - sleeps == 99); // 作業が終わるまで、上限まで 1 ms ずつ待つ
+    assert(Fake::sleeps - sleeps == 999); // 作業の待ちは 1 秒（1000 回、1 ms ずつ）。ロックの待ちは別（取れるので待たない）
     assert(Fake::gohanSaves == 0);
     Fake::taskHold = false;
     Fake::RunHeldTask(); // 作業のスレッドが後で動く。書き手はまだ登録されている
     assert(Fake::gohanSaves == 1);
     assert(ReadBack().keep_toggles);
     std::puts("menu screen persist (shutdown with a stuck task): ok");
+}
+
+// 終了の合図（StopSavingForExit）。ゲームを止めず、書き手も外さない。新しい頼みを止める。
+// 作業が無ければ待たない。続く Shutdown も待たず、書き手を外す。
+void ScenarioExitClean() {
+    Frames(30);
+    ToggleKeepAndClose(true);
+    assert(Fake::taskStarts == 1 && Fake::gohanSaves == 1); // 保存は済んでいる
+    const int sleeps = Fake::sleeps;
+    menu_screen::StopSavingForExit();
+    assert(Fake::sleeps == sleeps); // 作業が無い・門が取れる: 待たない
+    assert(menu_screen::Gate().Stopped());
+    // 新しい頼みは出ない（変化があっても作業を始めない）。書き手はまだ登録されている。
+    ToggleKeepAndClose();
+    assert(Fake::taskStarts == 1 && Fake::gohanSaves == 1);
+    menu_screen::StopSavingForExit(); // 2 回目は何もしない
+    assert(Fake::sleeps == sleeps);
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps == sleeps); // 続く Shutdown も余計に待たない
+    const auto file = Fake::gohanFile;
+    CTRPluginFramework::GohanData::Save(); // 書き手は外れた（何も書かない）
+    assert(Fake::gohanFile == file);
+    std::puts("menu screen persist (exit signal, clean): ok");
+}
+
+// 動いている作業は、合図で上限（1000 回 = 約 1 秒）まで待つ。続く Shutdown は同じ待ちを繰り返さず、書き手を外さない。
+void ScenarioExitStuck() {
+    Frames(30);
+    Fake::taskHold = true;
+    ToggleKeepAndClose(true);
+    assert(Fake::taskStarts == 1 && Fake::gohanSaves == 0);
+    int sleeps = Fake::sleeps;
+    menu_screen::StopSavingForExit();
+    assert(Fake::sleeps - sleeps == 999);
+    sleeps = Fake::sleeps;
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps == sleeps); // 繰り返さない（調べるだけ）
+    Fake::taskHold = false;
+    Fake::RunHeldTask(); // 作業が後で動けば書ける（書き手を外していない）
+    assert(Fake::gohanSaves == 1);
+    assert(ReadBack().keep_toggles);
+    std::puts("menu screen persist (exit signal, stuck task): ok");
+}
+
+// 作業が合図の待ちの間に終わるなら、そこで戻る。終わった後は書き手を外せる。
+void ScenarioExitFinishes() {
+    Frames(30);
+    Fake::taskHold = true;
+    ToggleKeepAndClose(true);
+    assert(Fake::taskStarts == 1 && Fake::gohanSaves == 0);
+    static int base;
+    base = Fake::sleeps;
+    Fake::sleepHook = [] { // 作業のスレッドが 5 ms 後に動く
+        if (Fake::sleeps == base + 5) {
+            Fake::taskHold = false;
+            Fake::RunHeldTask();
+        }
+    };
+    const int sleeps = Fake::sleeps;
+    menu_screen::StopSavingForExit();
+    Fake::sleepHook = nullptr;
+    assert(Fake::sleeps - sleeps == 5 && Fake::gohanSaves == 1);
+    assert(ReadBack().keep_toggles);
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps - sleeps == 5);
+    std::puts("menu screen persist (exit signal, task finishes): ok");
+}
+
+// 毎フレームの保存の部分が止まっていて門が取れない時は、合図で 100 回まで待つ。続く Shutdown は繰り返さない。
+void ScenarioExitGate() {
+    Frames(20);
+    assert(menu_screen::Gate().TryEnter()); // 毎フレームの保存の部分が取ったまま
+    int sleeps = Fake::sleeps;
+    menu_screen::StopSavingForExit();
+    assert(Fake::sleeps - sleeps == 99);
+    sleeps = Fake::sleeps;
+    menu_screen::Feature().Shutdown();
+    assert(Fake::sleeps == sleeps);
+    assert(menu_screen::Gate().Stopped() && Fake::gohanSaves == 0);
+    std::puts("menu screen persist (exit signal, gate held): ok");
+}
+
+// 登録が済む前の合図は、停止の要求だけ置いて、待たずに戻る（作業がまだ無い）。
+void ScenarioExitBeforeWire() {
+    const int sleeps = Fake::sleeps;
+    menu_screen::StopSavingForExit();
+    assert(menu_screen::Gate().Stopped() && Fake::sleeps == sleeps);
+    std::puts("menu screen persist (exit signal before wire): ok");
 }
 
 void ScenarioEmpty(bool broken) {
@@ -367,7 +455,13 @@ void ScenarioSave() {
 int main(int argc, char **argv) {
     const std::string scenario = argc > 1 ? argv[1] : "";
     assert(scenario == "empty" || scenario == "broken" || scenario == "valid" || scenario == "save" ||
-           scenario == "shutdown-gate" || scenario == "shutdown-task");
+           scenario == "shutdown-gate" || scenario == "shutdown-task" || scenario == "exit-clean" ||
+           scenario == "exit-stuck" || scenario == "exit-finishes" || scenario == "exit-gate" ||
+           scenario == "exit-before-wire");
+    if (scenario == "exit-before-wire") { // 登録の前の合図: 描画も機能も導入しない
+        ScenarioExitBeforeWire();
+        return 0;
+    }
     Begin(scenario);
     if (scenario == "empty") ScenarioEmpty(false);
     else if (scenario == "broken") ScenarioEmpty(true);
@@ -376,7 +470,11 @@ int main(int argc, char **argv) {
         menu_screen::Feature().Shutdown();
     } else if (scenario == "save") ScenarioSave();
     else if (scenario == "shutdown-gate") ScenarioShutdownGate();
-    else ScenarioShutdownStuck();
+    else if (scenario == "shutdown-task") ScenarioShutdownStuck();
+    else if (scenario == "exit-clean") ScenarioExitClean();
+    else if (scenario == "exit-stuck") ScenarioExitStuck();
+    else if (scenario == "exit-finishes") ScenarioExitFinishes();
+    else ScenarioExitGate();
     renderer::RendererFeature().Shutdown();
     return 0;
 }

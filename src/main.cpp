@@ -37,12 +37,18 @@ bool OpenCtrpfMenu() {
     return allow;
 }
 
+// CTRPF の終了の合図（PLG_ABOUT_TO_EXIT）のスレッドで動く。CTRPF が作業の管理と fs を閉じる前に、保存の作業だけを書き切らせる。
+// features.ShutdownAll は呼ばない: ゲームのフックの Shutdown は Process::Pause（上限の無い WaitFramePaused）を通り、
+// 終了の途中でコマが止まっていると合図の返答まで届かなくなるおそれがある。ShutdownAll は menu.Run() の後だけ。
+// ほかの合図（スリープ・HOME・入れ替え）では何もしない。
+void OnProcessEvent(CTRPluginFramework::Process::Event event) {
+    if (event == CTRPluginFramework::Process::Event::EXIT) gohan::features::menu_screen::StopSavingForExit();
+}
 } // namespace
 
 namespace CTRPluginFramework {
-void OnProcessExit() { features.ShutdownAll(); }
-
 int main() {
+    Process::SetProcessEventCallback(OnProcessEvent);
     PluginMenu menu("gohan", 3, 0, 0, "日本版の無印＋更新に対応。作り直し中です。");
     menu.SynchronizeWithFrame(true);
     // 起動時の CTRPF の「Plugin ready!」は出さない（公開の API。同梱の CTRPF は変えない）。
