@@ -1,6 +1,7 @@
 """時刻付きの入力列を、実際のフレーム呼び出しの列へ展開する。"""
 from __future__ import annotations
 
+from pathlib import Path
 import re
 
 
@@ -75,3 +76,25 @@ def protocol(scenario: dict, frame_ms: int) -> str:
         lines.append(f'{at} {keys} {int(touch is not None)} {x} {y} '
                      f'{int(event.get("toggle", False))} {capture_at.get(at, -1)}')
     return '\n'.join(lines) + '\n'
+
+
+def restore_arguments(scenario: dict, target: Path) -> list[str]:
+    """起動時の戻しの台本（saved_hex・flag_fails）を、実行ファイルの引数にする。
+
+    saved_hex は次の起動に戻す保存の欄（16 進）で、target/saved.bin に書いて --saved で渡す。
+    flag_fails が真なら、見本のフラグの効果を入れる時に失敗させる（戻せない物の通知を出すため）。
+    """
+    arguments = []
+    if 'saved_hex' in scenario:
+        text = scenario['saved_hex']
+        if not isinstance(text, str) or not re.fullmatch(r'(?:[0-9a-fA-F]{2})+', text):
+            raise ValueError('saved_hex は 16 進数の偶数桁の文字列にしてください')
+        path = target / 'saved.bin'
+        path.write_bytes(bytes.fromhex(text))
+        arguments += ['--saved', str(path)]
+    flag_fails = scenario.get('flag_fails', False)
+    if type(flag_fails) is not bool:
+        raise ValueError('flag_fails は真偽値にしてください')
+    if flag_fails:
+        arguments.append('--flag-fails')
+    return arguments

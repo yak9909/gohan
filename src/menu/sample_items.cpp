@@ -6,6 +6,7 @@ namespace {
 State g_state;
 
 Result SetFlag(bool on) {
+    if (on && g_state.flag_fails) return Result::Failed;
     g_state.flag = on;
     return Result::Ok;
 }

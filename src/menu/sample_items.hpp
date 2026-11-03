@@ -7,6 +7,7 @@
 namespace gohan::menu::sample {
 struct State {
     bool flag = false;            // 状態: 効果が入っているか
+    bool flag_fails = false;      // 状態: true なら、効果を入れる時に失敗する（戻せない物の通知を試験・プレビューで出す）
     bool holding = false;         // 押下中: 今押しているか
     unsigned hold_frames = 0;     // 押下中: 押していたフレーム数
     unsigned stamps = 0;          // 実行: 実行した回数

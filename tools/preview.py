@@ -14,7 +14,7 @@ from gohan_tools.preview.build import build
 from gohan_tools.preview.gallery import gallery
 from gohan_tools.preview.images import Image, read, screen_image
 from gohan_tools.preview.raster import Raster
-from gohan_tools.preview.script import name, protocol
+from gohan_tools.preview.script import name, protocol, restore_arguments
 from gohan_tools.preview.romfs import environment
 
 
@@ -142,7 +142,8 @@ def main(argv=None) -> int:
         for scenario, inputs in zip(scenarios, protocols):
             target = output_directory(directory / scenario['name'])
             (target / 'inputs.txt').write_text(inputs, encoding='utf-8')
-            subprocess.run([str(executable), str(target)], input=inputs, text=True, check=True, cwd=ROOT, env=env)
+            arguments = restore_arguments(scenario, target)
+            subprocess.run([str(executable), str(target), *arguments], input=inputs, text=True, check=True, cwd=ROOT, env=env)
             raster = Raster(target, settings['raster'])
             for i, capture in enumerate(scenario['captures']):
                 resources = target / f'resources-{i}'

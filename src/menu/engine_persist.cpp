@@ -157,7 +157,7 @@ void Engine::RestoreRecord(const persist::Record &r) {
         if (r.fields & persist::kValue) SetRestored(item, r.value);
         return;
     }
-    // 設定の値は固定した物だけ。固定と固定値・固定の並びを入れ、その場で戻るので待たずに「戻した」に数える（通知の n に入る）。
+    // 設定の値は固定した物だけ。固定と固定値・固定の並びを入れ、その場で戻るので待たずに「戻した」に数える（通知の本文には出さない）。
     if (d.behavior == Behavior::Value && fixed && (r.fields & persist::kValue)) {
         st.fixed = true;
         st.fixed_value = r.value;
@@ -213,14 +213,14 @@ void Engine::FinishRestore(u16 item, bool restored) {
     else ++restore_failed_;
 }
 
-// 待ちが全て片付いた時に、通知を 1 つ出す（数える物が 0 件なら出さない）。
+// 待ちが全て片付いた時に、通知を 1 つ出す（数える物が 0 件なら出さない）。本文に件数は出さず、戻せない物があれば赤（決定 N1）。
 void Engine::NotifyRestore() {
     if (!restore_notice_ || restore_waiting_ != 0) return;
     restore_notice_ = false;
     if (restore_done_ + restore_failed_ == 0) return;
     Notice notice;
-    if (restore_failed_ == 0) NoticeRestored(notice, restore_done_);
-    else NoticeRestoreFailed(notice, restore_done_, restore_failed_);
+    if (restore_failed_ == 0) NoticeRestored(notice);
+    else NoticeRestoreFailed(notice, restore_failed_);
     Emit(notice);
 }
 } // namespace gohan::menu

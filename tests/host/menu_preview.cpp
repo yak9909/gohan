@@ -5,12 +5,14 @@
 #include "game/lyt/scene.hpp"
 #include "ui/renderer/renderer.hpp"
 #include "features/menu_screen/canvas_surface.hpp"
+#include "menu/sample_items.hpp"
 #include "menu/shell.hpp"
 #include <CTRPluginFramework.hpp>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -808,13 +810,29 @@ int main(int argc, char **argv) {
             if (!rows::Render(directory, i, argv[i + 3])) return 11;
         return 0;
     }
-    if (argc != 2 && argc != 3) return 2;
     if (argc == 3 && std::string(argv[2]) == "--parts")
         return Resources(directory) && PartsCatalog(directory) ? 0 : 7;
     if (argc == 3 && std::string(argv[2]) == "--scroll")
         return Resources(directory) && ScrollCatalog(directory) ? 0 : 8;
     if (argc == 3 && std::string(argv[2]) == "--notice-overflow")
         return Resources(directory) && NoticeOverflow(directory) ? 0 : 9;
+    // 台本の起動時の戻し（任意）: --saved は次の起動の保存の欄（gohan の欄と同じ形）を読ませ、--flag-fails は見本のフラグの効果を失敗させる。
+    // どちらも Wire（欄の読み込み）より前に置く。
+    std::string saved_path;
+    bool flag_fails = false;
+    for (int i = 2; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--flag-fails") flag_fails = true;
+        else if (arg == "--saved" && i + 1 < argc) saved_path = argv[++i];
+        else return 2;
+    }
+    if (!saved_path.empty()) {
+        std::ifstream in(saved_path, std::ios::binary);
+        if (!in) return 2;
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CTRPluginFramework::Fake::gohanFile.assign(bytes.begin(), bytes.end());
+    }
+    if (flag_fails) gohan::menu::sample::Get().flag_fails = true;
     if (!Resources(directory) || !renderer::RendererFeature().Wire() ||
         !gohan::features::menu_screen::Feature().Wire()) return 3;
     using CTRPluginFramework::Fake;
