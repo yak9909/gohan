@@ -114,7 +114,8 @@ def main() -> int:
     # 次の起動の戻しと保存の時機: 起動の状態（空・壊れた欄・正しい欄）と、保存の流れを、別の起動で試す。
     persist_exe = build_exe(['tests/host/test_menu_screen_persist.cpp', *game_menu], 'test_menu_screen_persist',
                             ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))
-    for scenario in ('empty', 'broken', 'valid', 'save', 'shutdown-gate', 'shutdown-task'):
+    for scenario in ('empty', 'broken', 'valid', 'save', 'shutdown-gate', 'shutdown-task',
+                     'exit-clean', 'exit-stuck', 'exit-finishes', 'exit-gate', 'exit-before-wire'):
         subprocess.run([str(persist_exe), scenario], cwd=root, check=True)
     # 描く文字がすべて字形の表にあるか（無い文字は実機で何も出ない）。
     run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
