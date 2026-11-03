@@ -1,6 +1,6 @@
 // 次の起動に残す物（段 4a）を、エンジンと見本の表で確かめる。
 // 往復（持ち越す物が戻り、持ち越さない物は書かれない・固定とお気に入りの順）、壊れた入力（印・版・長さ・件数・鍵・種類・
-// 範囲・予約と重なるホットキー・途中で切れた入力）、起動時の戻しの待ちと通知の件数、版の数の増減。
+// 範囲・予約と重なるホットキー・途中で切れた入力）、起動時の戻しの待ちと通知（1 つ。本文は件数を出さない）、版の数の増減。
 #include "menu/engine.hpp"
 #include "menu/persist.hpp"
 #include "menu/sample_items.hpp"
@@ -172,9 +172,9 @@ void RoundTrip() {
     assert(SameSaved(saved, again));
     b.Frame();
     assert(b.engine.RestoreWaiting() == 0 && sample::Get().flag && sample::Get().wallet == 77 && b.engine.Revision() == 0);
-    // 通知は 1 つ。戻した数は 4（フラグ・押下中・所持金・固定した量）。効果の通知は出さない。
+    // 通知は 1 つ。本文は件数を出さない（戻した数は 4: フラグ・押下中・所持金・固定した量）。効果の通知は出さない。
     assert(b.sink.notices.size() == 1);
-    assert(Is(b.sink.notices[0].title, "前回の状態") && Is(b.sink.notices[0].message, "4 件を戻しました") && !b.sink.notices[0].red);
+    assert(Is(b.sink.notices[0].title, "前回の状態") && Is(b.sink.notices[0].message, "メニューを読み込みました") && !b.sink.notices[0].red);
 }
 
 // 2. 持ち越さない物: ゲームの値は固定していなければ書かない（読めても書かない）。
@@ -498,7 +498,7 @@ void HiddenItemsAreNotRestored() {
         assert(e.FavoriteOrder()[0] == Idx(MenuId::SampleDevNote) && e.FavoriteOrder()[1] == Idx(MenuId::SampleStamp));
         u32 now = 1000;
         e.Frame(now += 16, 0);
-        assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "1 件を戻しました"));
+        assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "メニューを読み込みました") && !sink.notices[0].red);
     }
 }
 
@@ -543,7 +543,7 @@ void RestoreWaitsForReadableGame() {
     sample::Get().wallet_readable = true;
     f.Frame();
     assert(f.engine.RestoreWaiting() == 0 && sample::Get().wallet == 55 && sample::Get().wallet_writes == 1);
-    assert(f.sink.notices.size() == 1 && Is(f.sink.notices[0].message, "2 件を戻しました") && !f.sink.notices[0].red);
+    assert(f.sink.notices.size() == 1 && Is(f.sink.notices[0].message, "メニューを読み込みました") && !f.sink.notices[0].red);
     // 片付いた後は、もう通知を出さない。
     f.Frame(5);
     assert(f.sink.notices.size() == 1);
@@ -579,12 +579,12 @@ void RestoreWaitsForPatch() {
     e.Frame(now += 16, 0);
     assert(g_calls == 3 && e.RestoreWaiting() == 0 && e.EffectOn(Idx(MenuId::SampleFlag)));
     // 通知は 1 つ。効果の通知（「有効にしました」）は出さない。
-    assert(sink.notices.size() == 1 && Is(sink.notices[0].title, "前回の状態") && Is(sink.notices[0].message, "1 件を戻しました"));
+    assert(sink.notices.size() == 1 && Is(sink.notices[0].title, "前回の状態") && Is(sink.notices[0].message, "メニューを読み込みました"));
     e.Frame(now += 16, 0);
     assert(sink.notices.size() == 1 && g_calls == 3);
 }
 
-// 戻せない（Failed）: 「戻せない」に数え、赤で「0 件を戻し、1 件は失敗」。失敗の通知は 1 つだけ（固定の間は黙って試す）。
+// 戻せない（Failed）: 「戻せない」に数え、赤で「1 件は失敗」（戻した数は出さない）。失敗の通知は 1 つだけ（固定の間は黙って試す）。
 void RestoreFailureIsCountedOnce() {
     Sink sink;
     Engine e(kMenuItems, kMenuItemCount);
@@ -599,7 +599,7 @@ void RestoreFailureIsCountedOnce() {
     u32 now = 1000;
     e.Frame(now += 16, 0);
     assert(e.RestoreWaiting() == 0 && sink.notices.size() == 1);
-    assert(Is(sink.notices[0].title, "前回の状態") && Is(sink.notices[0].message, "0 件を戻し、1 件は失敗") && sink.notices[0].red);
+    assert(Is(sink.notices[0].title, "前回の状態") && Is(sink.notices[0].message, "1 件は失敗") && sink.notices[0].red);
     e.Frame(now += 16, 0);
     e.Frame(now += 16, 0);
     assert(sink.notices.size() == 1);
@@ -651,7 +651,7 @@ void DefaultOnToggleStaysOffWhenFixed() {
     assert(e.Applied(0) == 0 && e.FixedCount() == 2 && e.RestoreWaiting() == 1);
     e.Frame(1016, 0);
     assert(lamp_calls == 0 && other_calls == 1 && !e.EffectOn(0) && e.EffectOn(1) && e.RestoreWaiting() == 0);
-    assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "1 件を戻しました"));
+    assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "メニューを読み込みました"));
     // 持ち越す時の OFF の固定は、そのまま OFF の固定として残る（書き直しても同じ）。
     persist::Saved again;
     e.Capture(again);
@@ -668,7 +668,7 @@ void HotkeyAndHoldCountAtOnce() {
     f.engine.Restore(saved);
     assert(f.engine.RestoreWaiting() == 0 && !sample::Get().flag && f.engine.Applied(Idx(MenuId::SampleFlag)) == 1);
     f.Frame();
-    assert(f.sink.notices.size() == 1 && Is(f.sink.notices[0].message, "2 件を戻しました") && !sample::Get().flag);
+    assert(f.sink.notices.size() == 1 && Is(f.sink.notices[0].message, "メニューを読み込みました") && !sample::Get().flag);
     assert(!f.engine.EffectOn(Idx(MenuId::SampleFlag)));
 }
 
@@ -781,7 +781,7 @@ void FixedDefaultValueRoundTrips() {
     b.engine.Restore(decoded);
     assert(b.engine.FixedCount() == 1 && b.engine.State(amount).fixed && b.engine.RestoreWaiting() == 0 && b.engine.Applied(amount) == def);
     b.Frame();
-    assert(b.sink.notices.size() == 1 && Is(b.sink.notices[0].message, "1 件を戻しました") && b.engine.Revision() == 0);
+    assert(b.sink.notices.size() == 1 && Is(b.sink.notices[0].message, "メニューを読み込みました") && b.engine.Revision() == 0);
     // 固定を外して保存すると、次は何も書かない（既定で始める）。
     assert(e.SetFixed(amount, false, a.now));
     persist::Saved none;
@@ -867,7 +867,7 @@ void ValueToggleFixedRoundTrip() {
     assert(g_toggle_applied == 1 && g_toggle_last == 1 && g_toggle_effect == 0);
     b.Open(1000);
     b.Frame(1016, 0);
-    assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "1 件を戻しました") && g_toggle_effect == 0);
+    assert(sink.notices.size() == 1 && Is(sink.notices[0].message, "メニューを読み込みました") && g_toggle_effect == 0);
     // 固定しない値のトグル（persist が偽）は、固定できない。
     assert(!e.SetFixed(1, true, 1000) && !e.State(1).fixed);
     // 固定を外して保存すると、次は何も書かない（既定の OFF で始める）。

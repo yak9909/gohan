@@ -94,6 +94,8 @@ python tools/preview.py --parts --out D:/gohan-preview/title-background
 `toggle: true` はそのフレームだけ外部の開閉要求を送ります。
 `contains` はその時刻の描画指示に必要な文字があるか検査します。
 `empty: true` は閉じた状態の描画指示が空かを検査します。
+`saved_hex` は起動時に読み込ませる保存の欄（gohan の欄と同じ形を 16 進で書く）、`flag_fails: true` は見本のフラグの効果を失敗させます。
+起動時の戻しの通知の場面（`restore-notice`・`restore-failed`）だけが使います。
 
 PNG は `<台本>/<出力名>-top.png` と `-bottom.png` です。`frame-N.json` に実際の描画指示、
 `inputs.txt` に展開後の全フレーム、`fonts.json` と `atlas.la4` にビルドした字形資源を残します。

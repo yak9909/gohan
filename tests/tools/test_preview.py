@@ -14,7 +14,7 @@ from gohan_tools.preview.comparison import compare
 from gohan_tools.preview.gallery import gallery
 from gohan_tools.preview.images import Image, read, read_bmp, read_png, screen_image
 from gohan_tools.preview.raster import Raster
-from gohan_tools.preview.script import protocol
+from gohan_tools.preview.script import protocol, restore_arguments
 
 
 def model(**changes):
@@ -286,3 +286,35 @@ def test_shipped_scenarios_are_valid():
     script = json.loads((ROOT / 'tools/preview/scenarios.json').read_text(encoding='utf-8'))
     for scenario in script['scenarios']:
         assert protocol(scenario, 16)
+
+
+def test_restore_arguments_write_the_saved_image(tmp_path):
+    # 台本の保存の欄（16 進）は target/saved.bin に書かれ、フラグの失敗は別の引数になる。
+    arguments = restore_arguments(dict(saved_hex='47484e33', flag_fails=True), tmp_path)
+    assert arguments == ['--saved', str(tmp_path / 'saved.bin'), '--flag-fails']
+    assert (tmp_path / 'saved.bin').read_bytes() == b'GHN3'
+
+
+def test_restore_arguments_are_empty_by_default(tmp_path):
+    assert restore_arguments(dict(captures=[]), tmp_path) == []
+    assert not (tmp_path / 'saved.bin').exists()
+
+
+@pytest.mark.parametrize('scenario', [
+    dict(saved_hex=''), dict(saved_hex='474'), dict(saved_hex='47 48'), dict(saved_hex='47zz'), dict(saved_hex=5),
+    dict(flag_fails='yes'),
+])
+def test_restore_arguments_reject_bad_values(tmp_path, scenario):
+    with pytest.raises(ValueError):
+        restore_arguments(scenario, tmp_path)
+
+
+def test_shipped_restore_scenarios_carry_the_notice_images():
+    # 台本の 2 場面は、保存の欄の先頭（印・版・記録の数 1）と、起動時の通知の文字を確かめる。
+    script = json.loads((ROOT / 'tools/preview/scenarios.json').read_text(encoding='utf-8'))
+    by_name = {scenario['name']: scenario for scenario in script['scenarios']}
+    for name in ('restore-notice', 'restore-failed'):
+        image = bytes.fromhex(by_name[name]['saved_hex'])
+        assert image[:4] == b'GHN3' and image[4:6] == b'\x01\x00' and image[10:12] == b'\x01\x00'
+        assert any('前回の状態' in capture.get('contains', []) for capture in by_name[name]['captures'])
+    assert by_name['restore-failed'].get('flag_fails') is True
