@@ -1,6 +1,6 @@
 # メニューの定義（唯一の元）。make が C++ の表と docs/menu.md を作る。
 # 階層はフォルダの [[item.item]] で書く。id は一意な名前で、階層とは関係しない。
-# ここに書く物は、枠組みを確かめるための見本（ゲームには触れない）。ゲームの項目は G2 で足す。
+# 見本の項目とゲームの項目を定義する。
 
 [[item]]
 id      = "sample"
@@ -97,6 +97,196 @@ label   = "見本のテスト用"
 control = "toggle"
 behavior = "state"
 dev     = true
+
+
+[[item]]
+id = "player"
+label = "プレイヤー"
+desc = "プレイヤーに関するチートです。"
+control = "folder"
+
+[[item.item]]
+id = "player.resources"
+label = "資産"
+desc = "所持金などの数値を変更します。"
+control = "folder"
+
+[[item.item.item]]
+id = "player.wallet"
+label = "所持金"
+desc = "所持金を変更します。"
+control = "number"
+source = "game"
+range = [0, 99999]
+
+[[item.item.item]]
+id = "player.bank"
+label = "貯金"
+desc = "ATMの貯金を変更します。"
+control = "number"
+source = "game"
+range = [0, 999999999]
+
+[[item.item.item]]
+id = "player.coupons"
+label = "ふるさとチケット"
+desc = "ふるさとチケットを変更します。"
+control = "number"
+source = "game"
+range = [0, 9999]
+
+[[item.item.item]]
+id = "player.medals"
+label = "メダル"
+desc = "オン島のメダルを変更します。"
+control = "number"
+source = "game"
+range = [0, 9999]
+
+[[item.item]]
+id = "player.style"
+label = "スタイル"
+desc = "プレイヤーの見た目に関するチートです。"
+control = "folder"
+
+[[item.item.item]]
+id = "player.bed_head"
+label = "寝癖付かない"
+desc = "日にちを空けてログインしても寝癖が付かなくなります。"
+control = "toggle"
+behavior = "state"
+
+[[item.item]]
+id = "player.wall"
+label = "壁抜け"
+desc = "どこでも歩けるようになります。あなたの歩みを阻むものは何一つとして存在しません。"
+control = "toggle"
+behavior = "state"
+hotkey = "L+Up"
+
+[[item.item]]
+id = "player.flower"
+label = "花散らせない"
+desc = "もう友達の村の移動に気を遣う必要はなくなりました。花の上を走っても散らなくなります。"
+control = "toggle"
+behavior = "state"
+
+[[item.item]]
+id = "player.trap"
+label = "穴に落下しない"
+desc = "穴にハマらなくなります。残念でしたね。"
+control = "toggle"
+behavior = "state"
+
+[[item]]
+id = "items"
+label = "アイテム"
+desc = "アイテムに関するチートです。"
+control = "folder"
+
+[[item.item]]
+id = "items.drop"
+label = "ドロップ"
+desc = "アイテムを置く・消す・掘るチートです。"
+control = "folder"
+
+[[item.item.item]]
+id = "items.fun"
+label = "お遊び"
+desc = "遊び向けのチートです。"
+control = "folder"
+
+[[item.item.item.item]]
+id = "items.tree"
+label = "木にぶつかって切り倒す"
+desc = "木や竹にぶつかると切り倒されます。"
+control = "toggle"
+behavior = "state"
+
+[[item.item.item.item]]
+id = "items.dig3"
+label = "スコップ3x3マス掘り"
+desc = "[穴に落下しない] [どこでも掘れる] と併せて使うと面白いかもしれません。"
+control = "toggle"
+behavior = "state"
+
+[[item.item.item]]
+id = "items.trample"
+label = "歩いた場所のアイテムを消し去る"
+desc = "あなたが歩いてきた場所に何かが残る事は決してありません。"
+control = "toggle"
+behavior = "state"
+hotkey = "R+A"
+
+[[item.item.item]]
+id = "items.dig"
+label = "どこでも掘れる"
+desc = "木/岩やアイテムから、川/崖越し/建造物まで、ありとあらゆる状況で掘れるようになります。"
+control = "toggle"
+behavior = "state"
+
+[[item]]
+id = "town"
+label = "村"
+desc = "村に関するチートです。"
+control = "folder"
+
+[[item.item]]
+id = "town.weather"
+label = "天気"
+desc = "天気を変更します。"
+control = "select"
+source = "game"
+options = ["ゲームに任せる", "晴れ", "晴れ（雲あり）", "曇り", "小雨", "雨", "小雪", "雪"]
+
+[[item.item]]
+id = "town.look_up"
+label = "空を見上げない"
+desc = "あなたは勝手に空を見上げて呆けることはありません。"
+control = "toggle"
+behavior = "state"
+
+[[item]]
+id = "game"
+label = "ゲーム"
+desc = "ゲーム全体に関するチートです。"
+control = "folder"
+
+[[item.item]]
+id = "game.shop"
+label = "店"
+desc = "お店に関するチートです。"
+control = "folder"
+
+[[item.item.item]]
+id = "game.shops_open"
+label = "店24時間オープン"
+desc = "全てのお店は常にあなたのために回り続けます。"
+control = "toggle"
+behavior = "state"
+
+[[item.item.item]]
+id = "game.turnips"
+label = "カブ価"
+desc = "カブ価を変更します。"
+control = "number"
+source = "game"
+range = [0, 99999]
+
+[[item.item]]
+id = "game.text"
+label = "メッセージ即表示"
+desc = "メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。"
+control = "toggle"
+behavior = "state"
+
+[[item.item]]
+id = "game.fps"
+label = "フレームレート制限解除"
+desc = "フレームレート制限を取っ払うことで、事実上ゲームの進行速度を上げます。"
+control = "toggle"
+behavior = "state"
+hotkey = "B+Up"
 
 # 設定画面（START で開く）。一覧の根とは別の列に生成する。構成は docs/design/menu-item-actions.md の 5 節。
 [[settings]]

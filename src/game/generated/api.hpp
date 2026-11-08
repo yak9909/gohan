@@ -6,11 +6,16 @@
 
 namespace gohan::game::generated {
 
+struct AcnlEncryptedValueF010;
+struct ItemID;
+struct AcnlPlayerSave;
+struct AcnlGardenSavePrefix;
 struct AcnlPadReaderPrefix;
 struct AcnlPadState;
 struct AcnlUiPoint2;
 struct AcnlUiPoint2I;
 struct SeadControllerBasePrefix;
+struct DropData;
 struct NwFontCharWidths;
 struct NwFontCmap;
 struct NwFontCmapScanPair;
@@ -53,9 +58,9 @@ struct NwLytTextBoxVtable;
 struct SeadOffsetList;
 struct SeadControllerPrefix;
 struct SeadControllerWrapperPrefix;
+struct SeadCtrControllerVtable;
 struct SeadExpHeapBlock;
 struct SeadExpHeapList;
-struct SeadCtrControllerVtable;
 struct SeadExpHeapVtable;
 struct SeadExpHeapPrefix;
 struct SsysMaAllocatorVtable;
@@ -64,6 +69,52 @@ struct SsysMaLayoutNodeVtable;
 struct SsysMaLayoutNode;
 struct SsysMaLayoutList;
 struct SsysMaLayoutMgr;
+
+#pragma pack(push, 2)
+
+struct AcnlEncryptedValueF010
+{
+  unsigned int ciphertext;              
+  std::uint16_t salt;                
+  std::uint8_t rotation;             
+  std::uint8_t checksum;             
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+struct ItemID
+{
+  std::uint16_t id;
+  std::uint16_t flags;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 4)
+
+struct AcnlPlayerSave
+{
+  std::uint8_t unk_0[27532];
+  AcnlEncryptedValueF010 bank;          
+  std::uint8_t unk_6B94[8];
+  AcnlEncryptedValueF010 medals;        
+  std::uint8_t unk_6BA4[868];
+  AcnlEncryptedValueF010 wallet;        
+  std::uint8_t unk_6F10[7692];
+  AcnlEncryptedValueF010 meow_coupons;  
+  std::uint8_t unk_8D24[5980];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 4)
+
+struct AcnlGardenSavePrefix
+{
+  std::uint8_t unk_0[160];
+  AcnlPlayerSave players[4];            
+  std::uint8_t unk_292A0[269120];
+  AcnlEncryptedValueF010 turnip_prices[12]; 
+};
+#pragma pack(pop)
 
 #pragma pack(push, 2)
 
@@ -147,6 +198,25 @@ enum AcnlPointerFlags : std::uint32_t
   AcnlPointerFlags_ClearPosition = 0x8,
 };
 static_assert(sizeof(AcnlPointerFlags) == 4);
+
+typedef std::uint32_t u32;
+
+typedef std::uint8_t u8;
+
+#pragma pack(push, 2)
+struct DropData
+{
+  struct ItemID ItemToReplace;
+  struct ItemID ItemToPlace;
+  struct ItemID ItemToShow;
+  std::uint8_t wX;
+  std::uint8_t wY;
+  std::uint8_t DropType;
+  std::uint8_t State;
+  std::uint8_t Slot;
+  std::uint8_t Flags;
+};
+#pragma pack(pop)
 
 #pragma pack(push, 1)
 
@@ -741,6 +811,19 @@ struct SeadControllerWrapperPrefix
 };
 #pragma pack(pop)
 
+struct SeadCtrControllerVtable
+{
+  void *unk_0;                          
+  void *unk_4;
+  void *unk_8;
+  void *unk_C;
+  int ( *calc)(SeadControllerPrefix *controller);
+  void *unk_14;
+  void *( *update_from_device)(SeadControllerPrefix *controller);
+  void *unk_1C;
+  void *unk_20;
+};
+
 #pragma pack(push, 1)
 
 struct SeadExpHeapBlock
@@ -763,19 +846,6 @@ struct SeadExpHeapList
   int link_offset;
 };
 #pragma pack(pop)
-
-struct SeadCtrControllerVtable
-{
-  void *unk_0;                          
-  void *unk_4;
-  void *unk_8;
-  void *unk_C;
-  int ( *calc)(SeadControllerPrefix *controller);
-  void *unk_14;
-  void *( *update_from_device)(SeadControllerPrefix *controller);
-  void *unk_1C;
-  void *unk_20;
-};
 
 #pragma pack(push, 1)
 
@@ -917,6 +987,42 @@ struct SsysMaLayoutMgr
 };
 #pragma pack(pop)
 
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Effect_DigDirt_addr = 0x00762274;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Effect_ScoopScrape_addr = 0x0066F584;
+
+using FieldObj_FellObject_t = int (*)(void *a1, void *ItemToPlace, int X, int Y, int a5, int kind, int fx);
+inline constexpr std::uintptr_t FieldObj_FellObject_addr = 0x0059A0B4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t FieldObj_SpawnActor_addr = 0x00599308;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_MarkDirty_addr = 0x0059DA7C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_SetItemAt_addr = 0x00168E08;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_XYToWorld_addr = 0x006A68E4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Item_InitWithId_addr = 0x002FCBB4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Player_BeginFieldObjAction_addr = 0x00595A8C;
+
+using Save_DecryptValue_t = unsigned int (*)(const AcnlEncryptedValueF010 *value);
+inline constexpr std::uintptr_t Save_DecryptValue_addr = 0x00303530;
+
+using Save_EncryptValue_t = unsigned int (*)(AcnlEncryptedValueF010 *value, unsigned int plaintext);
+inline constexpr std::uintptr_t Save_EncryptValue_addr = 0x00303404;
+
+using Save_GetPlayerByOnlineSlot_t = AcnlPlayerSave * (*)(unsigned int online_slot);
+inline constexpr std::uintptr_t Save_GetPlayerByOnlineSlot_addr = 0x002FEB60;
+
 using GpuCmd_GetProperty_t = void (*)(unsigned int property, unsigned int *output);
 inline constexpr std::uintptr_t GpuCmd_GetProperty_addr = 0x00127EDC;
 
@@ -961,6 +1067,18 @@ inline constexpr std::uintptr_t nwlyt_Picture_DrawToCommandList_addr = 0x0073CB5
 
 // プロトタイプ未設定
 inline constexpr std::uintptr_t DrawCtx_FlushBatch_addr = 0x004B8360;
+
+using g_TextPagePadding_t = u8[4072];
+inline constexpr std::uintptr_t g_TextPagePadding_addr = 0x00838018;
+
+using g_TreeHitCounts_t = u32[320];
+inline constexpr std::uintptr_t g_TreeHitCounts_addr = 0x009AE504;
+
+using g_DropDataTable_t = DropData[4];
+inline constexpr std::uintptr_t g_DropDataTable_addr = 0x009AE15C;
+
+using g_GardenSaveBasePtr_t = AcnlGardenSavePrefix *;
+inline constexpr std::uintptr_t g_GardenSaveBasePtr_addr = 0x00955F8C;
 
 using g_LayoutMgr_t = SsysMaLayoutMgr *;
 inline constexpr std::uintptr_t g_LayoutMgr_addr = 0x0096FC38;
@@ -1080,5 +1198,177 @@ inline constexpr std::uint32_t PictureDrawEntry_crc32 = 0x3C0D5FFA;
 inline constexpr std::uintptr_t FlushBatchEntry_addr = 0x004B8360;
 inline constexpr std::uint32_t FlushBatchEntry_len = 32;
 inline constexpr std::uint32_t FlushBatchEntry_crc32 = 0xF0F18EEB;
+
+inline constexpr std::uintptr_t PatchWall0_addr = 0x0064F03C;
+inline constexpr std::uint32_t PatchWall0_len = 4;
+inline constexpr std::uint32_t PatchWall0_crc32 = 0x5A0DDF02;
+
+inline constexpr std::uintptr_t PatchWall1_addr = 0x0064F19C;
+inline constexpr std::uint32_t PatchWall1_len = 4;
+inline constexpr std::uint32_t PatchWall1_crc32 = 0x867FCA02;
+
+inline constexpr std::uintptr_t PatchWall2_addr = 0x0064F1B4;
+inline constexpr std::uint32_t PatchWall2_len = 4;
+inline constexpr std::uint32_t PatchWall2_crc32 = 0x3050A1F9;
+
+inline constexpr std::uintptr_t PatchFlower0_addr = 0x00596890;
+inline constexpr std::uint32_t PatchFlower0_len = 4;
+inline constexpr std::uint32_t PatchFlower0_crc32 = 0xD5F6623D;
+
+inline constexpr std::uintptr_t PatchTrap0_addr = 0x00659160;
+inline constexpr std::uint32_t PatchTrap0_len = 4;
+inline constexpr std::uint32_t PatchTrap0_crc32 = 0x035DE6AE;
+
+inline constexpr std::uintptr_t PatchTrap1_addr = 0x006774DC;
+inline constexpr std::uint32_t PatchTrap1_len = 4;
+inline constexpr std::uint32_t PatchTrap1_crc32 = 0x8E7E5185;
+
+inline constexpr std::uintptr_t PatchBedHead0_addr = 0x0020C6D8;
+inline constexpr std::uint32_t PatchBedHead0_len = 4;
+inline constexpr std::uint32_t PatchBedHead0_crc32 = 0xCDF6EF86;
+
+inline constexpr std::uintptr_t PatchTrample0_addr = 0x00596920;
+inline constexpr std::uint32_t PatchTrample0_len = 4;
+inline constexpr std::uint32_t PatchTrample0_crc32 = 0x0E1E7958;
+
+inline constexpr std::uintptr_t PatchTrample1_addr = 0x00596870;
+inline constexpr std::uint32_t PatchTrample1_len = 4;
+inline constexpr std::uint32_t PatchTrample1_crc32 = 0x2FF7667C;
+
+inline constexpr std::uintptr_t PatchTrample2_addr = 0x0059689C;
+inline constexpr std::uint32_t PatchTrample2_len = 4;
+inline constexpr std::uint32_t PatchTrample2_crc32 = 0x8D84E93E;
+
+inline constexpr std::uintptr_t PatchTrample3_addr = 0x005968D0;
+inline constexpr std::uint32_t PatchTrample3_len = 4;
+inline constexpr std::uint32_t PatchTrample3_crc32 = 0x649A4103;
+
+inline constexpr std::uintptr_t PatchTrample4_addr = 0x005968D8;
+inline constexpr std::uint32_t PatchTrample4_len = 4;
+inline constexpr std::uint32_t PatchTrample4_crc32 = 0x66DB617F;
+
+inline constexpr std::uintptr_t PatchTrample5_addr = 0x005968E4;
+inline constexpr std::uint32_t PatchTrample5_len = 4;
+inline constexpr std::uint32_t PatchTrample5_crc32 = 0x4CB28129;
+
+inline constexpr std::uintptr_t PatchDig0_addr = 0x00595B00;
+inline constexpr std::uint32_t PatchDig0_len = 4;
+inline constexpr std::uint32_t PatchDig0_crc32 = 0xA2D4D157;
+
+inline constexpr std::uintptr_t PatchDig1_addr = 0x00598294;
+inline constexpr std::uint32_t PatchDig1_len = 4;
+inline constexpr std::uint32_t PatchDig1_crc32 = 0x4B0F2794;
+
+inline constexpr std::uintptr_t PatchDig2_addr = 0x00598478;
+inline constexpr std::uint32_t PatchDig2_len = 4;
+inline constexpr std::uint32_t PatchDig2_crc32 = 0xF08CA6B4;
+
+inline constexpr std::uintptr_t PatchDig3_addr = 0x005984EC;
+inline constexpr std::uint32_t PatchDig3_len = 4;
+inline constexpr std::uint32_t PatchDig3_crc32 = 0xEC802E17;
+
+inline constexpr std::uintptr_t PatchDig4_addr = 0x00598550;
+inline constexpr std::uint32_t PatchDig4_len = 4;
+inline constexpr std::uint32_t PatchDig4_crc32 = 0x44C31810;
+
+inline constexpr std::uintptr_t PatchDig5_addr = 0x00662E88;
+inline constexpr std::uint32_t PatchDig5_len = 4;
+inline constexpr std::uint32_t PatchDig5_crc32 = 0x0B5E5397;
+
+inline constexpr std::uintptr_t PatchDig6_addr = 0x00663294;
+inline constexpr std::uint32_t PatchDig6_len = 4;
+inline constexpr std::uint32_t PatchDig6_crc32 = 0xA417B1D3;
+
+inline constexpr std::uintptr_t PatchDig7_addr = 0x00680F10;
+inline constexpr std::uint32_t PatchDig7_len = 4;
+inline constexpr std::uint32_t PatchDig7_crc32 = 0xAE2CD666;
+
+inline constexpr std::uintptr_t PatchDig8_addr = 0x005982C4;
+inline constexpr std::uint32_t PatchDig8_len = 4;
+inline constexpr std::uint32_t PatchDig8_crc32 = 0x0C5F5924;
+
+inline constexpr std::uintptr_t PatchLookUp0_addr = 0x0064C594;
+inline constexpr std::uint32_t PatchLookUp0_len = 4;
+inline constexpr std::uint32_t PatchLookUp0_crc32 = 0x3823E6F4;
+
+inline constexpr std::uintptr_t PatchShop0_addr = 0x003093BC;
+inline constexpr std::uint32_t PatchShop0_len = 4;
+inline constexpr std::uint32_t PatchShop0_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop1_addr = 0x007102C8;
+inline constexpr std::uint32_t PatchShop1_len = 4;
+inline constexpr std::uint32_t PatchShop1_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop2_addr = 0x00710380;
+inline constexpr std::uint32_t PatchShop2_len = 4;
+inline constexpr std::uint32_t PatchShop2_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop3_addr = 0x00712664;
+inline constexpr std::uint32_t PatchShop3_len = 4;
+inline constexpr std::uint32_t PatchShop3_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop4_addr = 0x0071BBE0;
+inline constexpr std::uint32_t PatchShop4_len = 4;
+inline constexpr std::uint32_t PatchShop4_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop5_addr = 0x00710000;
+inline constexpr std::uint32_t PatchShop5_len = 4;
+inline constexpr std::uint32_t PatchShop5_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop6_addr = 0x0071DE08;
+inline constexpr std::uint32_t PatchShop6_len = 4;
+inline constexpr std::uint32_t PatchShop6_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop7_addr = 0x0071684C;
+inline constexpr std::uint32_t PatchShop7_len = 4;
+inline constexpr std::uint32_t PatchShop7_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchShop8_addr = 0x00716BF8;
+inline constexpr std::uint32_t PatchShop8_len = 4;
+inline constexpr std::uint32_t PatchShop8_crc32 = 0xB640D037;
+
+inline constexpr std::uintptr_t PatchText0_addr = 0x005F8278;
+inline constexpr std::uint32_t PatchText0_len = 4;
+inline constexpr std::uint32_t PatchText0_crc32 = 0x0D80C792;
+
+inline constexpr std::uintptr_t PatchFps0_addr = 0x0054C6E8;
+inline constexpr std::uint32_t PatchFps0_len = 4;
+inline constexpr std::uint32_t PatchFps0_crc32 = 0xA9629FF0;
+
+inline constexpr std::uintptr_t PatchTree0_addr = 0x0059BBB0;
+inline constexpr std::uint32_t PatchTree0_len = 4;
+inline constexpr std::uint32_t PatchTree0_crc32 = 0x97E5B936;
+
+inline constexpr std::uintptr_t PatchDig30_addr = 0x005A09EC;
+inline constexpr std::uint32_t PatchDig30_len = 4;
+inline constexpr std::uint32_t PatchDig30_crc32 = 0x8314B55F;
+
+inline constexpr std::uintptr_t PatchDig31_addr = 0x0065BD58;
+inline constexpr std::uint32_t PatchDig31_len = 4;
+inline constexpr std::uint32_t PatchDig31_crc32 = 0x11900BAC;
+
+inline constexpr std::uintptr_t PatchDig32_addr = 0x0065BDEC;
+inline constexpr std::uint32_t PatchDig32_len = 4;
+inline constexpr std::uint32_t PatchDig32_crc32 = 0x37C32C10;
+
+inline constexpr std::uintptr_t PatchDig33_addr = 0x0065BD2C;
+inline constexpr std::uint32_t PatchDig33_len = 4;
+inline constexpr std::uint32_t PatchDig33_crc32 = 0xAA0AB6B5;
+
+inline constexpr std::uintptr_t WeatherInstruction_addr = 0x0062E728;
+inline constexpr std::uint32_t WeatherInstruction_len = 4;
+inline constexpr std::uint32_t WeatherInstruction_crc32 = 0xD72C264C;
+
+inline constexpr std::uintptr_t SaveDecryptEntry_addr = 0x00303530;
+inline constexpr std::uint32_t SaveDecryptEntry_len = 4;
+inline constexpr std::uint32_t SaveDecryptEntry_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t SaveEncryptEntry_addr = 0x00303404;
+inline constexpr std::uint32_t SaveEncryptEntry_len = 4;
+inline constexpr std::uint32_t SaveEncryptEntry_crc32 = 0xC31DF273;
+
+inline constexpr std::uintptr_t SavePlayerEntry_addr = 0x002FEB60;
+inline constexpr std::uint32_t SavePlayerEntry_len = 4;
+inline constexpr std::uint32_t SavePlayerEntry_crc32 = 0xF83B0570;
 
 } // namespace gohan::game::generated

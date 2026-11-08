@@ -1,6 +1,11 @@
 #include "core/feature.hpp"
 #include "features/menu_screen/menu_screen.hpp"
 #include "features/status/status.hpp"
+#include "features/player/player.hpp"
+#include "features/field/field.hpp"
+#include "features/town/town.hpp"
+#include "features/gameplay/gameplay.hpp"
+#include "features/resources/resources.hpp"
 #include "game/frame_hook.hpp"
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
@@ -60,6 +65,16 @@ int main() {
     features.Add(gohan::game::InputPadFeature());
     features.Add(gohan::game::InputControllerFeature());
     features.Add(gohan::ui::renderer::RendererFeature());
+    features.Add(gohan::features::player::Feature());
+    features.Add(gohan::features::field::Feature());
+    features.Add(gohan::features::town::Feature());
+    features.Add(gohan::features::gameplay::Feature());
+    features.Add(gohan::features::resources::Feature());
+    for (auto bindings : {gohan::features::player::Bindings(), gohan::features::field::Bindings(),
+                          gohan::features::town::Bindings(), gohan::features::gameplay::Bindings(),
+                          gohan::features::resources::Bindings()}) {
+        if (!gohan::features::menu_screen::BindItems(bindings.data(), bindings.size())) return 1;
+    }
     features.Add(gohan::features::menu_screen::Feature());
     // Select 単独は自前のメニューに譲る。Select+十字上は従来どおり CTRPF のメニュー。
     menu.OnOpening = OpenCtrpfMenu;

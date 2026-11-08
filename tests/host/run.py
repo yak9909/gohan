@@ -38,6 +38,9 @@ def main() -> int:
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
+    run(['tests/host/test_patch_set.cpp', 'src/game/patch_set.cpp', 'src/game/weather.cpp'], 'test_patch_set')
+    run(['tests/host/test_field_caves.cpp', 'src/game/field_caves.cpp'], 'test_field_caves', ('src', 'tests/host'))
+    run(['tests/host/test_encrypted_value.cpp', 'src/game/encrypted_value.cpp'], 'test_encrypted_value')
     for dev in (False, True):
         run(['tests/host/test_frame_timing.cpp', 'src/core/format.cpp'],
             'test_frame_timing_dev' if dev else 'test_frame_timing',

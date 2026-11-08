@@ -1,10 +1,14 @@
 #pragma once
 #include "core/feature.hpp"
 
+namespace gohan::menu { struct Bound; }
+
 // ゲーム中に下画面へ出す gohan のメニュー。毎フレームの処理でボタンとタッチを読み、
 // メニューの画面（menu::Shell）を動かして、描画の部品（ui::renderer）へ渡す。
 namespace gohan::features::menu_screen {
 const core::Feature &Feature();
+// 構成の接続点から、Wire より前にゲームの項目を結ぶ。
+bool BindItems(const menu::Bound *bindings, std::size_t count);
 // CTRPF のスレッドから開閉を頼む（開発版の CTRPF の項目用）。次のフレームに反映する。競合したら false。
 bool RequestToggle();
 // CTRPF のメニューを開く操作（PluginMenu::OnOpening）の答え。
