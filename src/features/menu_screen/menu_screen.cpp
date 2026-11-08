@@ -263,6 +263,7 @@ const core::Feature feature{"menu.screen", Wire, Shutdown, core::ShutdownStage::
 } // namespace
 
 const core::Feature &Feature() { return feature; }
+bool BindItems(const menu::Bound *bindings, std::size_t count) { return engine.BindAll(bindings, count); }
 
 bool RequestToggle() { return toggle_request.TrySubmit(true); }
 

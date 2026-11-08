@@ -2,6 +2,19 @@ build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
 functions = [
+    "Effect_DigDirt",
+    "Effect_ScoopScrape",
+    "FieldObj_FellObject",
+    "FieldObj_SpawnActor",
+    "Field_MarkDirty",
+    "Field_SetItemAt",
+    "Field_XYToWorld",
+    "Item_InitWithId",
+    "Player_BeginFieldObjAction",
+    "Save_DecryptValue",
+    "Save_EncryptValue",
+    "Save_GetPlayerByOnlineSlot",
+
     "GpuCmd_GetProperty", "GpuCmd_CreateLists", "GpuCmd_SelectList",
     "GpuCmd_AllocateListStorage", "GpuCmd_DestroyLists",
     "ssys_ma_Allocator_Alloc", "ssys_ma_Allocator_Free",
@@ -13,12 +26,14 @@ functions = [
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
+    "g_TextPagePadding", "g_TreeHitCounts", "g_DropDataTable", "g_GardenSaveBasePtr",
     "g_LayoutMgr", "g_LayoutAllocator", "vtbl_sead_CtrController",
     "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
     "vtbl_nw_lyt_Material", "vtbl_nw_lyt_DrawInfo", "vtbl_nw_font_ResFont",
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
 ]
 types = [
+    "AcnlEncryptedValueF010", "AcnlPlayerSave", "AcnlGardenSavePrefix",
     "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode", "SsysMaLayoutNodeVtable",
     "SsysMaAllocator", "SeadExpHeapPrefix",
     "NwLytPane", "NwLytPicture", "NwLytTextBox", "NwLytMaterial", "NwLytDrawInfo",
@@ -155,3 +170,261 @@ name = "FlushBatchEntry"
 function = "DrawCtx_FlushBatch"
 offset = 0
 length = 32
+
+[[checks]]
+name = "PatchWall0"
+function = "AcPlayer_UpdatePositionWithFieldChecks"
+offset = 1116
+length = 4
+
+[[checks]]
+name = "PatchWall1"
+function = "AcPlayer_UpdatePositionWithFieldChecks"
+offset = 1468
+length = 4
+
+[[checks]]
+name = "PatchWall2"
+function = "AcPlayer_UpdatePositionWithFieldChecks"
+offset = 1492
+length = 4
+
+[[checks]]
+name = "PatchFlower0"
+function = "FieldObj_TrampleAt"
+offset = 84
+length = 4
+
+[[checks]]
+name = "PatchTrap0"
+function = "Player_TryDispatchFrameActions"
+offset = 628
+length = 4
+
+[[checks]]
+name = "PatchTrap1"
+function = "PlayerAction_DispatchTop"
+offset = 496
+length = 4
+
+[[checks]]
+name = "PatchBedHead0"
+function = "Player_ApplyAbsenceBedHead"
+offset = 80
+length = 4
+
+[[checks]]
+name = "PatchTrample0"
+function = "FieldObj_TrampleAt"
+offset = 228
+length = 4
+
+[[checks]]
+name = "PatchTrample1"
+function = "FieldObj_TrampleAt"
+offset = 52
+length = 4
+
+[[checks]]
+name = "PatchTrample2"
+function = "FieldObj_TrampleAt"
+offset = 96
+length = 4
+
+[[checks]]
+name = "PatchTrample3"
+function = "FieldObj_TrampleAt"
+offset = 148
+length = 4
+
+[[checks]]
+name = "PatchTrample4"
+function = "FieldObj_TrampleAt"
+offset = 156
+length = 4
+
+[[checks]]
+name = "PatchTrample5"
+function = "FieldObj_TrampleAt"
+offset = 168
+length = 4
+
+[[checks]]
+name = "PatchDig0"
+function = "Player_BeginFieldObjAction"
+offset = 116
+length = 4
+
+[[checks]]
+name = "PatchDig1"
+function = "FieldObj_ResolveDigAction"
+offset = 80
+length = 4
+
+[[checks]]
+name = "PatchDig2"
+function = "FieldObj_ResolveDigAction"
+offset = 564
+length = 4
+
+[[checks]]
+name = "PatchDig3"
+function = "FieldObj_ResolveDigAction"
+offset = 680
+length = 4
+
+[[checks]]
+name = "PatchDig4"
+function = "FieldObj_ResolveDigAction"
+offset = 780
+length = 4
+
+[[checks]]
+name = "PatchDig5"
+function = "Shovel_DecideState"
+offset = 32
+length = 4
+
+[[checks]]
+name = "PatchDig6"
+function = "Shovel_DecideState"
+offset = 1068
+length = 4
+
+[[checks]]
+name = "PatchDig7"
+function = "ShovelState_SwingEnter"
+offset = 84
+length = 4
+
+[[checks]]
+name = "PatchDig8"
+function = "FieldObj_ResolveDigAction"
+offset = 128
+length = 4
+
+[[checks]]
+name = "PatchLookUp0"
+function = "Player_UpdateCameraControls"
+offset = 244
+length = 4
+
+[[checks]]
+name = "PatchShop0"
+function = "ShopHours_ReTail_IsOpen"
+offset = 172
+length = 4
+
+[[checks]]
+name = "PatchShop1"
+function = "ShopHours_Nookling_IsOpenByStage"
+offset = 628
+length = 4
+
+[[checks]]
+name = "PatchShop2"
+function = "ShopHours_Garden_IsOpen"
+offset = 176
+length = 4
+
+[[checks]]
+name = "PatchShop3"
+function = "ShopHours_Ables_IsOpen"
+offset = 124
+length = 4
+
+[[checks]]
+name = "PatchShop4"
+function = "ShopHours_Shampoodle_IsOpen"
+offset = 72
+length = 4
+
+[[checks]]
+name = "PatchShop5"
+function = "ShopHours_Kicks_IsOpen"
+offset = 156
+length = 4
+
+[[checks]]
+name = "PatchShop6"
+function = "ShopHours_NooksHomes_IsOpen"
+offset = 208
+length = 4
+
+[[checks]]
+name = "PatchShop7"
+function = "ShopHours_Katrina_IsOpen"
+offset = 172
+length = 4
+
+[[checks]]
+name = "PatchShop8"
+function = "ShopHours_Redd_IsOpen"
+offset = 220
+length = 4
+
+[[checks]]
+name = "PatchText0"
+function = "TalkSeq_StepText"
+offset = 64
+length = 4
+
+[[checks]]
+name = "PatchFps0"
+function = "Framework_WaitAndPresentFrame"
+offset = 100
+length = 4
+
+[[checks]]
+name = "PatchTree0"
+function = "FieldObj_BumpFellCaller"
+offset = 236
+length = 4
+
+[[checks]]
+name = "PatchDig30"
+function = "FieldObj_ApplyRecordByAction"
+offset = 792
+length = 4
+
+[[checks]]
+name = "PatchDig31"
+function = "ShovelState_DigUpdate"
+offset = 220
+length = 4
+
+[[checks]]
+name = "PatchDig32"
+function = "ShovelState_DigUpdate"
+offset = 368
+length = 4
+
+[[checks]]
+name = "PatchDig33"
+function = "ShovelState_DigUpdate"
+offset = 176
+length = 4
+
+[[checks]]
+name = "WeatherInstruction"
+function = "Weather_GetCurrentType"
+offset = 284
+length = 4
+
+[[checks]]
+name = "SaveDecryptEntry"
+function = "Save_DecryptValue"
+offset = 0
+length = 4
+
+[[checks]]
+name = "SaveEncryptEntry"
+function = "Save_EncryptValue"
+offset = 0
+length = 4
+
+[[checks]]
+name = "SavePlayerEntry"
+function = "Save_GetPlayerByOnlineSlot"
+offset = 0
+length = 4

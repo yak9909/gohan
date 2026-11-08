@@ -38,6 +38,9 @@ def main() -> int:
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
+    run(['tests/host/test_patch_set.cpp', 'src/game/patch_set.cpp', 'src/game/weather.cpp'], 'test_patch_set')
+    run(['tests/host/test_field_caves.cpp', 'src/game/field_caves.cpp'], 'test_field_caves', ('src', 'tests/host'))
+    run(['tests/host/test_encrypted_value.cpp', 'src/game/encrypted_value.cpp'], 'test_encrypted_value')
     for dev in (False, True):
         run(['tests/host/test_frame_timing.cpp', 'src/core/format.cpp'],
             'test_frame_timing_dev' if dev else 'test_frame_timing',
@@ -99,6 +102,13 @@ def main() -> int:
         for test, extra in tests:
             run([test, *engine, *extra, str(gen.relative_to(root) / 'menu_table.cpp')],
                 Path(test).stem, ('src', 'tests/host', str(gen.relative_to(root))))
+
+    cheat_features = ['src/features/player/player.cpp', 'src/features/field/field.cpp',
+                      'src/features/town/town.cpp', 'src/features/gameplay/gameplay.cpp',
+                      'src/features/resources/resources.cpp']
+    run(['tests/host/test_cheat_features.cpp', *cheat_features, *engine, 'src/menu/sample_items.cpp',
+         'build/host/gen-sample/menu_table.cpp'], 'test_cheat_features',
+        ('src', 'build/host/gen-sample'))
 
     # 次の起動に持ち越す物の保存の時機（CTRPF に依存しない判断と、写しの受け渡し）。
     run(['tests/host/test_menu_save.cpp', 'src/features/menu_screen/persist_policy.cpp',

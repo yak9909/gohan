@@ -1,0 +1,143 @@
+#include "game/field_caves.hpp"
+#include "game/generated/api.hpp"
+
+namespace gohan::game::field_caves {
+static_assert(ValidAllocations(kAllocations, sizeof(generated::g_TextPagePadding_t)));
+std::uintptr_t Address(std::size_t index) { return generated::g_TextPagePadding_addr + kAllocations[index].offset; }
+
+std::array<std::uint32_t, kAllocations[0].words> Tree(std::uintptr_t base) {
+    return {
+        0xE92D503Fu,
+        0xE59D0024u,
+        0xE3500000u,
+        Branch(base + kAllocations[0].offset + 12, base + kAllocations[0].offset + 144, 0x1A000000u),
+        0xE59D0008u,
+        0xE59D100Cu,
+        0xE0812101u,
+        0xE0800202u,
+        0xE2400E51u,
+        0xE59F306Cu,
+        0xE1A02E00u,
+        0xE1A01240u,
+        0xE1A00DA2u,
+        0xE0833101u,
+        0xE5932000u,
+        0xE3A01003u,
+        0xE1822011u,
+        0xE5832000u,
+        0xE59D0008u,
+        0xE59D100Cu,
+        0xE3A02001u,
+        Branch(base + kAllocations[0].offset + 84, generated::Player_BeginFieldObjAction_addr, 0xEB000000u),
+        0xE3700001u,
+        Branch(base + kAllocations[0].offset + 92, base + kAllocations[0].offset + 144, 0x0A000000u),
+        0xE59F1034u,
+        0xE0802180u,
+        0xE0815082u,
+        0xE2854004u,
+        0xE58D4004u,
+        0xE5D54011u,
+        0xE3140002u,
+        0x13A04005u,
+        0x03A04004u,
+        0xE58D4024u,
+        0xE3A04000u,
+        0xE1C540BEu,
+        0xE8BD503Fu,
+        Branch(base + kAllocations[0].offset + 148, generated::FieldObj_FellObject_addr, 0xEA000000u),
+        static_cast<std::uint32_t>(generated::g_TreeHitCounts_addr),
+        static_cast<std::uint32_t>(generated::g_DropDataTable_addr),
+    };
+}
+
+std::array<std::uint32_t, kAllocations[1].words> DigHoles(std::uintptr_t base) {
+    return {
+        0xE92D43F0u,
+        Branch(base + kAllocations[1].offset + 4, generated::FieldObj_SpawnActor_addr, 0xEB000000u),
+        0xE1A09000u,
+        0xE3E07000u,
+        0xE3E06000u,
+        0xE1970006u,
+        Branch(base + kAllocations[1].offset + 24, base + kAllocations[1].offset + 132, 0x0A000000u),
+        0xE24DD010u,
+        0xE28D0008u,
+        0xE3A0109Eu,
+        Branch(base + kAllocations[1].offset + 40, generated::Item_InitWithId_addr, 0xEB000000u),
+        0xE28D0008u,
+        0xE5D4100Eu,
+        0xE0811006u,
+        0xE5D4200Fu,
+        0xE0822007u,
+        Branch(base + kAllocations[1].offset + 64, generated::FieldObj_SpawnActor_addr, 0xEB000000u),
+        0xE28D0008u,
+        0xE58D0000u,
+        0xE5D4000Eu,
+        0xE0800006u,
+        0xE5D4100Fu,
+        0xE0811007u,
+        0xE5D4200Cu,
+        0xE2022001u,
+        0xE5D43015u,
+        Branch(base + kAllocations[1].offset + 104, generated::Field_SetItemAt_addr, 0xEB000000u),
+        0xE5D4000Eu,
+        0xE0800006u,
+        0xE5D4100Fu,
+        0xE0811007u,
+        Branch(base + kAllocations[1].offset + 124, generated::Field_MarkDirty_addr, 0xEB000000u),
+        0xE28DD010u,
+        0xE2866001u,
+        0xE3560002u,
+        Branch(base + kAllocations[1].offset + 140, base + kAllocations[1].offset + 20, 0xBA000000u),
+        0xE2877001u,
+        0xE3570002u,
+        Branch(base + kAllocations[1].offset + 152, base + kAllocations[1].offset + 16, 0xBA000000u),
+        0xE1A00009u,
+        0xE8BD43F0u,
+        0xE12FFF1Eu,
+    };
+}
+
+std::array<std::uint32_t, kAllocations[2].words> DigScrape(std::uintptr_t base) {
+    return {
+        0xE92D400Cu,
+        Branch(base + kAllocations[2].offset + 4, generated::Effect_ScoopScrape_addr, 0xEB000000u),
+        0xE24DD010u,
+        0xE1A0000Du,
+        0xE2871001u,
+        0xE1A02008u,
+        Branch(base + kAllocations[2].offset + 24, generated::Field_XYToWorld_addr, 0xEB000000u),
+        0xE1A00004u,
+        0xE1A0100Du,
+        0xE59D2010u,
+        0xE59D3014u,
+        Branch(base + kAllocations[2].offset + 44, generated::Effect_ScoopScrape_addr, 0xEB000000u),
+        0xE28DD010u,
+        0xE8BD400Cu,
+        0xE12FFF1Eu,
+    };
+}
+
+std::array<std::uint32_t, kAllocations[3].words> DigDirt(std::uintptr_t base) {
+    return {
+        0xE92D43F0u,
+        Branch(base + kAllocations[3].offset + 4, generated::Effect_DigDirt_addr, 0xEB000000u),
+        0xE3E09000u,
+        0xE3E06000u,
+        0xE1990006u,
+        Branch(base + kAllocations[3].offset + 20, base + kAllocations[3].offset + 44, 0x0A000000u),
+        0xE1A00004u,
+        0xE0871006u,
+        0xE0882009u,
+        0xE3A03000u,
+        Branch(base + kAllocations[3].offset + 40, generated::Effect_DigDirt_addr, 0xEB000000u),
+        0xE2866001u,
+        0xE3560002u,
+        Branch(base + kAllocations[3].offset + 52, base + kAllocations[3].offset + 16, 0xBA000000u),
+        0xE2899001u,
+        0xE3590002u,
+        Branch(base + kAllocations[3].offset + 64, base + kAllocations[3].offset + 12, 0xBA000000u),
+        0xE8BD43F0u,
+        0xE12FFF1Eu,
+    };
+}
+} // namespace gohan::game::field_caves

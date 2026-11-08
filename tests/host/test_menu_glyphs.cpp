@@ -81,6 +81,13 @@ void Audit(Rig &rig) {
 }
 
 void Scenes() {
+    // ゲームの項目を含め、定義中の全ての文言に字形があることも確かめる。
+    AuditSurface definitions;
+    for (const auto &item : kMenuItems) {
+        definitions.Text(0, 0, item.label, 0);
+        definitions.Text(0, 0, item.desc, 0);
+        for (unsigned i = 0; i < item.option_count; ++i) definitions.Text(0, 0, item.options[i], 0);
+    }
     sample::Get() = sample::State{};
     Rig rig(kMenuItems, kMenuItemCount);
     assert(rig.engine.BindAll(sample::kBindings, sample::kBindingCount));

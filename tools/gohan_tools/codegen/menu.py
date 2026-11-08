@@ -7,6 +7,7 @@ make が呼ぶ。ROM は要らない。出力:
   <docs>               メニューの一覧（手で書かない）
 
 spec の形:
+  shared_hotkeys                既定のホットキーを共有する ID 2 個の組（必要な組だけ明記）。
   [[item]]                     最上位の項目。フォルダの子は [[item.item]] のように入れ子で書く。
   [[settings]]                 設定画面の根（フォルダ 1 つ）。表は [[item]] の後ろに置く（kSettingsRoot）。
   id         一意の ID（小文字・数字・_ を . でつなぐ）。階層とは無関係な名前。
@@ -405,7 +406,7 @@ def persist_size(items: list[Item]) -> int:
     return PERSIST_HEADER + sum(1 + len(item.id.encode('utf-8')) + 1 + PERSIST_FIELD_MAX for item in items)
 
 
-def validate(items: list[Item]) -> None:
+def validate(items: list[Item], shared_hotkeys: object = ()) -> None:
     if not items:
         raise SpecError('項目がありません')
     if len(items) > MAX_ITEMS:
@@ -425,8 +426,20 @@ def validate(items: list[Item]) -> None:
     size = persist_size(items)
     if size > PERSIST_BYTES:
         raise SpecError(f'次の起動に残す物の大きさの最大が {size} バイトで、上限 {PERSIST_BYTES} バイトを超えます')
+    # 見本とゲームの既定値を共存させる時だけ、共有する組を spec に明記する。
+    shared: set[frozenset[str]] = set()
+    if not isinstance(shared_hotkeys, (list, tuple)):
+        raise SpecError('shared_hotkeys は ID 2 個の組の配列にしてください')
+    for pair in shared_hotkeys:
+        if (not isinstance(pair, list) or len(pair) != 2 or
+                any(not isinstance(key, str) or key not in by_id for key in pair) or pair[0] == pair[1]):
+            raise SpecError('shared_hotkeys は既知の異なる ID 2 個の組にしてください')
+        a, b = (by_id[key] for key in pair)
+        if not a.hotkey or a.hotkey != b.hotkey or frozenset(pair) in shared:
+            raise SpecError('shared_hotkeys は同じ既定ホットキーを持つ組を一度だけ指定してください')
+        shared.add(frozenset(pair))
     groups: dict[str, Item] = {}
-    hotkeys: dict[int, Item] = {}
+    hotkeys: dict[int, list[Item]] = {}
     for item in items:
         resolve_cond(item, by_id)
         if item.group:
@@ -435,9 +448,11 @@ def validate(items: list[Item]) -> None:
                 raise SpecError(f'{item.id}: group "{item.group}" に state と mode を混ぜられません')
             item.group_number = list(groups).index(item.group) + 1
         if item.hotkey:
-            other = hotkeys.setdefault(item.hotkey, item)
-            if other is not item:
-                raise SpecError(f'{item.id}: ホットキー {item.hotkey_text} が {other.id} と重なっています')
+            others = hotkeys.setdefault(item.hotkey, [])
+            for other in others:
+                if frozenset((item.id, other.id)) not in shared:
+                    raise SpecError(f'{item.id}: ホットキー {item.hotkey_text} が {other.id} と重なっています')
+            others.append(item)
 
 
 def load(path: Path) -> list[Item]:
@@ -445,7 +460,7 @@ def load(path: Path) -> list[Item]:
         data = tomllib.loads(path.read_text(encoding='utf-8'))
     except tomllib.TOMLDecodeError as error:
         raise SpecError(f'{path}: TOML として読めません: {error}') from None
-    unknown = sorted(set(data) - {'item', 'settings'})
+    unknown = sorted(set(data) - {'item', 'settings', 'shared_hotkeys'})
     if unknown:
         raise SpecError(f'最上位に未知の鍵があります: {", ".join(unknown)}')
     top = data.get('item')
@@ -468,7 +483,7 @@ def load(path: Path) -> list[Item]:
     for item in items:
         if item.list_kind and not item.settings:
             raise SpecError(f'{item.id}: list は設定画面の中のフォルダだけに書けます')
-    validate(items)
+    validate(items, data.get('shared_hotkeys', []))
     return items
 
 
@@ -623,6 +638,8 @@ def render_docs(items: list[Item]) -> str:
            '|---|---|---|---|---|---|---|---|---|\n']
     for item in items:
         notes = []
+        if item.hotkey and any(other is not item and other.hotkey == item.hotkey for other in items):
+            notes.append('既定キーを共有')
         if item.menu == 'on_apply':
             notes.append('適用で実行')
         if item.confirm == 'hotkey':
