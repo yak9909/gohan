@@ -12,7 +12,7 @@ std::int32_t EncryptedValue::Maximum(Resource resource) {
     switch (resource) {
     case Resource::Wallet: case Resource::Turnips: return 99999;
     case Resource::Bank: return 999999999;
-    case Resource::Coupons: case Resource::Medals: return 9999;
+    case Resource::Coupons: case Resource::Medals: return 99999;
     }
     return 0;
 }

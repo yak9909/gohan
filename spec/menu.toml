@@ -136,7 +136,7 @@ label = "ふるさとチケット"
 desc = "ふるさとチケットを変更します。"
 control = "number"
 source = "game"
-range = [0, 9999]
+range = [0, 99999]
 
 [[item.item.item]]
 id = "player.medals"
@@ -144,7 +144,7 @@ label = "メダル"
 desc = "オン島のメダルを変更します。"
 control = "number"
 source = "game"
-range = [0, 9999]
+range = [0, 99999]
 
 [[item.item]]
 id = "player.style"
