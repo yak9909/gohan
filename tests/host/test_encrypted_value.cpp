@@ -75,7 +75,7 @@ int main() {
     player_save.wallet = saved;
     player_save.wallet.checksum ^= 1;
     assert(!value.Read(Resource::Wallet, &read));
-    Encrypt(&player_save.medals, 10000);
+    Encrypt(&player_save.medals, 100000);
     assert(!value.Read(Resource::Medals, &read));
     // 先頭だけを読む。ほかの価格が違っていても先頭の値を返す。
     Encrypt(&garden_save.turnip_prices[0], 1234);
