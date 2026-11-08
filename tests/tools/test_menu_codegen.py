@@ -137,6 +137,17 @@ def test_repository_docs_match_spec():
     assert menu.check(ROOT / 'spec/menu.toml', ROOT / 'docs/menu.md')
 
 
+def test_shared_default_hotkeys_are_explicit_pairs(tmp_path):
+    body = item(['hotkey = "L+A"']) + item(['hotkey = "A+L"']).replace('"a"', '"b"')
+    assert len(load(tmp_path, 'shared_hotkeys = [["a", "b"]]\n' + body)) == 2
+    for declaration in ('[["a", "missing"]]', '[["a", "a"]]', '[["a", "b"], ["b", "a"]]', '"a"'):
+        assert 'shared_hotkeys' in error(tmp_path, f'shared_hotkeys = {declaration}\n' + body)
+    mismatch = body.replace('A+L', 'R+B')
+    assert 'shared_hotkeys' in error(tmp_path, 'shared_hotkeys = [["a", "b"]]\n' + mismatch)
+    third = item(['hotkey = "L+A"']).replace('"a"', '"c"')
+    assert 'ホットキー' in error(tmp_path, 'shared_hotkeys = [["a", "b"]]\n' + body + third)
+
+
 def test_repository_spec_has_five_behaviors_and_two_sources():
     items = menu.load(ROOT / 'spec/menu.toml')
     assert {i.behavior for i in items if i.control != 'folder'} == {'state', 'hold', 'trigger', 'mode', 'value'}

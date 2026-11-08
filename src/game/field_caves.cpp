@@ -5,8 +5,7 @@ namespace gohan::game::field_caves {
 static_assert(ValidAllocations(kAllocations, sizeof(generated::g_TextPagePadding_t)));
 std::uintptr_t Address(std::size_t index) { return generated::g_TextPagePadding_addr + kAllocations[index].offset; }
 
-std::array<std::uint32_t, 40> Tree(std::uintptr_t base) {
-    (void)base;
+std::array<std::uint32_t, kAllocations[0].words> Tree(std::uintptr_t base) {
     return {
         0xE92D503Fu,
         0xE59D0024u,
@@ -51,8 +50,7 @@ std::array<std::uint32_t, 40> Tree(std::uintptr_t base) {
     };
 }
 
-std::array<std::uint32_t, 42> DigHoles(std::uintptr_t base) {
-    (void)base;
+std::array<std::uint32_t, kAllocations[1].words> DigHoles(std::uintptr_t base) {
     return {
         0xE92D43F0u,
         Branch(base + kAllocations[1].offset + 4, generated::FieldObj_SpawnActor_addr, 0xEB000000u),
@@ -99,8 +97,7 @@ std::array<std::uint32_t, 42> DigHoles(std::uintptr_t base) {
     };
 }
 
-std::array<std::uint32_t, 15> DigScrape(std::uintptr_t base) {
-    (void)base;
+std::array<std::uint32_t, kAllocations[2].words> DigScrape(std::uintptr_t base) {
     return {
         0xE92D400Cu,
         Branch(base + kAllocations[2].offset + 4, generated::Effect_ScoopScrape_addr, 0xEB000000u),
@@ -120,8 +117,7 @@ std::array<std::uint32_t, 15> DigScrape(std::uintptr_t base) {
     };
 }
 
-std::array<std::uint32_t, 19> DigDirt(std::uintptr_t base) {
-    (void)base;
+std::array<std::uint32_t, kAllocations[3].words> DigDirt(std::uintptr_t base) {
     return {
         0xE92D43F0u,
         Branch(base + kAllocations[3].offset + 4, generated::Effect_DigDirt_addr, 0xEB000000u),

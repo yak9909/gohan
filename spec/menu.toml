@@ -2,6 +2,9 @@
 # 階層はフォルダの [[item.item]] で書く。id は一意な名前で、階層とは関係しない。
 # 見本の項目とゲームの項目を定義する。
 
+# 既定のキーを保つために共有する組。両方を有効にすれば両方が動く。
+shared_hotkeys = [["sample.flag", "player.wall"], ["sample.hold", "items.trample"]]
+
 [[item]]
 id      = "sample"
 label   = "見本"

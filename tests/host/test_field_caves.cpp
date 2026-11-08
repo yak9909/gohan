@@ -15,7 +15,10 @@ int main() {
     static_assert(!caves::ValidAllocations(overlap, 16));
     static_assert(!caves::ValidAllocations(overflow, 16));
     static_assert(!caves::ValidAllocations(unaligned, 16));
-    const auto base = generated::g_TextPagePadding_addr;
+    // 比較用の配置は期待値と一緒に試験側で固定する。
+    constexpr std::uintptr_t base = 0x00838018;
+    for (std::size_t i = 0; i < std::size(caves::kAllocations); ++i)
+        assert(caves::Address(i) == generated::g_TextPagePadding_addr + caves::kAllocations[i].offset);
     auto tree = caves::Tree(base);
     auto holes = caves::DigHoles(base);
     auto scrape = caves::DigScrape(base);

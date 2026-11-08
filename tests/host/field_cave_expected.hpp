@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+// 同じ配置での期待値。実装側の分岐生成とは独立に固定する。
 namespace expected {
 inline constexpr std::uint32_t kTree[] = {
     0xE92D503Fu,

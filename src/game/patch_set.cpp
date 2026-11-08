@@ -45,7 +45,6 @@ bool PatchSet::Write(std::size_t index, std::uint32_t word) {
 
 Result PatchSet::Set(bool on) {
     if (!ready_) return Result::Unsupported;
-    if (!on && !changed_) return Result::Ok;
     if (on) {
         changed_ = true;
         for (std::size_t i = 0; i < words_.size(); ++i) {

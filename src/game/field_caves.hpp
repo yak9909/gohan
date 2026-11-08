@@ -27,9 +27,9 @@ constexpr std::uint32_t Branch(std::uintptr_t from, std::uintptr_t to, std::uint
     return opcode | (static_cast<std::uint32_t>((static_cast<std::int64_t>(to) -
                        static_cast<std::int64_t>(from) - 8) / 4) & 0xFFFFFFu);
 }
-std::array<std::uint32_t, 40> Tree(std::uintptr_t base);
-std::array<std::uint32_t, 42> DigHoles(std::uintptr_t base);
-std::array<std::uint32_t, 15> DigScrape(std::uintptr_t base);
-std::array<std::uint32_t, 19> DigDirt(std::uintptr_t base);
+std::array<std::uint32_t, kAllocations[0].words> Tree(std::uintptr_t base);
+std::array<std::uint32_t, kAllocations[1].words> DigHoles(std::uintptr_t base);
+std::array<std::uint32_t, kAllocations[2].words> DigScrape(std::uintptr_t base);
+std::array<std::uint32_t, kAllocations[3].words> DigDirt(std::uintptr_t base);
 std::uintptr_t Address(std::size_t index);
 } // namespace gohan::game::field_caves

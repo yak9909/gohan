@@ -66,7 +66,8 @@ void Scene() {
     assert(r.Draw().commands.empty()); r.Open();
     auto s = r.Draw(); Budget(s);
     assert(Part(s, "window", 4, 4) && Part(s, "window", 236, 4));
-    assert(s.HasText("GOHAN") && s.HasText("見本") && s.HasText("1/1"));
+    assert(s.HasText("GOHAN") && s.HasText("見本") && s.HasText("1/5"));
+    assert(s.HasText("プレイヤー") && s.HasText("アイテム") && s.HasText("村") && s.HasText("ゲーム"));
     assert(Part(s, "finger", 12, 31) || Part(s, "finger", 13, 31));
     r.TapAt(40, 40); assert(r.engine.Depth() == 0);
     r.Tap(key::A); r.Advance(400); s = r.Draw(); Budget(s);
