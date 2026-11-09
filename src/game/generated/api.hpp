@@ -988,6 +988,63 @@ struct SsysMaLayoutMgr
 #pragma pack(pop)
 
 // プロトタイプ未設定
+inline constexpr std::uintptr_t vc_A_GETONLINEPLAYERINDEX_addr = 0x00305F6C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t vc_PLAYERINSTANCE_addr = 0x005C27D8;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t vc_WORLDCOORDS_addr = 0x005BFCE4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Actor_SetState_addr = 0x0064C688;
+
+using Player_CopyStatePacketForEdit_t = std::uint8_t * (*)(void *actor);
+inline constexpr std::uintptr_t Player_CopyStatePacketForEdit_addr = 0x006561F0;
+
+using StatePacket_PackXZ_t = void (*)(std::int16_t *packed_xz, const float *xyz);
+inline constexpr std::uintptr_t StatePacket_PackXZ_addr = 0x005D3504;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t PlayerState_FaintEnter_addr = 0x00676284;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_SetItemAtWorldXY_addr = 0x002FC950;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GetItemAtXY_addr = 0x002FEE38;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GrowUpWiltBushSapling_addr = 0x003159A5;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GrowUpWiltSapling_addr = 0x00315A11;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GrowUpWiltSaplingToItem3_addr = 0x00316345;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GrowUpWiltSaplingToItem4_addr = 0x003163C5;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Save_GetCurrentPlayer_addr = 0x002FB900;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t vc_D_GARDEN_addr = 0x002FB354;
+
+using PlayerSave_GetSlotIndex_t = int (*)(const void *player_array, const void *player_save);
+inline constexpr std::uintptr_t PlayerSave_GetSlotIndex_addr = 0x00309F18;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t vc_ROOMDAT_addr = 0x00308110;
+
+using Villager_RunDailyUpdateOnce_t = void (*)();
+inline constexpr std::uintptr_t Villager_RunDailyUpdateOnce_addr = 0x0030C994;
+
+using Room_UseExit_t = int (*)(void *room_mgr, unsigned int exit_index, int transition_arg0, int transition_arg1, int transition_arg2, int transition_arg3);
+inline constexpr std::uintptr_t Room_UseExit_addr = 0x005B464C;
+
+// プロトタイプ未設定
 inline constexpr std::uintptr_t Effect_DigDirt_addr = 0x00762274;
 
 // プロトタイプ未設定
@@ -1068,6 +1125,18 @@ inline constexpr std::uintptr_t nwlyt_Picture_DrawToCommandList_addr = 0x0073CB5
 // プロトタイプ未設定
 inline constexpr std::uintptr_t DrawCtx_FlushBatch_addr = 0x004B8360;
 
+using vc_MAPBOOL_t = std::uint8_t;
+inline constexpr std::uintptr_t vc_MAPBOOL_addr = 0x00949C30;
+
+using g_NetGameMgrPtr_t = void *;
+inline constexpr std::uintptr_t g_NetGameMgrPtr_addr = 0x0094D644;
+
+using g_CurrentRoomId_t = std::uint8_t;
+inline constexpr std::uintptr_t g_CurrentRoomId_addr = 0x0095133A;
+
+using g_VillagerDailyUpdateGuard_t = std::uint8_t;
+inline constexpr std::uintptr_t g_VillagerDailyUpdateGuard_addr = 0x00956231;
+
 using g_TextPagePadding_t = u8[4072];
 inline constexpr std::uintptr_t g_TextPagePadding_addr = 0x00838018;
 
@@ -1130,6 +1199,10 @@ inline constexpr std::uint32_t InputPadRead_crc32 = 0xF58178F8;
 inline constexpr std::uintptr_t InputControllerCalc_addr = 0x0053CDE8;
 inline constexpr std::uint32_t InputControllerCalc_len = 16;
 inline constexpr std::uint32_t InputControllerCalc_crc32 = 0xB77ADF3C;
+
+inline constexpr std::uintptr_t KeepSetItem_addr = 0x002FC950;
+inline constexpr std::uint32_t KeepSetItem_len = 16;
+inline constexpr std::uint32_t KeepSetItem_crc32 = 0x9BA5F1CD;
 
 inline constexpr std::uintptr_t LayoutTopEntry_addr = 0x00566DF8;
 inline constexpr std::uint32_t LayoutTopEntry_len = 16;
@@ -1370,5 +1443,89 @@ inline constexpr std::uint32_t SaveEncryptEntry_crc32 = 0xC31DF273;
 inline constexpr std::uintptr_t SavePlayerEntry_addr = 0x002FEB60;
 inline constexpr std::uint32_t SavePlayerEntry_len = 4;
 inline constexpr std::uint32_t SavePlayerEntry_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t LocalIndexEntry_addr = 0x00305F6C;
+inline constexpr std::uint32_t LocalIndexEntry_len = 4;
+inline constexpr std::uint32_t LocalIndexEntry_crc32 = 0x889FC869;
+
+inline constexpr std::uintptr_t LocalActorEntry_addr = 0x005C27D8;
+inline constexpr std::uint32_t LocalActorEntry_len = 4;
+inline constexpr std::uint32_t LocalActorEntry_crc32 = 0x2D9EA6DD;
+
+inline constexpr std::uintptr_t WorldCoordsEntry_addr = 0x005BFCE4;
+inline constexpr std::uint32_t WorldCoordsEntry_len = 4;
+inline constexpr std::uint32_t WorldCoordsEntry_crc32 = 0xC31DF273;
+
+inline constexpr std::uintptr_t CopyStateEntry_addr = 0x006561F0;
+inline constexpr std::uint32_t CopyStateEntry_len = 4;
+inline constexpr std::uint32_t CopyStateEntry_crc32 = 0xC31DF273;
+
+inline constexpr std::uintptr_t PackXZEntry_addr = 0x005D3504;
+inline constexpr std::uint32_t PackXZEntry_len = 4;
+inline constexpr std::uint32_t PackXZEntry_crc32 = 0x9A327F54;
+
+inline constexpr std::uintptr_t SetStateEntry_addr = 0x0064C688;
+inline constexpr std::uint32_t SetStateEntry_len = 4;
+inline constexpr std::uint32_t SetStateEntry_crc32 = 0x393EA005;
+
+inline constexpr std::uintptr_t FaintEntry_addr = 0x00676284;
+inline constexpr std::uint32_t FaintEntry_len = 4;
+inline constexpr std::uint32_t FaintEntry_crc32 = 0x2F862E7F;
+
+inline constexpr std::uintptr_t GetTileEntry_addr = 0x002FEE38;
+inline constexpr std::uint32_t GetTileEntry_len = 4;
+inline constexpr std::uint32_t GetTileEntry_crc32 = 0x25180375;
+
+inline constexpr std::uintptr_t KeepBushCaller_addr = 0x003159F2;
+inline constexpr std::uint32_t KeepBushCaller_len = 4;
+inline constexpr std::uint32_t KeepBushCaller_crc32 = 0x62EACA23;
+
+inline constexpr std::uintptr_t KeepSaplingCaller0_addr = 0x00315A7A;
+inline constexpr std::uint32_t KeepSaplingCaller0_len = 4;
+inline constexpr std::uint32_t KeepSaplingCaller0_crc32 = 0xCD7CD869;
+
+inline constexpr std::uintptr_t KeepSaplingCaller1_addr = 0x00315B08;
+inline constexpr std::uint32_t KeepSaplingCaller1_len = 4;
+inline constexpr std::uint32_t KeepSaplingCaller1_crc32 = 0xF5DC1D64;
+
+inline constexpr std::uintptr_t KeepItem3Caller_addr = 0x00316392;
+inline constexpr std::uint32_t KeepItem3Caller_len = 4;
+inline constexpr std::uint32_t KeepItem3Caller_crc32 = 0x3DBF475A;
+
+inline constexpr std::uintptr_t KeepItem4Caller_addr = 0x00316412;
+inline constexpr std::uint32_t KeepItem4Caller_len = 4;
+inline constexpr std::uint32_t KeepItem4Caller_crc32 = 0xCDC6085F;
+
+inline constexpr std::uintptr_t KeepFootprint_addr = 0x0052734C;
+inline constexpr std::uint32_t KeepFootprint_len = 4;
+inline constexpr std::uint32_t KeepFootprint_crc32 = 0xE4FA69DE;
+
+inline constexpr std::uintptr_t KeepDelete_addr = 0x006FA8A8;
+inline constexpr std::uint32_t KeepDelete_len = 4;
+inline constexpr std::uint32_t KeepDelete_crc32 = 0x69B5D338;
+
+inline constexpr std::uintptr_t CurrentSaveEntry_addr = 0x002FB900;
+inline constexpr std::uint32_t CurrentSaveEntry_len = 4;
+inline constexpr std::uint32_t CurrentSaveEntry_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t GardenEntry_addr = 0x002FB354;
+inline constexpr std::uint32_t GardenEntry_len = 4;
+inline constexpr std::uint32_t GardenEntry_crc32 = 0x889FC869;
+
+inline constexpr std::uintptr_t SlotIndexEntry_addr = 0x00309F18;
+inline constexpr std::uint32_t SlotIndexEntry_len = 4;
+inline constexpr std::uint32_t SlotIndexEntry_crc32 = 0xBBE700CB;
+
+inline constexpr std::uintptr_t RoomManagerEntry_addr = 0x00308110;
+inline constexpr std::uint32_t RoomManagerEntry_len = 4;
+inline constexpr std::uint32_t RoomManagerEntry_crc32 = 0x07FD5F3E;
+
+inline constexpr std::uintptr_t DailyUpdateEntry_addr = 0x0030C994;
+inline constexpr std::uint32_t DailyUpdateEntry_len = 4;
+inline constexpr std::uint32_t DailyUpdateEntry_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t UseExitEntry_addr = 0x005B464C;
+inline constexpr std::uint32_t UseExitEntry_len = 4;
+inline constexpr std::uint32_t UseExitEntry_crc32 = 0x5809AA4E;
 
 } // namespace gohan::game::generated

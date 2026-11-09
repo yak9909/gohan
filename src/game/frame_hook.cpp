@@ -1,4 +1,5 @@
 #include "game/frame_hook.hpp"
+#include "game/code_ownership.hpp"
 #include "core/frame.hpp"
 #include "core/mailbox.hpp"
 #include "game/generated/api.hpp"
@@ -63,10 +64,13 @@ bool Wire() {
     if ((crc ^ 0xFFFFFFFFu) != generated::FrameDispatch_crc32)
         return Fail(Status::Mismatch);
     // 元の命令は Hook が実機メモリから保存し、解除時に復元する。
+    if (!code_ownership::Take(&hook, generated::FrameDispatch_addr)) return Fail(Status::Failed);
     hook.Initialize(generated::FrameDispatch_addr,
                     reinterpret_cast<std::uintptr_t>(&gohan_frame_callback));
-    if (hook.Enable() != HookResult::Success)
+    if (hook.Enable() != HookResult::Success) {
+        code_ownership::Release(&hook);
         return Fail(Status::Failed);
+    }
     status.TryPublish(Status::Ready);
     return true;
 }
@@ -74,6 +78,7 @@ bool Wire() {
 void Shutdown() {
     PauseGuard pause;
     hook.Disable();
+    code_ownership::Release(&hook);
     core::frame::Global().Reset();
     status.TryPublish(Status::Stopped);
 }

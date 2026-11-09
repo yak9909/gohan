@@ -1,6 +1,8 @@
 #include "game/patch_set.hpp"
+#include "game/code_ownership.hpp"
 
 namespace gohan::game {
+PatchSet::~PatchSet() { Shutdown(); code_ownership::Release(this); }
 std::uint32_t WordCrc32(std::uint32_t word) {
     std::uint32_t crc = 0xFFFFFFFFu;
     for (unsigned byte = 0; byte < 4; ++byte) {
@@ -26,10 +28,22 @@ Result PatchSet::Wire() {
             if (!memory_.read(cave.address + i * 4, word) || word != 0) return Result::Unsupported;
         }
     }
+    for (const auto &word : words_) {
+        if (!code_ownership::Take(this, word.address)) {
+            code_ownership::Release(this); return Result::Unsupported;
+        }
+    }
+    for (const auto &cave : caves_) for (std::size_t i = 0; i < cave.words.size(); ++i) {
+        if (!code_ownership::Take(this, cave.address + i * 4)) {
+            code_ownership::Release(this); return Result::Unsupported;
+        }
+    }
     // 入口はまだ元のまま。失敗しても途中まで置いたケーブへは入れない。
     for (const auto &cave : caves_) {
         for (std::size_t i = 0; i < cave.words.size(); ++i) {
-            if (!memory_.write(cave.address + i * 4, cave.words[i])) return Result::Failed;
+            if (!memory_.write(cave.address + i * 4, cave.words[i])) {
+                code_ownership::Release(this); return Result::Failed;
+            }
             memory_.sync(cave.address + i * 4, 4);
         }
     }
@@ -86,7 +100,9 @@ bool PatchSet::ReadSingleWord(std::uint32_t &word) const {
 void PatchSet::Shutdown() {
     if (ready_ && (changed_ || IsApplied())) {
         changed_ = true;
-        Set(false);
+        if (Set(false) != Result::Ok) return;
     }
+    ready_ = false;
+    code_ownership::Release(this);
 }
 } // namespace gohan::game

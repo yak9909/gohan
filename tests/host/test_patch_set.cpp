@@ -58,11 +58,13 @@ int main() {
     assert(memory[4] == 11 && memory[8] == 22 && memory[12] == 33);
     assert(memory[64] == 77 && memory[68] == 88 && memory[80] == 99);
     assert(patch.Set(true) == Result::Ok);
-    patch.Shutdown();
-    assert(memory[4] == 11 && memory[12] == 33 && memory[64] == 77);
     memory[4] = 111; memory[8] = 222; memory[12] = 333;
     assert(patch.IsApplied() && patch.Set(false) == Result::Ok);
     assert(memory[4] == 11 && memory[12] == 33);
+
+    assert(patch.Set(true) == Result::Ok);
+    patch.Shutdown();
+    assert(memory[4] == 11 && memory[12] == 33 && memory[64] == 77);
 
     // 不一致・読み取り不能・後半のケーブだけ使用済みでも全て無書き込み。
     for (int failure = 0; failure < 4; ++failure) {

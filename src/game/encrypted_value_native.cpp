@@ -1,9 +1,11 @@
 #include "game/encrypted_value.hpp"
+#include "game/player.hpp"
 #include <CTRPluginFramework.hpp>
 
 namespace gohan::game {
 namespace {
 generated::AcnlPlayerSave *Player(unsigned slot) {
+    if (slot == 4) return player::LocalSave();
     return reinterpret_cast<generated::Save_GetPlayerByOnlineSlot_t>(generated::Save_GetPlayerByOnlineSlot_addr)(slot);
 }
 generated::AcnlGardenSavePrefix *Garden() {

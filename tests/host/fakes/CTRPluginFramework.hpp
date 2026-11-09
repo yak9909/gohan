@@ -247,3 +247,6 @@ class Hook {
 
 inline std::uint64_t svcGetSystemTick() { return ++CTRPluginFramework::Fake::ticks; }
 inline void *getThreadLocalStorage() { return reinterpret_cast<void *>(CTRPluginFramework::Fake::thread); }
+struct circlePosition { std::int16_t dx = 0, dy = 0; };
+inline circlePosition fake_cstick;
+inline void hidCstickRead(circlePosition *out) { *out = fake_cstick; }

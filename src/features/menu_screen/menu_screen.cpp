@@ -151,6 +151,8 @@ core::Request<bool> toggle_request;
 core::Mailbox<bool> active_box;
 
 void FrameStep() {
+    menu::Notice notice;
+    if (menu::TakeNotice(notice)) shell.Notify(notice, input::NowMs());
     if (!running.Get()) return;
     const input::Snapshot pad = input::Read();
     menu::Input in;

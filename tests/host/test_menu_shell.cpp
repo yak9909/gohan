@@ -512,7 +512,7 @@ void InputDemand() {
     r.Frame(0); assert(r.shell.NeedsDraw(r.now)); empty(); // 退場中の描画は要求にしない。
     r.Advance(500); empty();
     // 閉じたままホットキーで確認を開く場合も要求する。
-    r.Tap(key::L | key::Down);
+    r.Tap(kMenuItems[Idx(MenuId::SampleStamp)].hotkey);
     assert(!r.engine.Visible() && r.engine.Dialog() == DialogKind::Action); want();
     r.Tap(key::B); empty();
     assert(r.shell.NeedsDraw(r.now)); // 通知・確認の退場も遮断しない。
@@ -624,7 +624,7 @@ void DialogExitHints() {
         if (menu_open) {
             Enter(r); assert(r.engine.SetValue(Idx(MenuId::SampleFlag), 1));
             r.Hold(key::X); r.Advance(timing::kHoldMs); r.Release();
-        } else r.Tap(key::L | key::Down);
+        } else r.Tap(kMenuItems[Idx(MenuId::SampleStamp)].hotkey);
         assert(r.engine.Dialog() != DialogKind::None); r.Advance(200);
         if (answer == 1) r.Tap(key::Right);
         r.Hold(answer == 0 ? key::B : key::A);

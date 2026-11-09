@@ -44,7 +44,7 @@ int main() {
     assert(e.SetValue(Idx(MenuId::SampleStamp), 1) && e.Commit(Idx(MenuId::SampleStamp), now));
     assert(s.stamps == 1);
     assert(e.RequestClose(now));
-    e.Frame(now += 16, key::L | key::Down);
+    e.Frame(now += 16, kMenuItems[Idx(MenuId::SampleStamp)].hotkey);
     assert(e.Dialog() == DialogKind::Action && s.stamps == 1);
     e.Confirm(true, now);
     assert(s.stamps == 2);

@@ -20,10 +20,16 @@ struct Patch {
     Result (*set)(bool on);
     bool (*is_active)() = nullptr;
 };
-// 押下中（hold）: 有効の間、毎フレーム呼ぶ。holding は有効かつホットキーを押している間だけ真。
+// 押下中（hold）: 有効の間、毎フレーム呼ぶ。ホットキー無しで holding を真にするかは spec が決める。
+// step / step_with のどちらか一方を結ぶ。後者には適用済みのホットキーも渡す。
 struct Hold {
-    void (*step)(bool holding);
+    void (*step)(bool holding) = nullptr;
+    void (*step_with)(bool holding, u16 hotkey) = nullptr;
 };
+inline void StepHold(const Hold &hold, bool holding, u16 hotkey) {
+    if (hold.step) hold.step(holding);
+    else if (hold.step_with) hold.step_with(holding, hotkey);
+}
 // 実行（trigger）: 入力が無ければ run、あれば run_with を結ぶ（どちらか一方）。
 struct Trigger {
     Result (*run)() = nullptr;
@@ -76,7 +82,7 @@ template <auto Id, class B> consteval Bound BindChecked(B binding) {
         bound.patch = binding;
     } else if constexpr (std::is_same_v<B, Hold>) {
         static_assert(S::behavior == Behavior::Hold, "Hold は振る舞いが hold の項目に結ぶ");
-        if (binding.step == nullptr) bind_error::required_function_is_null();
+        if ((binding.step == nullptr) == (binding.step_with == nullptr)) bind_error::required_function_is_null();
         bound.hold = binding;
     } else if constexpr (std::is_same_v<B, Trigger>) {
         static_assert(S::behavior == Behavior::Trigger, "Trigger は振る舞いが trigger の項目に結ぶ");

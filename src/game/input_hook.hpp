@@ -3,6 +3,15 @@
 #include "core/format.hpp"
 
 namespace gohan::game {
+// 入力遮断前のゲームの写し。C スティックだけは同じ箇所でシステムから補う。
+struct InputSnapshot {
+    std::uint16_t buttons = 0;
+    float slide_x = 0, slide_y = 0;
+    std::int16_t cstick_x = 0, cstick_y = 0;
+    bool touching = false;
+    int touch_x = 0, touch_y = 0;
+};
+InputSnapshot ReadInputSnapshot();
 const core::Feature &InputPadFeature();
 const core::Feature &InputControllerFeature();
 bool InputControllerReady();

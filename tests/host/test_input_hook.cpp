@@ -206,5 +206,26 @@ void ReinstallAndCapacity() {
     assert(text.find("owner") != std::string::npos && text.find("スレッド") != std::string::npos);
     for (auto &owner : owners) assert(block::Global().Release(owner) == block::Result::Ok);
 }
+void SnapshotCase() {
+    Reset();
+    assert(game::InputPadFeature().Wire() && game::InputControllerFeature().Wire());
+    Pad pad{}; pad.circle_x = 156; pad.circle_y = -156;
+    gohan_input_pad(&pad);
+    block::Owner owner;
+    assert(block::Global().Acquire("snapshot", owner) == block::Result::Ok);
+    assert(block::Global().Set(owner, {block::group::DPad | block::part::Touch, 0}) == block::Result::Ok);
+    auto c = Sample(); c.held = 0x80000; c.pointer_flags = generated::AcnlPointerFlags_Valid;
+    c.pixel_int = {100, 120}; fake_cstick = {146, -146};
+    std::uint32_t old[] = {0, 0}; ControllerCall(c, old);
+    const auto snapshot = game::ReadInputSnapshot();
+    assert(snapshot.buttons == block::part::Right && snapshot.slide_x == 1 && snapshot.slide_y == -1);
+    assert(snapshot.cstick_x == 146 && snapshot.cstick_y == -146);
+    assert(snapshot.touching && snapshot.touch_x == 100 && snapshot.touch_y == 120);
+    assert(!(c.held & 0x80000) && !(c.pointer_flags & generated::AcnlPointerFlags_Valid));
+    fake_cstick = {}; ControllerCall(c, old);
+    assert(game::ReadInputSnapshot().cstick_x == 0 && game::ReadInputSnapshot().cstick_y == 0);
+    assert(block::Global().Release(owner) == block::Result::Ok);
+    Stop(); assert(game::ReadInputSnapshot().buttons == 0);
+}
 } // namespace
-int main() { InstallCases(); OnlyFields(); HoldResumeSequence(); ResumeSequence(); ReinstallAndCapacity(); std::puts("input hook: ok"); }
+int main() { InstallCases(); OnlyFields(); HoldResumeSequence(); ResumeSequence(); ReinstallAndCapacity(); SnapshotCase(); std::puts("input hook: ok"); }

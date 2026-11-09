@@ -29,7 +29,7 @@ BUTTON_BIT = {name.lower(): index for index, name in enumerate(BUTTONS)}
 
 KEYS = {'id', 'label', 'desc', 'control', 'behavior', 'source', 'hotkey', 'format', 'default', 'range', 'step',
         'options', 'lockable', 'group', 'enabled_if', 'persist', 'dev', 'menu', 'confirm', 'input', 'item',
-        'list', 'apply', 'display'}
+        'list', 'apply', 'display', 'hold_without_hotkey', 'option_ids'}
 FOLDER_KEYS = {'id', 'label', 'desc', 'control', 'enabled_if', 'dev', 'item', 'list'}
 CONTROLS = ['folder', 'toggle', 'select', 'multiselect', 'number', 'slider', 'action', 'key']
 VALUE_CONTROLS = {'select', 'multiselect', 'number', 'slider', 'key'}
@@ -83,6 +83,8 @@ class Item:
     maximum: int = 0
     step: int = 0
     options: list[str] = field(default_factory=list)
+    option_ids: list[str] = field(default_factory=list)
+    hold_without_hotkey: bool = False
     lockable: bool = False
     group: str = ''
     enabled_if: str = ''
@@ -213,6 +215,9 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
         if behavior not in ('trigger', 'mode'):
             raise SpecError(f'{where}: 実行（action）の振る舞いは trigger / mode のどちらかです（"{behavior}"）')
     item.behavior = behavior
+    item.hold_without_hotkey = want_type(entry, 'hold_without_hotkey', bool, where, False)
+    if 'hold_without_hotkey' in entry and behavior != 'hold':
+        raise SpecError(f'{where}: hold_without_hotkey は hold だけに使えます')
 
     source = want_choice(entry, 'source', SOURCES, where)
     if behavior == 'value':
@@ -324,6 +329,12 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
     item.enabled_if = want_type(entry, 'enabled_if', str, where, '')
 
     # 次の起動に残せない物: 画面・実行・実行のトグル（既定も偽）と、ゲームの値（固定は lockable で行う）。真は誤り。
+    option_ids = want_type(entry, 'option_ids', list, where)
+    if option_ids is not None:
+        if control != 'select' or len(option_ids) != len(item.options) or not all(isinstance(x, str) and re.fullmatch(r'[a-z][a-z0-9_]*', x) for x in option_ids) or len(set(option_ids)) != len(option_ids):
+            raise SpecError(f'{where}: option_ids は select の選択肢と同じ数の一意な識別子にしてください')
+        item.option_ids = option_ids
+
     persist = want_type(entry, 'persist', bool, where)
     never = behavior in ('mode', 'trigger') or (behavior == 'value' and source == 'game')
     if never and persist:
@@ -381,9 +392,10 @@ def resolve_cond(item: Item, by_id: dict[str, Item]) -> None:
     quoted = re.fullmatch(r"'([^']*)'|\"([^\"]*)\"", rhs)
     if quoted:
         name = quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
-        if ref.control != 'select' or name not in ref.options:
+        names = ref.option_ids if name in ref.option_ids else ref.options
+        if ref.control != 'select' or name not in names:
             raise SpecError(f'{item.id}: enabled_if の "{name}" は {ref_id} の選択肢にありません')
-        value = ref.options.index(name)
+        value = names.index(name)
         if op not in ('==', '!='):
             raise SpecError(f'{item.id}: 選択肢の名前との比較は == と != だけです')
     elif rhs in ('true', 'false'):
@@ -598,7 +610,7 @@ def render_table(items: list[Item]) -> str:
                    f'.group = {item.group_number}, .hotkey = {item.hotkey},\n')
         out.append(f'        .def = {item.default}, .min = {lo}, .max = {hi}, .step = {step},\n')
         options = f'kOptions{item.index}' if item.options else 'nullptr'
-        out.append(f'        .options = {options}, .cond = {cond},\n')
+        out.append(f'        .options = {options}, .cond = {cond}, .hold_without_hotkey = {str(item.hold_without_hotkey).lower()},\n')
         out.append('    },\n')
     out.append('};\n} // namespace gohan::menu\n')
     return ''.join(out)

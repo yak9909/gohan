@@ -9,6 +9,9 @@ struct Notice {
     char message[core::limits::MenuText];
     bool red;
 };
+// 機能からメニューへ一つの通知を渡す。満杯なら false。表示側がフレームごとに受け取る。
+bool PostNotice(const Notice &notice);
+bool TakeNotice(Notice &notice);
 
 void NoticeEffect(Notice &notice, const char *label, bool on); // 〈名前〉を有効／無効にしました（無効は赤）
 void NoticeExecuted(Notice &notice, const char *label);        // ACTION / 〈名前〉を実行しました
