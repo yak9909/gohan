@@ -1,4 +1,5 @@
 #include "game/input_hook.hpp"
+#include "game/code_ownership.hpp"
 #include "core/input_block.hpp"
 #include "core/mailbox.hpp"
 #include "core/signal.hpp"
@@ -6,6 +7,9 @@
 #include "game/input_filter.hpp"
 #include <CTRPluginFramework.hpp>
 #include <cstddef>
+#ifdef __3DS__
+#include <3ds.h>
+#endif
 
 extern "C" void gohan_input_pad_callback();
 extern "C" void gohan_input_controller_callback();
@@ -43,6 +47,8 @@ Process::OnPauseResumeCallback previous_resume = nullptr;
 const Clock epoch;
 filter::State state;
 block::Effective demand;
+core::Mailbox<InputSnapshot> input_box;
+std::int16_t circle_x = 0, circle_y = 0;
 std::uint32_t demand_generation = 0;
 
 #ifdef GOHAN_DEV
@@ -91,10 +97,12 @@ bool Install(Connection &connection, std::uintptr_t address, std::uint32_t lengt
             crc = (crc >> 1) ^ ((0u - (crc & 1u)) & 0xEDB88320u);
     }
     if ((crc ^ 0xFFFFFFFFu) != expected) return fail(Status::Mismatch);
+    if (!code_ownership::Take(&connection, address)) return fail(Status::Failed);
     connection.hook.Initialize(address, callback);
     connection.hook.SetFlags(flags);
     if (connection.hook.Enable() != HookResult::Success) {
         connection.hook.Disable();
+        code_ownership::Release(&connection);
         return fail(Status::Failed);
     }
     connection.ready.Set();
@@ -119,6 +127,8 @@ bool WireController() {
     opening.Set(false);
     resumed.Set(false);
     menu_resumed.Set(false);
+    input_box.TryPublish({});
+    circle_x = circle_y = 0;
     if (!Install(controller_connection, generated::InputControllerCalc_addr, generated::InputControllerCalc_len,
                  generated::InputControllerCalc_crc32,
                  reinterpret_cast<std::uintptr_t>(&gohan_input_controller_callback),
@@ -130,6 +140,7 @@ bool WireController() {
 void StopPad() {
     PauseGuard pause;
     pad_connection.hook.Disable();
+    code_ownership::Release(&pad_connection);
     pad_connection.ready.Set(false);
     select_down.Set(false);
     pad_connection.status.TryPublish(Status::Stopped);
@@ -137,6 +148,7 @@ void StopPad() {
 void StopController() {
     PauseGuard pause;
     controller_connection.hook.Disable();
+    code_ownership::Release(&controller_connection);
     controller_connection.ready.Set(false);
     if (Process::OnPauseResume == PauseResume) Process::OnPauseResume = previous_resume;
     previous_resume = nullptr;
@@ -191,6 +203,12 @@ void MaskText(core::TextWriter &writer, block::Mask mask) {
 const core::Feature &InputPadFeature() { return pad_feature; }
 const core::Feature &InputControllerFeature() { return controller_feature; }
 bool InputControllerReady() { return controller_connection.ready.Get(); }
+InputSnapshot ReadInputSnapshot() {
+    static InputSnapshot snapshot;
+    static std::uint32_t generation = 0;
+    input_box.ReadIfNew(snapshot, generation);
+    return controller_connection.ready.Get() ? snapshot : InputSnapshot{};
+}
 void InputCtrpfOpening() { if (controller_connection.ready.Get()) opening.Set(); }
 bool InputTakeCtrpfResumed() { return menu_resumed.Take(); }
 
@@ -248,6 +266,7 @@ void ToggleInputHooks() {
 
 // 以下の値はフックから渡される。ゲームの構造体に触る範囲をここだけに閉じる。
 void FilterPad(Pad *pad) {
+    circle_x = pad->circle_x; circle_y = pad->circle_y;
 #ifdef GOHAN_DEV
     const auto start = svcGetSystemTick();
     ++pad_stats.calls;
@@ -270,6 +289,17 @@ void FilterController(Controller *controller, std::uint32_t *old) {
     controller_stats.thread = reinterpret_cast<std::uintptr_t>(getThreadLocalStorage());
 #endif
     if (reinterpret_cast<std::uintptr_t>(controller->vtable) == generated::vtbl_sead_CtrController_addr) {
+        InputSnapshot input_snapshot;
+        for (unsigned i = 0; i < 14; ++i)
+            if (controller->held & filter::kHeldBits[i]) input_snapshot.buttons |= 1u << i;
+        input_snapshot.slide_x = circle_x / 156.f;
+        input_snapshot.slide_y = circle_y / 156.f;
+        circlePosition cstick{};
+        hidCstickRead(&cstick);
+        input_snapshot.cstick_x = cstick.dx; input_snapshot.cstick_y = cstick.dy;
+        input_snapshot.touching = (controller->pointer_flags & generated::AcnlPointerFlags_Valid) != 0;
+        input_snapshot.touch_x = controller->pixel_int.x; input_snapshot.touch_y = controller->pixel_int.y;
+        input_box.TryPublish(input_snapshot);
         block::Global().Read(demand, demand_generation);
         const auto valid = static_cast<std::uint32_t>(generated::AcnlPointerFlags_Valid);
         filter::Input in;

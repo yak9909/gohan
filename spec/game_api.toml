@@ -2,6 +2,7 @@ build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
 functions = [
+    "vc_A_GETONLINEPLAYERINDEX", "vc_PLAYERINSTANCE", "vc_WORLDCOORDS", "Actor_SetState", "Player_CopyStatePacketForEdit", "StatePacket_PackXZ", "PlayerState_FaintEnter", "Field_SetItemAtWorldXY", "Field_GetItemAtXY", "Field_GrowUpWiltBushSapling", "Field_GrowUpWiltSapling", "Field_GrowUpWiltSaplingToItem3", "Field_GrowUpWiltSaplingToItem4", "Save_GetCurrentPlayer", "vc_D_GARDEN", "PlayerSave_GetSlotIndex", "vc_ROOMDAT", "Villager_RunDailyUpdateOnce", "Room_UseExit",
     "Effect_DigDirt",
     "Effect_ScoopScrape",
     "FieldObj_FellObject",
@@ -26,6 +27,7 @@ functions = [
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
+    "vc_MAPBOOL", "g_NetGameMgrPtr", "g_CurrentRoomId", "g_VillagerDailyUpdateGuard",
     "g_TextPagePadding", "g_TreeHitCounts", "g_DropDataTable", "g_GardenSaveBasePtr",
     "g_LayoutMgr", "g_LayoutAllocator", "vtbl_sead_CtrController",
     "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
@@ -428,3 +430,141 @@ name = "SavePlayerEntry"
 function = "Save_GetPlayerByOnlineSlot"
 offset = 0
 length = 4
+
+[[checks]]
+name = "LocalIndexEntry"
+function = "vc_A_GETONLINEPLAYERINDEX"
+offset = 0
+length = 4
+
+[[checks]]
+name = "LocalActorEntry"
+function = "vc_PLAYERINSTANCE"
+offset = 0
+length = 4
+
+[[checks]]
+name = "WorldCoordsEntry"
+function = "vc_WORLDCOORDS"
+offset = 0
+length = 4
+
+[[checks]]
+name = "CopyStateEntry"
+function = "Player_CopyStatePacketForEdit"
+offset = 0
+length = 4
+
+[[checks]]
+name = "PackXZEntry"
+function = "StatePacket_PackXZ"
+offset = 0
+length = 4
+
+[[checks]]
+name = "SetStateEntry"
+function = "Actor_SetState"
+offset = 0
+length = 4
+
+[[checks]]
+name = "FaintEntry"
+function = "PlayerState_FaintEnter"
+offset = 0
+length = 4
+
+[[checks]]
+name = "GetTileEntry"
+function = "Field_GetItemAtXY"
+offset = 0
+length = 4
+
+[[checks]]
+name = "KeepBushCaller"
+function = "Field_GrowUpWiltBushSapling"
+offset = 78
+length = 4
+
+[[checks]]
+name = "KeepSaplingCaller0"
+function = "Field_GrowUpWiltSapling"
+offset = 106
+length = 4
+
+[[checks]]
+name = "KeepSaplingCaller1"
+function = "Field_GrowUpWiltSapling"
+offset = 248
+length = 4
+
+[[checks]]
+name = "KeepItem3Caller"
+function = "Field_GrowUpWiltSaplingToItem3"
+offset = 78
+length = 4
+
+[[checks]]
+name = "KeepItem4Caller"
+function = "Field_GrowUpWiltSaplingToItem4"
+offset = 78
+length = 4
+
+[[checks]]
+name = "KeepFootprint"
+function = "Structure_StampFootprint"
+offset = 1848
+length = 4
+
+[[checks]]
+name = "KeepDelete"
+function = "Field_DeleteItemAt"
+offset = 128
+length = 4
+
+[[checks]]
+name = "CurrentSaveEntry"
+function = "Save_GetCurrentPlayer"
+offset = 0
+length = 4
+
+[[checks]]
+name = "GardenEntry"
+function = "vc_D_GARDEN"
+offset = 0
+length = 4
+
+[[checks]]
+name = "SlotIndexEntry"
+function = "PlayerSave_GetSlotIndex"
+offset = 0
+length = 4
+
+[[checks]]
+name = "RoomManagerEntry"
+function = "vc_ROOMDAT"
+offset = 0
+length = 4
+
+[[checks]]
+name = "DailyUpdateEntry"
+function = "Villager_RunDailyUpdateOnce"
+offset = 0
+length = 4
+
+[[checks]]
+name = "UseExitEntry"
+function = "Room_UseExit"
+offset = 0
+length = 4
+
+[[hooks]]
+name = "KeepSetItem"
+function = "Field_SetItemAtWorldXY"
+offset = 0
+length = 16
+
+# 成長の戻り先は上の BLX 照合範囲の直後（caller_addr + caller_len、LR の bit0 を除く）。
+# bit0 を除いた命令先頭が基準。戻り先は Field_GrowUpWiltBushSapling +0x52、
+# Field_GrowUpWiltSapling +0x6E / +0xFC、Field_GrowUpWiltSaplingToItem3 +0x52、ToItem4 +0x52。
+# 呼び出せる先頭（Thumb の +1 付き）からは、それぞれ +0x51、+0x6D / +0xFB、+0x51、+0x51。
+# 関数末尾に 2 バイトしか残らない物もあるため、4 バイトの CRC は直前の BLX で取る。

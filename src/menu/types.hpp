@@ -75,6 +75,7 @@ struct ItemDef {
     s32 step;
     const char *const *options;
     Cond cond;
+    bool hold_without_hotkey = false;
 };
 
 // 値を項目の範囲に収める（編集・持ち越しの読み込みで同じ規則）。値を持たない項目（フォルダ・実行・画面）には使わない。

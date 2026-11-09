@@ -71,7 +71,7 @@ bool Engine::CommitBody(u16 item, u32 now) {
         break;
     case Behavior::Hold:
         if (st.applied == 0) {
-            if (st.hold_active && is_bound_[item] && bound_[item].hold.step) bound_[item].hold.step(false);
+            if (st.hold_active && is_bound_[item]) StepHold(bound_[item].hold, false, st.applied_hotkey);
             st.hold_active = false;
         }
         break;
@@ -150,8 +150,8 @@ bool Engine::SetFixed(u16 item, bool on, u32 now) {
             if (st.applied) DeactivateGroup(item, now);
             if (!st.applied || !st.applied_hotkey) ok = SetEffect(item, st.applied != 0) == Result::Ok;
         } else if (d.behavior == Behavior::Hold) {
-            if (!st.applied && st.hold_active && is_bound_[item] && bound_[item].hold.step)
-                bound_[item].hold.step(false);
+            if (!st.applied && st.hold_active && is_bound_[item])
+                StepHold(bound_[item].hold, false, st.applied_hotkey);
             if (!st.applied) st.hold_active = false;
         } else {
             ok = ApplyValue(item);

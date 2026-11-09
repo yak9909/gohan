@@ -38,7 +38,7 @@ control  = "action"
 behavior = "trigger"
 menu     = "on_apply"
 confirm  = "hotkey"
-hotkey   = "L+Down"
+hotkey   = "L+Left"
 
 # 画面: 開いて閉じる。同じ group の画面は同時に 1 つだけ。
 [[item.item]]
@@ -160,12 +160,86 @@ control = "toggle"
 behavior = "state"
 
 [[item.item]]
+id = "player.movement"
+label = "座標移動"
+desc = "座標移動とその設定です。"
+control = "folder"
+
+[[item.item.item]]
+id = "player.move"
+label = "座標移動"
+desc = "移動キーで高速移動できます。"
+control = "toggle"
+behavior = "hold"
+hotkey = "A"
+
+[[item.item.item]]
+id = "player.move.key"
+label = "移動キー"
+desc = "座標移動に使うキーを指定できます。"
+control = "select"
+source = "setting"
+options = ["十字キー", "スライドパッド", "C スティック"]
+
+[[item.item.item]]
+id = "player.move.amount"
+label = "移動量"
+desc = "座標移動の移動量を設定できます。"
+control = "number"
+source = "setting"
+format = "decimal1"
+default = 5.0
+range = [0.1, 99.9]
+step = 0.5
+enabled_if = "player.move.mode != 'grid'"
+
+[[item.item.item]]
+id = "player.move.mode"
+label = "移動方法"
+desc = "座標移動の移動方法を変更できます。グリッド単位の時、スライドパッドによる向きは8方向に限定されます。"
+control = "select"
+source = "setting"
+options = ["通常", "グリッド単位"]
+option_ids = ["free", "grid"]
+
+[[item.item.item]]
+id = "player.move.dpad"
+label = "十字キーの無効化"
+desc = "座標移動中にすると、移動キーが十字キーの時、ホットキーを押している間はゲームの十字キーを無効にします。"
+control = "select"
+source = "setting"
+options = ["なし", "座標移動中"]
+
+[[item.item]]
+id = "player.warp"
+label = "タッチワープ"
+desc = "地図をタッチした場所にワープします。"
+control = "toggle"
+behavior = "hold"
+hold_without_hotkey = true
+
+[[item.item]]
 id = "player.wall"
 label = "壁抜け"
 desc = "どこでも歩けるようになります。あなたの歩みを阻むものは何一つとして存在しません。"
 control = "toggle"
 behavior = "state"
 hotkey = "L+Up"
+
+[[item.item]]
+id = "player.idle"
+label = "アクション解除"
+desc = "強制的に立ち状態に変更します。身動きが取れなくなった時用です。"
+control = "action"
+behavior = "trigger"
+hotkey = "L+Down"
+
+[[item.item]]
+id = "player.faint"
+label = "気絶"
+desc = "気絶します。身動きが取れなくなった時用です。"
+control = "action"
+behavior = "trigger"
 
 [[item.item]]
 id = "player.flower"
@@ -235,6 +309,13 @@ desc = "村に関するチートです。"
 control = "folder"
 
 [[item.item]]
+id = "town.keep"
+label = "アイテムが消えない"
+desc = "無効な位置にあるアイテムが翌日に消えないようにします。"
+control = "toggle"
+behavior = "state"
+
+[[item.item]]
 id = "town.weather"
 label = "天気"
 desc = "天気を変更します。"
@@ -280,6 +361,13 @@ range = [0, 99999]
 id = "game.text"
 label = "メッセージ即表示"
 desc = "メッセージの字送りを即時に完了させます。しずえやかっぺいの面倒な話を聞く必要はもうありません。"
+control = "toggle"
+behavior = "state"
+
+[[item.item]]
+id = "game.shizue"
+label = "しずえスキップ"
+desc = "タイトル遷移後のしずえの会話をスキップします。ドパガキなあなたへ。"
 control = "toggle"
 behavior = "state"
 

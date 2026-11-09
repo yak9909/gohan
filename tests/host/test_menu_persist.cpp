@@ -249,11 +249,11 @@ void BrokenInputs() {
     Buffer hotkeys = Header(4);
     Put(hotkeys, "sample.editor_a", persist::kHotkey, 0, key::Select);
     Put(hotkeys, "sample.editor_b", persist::kHotkey, 0, 0x8000);
-    Put(hotkeys, "sample.stamp", persist::kHotkey, 0, key::L | key::Down);
+    Put(hotkeys, "sample.stamp", persist::kHotkey, 0, key::L | key::Left);
     Put(hotkeys, "sample.flag", persist::kHotkey, 0, 0);
     assert(Load(hotkeys, saved) && saved.count == 2);
     assert(Find(saved, Idx(MenuId::SampleEditorA)) == nullptr && Find(saved, Idx(MenuId::SampleEditorB)) == nullptr);
-    assert(Find(saved, Idx(MenuId::SampleStamp))->hotkey == (key::L | key::Down));
+    assert(Find(saved, Idx(MenuId::SampleStamp))->hotkey == (key::L | key::Left));
     assert(Find(saved, Idx(MenuId::SampleFlag))->hotkey == 0);
     // 同じ項目の 2 つ目の記録は捨てる（最初の物を残す）。
     Buffer twice = Header(2);

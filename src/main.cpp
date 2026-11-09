@@ -7,6 +7,11 @@
 #include "features/gameplay/gameplay.hpp"
 #include "features/resources/resources.hpp"
 #include "game/frame_hook.hpp"
+#include "game/memory.hpp"
+#include "features/movement/movement.hpp"
+#include "features/actions/actions.hpp"
+#include "features/keep_items/keep_items.hpp"
+#include "features/shizue_skip/shizue_skip.hpp"
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
 #include <CTRPluginFramework.hpp>
@@ -64,15 +69,22 @@ int main() {
     features.Add(gohan::game::FrameHookFeature());
     features.Add(gohan::game::InputPadFeature());
     features.Add(gohan::game::InputControllerFeature());
+    features.Add(gohan::game::memory::Feature());
     features.Add(gohan::ui::renderer::RendererFeature());
     features.Add(gohan::features::player::Feature());
     features.Add(gohan::features::field::Feature());
     features.Add(gohan::features::town::Feature());
     features.Add(gohan::features::gameplay::Feature());
     features.Add(gohan::features::resources::Feature());
+    features.Add(gohan::features::movement::Feature());
+    features.Add(gohan::features::actions::Feature());
+    features.Add(gohan::features::keep_items::Feature());
+    features.Add(gohan::features::shizue_skip::Feature());
     for (auto bindings : {gohan::features::player::Bindings(), gohan::features::field::Bindings(),
                           gohan::features::town::Bindings(), gohan::features::gameplay::Bindings(),
-                          gohan::features::resources::Bindings()}) {
+                          gohan::features::resources::Bindings(), gohan::features::movement::Bindings(),
+                          gohan::features::actions::Bindings(), gohan::features::keep_items::Bindings(),
+                          gohan::features::shizue_skip::Bindings()}) {
         if (!gohan::features::menu_screen::BindItems(bindings.data(), bindings.size())) return 1;
     }
     features.Add(gohan::features::menu_screen::Feature());

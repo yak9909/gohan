@@ -168,7 +168,7 @@ void Scenes() {
     rig.engine.Discard(Idx(MenuId::SampleMode));
     rig.Tap(key::Select);
     rig.Advance(400);
-    rig.Hold(key::L | key::Down);
+    rig.Hold(kMenuItems[Idx(MenuId::SampleStamp)].hotkey);
     rig.Release();
     rig.Advance(300);
     Audit(rig);

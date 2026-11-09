@@ -30,6 +30,9 @@ class PatchSet {
   public:
     PatchSet(const PatchMemory &memory, std::span<const PatchWord> words,
              std::span<const CaveWords> caves = {}) : memory_(memory), words_(words), caves_(caves) {}
+    PatchSet(const PatchSet &) = delete;
+    PatchSet &operator=(const PatchSet &) = delete;
+    ~PatchSet();
     Result Wire();
     Result Set(bool on);
     bool IsApplied() const;

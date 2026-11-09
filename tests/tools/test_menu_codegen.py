@@ -720,3 +720,16 @@ def test_mismatched_binding_does_not_compile(bind_env, binding, word):
 def test_unknown_menu_id_does_not_compile(bind_env):
     code, _ = try_compile(bind_env, 'constexpr Bound kBad[] = { GOHAN_ITEM(MenuId::NoSuchItem, Patch{.set = Set}) };\n')
     assert code != 0
+
+
+def test_hold_without_hotkey_and_stable_option_ids(tmp_path):
+    text = GOOD.replace('options = ["自由", "マス"]', 'options = ["自由", "マス"]\n      option_ids = ["free", "grid"]').replace("root.mode != 'マス'", "root.mode != 'grid'")
+    text += '\n[[item]]\nid = "warp"\nlabel = "ワープ"\ncontrol = "toggle"\nbehavior = "hold"\nhold_without_hotkey = true\n'
+    items = load(tmp_path, text)
+    assert items[-1].hold_without_hotkey
+    assert items[3].cond == ('root.mode', 'Ne', 1)
+
+
+def test_hold_flag_and_option_ids_reject_wrong_kinds(tmp_path):
+    assert 'hold_without_hotkey' in error(tmp_path, GOOD.replace('behavior = "state"', 'behavior = "state"\n      hold_without_hotkey = true'))
+    assert 'option_ids' in error(tmp_path, GOOD.replace('options = ["自由", "マス"]', 'options = ["自由", "マス"]\n      option_ids = ["grid", "grid"]'))

@@ -1,7 +1,11 @@
 #include "menu/notice.hpp"
+#include "core/request.hpp"
 #include "core/format.hpp"
 
 namespace gohan::menu {
+namespace { core::Request<Notice> pending_notice; }
+bool PostNotice(const Notice &notice) { return pending_notice.TrySubmit(notice); }
+bool TakeNotice(Notice &notice) { return pending_notice.TryTake(notice); }
 namespace {
 void Fill(Notice &notice, const char *title, bool red) {
     core::TextWriter(notice.title, sizeof(notice.title)).Append(title);

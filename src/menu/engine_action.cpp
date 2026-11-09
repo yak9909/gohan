@@ -304,8 +304,8 @@ void Engine::Tick(u32 now, u16 held) {
         if (d.behavior == Behavior::Hold && st.applied != 0) {
             // 押している間だけ動く。メニューを開いている間は自動的に止まる。
             const u16 mask = st.applied_hotkey;
-            st.hold_active = mask != 0 && !blocked && (held & mask) == mask;
-            if (is_bound_[i] && bound_[i].hold.step) bound_[i].hold.step(st.hold_active);
+            st.hold_active = !blocked && (mask ? (held & mask) == mask : d.hold_without_hotkey);
+            if (is_bound_[i]) StepHold(bound_[i].hold, st.hold_active, mask);
         } else if (d.behavior == Behavior::Mode && st.mode_active && is_bound_[i] && bound_[i].mode.step) {
             if (!bound_[i].mode.step()) st.mode_active = false; // 機能が自分で閉じた
         }

@@ -5,6 +5,14 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
+// P2 後: 描画、メニュー、メモリの控え、移動の遮断要求、しずえスキップの計 5 本。
+inline constexpr std::size_t RegisteredFrameSteps = 5;
+// CTRPF のフック: フレーム 1、入力 2、アイテム保護 1 の計 4 本。
+// 描画は自前ノードの仮想表で接続し、CTRPF のフックは増やさない。
+inline constexpr std::size_t GameHooks = 4;
+inline constexpr std::size_t CodeWords = 256;
+inline constexpr std::size_t ReadableRegions = 32;
+static_assert(RegisteredFrameSteps <= FrameSteps);
 inline constexpr std::size_t StatusText = 4096;
 // 入力の遮断。所有者の枠は内蔵の SELECT 用も含む。
 inline constexpr std::size_t InputBlockOwners = 16;
