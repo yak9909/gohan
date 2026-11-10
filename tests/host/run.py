@@ -1,40 +1,100 @@
 #!/usr/bin/env python3
 """PC の C++20 コンパイラで core・menu・画面の接続をビルドして試験する。"""
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import hashlib
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
+
+
+def run_commands(commands, root, jobs):
+    """失敗を呼び出し元へ伝え、未着手のコマンドは取り消す。"""
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        pending = [pool.submit(subprocess.run, command, cwd=root, check=True) for command in commands]
+        try:
+            for future in as_completed(pending):
+                future.result()
+        except BaseException:
+            for future in pending:
+                future.cancel()
+            raise
+
+
+class BuildPlan:
+    """今回の実行中だけ、ソースとコンパイル条件が同じオブジェクトを共有する。"""
+
+    def __init__(self, root, directory, compiler, flags):
+        self.root = root
+        self.directory = directory
+        self.compiler = compiler
+        self.flags = tuple(flags)
+        self.compiles = {}
+        self.links = []
+        self.source_count = 0
+
+    def executable(self, sources, output, includes=('src',), defines=()):
+        objects = []
+        options = [self.compiler, *self.flags, *defines, *(f'-I{i}' for i in includes), '-Ibuild/gen']
+        for source in sources:
+            # 区切り文字が違う同じソースも共有する。include は順序ごと区別する。
+            source = str((self.root / source).resolve())
+            key = (*options, source)
+            digest = hashlib.sha256(repr(key).encode('utf-8')).hexdigest()
+            obj = self.directory / 'obj' / f'{Path(source).stem}-{digest}.o'
+            self.compiles.setdefault(key, [*options, '-c', source, '-o', str(obj)])
+            objects.append(str(obj))
+            self.source_count += 1
+        suffix = '.exe' if os.name == 'nt' else ''
+        out = self.directory / (output + suffix)
+        self.links.append([self.compiler, *self.flags, *objects, '-o', str(out)])
+        return out
+
+    def build(self, jobs):
+        (self.directory / 'obj').mkdir(parents=True, exist_ok=True)
+        # 前回の .o は再利用せず、ヘッダー・生成物・コンパイラの変更も必ず反映する。
+        started = time.perf_counter()
+        run_commands(self.compiles.values(), self.root, jobs)
+        print(f'PC 試験 コンパイル: {time.perf_counter() - started:.2f} 秒 '
+              f'({self.source_count} → {len(self.compiles)} ソース、{jobs} 並列)', flush=True)
+        started = time.perf_counter()
+        run_commands(self.links, self.root, jobs)
+        print(f'PC 試験 リンク: {time.perf_counter() - started:.2f} 秒 ({len(self.links)} 本)', flush=True)
 
 
 def main() -> int:
+    started = time.perf_counter()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cxx', default=os.environ.get('HOST_CXX'))
+    parser.add_argument('-j', '--jobs', type=int, default=os.cpu_count() or 1,
+                        help='コンパイル・リンクの並列数（既定: CPU 数）')
     parser.add_argument('--bench-notice', action='store_true', help='通常の試験の代わりに通知の時間を測る')
     args = parser.parse_args()
+    if args.jobs < 1:
+        parser.error('--jobs は 1 以上にしてください')
     compiler = args.cxx or shutil.which('g++') or shutil.which('clang++')
     if not compiler:
         parser.exit(1, 'PC 用の g++ または clang++ が必要です。\n')
     root = Path(__file__).resolve().parents[2]
     build = root / 'build/host'
     build.mkdir(parents=True, exist_ok=True)
-    exe = '.exe' if os.name == 'nt' else ''
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
     if args.bench_notice:
         subprocess.run([sys.executable, 'tests/host/bench_notice.py', '--cxx', compiler], cwd=root, check=True)
         return 0
-    # core の描画予算も設計表から取るため、最初のコンパイルより前に生成する。
+    # 描画予算と字形を、最初のコンパイルより前に生成する。
     subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
-
-    def build_exe(sources, output, includes=('src',), defines=()):
-        out = build / (output + exe)
-        subprocess.run([compiler, *flags, *defines, *(f'-I{i}' for i in includes), '-Ibuild/gen', *sources, '-o', str(out)], cwd=root, check=True)
-        return out
+    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
+    plan = BuildPlan(root, build, compiler, flags)
+    build_exe = plan.executable
+    executions = []
 
     def run(sources, output, includes=('src',), defines=(), args=()):
         out = build_exe(sources, output, includes, defines)
-        subprocess.run([str(out), *args], cwd=root, check=True)
+        executions.append([str(out), *args])
 
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
@@ -59,9 +119,7 @@ def main() -> int:
          'src/core/input_block.cpp', 'src/core/format.cpp'], 'test_input_hook',
         ('tests/host/fakes', 'src'), ('-DGOHAN_DEV=1',))
 
-    # 描画: 字形の表を生成してから試験する。
-    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/font_atlas.py'], cwd=root, check=True)
-    subprocess.run([sys.executable, 'tools/gohan_tools/codegen/ui.py'], cwd=root, check=True)
+    # 描画。
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
     background = ['src/game/title_background.cpp', 'src/game/title_background_io.cpp', 'src/game/title_background_self.cpp']
     renderer += background
@@ -135,14 +193,24 @@ def main() -> int:
                             ('tests/host/fakes', 'src', 'build/gen', 'build/host/gen-sample'))
     for scenario in ('empty', 'broken', 'valid', 'save', 'shutdown-gate', 'shutdown-task',
                      'exit-clean', 'exit-stuck', 'exit-finishes', 'exit-gate', 'exit-before-wire'):
-        subprocess.run([str(persist_exe), scenario], cwd=root, check=True)
+        executions.append([str(persist_exe), scenario])
     # 描く文字がすべて字形の表にあるか（無い文字は実機で何も出ない）。
     run(['tests/host/test_menu_glyphs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine, *screen,
          'src/menu/sample_items.cpp', *renderer, 'build/host/gen-sample/menu_table.cpp'],
         'test_menu_glyphs', ('src', 'tests/host', 'build/gen', 'build/host/gen-sample'))
+    print(f'PC 試験 生成・計画: {time.perf_counter() - started:.2f} 秒', flush=True)
+    plan.build(args.jobs)
+    stage = time.perf_counter()
+    # 実行順と、永続化の各シナリオを別プロセスで起動する条件は維持する。
+    for command in executions:
+        subprocess.run(command, cwd=root, check=True)
+    print(f'PC 試験 実行: {time.perf_counter() - stage:.2f} 秒 ({len(executions)} 回)', flush=True)
     # プレビューも実際の feature・入力・Canvas を通し、全台本の描画内容を照合する。
+    stage = time.perf_counter()
     subprocess.run([sys.executable, 'tools/preview.py', '--cxx', compiler,
-                    '--no-rom', '--out', str(build / 'preview')], cwd=root, check=True)
+                    '--jobs', str(args.jobs), '--no-rom', '--out', str(build / 'preview')], cwd=root, check=True)
+    print(f'PC 試験 プレビュー全体: {time.perf_counter() - stage:.2f} 秒', flush=True)
+    print(f'PC 試験 合計: {time.perf_counter() - started:.2f} 秒', flush=True)
     print('PC 試験: 書式・UTF・Mailbox・Request・毎フレーム・終了順序（描画の排出はフックを止める前）・'
           '照合と前提の不足による導入の拒否・資源の失敗時巻き戻し・反復の確保と解放・束縛中の解放拒否・'
           'Pane の木と Layout ノードの組み立て・登録の取り下げと排出・画面ごとの確定・'
