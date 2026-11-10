@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import tomllib
 
 from gohan_tools.preview.build import build
@@ -51,6 +53,8 @@ def main(argv=None) -> int:
     parser.add_argument('--settings', type=Path, default=ROOT / 'tools/preview/settings.toml')
     parser.add_argument('--out', type=Path, default=ROOT / 'build/preview')
     parser.add_argument('--cxx')
+    parser.add_argument('-j', '--jobs', type=int, default=os.cpu_count() or 1,
+                        help='コンパイルの並列数（既定: CPU 数）')
     parser.add_argument('--dev', action='store_true')
     parser.add_argument('--parts', action='store_true', help='CA2 の全 UI 部品・整数倍・分割・繰り返しの一覧を出す')
     parser.add_argument('--rows', action='store_true', help='台本の rows の行の見本（固定の印・お気に入り・複数選択の枠）を出す')
@@ -61,6 +65,8 @@ def main(argv=None) -> int:
     parser.add_argument('--background-bottom', type=Path)
     parser.add_argument('--ca2-reference', type=Path, help='作業ツリー外の CA2 の見本 17 場面と全台本を並べる')
     args = parser.parse_args(argv)
+    if args.jobs < 1:
+        parser.error('--jobs は 1 以上にしてください')
     try:
         settings = tomllib.loads(args.settings.read_text(encoding='utf-8'))
         validate_settings(settings)
@@ -82,7 +88,8 @@ def main(argv=None) -> int:
             raise ValueError('CA2 の見本と比較の出力先は作業ツリー外にしてください')
         # 実行ファイルは常にビルド出力先。ROM 由来の画像・プレビューは外部の --out へ。
         binary_directory = output_directory(ROOT / 'build/preview-runtime' / ('dev1' if args.dev else 'dev0'))
-        executable, manifest = build(ROOT, binary_directory, settings['screen'], args.cxx, args.dev)
+        executable, manifest = build(ROOT, binary_directory, settings['screen'], args.cxx, args.dev, jobs=args.jobs)
+        render_started = time.perf_counter()
         manifest['title_background_romfs_configured'] = configured
         if args.rows:
             # 台本の rows の順に、製品の Engine・Shell・Panel・Entry で描いた行の見本を出す。
@@ -112,6 +119,7 @@ def main(argv=None) -> int:
             manifest['settings'] = settings
             (directory / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             print(f'行の見本: {len(frames)} 枚、{directory / "index.html"}')
+            print(f'プレビュー 実行・描画・出力: {time.perf_counter() - render_started:.2f} 秒', flush=True)
             return 0
         if args.parts:
             target = output_directory(directory / 'parts')
@@ -131,6 +139,7 @@ def main(argv=None) -> int:
             manifest['settings'] = settings
             (directory / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             print(f'CA2 部品: {len(frames)} 枚、{directory / "index.html"}')
+            print(f'プレビュー 実行・描画・出力: {time.perf_counter() - render_started:.2f} 秒', flush=True)
             return 0
         backgrounds, background_hashes = {}, {}
         for screen, path in (('top', args.background_top), ('bottom', args.background_bottom)):
@@ -183,6 +192,7 @@ def main(argv=None) -> int:
                         script_sha256=hashlib.sha256(args.script.read_bytes()).hexdigest(), dev=args.dev)
         (directory / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print(f'プレビュー: {len(frames)} フレーム、上下の PNG と {directory / "index.html"}')
+        print(f'プレビュー 実行・描画・出力: {time.perf_counter() - render_started:.2f} 秒', flush=True)
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
         print(f'preview: {error}', file=sys.stderr)

@@ -1,15 +1,23 @@
 """実製品のソースを PC の C++20 コンパイラでビルドする。"""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 
-def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: bool) -> tuple[Path, dict]:
+def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: bool,
+          jobs: int | None = None) -> tuple[Path, dict]:
+    started = time.perf_counter()
+    if jobs is None:
+        jobs = os.cpu_count() or 1
+    if jobs < 1:
+        raise ValueError('並列数は 1 以上にしてください')
     compiler = compiler or os.environ.get('HOST_CXX') or shutil.which('g++') or shutil.which('clang++')
     if not compiler:
         raise ValueError('PC 用の g++ または clang++ を PATH に追加してください')
@@ -43,8 +51,29 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
         flags.append('-DGOHAN_DEV=1')
     # Scene は実際のゲームの型を使う。CTRPF だけを入力・時計の代役へ向ける。
     includes = [root / 'src', root / 'tests/host/fakes', gen, menu_gen]
-    command = [compiler, *flags, *(f'-I{path}' for path in includes), *map(str, sources), '-o', str(executable)]
-    subprocess.run(command, cwd=root, check=True)
+    print(f'プレビュー 生成・計画: {time.perf_counter() - started:.2f} 秒', flush=True)
+    objects = directory / 'obj'
+    objects.mkdir(parents=True, exist_ok=True)
+    outputs = [objects / f'{i}-{source.stem}.o' for i, source in enumerate(sources)]
+    started = time.perf_counter()
+    # 毎回コンパイルし直す。生成したヘッダーや dev の変更で古い .o を使わない。
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        pending = [pool.submit(subprocess.run,
+                               [compiler, *flags, *(f'-I{path}' for path in includes),
+                                '-c', str(source), '-o', str(obj)], cwd=root, check=True)
+                   for source, obj in zip(sources, outputs)]
+        try:
+            for future in as_completed(pending):
+                future.result()
+        except BaseException:
+            for future in pending:
+                future.cancel()
+            raise
+    print(f'プレビュー コンパイル: {time.perf_counter() - started:.2f} 秒 '
+          f'({len(sources)} ソース、{jobs} 並列)', flush=True)
+    started = time.perf_counter()
+    subprocess.run([compiler, *flags, *map(str, outputs), '-o', str(executable)], cwd=root, check=True)
+    print(f'プレビュー リンク: {time.perf_counter() - started:.2f} 秒', flush=True)
     # ソース・ヘッダー・定義・字形表も含む。手動の較正時に使った版を追える。
     inputs = [*sorted((root / 'src').rglob('*.cpp')), *sorted((root / 'src').rglob('*.hpp')),
               root / 'tests/host/menu_preview.cpp', root / 'tests/host/fakes/CTRPluginFramework.hpp',
