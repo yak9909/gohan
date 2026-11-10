@@ -219,6 +219,7 @@ void StopSaving() {
 }
 
 bool Wire() {
+    menu::SetSettingsEngine(&engine);
     engine.SetReservedHotkeys(menu::key::Select);
 #ifdef GOHAN_DEV
     engine.SetDevVisible(true);
@@ -246,6 +247,7 @@ bool Wire() {
 }
 
 void Shutdown() {
+    menu::SetSettingsEngine(nullptr);
     running.Set(false);
     if (demand_mutex.TryLock()) {
         // 停止中のスレッドが表を保持していても待たない。返却できなければ枠を保持する。

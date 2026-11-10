@@ -1,7 +1,9 @@
 build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
+vtables = ["BsMenuItem", "script_WordRes"]
 functions = [
+    "vc_LOADICON", "Item_IsEmpty", "Inventory_FindEmptySlot", "Inventory_GetSlot", "ItemName_ResolvePhrase", "script_WordRes_Ctor",
     "vc_A_GETONLINEPLAYERINDEX", "vc_PLAYERINSTANCE", "vc_WORLDCOORDS", "Actor_SetState", "Player_CopyStatePacketForEdit", "StatePacket_PackXZ", "PlayerState_FaintEnter", "Field_SetItemAtWorldXY", "Field_GetItemAtXY", "Field_GrowUpWiltBushSapling", "Field_GrowUpWiltSapling", "Field_GrowUpWiltSaplingToItem3", "Field_GrowUpWiltSaplingToItem4", "Save_GetCurrentPlayer", "vc_D_GARDEN", "PlayerSave_GetSlotIndex", "vc_ROOMDAT", "Villager_RunDailyUpdateOnce", "Room_UseExit",
     "Effect_DigDirt",
     "Effect_ScoopScrape",
@@ -27,6 +29,7 @@ functions = [
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
+    "g_ActiveBsMenuItem",
     "vc_MAPBOOL", "g_NetGameMgrPtr", "g_CurrentRoomId", "g_VillagerDailyUpdateGuard",
     "g_TextPagePadding", "g_TreeHitCounts", "g_DropDataTable", "g_GardenSaveBasePtr",
     "g_LayoutMgr", "g_LayoutAllocator", "vtbl_sead_CtrController",
@@ -35,6 +38,7 @@ globals = [
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
 ]
 types = [
+    "AcnlPlayerInventoryFinanceF010",
     "AcnlEncryptedValueF010", "AcnlPlayerSave", "AcnlGardenSavePrefix",
     "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode", "SsysMaLayoutNodeVtable",
     "SsysMaAllocator", "SeadExpHeapPrefix",
@@ -568,3 +572,39 @@ length = 16
 # Field_GrowUpWiltSapling +0x6E / +0xFC、Field_GrowUpWiltSaplingToItem3 +0x52、ToItem4 +0x52。
 # 呼び出せる先頭（Thumb の +1 付き）からは、それぞれ +0x51、+0x6D / +0xFB、+0x51、+0x51。
 # 関数末尾に 2 バイトしか残らない物もあるため、4 バイトの CRC は直前の BLX で取る。
+
+[[checks]]
+name = "PocketLoadIcon"
+function = "vc_LOADICON"
+offset = 0
+length = 4
+
+[[checks]]
+name = "PocketInit"
+function = "Item_InitWithId"
+offset = 0
+length = 4
+
+[[checks]]
+name = "PocketEmpty"
+function = "Item_IsEmpty"
+offset = 0
+length = 4
+
+[[checks]]
+name = "PocketFindEmpty"
+function = "Inventory_FindEmptySlot"
+offset = 0
+length = 4
+
+[[checks]]
+name = "PocketHidden"
+function = "Inventory_GetSlot"
+offset = 72
+length = 4
+
+[[hooks]]
+name = "ItemNameResolve"
+function = "ItemName_ResolvePhrase"
+offset = 0
+length = 16

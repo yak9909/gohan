@@ -1,24 +1,16 @@
 #pragma once
+#include "game/romfs.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
 namespace gohan::game::titlebg {
 // すべてプラグイン所有。読み込み・作成は描画フックの登録前に一度だけ行う。
-struct Reader {
-    void *context;
-    std::uint64_t size;
-    bool (*read)(void *, std::uint64_t, void *, std::size_t);
-    bool Read(std::uint64_t offset, void *out, std::size_t bytes) const;
-};
-struct Region { std::uint64_t offset = 0, size = 0; };
-enum class Failure { None, Open, Read, Romfs, Missing, Darc, Clim };
-struct Attempt {
-    Failure failure = Failure::Open;
-    std::uint32_t result = 0;
-    bool attempted = false;
-};
-struct Status { Attempt update{}, base{}; bool ready = false, fromUpdate = false; };
+using romfs::Reader;
+using romfs::Region;
+using romfs::Failure;
+using romfs::Attempt;
+using romfs::Status;
 struct Sources {
     // 復号した上から順の A4 と L4（0〜255）。
     std::array<std::uint8_t, 256> alpha{}, luminance{};

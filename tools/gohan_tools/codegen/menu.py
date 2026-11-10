@@ -265,12 +265,15 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
     item.display = display
 
     default = entry.get('default')
-    if control in ('number', 'slider'):
+    trigger_range = control == 'action' and behavior == 'trigger' and entry.get('input') in ('hex', 'number') and 'range' in entry
+    if control in ('number', 'slider') or trigger_range:
         bounds = want_type(entry, 'range', list, where)
         if bounds is None or len(bounds) != 2:
             raise SpecError(f'{where}: range = [最小, 最大] が必要です')
         item.minimum = scale(bounds[0], fmt, 'range', where)
         item.maximum = scale(bounds[1], fmt, 'range', where)
+        if trigger_range and (item.minimum < 0 or item.maximum > (0xFFFF if entry.get('input') == 'hex' else S32_MAX)):
+            raise SpecError(f'{where}: 実行の入力の範囲が大きすぎます')
         if item.minimum > item.maximum:
             raise SpecError(f'{where}: range の最小が最大より大きいです')
         step = entry.get('step', 0.1 if fmt == 'decimal1' else 1)
@@ -666,6 +669,9 @@ def render_docs(items: list[Item]) -> str:
             notes.append('ボタンの印で表示')
         if item.input in ('number', 'hex'):
             notes.append('入力: ' + ('16進' if item.input == 'hex' else '数値'))
+            if item.maximum > item.minimum:
+                notes.append(f'範囲 0x{item.minimum:X}..0x{item.maximum:X}' if item.input == 'hex'
+                             else f'範囲 {item.minimum}..{item.maximum}')
         if item.group:
             notes.append('排他: ' + item.group)
         if can_fix(item):

@@ -1,3 +1,8 @@
+#include "core/jobs.hpp"
+#include "game/item_names.hpp"
+#include "features/pocket_items/pocket_items.hpp"
+#include "features/hidden_items/hidden_items.hpp"
+#include "features/drop_item/drop_item.hpp"
 #include "core/feature.hpp"
 #include "features/menu_screen/menu_screen.hpp"
 #include "features/status/status.hpp"
@@ -52,7 +57,10 @@ bool OpenCtrpfMenu() {
 // 終了の途中でコマが止まっていると合図の返答まで届かなくなるおそれがある。ShutdownAll は menu.Run() の後だけ。
 // ほかの合図（スリープ・HOME・入れ替え）では何もしない。
 void OnProcessEvent(CTRPluginFramework::Process::Event event) {
-    if (event == CTRPluginFramework::Process::Event::EXIT) gohan::features::menu_screen::StopSavingForExit();
+    if (event == CTRPluginFramework::Process::Event::EXIT) {
+        gohan::features::menu_screen::StopSavingForExit();
+        gohan::core::jobs::StopForExit();
+    }
 }
 } // namespace
 
@@ -66,11 +74,16 @@ int main() {
     menu += new MenuEntry("gohan（作り直し中）", nullptr, gohan::features::status::Show,
                           "版と骨格の状態を表示します。");
     // 終了は同じ段で登録と逆の順。描画の部品は、毎フレームのフックを止める前に資源を排出する。
+    features.Add(gohan::core::jobs::JobsFeature());
     features.Add(gohan::game::FrameHookFeature());
     features.Add(gohan::game::InputPadFeature());
     features.Add(gohan::game::InputControllerFeature());
     features.Add(gohan::game::memory::Feature());
     features.Add(gohan::ui::renderer::RendererFeature());
+    features.Add(gohan::game::items::NamesFeature());
+    features.Add(gohan::features::pocket_items::Feature());
+    features.Add(gohan::features::hidden_items::Feature());
+    features.Add(gohan::features::drop_item::Feature());
     features.Add(gohan::features::player::Feature());
     features.Add(gohan::features::field::Feature());
     features.Add(gohan::features::town::Feature());
@@ -84,7 +97,8 @@ int main() {
                           gohan::features::town::Bindings(), gohan::features::gameplay::Bindings(),
                           gohan::features::resources::Bindings(), gohan::features::movement::Bindings(),
                           gohan::features::actions::Bindings(), gohan::features::keep_items::Bindings(),
-                          gohan::features::shizue_skip::Bindings()}) {
+                          gohan::features::shizue_skip::Bindings(), gohan::features::pocket_items::Bindings(),
+                          gohan::features::hidden_items::Bindings(), gohan::features::drop_item::Bindings()}) {
         if (!gohan::features::menu_screen::BindItems(bindings.data(), bindings.size())) return 1;
     }
     features.Add(gohan::features::menu_screen::Feature());

@@ -5,11 +5,14 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-// P2 後: 描画、メニュー、メモリの控え、移動の遮断要求、しずえスキップの計 5 本。
-inline constexpr std::size_t RegisteredFrameSteps = 5;
-// CTRPF のフック: フレーム 1、入力 2、アイテム保護 1 の計 4 本。
+// P3a 後: 既存 5 本、作業の完了、名前表、投入の通知、表示設定の受け取りの計 9 本。
+inline constexpr std::size_t RegisteredFrameSteps = 9;
+// CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、アイテムの名前 1。
 // 描画は自前ノードの仮想表で接続し、CTRPF のフックは増やさない。
-inline constexpr std::size_t GameHooks = 4;
+inline constexpr std::size_t GameHooks = 5;
+// 作業の Task は共通 I/O 1 本と、既存のメニュー保存 1 本。
+inline constexpr std::size_t WorkerTasks = 2;
+inline constexpr std::size_t Jobs = 16;
 inline constexpr std::size_t CodeWords = 256;
 inline constexpr std::size_t ReadableRegions = 32;
 static_assert(RegisteredFrameSteps <= FrameSteps);

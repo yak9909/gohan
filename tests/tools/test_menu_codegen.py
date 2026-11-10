@@ -733,3 +733,19 @@ def test_hold_without_hotkey_and_stable_option_ids(tmp_path):
 def test_hold_flag_and_option_ids_reject_wrong_kinds(tmp_path):
     assert 'hold_without_hotkey' in error(tmp_path, GOOD.replace('behavior = "state"', 'behavior = "state"\n      hold_without_hotkey = true'))
     assert 'option_ids' in error(tmp_path, GOOD.replace('options = ["自由", "マス"]', 'options = ["自由", "マス"]\n      option_ids = ["grid", "grid"]'))
+
+
+def test_trigger_input_range(tmp_path):
+    items = load(tmp_path, '\n'.join([
+        '[[item]]', 'id = "pocket"', 'label = "持ち物"',
+        'control = "action"', 'behavior = "trigger"', 'input = "hex"',
+        'range = [0, 0x7FFF]',
+    ]))
+    assert items[0].minimum == 0 and items[0].maximum == 0x7FFF and items[0].default == 0
+    assert '.max = 32767' in menu.render_table(items)
+    with pytest.raises(menu.SpecError):
+        load(tmp_path, '\n'.join([
+            '[[item]]', 'id = "pocket"', 'label = "持ち物"',
+            'control = "action"', 'behavior = "trigger"', 'input = "hex"',
+            'range = [-1, 0x10000]',
+        ]))

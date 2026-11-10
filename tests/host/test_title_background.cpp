@@ -216,6 +216,16 @@ void PrepareSelf() {
 void Self() {
     Sources sources;
     PrepareSelf();
+    {
+        gohan::game::romfs::Session session;
+        auto decode = [](const Reader &reader, void *out) { return DecodeArchive(reader, *static_cast<Sources *>(out)); };
+        assert(session.Visit("Layout/Title/opng_titl.arc", decode, &sources).ready);
+        const auto first = update.calls;
+        assert(session.Visit("Layout/Title/opng_titl.arc", decode, &sources).ready);
+        assert(opens == 1 && closes == 0 && first == update.calls - first + 2);
+        session.Close(); assert(closes == 1);
+    }
+    PrepareSelf();
     auto status = LoadSelf(sources);
     assert(status.ready && status.fromUpdate && opens == 1 && closes == 1 && !status.base.attempted);
     PrepareSelf(); failUpdateOpen = true;

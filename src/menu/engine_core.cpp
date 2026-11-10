@@ -2,6 +2,14 @@
 
 // 構築・結び付け・照会・フォルダの移動と選択。
 namespace gohan::menu {
+namespace { const Engine *settings_engine = nullptr; }
+void SetSettingsEngine(const Engine *engine) { settings_engine = engine; }
+bool ReadSetting(u16 item, s32 &value) { return settings_engine && settings_engine->ReadSetting(item, value); }
+bool Engine::ReadSetting(u16 item, s32 &value) const {
+    if (!Has(item) || defs_[item].behavior != Behavior::Value || defs_[item].source != Source::Setting) return false;
+    value = state_[item].applied;
+    return true;
+}
 Engine::Engine(const ItemDef *defs, std::size_t count)
     : defs_(defs), count_(count < core::limits::MenuItems ? count : core::limits::MenuItems) {
     for (std::size_t i = 0; i < count_; ++i) {
