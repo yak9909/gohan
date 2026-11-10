@@ -35,7 +35,7 @@ def main():
                *[tree / f'src/core/{name}.cpp' for name in ('frame', 'feature', 'utf', 'format')],
                *[tree / name for name in engine],
                *sorted((tree / 'src/ui/renderer').glob('*.cpp')),
-               *sorted((tree / 'src/game').glob('title_background*.cpp')),
+               *sorted((tree / 'src/game').glob('title_background*.cpp')), *sorted((tree / 'src/game').glob('romfs*.cpp')),
                *[tree / f'src/game/lyt/{name}.cpp' for name in ('engine', 'scene', 'nodes', 'recording_resources')],
                out / 'gen/menu_table.cpp']
     executable = out / ('bench_notice.exe' if os.name == 'nt' else 'bench_notice')

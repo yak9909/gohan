@@ -9,10 +9,7 @@ std::uint32_t Word(const std::uint8_t *p) {
     return p[0] | std::uint32_t(p[1]) << 8 | std::uint32_t(p[2]) << 16 | std::uint32_t(p[3]) << 24;
 }
 unsigned Half(const std::uint8_t *p) { return p[0] | unsigned(p[1]) << 8; }
-std::uint64_t Wide(const std::uint8_t *p) { return Word(p) | std::uint64_t(Word(p + 4)) << 32; }
-bool Fits(std::uint64_t offset, std::uint64_t size, std::uint64_t capacity) {
-    return offset <= capacity && size <= capacity - offset;
-}
+using romfs::Fits;
 bool Name(const Reader &r, std::uint64_t offset, std::uint64_t capacity, const char *name) {
     const auto length = std::strlen(name);
     if (!Fits(offset, length * 2 + 2, capacity) || length > 95) return false;
@@ -24,72 +21,10 @@ bool Name(const Reader &r, std::uint64_t offset, std::uint64_t capacity, const c
 }
 } // namespace
 
-bool Reader::Read(std::uint64_t offset, void *out, std::size_t bytes) const {
-    return read && Fits(offset, bytes, size) && read(context, offset, out, bytes);
-}
-
-Failure FindArchive(const Reader &r, Region &out) {
-    out = {};
-    std::uint8_t front[96];
-    if (!r.Read(0, front, sizeof(front))) return Failure::Read;
-    std::uint64_t level = 0;
-    if (!std::memcmp(front, "IVFC", 4)) {
-        const auto shift = Word(front + 0x4C);
-        if (shift < 7 || shift > 24) return Failure::Romfs;
-        level = std::uint64_t(1) << shift;
-    }
-    std::uint8_t h[40];
-    if (!r.Read(level, h, sizeof(h))) return Failure::Read;
-    if (Word(h) != sizeof(h)) return Failure::Romfs;
-    const auto dirAt = Word(h + 12), dirs = Word(h + 16), fileAt = Word(h + 28), files = Word(h + 32);
-    const auto dataAt = Word(h + 36);
-    if (dirs < 24 || files < 32 || dirs > 0x4000000 || files > 0x4000000 ||
-        !Fits(level + dirAt, dirs, r.size) || !Fits(level + fileAt, files, r.size) ||
-        !Fits(level + dataAt, 0, r.size)) return Failure::Romfs;
-    const char *path = core::design::ca2::Titlebg::Source::Archive;
-    std::uint32_t parent = 0;
-    for (;;) {
-        const auto slash = std::strchr(path, '/');
-        const auto length = slash ? std::size_t(slash - path) : std::strlen(path);
-        if (!length || length > 95 || !Fits(parent, 24, dirs)) return Failure::Romfs;
-        char component[96];
-        std::memcpy(component, path, length);
-        component[length] = 0;
-        std::uint8_t dir[24];
-        if (!r.Read(level + dirAt + parent, dir, sizeof(dir))) return Failure::Read;
-        std::uint32_t current = Word(dir + (slash ? 8 : 12));
-        const auto table = slash ? dirAt : fileAt, size = slash ? dirs : files;
-        const unsigned header = slash ? 24 : 32;
-        bool found = false;
-        for (unsigned steps = 0; current != 0xFFFFFFFFu; ++steps) {
-            if (steps >= 4096 || steps > size / header || !Fits(current, header, size)) return Failure::Romfs;
-            std::uint8_t entry[32];
-            if (!r.Read(level + table + current, entry, header)) return Failure::Read;
-            const auto nameBytes = Word(entry + header - 4);
-            if ((nameBytes & 1) || !Fits(std::uint64_t(current) + header, nameBytes, size)) return Failure::Romfs;
-            bool equal = nameBytes == length * 2 && Word(entry) == parent;
-            if (equal) {
-                std::uint8_t name[190];
-                if (!r.Read(level + table + current + header, name, nameBytes)) return Failure::Read;
-                for (std::size_t i = 0; i < length; ++i)
-                    if (name[i * 2] != static_cast<unsigned char>(component[i]) || name[i * 2 + 1]) equal = false;
-            }
-            if (equal) {
-                if (!slash) {
-                    const auto offset = Wide(entry + 8), bytes = Wide(entry + 16);
-                    if (!bytes || !Fits(offset, bytes, r.size - level - dataAt)) return Failure::Romfs;
-                    out = {level + dataAt + offset, bytes};
-                    return Failure::None;
-                }
-                parent = current;
-                found = true;
-                break;
-            }
-            current = Word(entry + 4);
-        }
-        if (!found) return Failure::Missing;
-        path = slash + 1;
-    }
+Failure FindArchive(const Reader &reader, Region &out) {
+    romfs::Index index;
+    const auto failure = index.Open(reader);
+    return failure == Failure::None ? index.Find(core::design::ca2::Titlebg::Source::Archive, out) : failure;
 }
 
 bool DecodeClim(const std::uint8_t *data, std::size_t size, unsigned format,

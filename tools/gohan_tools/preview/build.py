@@ -44,7 +44,7 @@ def build(root: Path, directory: Path, screen: str, compiler: str | None, dev: b
                root / 'tests/host/input_hook_stub.cpp',
                *[root / 'src/core' / (name + '.cpp') for name in ('frame', 'feature', 'utf', 'format', 'input_block')],
                *engine, *sorted((root / 'src/ui/renderer').glob('*.cpp')),
-               *sorted((root / 'src/game').glob('title_background*.cpp')), menu_gen / 'menu_table.cpp']
+               *sorted((root / 'src/game').glob('title_background*.cpp')), *sorted((root / 'src/game').glob('romfs*.cpp')), menu_gen / 'menu_table.cpp']
     executable = directory / ('menu-preview.exe' if os.name == 'nt' else 'menu-preview')
     flags = ['-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fno-rtti', '-fno-exceptions', '-pthread']
     if dev:

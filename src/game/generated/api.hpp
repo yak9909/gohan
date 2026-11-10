@@ -12,6 +12,7 @@ struct AcnlPlayerSave;
 struct AcnlGardenSavePrefix;
 struct AcnlPadReaderPrefix;
 struct AcnlPadState;
+struct AcnlPlayerInventoryFinanceF010;
 struct AcnlUiPoint2;
 struct AcnlUiPoint2I;
 struct SeadControllerBasePrefix;
@@ -137,6 +138,23 @@ struct AcnlPadState
   unsigned int released;
   std::int16_t circle_x;
   std::int16_t circle_y;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+struct AcnlPlayerInventoryFinanceF010
+{
+  std::uint8_t unknown0[27532];
+  AcnlEncryptedValueF010 bank;
+  AcnlEncryptedValueF010 loan;
+  AcnlEncryptedValueF010 medals;
+  std::uint8_t unknown_after_medals[44];
+  ItemID pocket[16];
+  std::uint8_t pocket_flags[16];
+  std::uint8_t unknown_after_pocket[744];
+  AcnlEncryptedValueF010 wallet;
+  std::uint8_t unknown_after_wallet[9184];
+  ItemID storage[180];
 };
 #pragma pack(pop)
 
@@ -988,6 +1006,24 @@ struct SsysMaLayoutMgr
 #pragma pack(pop)
 
 // プロトタイプ未設定
+inline constexpr std::uintptr_t vc_LOADICON_addr = 0x0026DB1C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Item_IsEmpty_addr = 0x002FCB24;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Inventory_FindEmptySlot_addr = 0x00723604;
+
+using Inventory_GetSlot_t = struct ItemID * (*)(void *inventory, unsigned int slot, std::uint8_t *out_flag, unsigned int fallback);
+inline constexpr std::uintptr_t Inventory_GetSlot_addr = 0x00723878;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ItemName_ResolvePhrase_addr = 0x0056D274;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t script_WordRes_Ctor_addr = 0x005FC344;
+
+// プロトタイプ未設定
 inline constexpr std::uintptr_t vc_A_GETONLINEPLAYERINDEX_addr = 0x00305F6C;
 
 // プロトタイプ未設定
@@ -1125,6 +1161,9 @@ inline constexpr std::uintptr_t nwlyt_Picture_DrawToCommandList_addr = 0x0073CB5
 // プロトタイプ未設定
 inline constexpr std::uintptr_t DrawCtx_FlushBatch_addr = 0x004B8360;
 
+using g_ActiveBsMenuItem_t = void *;
+inline constexpr std::uintptr_t g_ActiveBsMenuItem_addr = 0x009499EC;
+
 using vc_MAPBOOL_t = std::uint8_t;
 inline constexpr std::uintptr_t vc_MAPBOOL_addr = 0x00949C30;
 
@@ -1188,6 +1227,10 @@ inline constexpr std::uintptr_t g_DefaultWideTagProcessor_addr = 0x0097C0B4;
 using vtbl_sead_ExpHeap_t = SeadExpHeapVtable;
 inline constexpr std::uintptr_t vtbl_sead_ExpHeap_addr = 0x008FFEF8;
 
+inline constexpr std::uintptr_t BsMenuItem_vtable = 0x008E5220;
+
+inline constexpr std::uintptr_t script_WordRes_vtable = 0x00904954;
+
 inline constexpr std::uintptr_t FrameDispatch_addr = 0x001B721C;
 inline constexpr std::uint32_t FrameDispatch_len = 16;
 inline constexpr std::uint32_t FrameDispatch_crc32 = 0x92DE8A91;
@@ -1203,6 +1246,10 @@ inline constexpr std::uint32_t InputControllerCalc_crc32 = 0xB77ADF3C;
 inline constexpr std::uintptr_t KeepSetItem_addr = 0x002FC950;
 inline constexpr std::uint32_t KeepSetItem_len = 16;
 inline constexpr std::uint32_t KeepSetItem_crc32 = 0x9BA5F1CD;
+
+inline constexpr std::uintptr_t ItemNameResolve_addr = 0x0056D274;
+inline constexpr std::uint32_t ItemNameResolve_len = 16;
+inline constexpr std::uint32_t ItemNameResolve_crc32 = 0x4E813A66;
 
 inline constexpr std::uintptr_t LayoutTopEntry_addr = 0x00566DF8;
 inline constexpr std::uint32_t LayoutTopEntry_len = 16;
@@ -1527,5 +1574,25 @@ inline constexpr std::uint32_t DailyUpdateEntry_crc32 = 0xF83B0570;
 inline constexpr std::uintptr_t UseExitEntry_addr = 0x005B464C;
 inline constexpr std::uint32_t UseExitEntry_len = 4;
 inline constexpr std::uint32_t UseExitEntry_crc32 = 0x5809AA4E;
+
+inline constexpr std::uintptr_t PocketLoadIcon_addr = 0x0026DB1C;
+inline constexpr std::uint32_t PocketLoadIcon_len = 4;
+inline constexpr std::uint32_t PocketLoadIcon_crc32 = 0xC31DF273;
+
+inline constexpr std::uintptr_t PocketInit_addr = 0x002FCBB4;
+inline constexpr std::uint32_t PocketInit_len = 4;
+inline constexpr std::uint32_t PocketInit_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t PocketEmpty_addr = 0x002FCB24;
+inline constexpr std::uint32_t PocketEmpty_len = 4;
+inline constexpr std::uint32_t PocketEmpty_crc32 = 0x76252507;
+
+inline constexpr std::uintptr_t PocketFindEmpty_addr = 0x00723604;
+inline constexpr std::uint32_t PocketFindEmpty_len = 4;
+inline constexpr std::uint32_t PocketFindEmpty_crc32 = 0x2F862E7F;
+
+inline constexpr std::uintptr_t PocketHidden_addr = 0x007238C0;
+inline constexpr std::uint32_t PocketHidden_len = 4;
+inline constexpr std::uint32_t PocketHidden_crc32 = 0x792D5167;
 
 } // namespace gohan::game::generated

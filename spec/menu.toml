@@ -288,6 +288,17 @@ control = "toggle"
 behavior = "state"
 
 [[item.item.item]]
+id = "items.drop_item"
+label = "ドロップアイテム"
+desc = "マップエディターとドロップ系チートが参照するアイテムIDです。長押しのスポイトでも変わります。FFFF は未設定です。"
+control = "number"
+source = "setting"
+format = "hex"
+default = 0xFFFF
+range = [0, 0xFFFF]
+step = 1
+
+[[item.item.item]]
 id = "items.trample"
 label = "歩いた場所のアイテムを消し去る"
 desc = "あなたが歩いてきた場所に何かが残る事は決してありません。"
@@ -301,6 +312,24 @@ label = "どこでも掘れる"
 desc = "木/岩やアイテムから、川/崖越し/建造物まで、ありとあらゆる状況で掘れるようになります。"
 control = "toggle"
 behavior = "state"
+
+[[item.item]]
+id = "items.pocket"
+label = "ポケットアイテム"
+desc = "入力したIDのアイテムを持ち物の空いているスロットに入れます。"
+control = "action"
+behavior = "trigger"
+input = "hex"
+range = [0, 0x7FFF]
+
+[[item.item]]
+id = "items.hidden"
+label = "没アイテム表示"
+desc = "持ち物に表示されないアイテム（没アイテム）を表示します。自前表示では没アイテムに名前とアイコンを付けます。"
+control = "select"
+source = "setting"
+options = ["非表示", "表示", "自前表示"]
+default = 0
 
 [[item]]
 id = "town"

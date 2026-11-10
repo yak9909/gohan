@@ -147,6 +147,7 @@ class Engine {
     const ItemDef &Def(u16 item) const;
     const ItemState &State(u16 item) const;
     s32 Applied(u16 item) const { return state_[item].applied; }
+    bool ReadSetting(u16 item, s32 &value) const;
     std::size_t Depth() const { return depth_; }
     u16 Folder() const { return stack_[depth_]; }
     // 入ったフォルダの道筋。level 0 は根（kNoItem）、1 以降は入った順（お気に入りの中のフォルダは仮のフォルダを経由する）。
@@ -273,4 +274,10 @@ class Engine {
     u16 hold_key_ = 0;
     u32 hold_start_ = 0;
 };
+} // namespace gohan::menu
+
+namespace gohan::menu {
+// 構成の接続点が一つのエンジンを結ぶ。照会はゲームのスレッドだけ。
+void SetSettingsEngine(const Engine *engine);
+bool ReadSetting(u16 item, s32 &value);
 } // namespace gohan::menu

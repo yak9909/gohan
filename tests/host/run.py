@@ -96,6 +96,24 @@ def main() -> int:
         out = build_exe(sources, output, includes, defines)
         executions.append([str(out), *args])
 
+    run(['tests/host/test_jobs_files.cpp', 'src/core/jobs.cpp', 'src/core/files.cpp', 'src/core/frame.cpp'], 'test_jobs_files')
+    run(['tests/host/test_romfs.cpp', 'src/game/romfs.cpp', 'src/game/romfs_self.cpp'], 'test_romfs')
+    item_sources = ['tests/host/test_p3_items.cpp', 'src/game/item_names_parse.cpp', 'src/game/pocket_items.cpp',
+                    'src/core/files.cpp', 'src/core/jobs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', 'src/game/romfs.cpp']
+    item_exe = build_exe(item_sources, 'test_p3_items')
+    executions.append([str(item_exe)])
+    # 本物の名前表は手元の設定がある場合だけ追加で読む。合成 MSBT は常に試す。
+    import tomllib
+    local = root / 'gohan.local.toml'
+    if local.exists():
+        config = tomllib.loads(local.read_text(encoding='utf-8-sig')).get('rom', {})
+        for key in ('acnl_update_romfs', 'acnl_base_romfs'):
+            folder = config.get(key)
+            if folder:
+                path = Path(folder) / 'Script/Str/STR_Item_name.umsbt'
+                if path.is_file():
+                    executions.append([str(item_exe), str(path)])
+    
     run(['tests/host/test_core.cpp', 'src/core/format.cpp', 'src/core/utf.cpp',
          'src/core/frame.cpp', 'src/core/feature.cpp'], 'test_core')
     run(['tests/host/test_patch_set.cpp', 'src/game/patch_set.cpp', 'src/game/weather.cpp'], 'test_patch_set')
@@ -121,7 +139,7 @@ def main() -> int:
 
     # 描画。
     renderer = [str(path.relative_to(root)) for path in sorted((root / 'src/ui/renderer').glob('*.cpp'))]
-    background = ['src/game/title_background.cpp', 'src/game/title_background_io.cpp', 'src/game/title_background_self.cpp']
+    background = ['src/game/title_background.cpp', 'src/game/title_background_io.cpp', 'src/game/title_background_self.cpp', 'src/game/romfs.cpp', 'src/game/romfs_self.cpp']
     renderer += background
     run(['tests/host/test_title_background.cpp', *background], 'test_title_background')
     run(['tests/host/test_selection_compositor.cpp', *background], 'test_selection_compositor')
@@ -176,6 +194,12 @@ def main() -> int:
          'src/features/shizue_skip/shizue_skip.cpp', 'src/game/player_motion.cpp',
          'src/core/input_block.cpp', 'src/core/frame.cpp', *engine,
          'build/host/gen-sample/menu_table.cpp'], 'test_p2_features', ('src', 'build/host/gen-sample'))
+
+    run(['tests/host/test_p3_features.cpp', 'src/features/pocket_items/pocket_items.cpp',
+         'src/features/hidden_items/hidden_items.cpp', 'src/features/drop_item/drop_item.cpp',
+         'src/game/item_names.cpp', 'src/game/item_names_parse.cpp', 'src/game/romfs.cpp',
+         'src/core/files.cpp', 'src/core/jobs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine,
+         'build/host/gen-sample/menu_table.cpp'], 'test_p3_features', ('src', 'build/host/gen-sample'))
 
     # 次の起動に持ち越す物の保存の時機（CTRPF に依存しない判断と、写しの受け渡し）。
     run(['tests/host/test_menu_save.cpp', 'src/features/menu_screen/persist_policy.cpp',

@@ -545,6 +545,17 @@ void TestSettingValue() {
     auto h = Make();
     Engine &e = h->engine;
     const u16 num = Idx(MenuId::Num);
+    s32 setting = -1;
+    assert(e.ReadSetting(num, setting) && setting == 10);
+    assert(!e.ReadSetting(kNoItem, setting) && !e.ReadSetting(Idx(MenuId::Wallet), setting));
+    assert(!e.ReadSetting(Idx(MenuId::Folder), setting));
+    SetSettingsEngine(&e);
+    assert(ReadSetting(num, setting) && setting == 10);
+    assert(e.SetValue(num, 50));
+    assert(ReadSetting(num, setting) && setting == 10); // 編集中の値は公開しない。
+    assert(e.SetValue(num, 10));
+    SetSettingsEngine(nullptr);
+    assert(!ReadSetting(num, setting));
     e.Open(h->now);
     Goto(*h, MenuId::Num);
     assert(Is(e.View(num).value, "10") && e.State(num).available);
