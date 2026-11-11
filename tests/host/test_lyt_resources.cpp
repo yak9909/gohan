@@ -1,4 +1,5 @@
 #include "game/lyt/recording_resources.hpp"
+#include "game/lyt/icon_cache.hpp"
 #include "lyt_game.hpp"
 #include "lyt_font.hpp"
 #include <array>
@@ -13,6 +14,7 @@ using detail::RecordingResources;
 using Fake = fakegame::Game;
 
 constexpr unsigned AtlasBytes = 256;
+constexpr unsigned ResidentBytes = AtlasBytes + gohan::core::limits::RendererIconCacheBytes;
 
 void Failures(const FontResource &font) {
     RecordingResources resources(fakegame::Api());
@@ -22,12 +24,12 @@ void Failures(const FontResource &font) {
     assert(!resources.Acquire(font) && resources.Empty());
     Fake::haveAllocator = true;
     // ヒープの空きが足りない時は、何も確保せず拒否する（ゲームは確保の失敗を検査しない）。
-    Fake::largestBlock = AtlasBytes + 127;
+    Fake::largestBlock = ResidentBytes + 127;
     assert(!resources.Acquire(font) && resources.Empty() && Fake::allocations == 0);
     Fake::largestBlock = 3000000;
-    Fake::freeBytes = AtlasBytes + gohan::core::limits::RendererGameAllocationSlack - 1;
+    Fake::freeBytes = ResidentBytes + gohan::core::limits::RendererGameAllocationSlack - 1;
     assert(!resources.Acquire(font) && resources.Empty() && Fake::allocations == 0);
-    Fake::freeBytes = AtlasBytes + gohan::core::limits::RendererGameAllocationSlack;
+    Fake::freeBytes = ResidentBytes + gohan::core::limits::RendererGameAllocationSlack;
     assert(resources.Acquire(font) && Fake::lists.size() == 2);
     assert(resources.ReleaseIdle() && Fake::Balanced());
     Fake::Reset();
@@ -59,7 +61,9 @@ void Failures(const FontResource &font) {
 void RepeatedAcquireAndRelease(const FontResource &font) {
     RecordingResources resources(fakegame::Api());
     for (int i = 0; i < 50; ++i) {
+        const auto generation = SharedIconCache().Generation();
         assert(resources.Acquire(font));
+        assert(SharedIconCache().Data() && SharedIconCache().Generation() != generation);
         assert(!resources.Empty() && Fake::bound == 7 && Fake::lists.size() == 2);
         assert(std::memcmp(resources.Atlas(), font.atlas, font.atlasBytes) == 0);
         const auto attempts = Fake::attempts;
@@ -71,6 +75,7 @@ void RepeatedAcquireAndRelease(const FontResource &font) {
         }
         Fake::bound = 7;
         assert(resources.ReleaseIdle() && resources.Empty());
+        assert(!SharedIconCache().Data());
         assert(Fake::releases.substr(Fake::releases.size() - 3) == "LLA");
         assert(Fake::lists.empty() && Fake::allocations == Fake::frees);
         assert(resources.ReleaseIdle() && Fake::allocations == Fake::frees);
@@ -84,10 +89,12 @@ void HeapBudget() {
     RecordingResources resources(fakegame::Api());
     assert(resources.Acquire(font.resource));
     auto m = resources.MemoryStatus();
-    assert(m.gameBytes == 119296 && m.gameUpperBytes == 120320);
+    assert(m.gameBytes == 152064 && m.gameUpperBytes == 153088);
+    assert(m.iconCacheBytes == 32768);
+    assert(SharedIconCache().Data() == static_cast<const std::uint8_t *>(resources.Atlas()) + m.gameBytes - m.iconCacheBytes);
     assert(m.fontBytes == 32768 && m.uiBytes == 33280 && m.windowBytes == 32768 && m.selectionBytes == 20480);
-    assert(m.before.freeBytes == 228580 && m.after.freeBytes == 109284);
-    assert(m.before.freeBytes - m.gameUpperBytes == 108260);
+    assert(m.before.freeBytes == 228580 && m.after.freeBytes == 76516);
+    assert(m.before.freeBytes - m.gameUpperBytes == 75492);
     assert(m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries) && Fake::allocateCalls == 1);
     const auto *data = static_cast<const std::uint8_t *>(resources.Atlas());
     for (unsigned i = 0; i < font.resource.textureCount; ++i)
@@ -109,9 +116,9 @@ void HeapBudget() {
         if (ready) assert(resources.MemoryStatus().gameUpperBytes == limits::RendererResidentHeapLimit);
         assert(resources.ReleaseIdle() && Fake::Balanced());
     }
-    Fake::Reset(); Fake::freeBytes = 120319;
+    Fake::Reset(); Fake::freeBytes = 153087;
     assert(!resources.Acquire(font.resource) && Fake::allocateCalls == 0);
-    Fake::Reset(); Fake::largestBlock = 119296 + 127;
+    Fake::Reset(); Fake::largestBlock = 152064 + 127;
     assert(!resources.Acquire(font.resource) && Fake::allocateCalls == 0);
 
 }

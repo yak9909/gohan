@@ -9,3 +9,7 @@ hhd = "D:/game-inputs/hhd-jp-v1.1"
 
 [analysis]
 symbols = "D:/symbol-inputs/symbols"
+
+[hidden_icons]
+# 任意。64×64 RGBA PNG（番号.png）。入力の絵と生成した arc は収録しません。
+# png_directory = "D:/game-inputs/hidden-icons"

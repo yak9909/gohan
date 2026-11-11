@@ -3,6 +3,8 @@ from pathlib import Path
 import hashlib
 import json
 import re
+import tomllib
+from . import hidden_icons
 
 
 def validate(data: bytes) -> None:
@@ -45,5 +47,16 @@ def build(root: Path, output: Path | None = None) -> Path:
         'output': destination.relative_to(output).as_posix(),
         'output_sha256': hashlib.sha256(destination.read_bytes()).hexdigest(),
     }]}
+    local = root / 'gohan.local.toml'
+    config = tomllib.loads(local.read_text(encoding='utf-8-sig')) if local.exists() else {}
+    folder = config.get('hidden_icons', {}).get('png_directory')
+    arc = output / 'sdmc/luma/plugins/gohan/common/hidden_item_icons.arc'
+    if folder:
+        row = hidden_icons.build(data, root / folder, arc)
+        row['output'] = arc.relative_to(output).as_posix()
+        manifest['files'].append(row)
+    else:
+        arc.unlink(missing_ok=True)
+        print('PNG フォルダが未指定のため、アイコンの arc は作りません。')
     (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return destination

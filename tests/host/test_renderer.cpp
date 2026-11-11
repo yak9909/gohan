@@ -305,7 +305,7 @@ void Dispatch() {
     assert(memory.find("確保直前: 合計 738876 / 最大 603712") != std::string::npos);
     assert(memory.find("確保直後: 合計 640060 / 最大 504896") != std::string::npos);
     assert(memory.find("現在: 合計 430000 / 最大 300000") != std::string::npos);
-    assert(memory.find("常駐: 画像 119296 / 管理分込み上限 120320 / 予算 120320") != std::string::npos);
+    assert(memory.find("常駐: 画像 152064 / 管理分込み上限 153088 / 予算 153088") != std::string::npos);
     assert(memory.find("字形 32768 / UI（破線込み）33280 / 窓 32768") != std::string::npos);
     assert(memory.find("記録列等 427016") != std::string::npos);
     assert(memory.find("150コマ（常駐）150150") != std::string::npos);
@@ -385,9 +385,9 @@ void Shutdown() {
 namespace gohan::game::lyt {
 RendererMemory ReadRendererMemory() {
     return {{738876, 603712, true}, {640060, 504896, true}, {430000, 300000, true},
-            119296, 120320, 831759,
+            152064, 153088, 831759,
             2 * (68 + gohan::core::limits::RendererRecordBytes + 28 * gohan::core::limits::RendererQueueEntries), 32768, 33280, 32768, 20480,
-            {BackgroundResult::InsufficientSpace, 401184, 399000, true}};
+            {BackgroundResult::InsufficientSpace, 401184, 399000, true}, 32768};
 }
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
     if (background) *background = {BackgroundResult::InsufficientSpace, 401184, 399000, true};

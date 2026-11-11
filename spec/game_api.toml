@@ -3,7 +3,7 @@ output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
 vtables = ["BsMenuItem", "script_WordRes"]
 functions = [
-    "vc_LOADICON", "Item_IsEmpty", "Inventory_FindEmptySlot", "Inventory_GetSlot", "ItemName_ResolvePhrase", "script_WordRes_Ctor",
+    "SsysMaLayoutNode_FindPicture", "nwlyt_TexMap_UpdateGpuRegs", "vc_LOADICON", "Item_IsEmpty", "Inventory_FindEmptySlot", "Inventory_GetSlot", "ItemName_ResolvePhrase", "script_WordRes_Ctor",
     "vc_A_GETONLINEPLAYERINDEX", "vc_PLAYERINSTANCE", "vc_WORLDCOORDS", "Actor_SetState", "Player_CopyStatePacketForEdit", "StatePacket_PackXZ", "PlayerState_FaintEnter", "Field_SetItemAtWorldXY", "Field_GetItemAtXY", "Field_GrowUpWiltBushSapling", "Field_GrowUpWiltSapling", "Field_GrowUpWiltSaplingToItem3", "Field_GrowUpWiltSaplingToItem4", "Save_GetCurrentPlayer", "vc_D_GARDEN", "PlayerSave_GetSlotIndex", "vc_ROOMDAT", "Villager_RunDailyUpdateOnce", "Room_UseExit",
     "Effect_DigDirt",
     "Effect_ScoopScrape",
@@ -38,7 +38,7 @@ globals = [
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
 ]
 types = [
-    "AcnlPlayerInventoryFinanceF010",
+    "AcnlItemDragIconNodeF009", "AcnlPlayerInventoryFinanceF010",
     "AcnlEncryptedValueF010", "AcnlPlayerSave", "AcnlGardenSavePrefix",
     "SsysMaLayoutMgr", "SsysMaLayoutList", "SsysMaLayoutNode", "SsysMaLayoutNodeVtable",
     "SsysMaAllocator", "SeadExpHeapPrefix",
@@ -608,3 +608,45 @@ name = "ItemNameResolve"
 function = "ItemName_ResolvePhrase"
 offset = 0
 length = 16
+
+[[hooks]]
+name = "HiddenIconSet"
+function = "ItemIconWidget_SetItem"
+offset = 0
+length = 4
+
+[[hooks]]
+name = "HiddenIconDtor"
+function = "ItemDragIconNode_Dtor"
+offset = 4
+length = 4
+
+[[hooks]]
+name = "HiddenIconDelete"
+function = "ItemDragIconNode_DeletingDtor"
+offset = 4
+length = 4
+
+[[checks]]
+name = "HiddenIconDtorEntry"
+function = "ItemDragIconNode_Dtor"
+offset = 0
+length = 4
+
+[[checks]]
+name = "HiddenIconDeleteEntry"
+function = "ItemDragIconNode_DeletingDtor"
+offset = 0
+length = 4
+
+[[checks]]
+name = "HiddenIconFind"
+function = "SsysMaLayoutNode_FindPicture"
+offset = 0
+length = 4
+
+[[checks]]
+name = "HiddenIconUpdate"
+function = "nwlyt_TexMap_UpdateGpuRegs"
+offset = 0
+length = 4

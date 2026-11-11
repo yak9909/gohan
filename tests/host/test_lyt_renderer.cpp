@@ -76,7 +76,8 @@ int main() {
     assert(InstallRenderer(font.resource) == InstallResult::Ready);
     auto memory = ReadRendererMemory();
     assert(memory.pluginBytes >= sizeof(detail::Engine));
-    assert(memory.gameBytes == font.resource.atlasBytes && Fake::blocks.size() == 1);
+    assert(memory.gameBytes == font.resource.atlasBytes + gohan::core::limits::RendererIconCacheBytes && Fake::blocks.size() == 1);
+    assert(memory.iconCacheBytes == gohan::core::limits::RendererIconCacheBytes);
     assert(memory.before.measured && memory.after.measured && memory.current.measured);
     assert(memory.before.freeBytes - memory.after.freeBytes == memory.gameBytes);
     Fake::freeBytes = 607800 + memory.gameBytes;
@@ -99,7 +100,7 @@ int main() {
         assert(++calls < 20);
     assert(Fake::Balanced() && !Present(drawing));
     memory = ReadRendererMemory();
-    assert(memory.gameBytes == 0 && memory.pluginBytes == 0 && memory.commandBytes == 0);
+    assert(memory.gameBytes == 0 && memory.pluginBytes == 0 && memory.commandBytes == 0 && memory.iconCacheBytes == 0);
     for (int repeat = 0; repeat < 3; ++repeat) {
         assert(InstallRenderer(font.resource) == InstallResult::Ready);
         assert(Present(drawing));

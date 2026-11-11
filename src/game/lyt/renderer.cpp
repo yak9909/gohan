@@ -69,6 +69,7 @@ RendererMemory ReadRendererMemory() {
     if (!engine) {
         memoryStatus.gameBytes = memoryStatus.gameUpperBytes = memoryStatus.commandBytes = 0;
         memoryStatus.fontBytes = memoryStatus.uiBytes = memoryStatus.windowBytes = memoryStatus.selectionBytes = 0;
+        memoryStatus.iconCacheBytes = 0;
     }
     return memoryStatus;
 }
