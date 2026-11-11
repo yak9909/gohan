@@ -3,6 +3,7 @@
 #include "features/drop_item/drop_item.hpp"
 #include "game/pocket_items.hpp"
 #include "game/item_names.hpp"
+#include "game/hidden_icons.hpp"
 #include "game/hook_batch.hpp"
 #include "game/romfs.hpp"
 #include "core/frame.hpp"
@@ -15,6 +16,7 @@
 namespace {
 gohan::game::Result result = gohan::game::Result::Ok;
 unsigned runs = 0, lastId = 0;
+bool iconsSettled = false, iconsAvailable = false;
 gohan::game::items::HiddenMode mode = gohan::game::items::HiddenMode::Hide;
 std::thread::id gameThread;
 bool Pause() { return false; }
@@ -32,6 +34,9 @@ Result AddPocket(std::uint16_t id) {
     ++runs; lastId = id; return result;
 }
 bool WireHidden() { return true; }
+void PollHidden() {}
+bool HiddenIconsSettled() { return iconsSettled; }
+bool HiddenIconsAvailable() { return iconsAvailable; }
 void ShutdownHidden() { mode = HiddenMode::Hide; }
 Result SetHidden(HiddenMode next) { assert(std::this_thread::get_id() == gameThread); mode = next; return Result::Ok; }
 }
@@ -80,6 +85,15 @@ int main() {
         assert(mode != static_cast<game::items::HiddenMode>(next));
         core::frame::Dispatch();
         assert(mode == static_cast<game::items::HiddenMode>(next));
+        if (next == 2) {
+            menu::Notice missing;
+            assert(!menu::TakeNotice(missing));
+            iconsSettled = true;
+            core::frame::Dispatch();
+            assert(menu::TakeNotice(missing) && missing.red && std::strstr(missing.message, "アイコンが無い（名前だけ）"));
+            core::frame::Dispatch();
+            assert(!menu::TakeNotice(missing));
+        }
     }
     engine.Open(1);
     assert(engine.Select(id(menu::MenuId::Items))); engine.Press(menu::key::A, 2);

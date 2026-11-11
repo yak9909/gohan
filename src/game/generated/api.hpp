@@ -10,6 +10,7 @@ struct AcnlEncryptedValueF010;
 struct ItemID;
 struct AcnlPlayerSave;
 struct AcnlGardenSavePrefix;
+struct AcnlItemDragIconNodeF009;
 struct AcnlPadReaderPrefix;
 struct AcnlPadState;
 struct AcnlPlayerInventoryFinanceF010;
@@ -114,6 +115,27 @@ struct AcnlGardenSavePrefix
   AcnlPlayerSave players[4];            
   std::uint8_t unk_292A0[269120];
   AcnlEncryptedValueF010 turnip_prices[12]; 
+};
+#pragma pack(pop)
+
+#pragma pack(push, 2)
+struct AcnlItemDragIconNodeF009
+{
+  unsigned int vtable;
+  std::uint8_t unknown004[213];
+  std::uint8_t icon_interaction;
+  std::uint8_t unknown218[83];
+  std::uint8_t accepts_input;
+  std::uint8_t unknown302[2];
+  void *icon_accessor;
+  std::uint8_t layout_storage[332];
+  void *disabled_animation;
+  std::uint8_t unknown644[20];
+  void *number_pane;
+  void *selection_pane;
+  std::uint16_t item_id;
+  std::uint16_t item_flags;
+  std::uint8_t unknown676[200];
 };
 #pragma pack(pop)
 
@@ -1005,6 +1027,12 @@ struct SsysMaLayoutMgr
 };
 #pragma pack(pop)
 
+using SsysMaLayoutNode_FindPicture_t = NwLytPicture * (*)(SsysMaLayoutNode *node, const char *name);
+inline constexpr std::uintptr_t SsysMaLayoutNode_FindPicture_addr = 0x00567E44;
+
+using nwlyt_TexMap_UpdateGpuRegs_t = NwLytTexMap * (*)(NwLytTexMap *tex_map);
+inline constexpr std::uintptr_t nwlyt_TexMap_UpdateGpuRegs_addr = 0x004B9830;
+
 // プロトタイプ未設定
 inline constexpr std::uintptr_t vc_LOADICON_addr = 0x0026DB1C;
 
@@ -1250,6 +1278,18 @@ inline constexpr std::uint32_t KeepSetItem_crc32 = 0x9BA5F1CD;
 inline constexpr std::uintptr_t ItemNameResolve_addr = 0x0056D274;
 inline constexpr std::uint32_t ItemNameResolve_len = 16;
 inline constexpr std::uint32_t ItemNameResolve_crc32 = 0x4E813A66;
+
+inline constexpr std::uintptr_t HiddenIconSet_addr = 0x002B8EAC;
+inline constexpr std::uint32_t HiddenIconSet_len = 4;
+inline constexpr std::uint32_t HiddenIconSet_crc32 = 0xB8CF3BCC;
+
+inline constexpr std::uintptr_t HiddenIconDtor_addr = 0x002B99D0;
+inline constexpr std::uint32_t HiddenIconDtor_len = 4;
+inline constexpr std::uint32_t HiddenIconDtor_crc32 = 0xF83B0570;
+
+inline constexpr std::uintptr_t HiddenIconDelete_addr = 0x002B9978;
+inline constexpr std::uint32_t HiddenIconDelete_len = 4;
+inline constexpr std::uint32_t HiddenIconDelete_crc32 = 0xF83B0570;
 
 inline constexpr std::uintptr_t LayoutTopEntry_addr = 0x00566DF8;
 inline constexpr std::uint32_t LayoutTopEntry_len = 16;
@@ -1594,5 +1634,21 @@ inline constexpr std::uint32_t PocketFindEmpty_crc32 = 0x2F862E7F;
 inline constexpr std::uintptr_t PocketHidden_addr = 0x007238C0;
 inline constexpr std::uint32_t PocketHidden_len = 4;
 inline constexpr std::uint32_t PocketHidden_crc32 = 0x792D5167;
+
+inline constexpr std::uintptr_t HiddenIconDtorEntry_addr = 0x002B99CC;
+inline constexpr std::uint32_t HiddenIconDtorEntry_len = 4;
+inline constexpr std::uint32_t HiddenIconDtorEntry_crc32 = 0x0FAD3324;
+
+inline constexpr std::uintptr_t HiddenIconDeleteEntry_addr = 0x002B9974;
+inline constexpr std::uint32_t HiddenIconDeleteEntry_len = 4;
+inline constexpr std::uint32_t HiddenIconDeleteEntry_crc32 = 0x457B8C9C;
+
+inline constexpr std::uintptr_t HiddenIconFind_addr = 0x00567E44;
+inline constexpr std::uint32_t HiddenIconFind_len = 4;
+inline constexpr std::uint32_t HiddenIconFind_crc32 = 0xC31DF273;
+
+inline constexpr std::uintptr_t HiddenIconUpdate_addr = 0x004B9830;
+inline constexpr std::uint32_t HiddenIconUpdate_len = 4;
+inline constexpr std::uint32_t HiddenIconUpdate_crc32 = 0x2EF68993;
 
 } // namespace gohan::game::generated

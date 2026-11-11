@@ -5,11 +5,11 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-// P3a 後: 既存 5 本、作業の完了、名前表、投入の通知、表示設定の受け取りの計 9 本。
+// P3b 後: 既存 5 本、作業の完了、名前表、投入の通知、表示設定とアイコン読込の計 9 本。
 inline constexpr std::size_t RegisteredFrameSteps = 9;
-// CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、アイテムの名前 1。
+// CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、名前 1、アイコンと後始末 3。
 // 描画は自前ノードの仮想表で接続し、CTRPF のフックは増やさない。
-inline constexpr std::size_t GameHooks = 5;
+inline constexpr std::size_t GameHooks = 8;
 // 作業の Task は共通 I/O 1 本と、既存のメニュー保存 1 本。
 inline constexpr std::size_t WorkerTasks = 2;
 inline constexpr std::size_t Jobs = 16;
@@ -60,10 +60,11 @@ static_assert(RendererSelectionCacheBytes == 150150);
 inline constexpr std::size_t RendererTextureBytes = RendererFontTextureBytes + RendererUiTextureBytes +
     RendererWindowTextureBytes + RendererSelectionSurfaceBytes * RendererSelectionSurfaces;
 inline constexpr unsigned RendererGameAllocationSlack = 1024;
-inline constexpr unsigned RendererResidentHeapLimit = 120320;
+inline constexpr unsigned RendererIconCacheBytes = 32768;
+inline constexpr unsigned RendererResidentHeapLimit = 153088;
 inline constexpr unsigned RendererGameHeapLimit = RendererResidentHeapLimit;
 static_assert(RendererTextureBytes == 119296);
-static_assert(RendererTextureBytes + RendererGameAllocationSlack <= RendererResidentHeapLimit);
+static_assert(RendererTextureBytes + RendererIconCacheBytes + RendererGameAllocationSlack <= RendererResidentHeapLimit);
 static_assert(RendererSelectionSurfaces >= RendererSelectionIdlePresents + 2);
 inline constexpr unsigned RendererHeapSampleFrames = 30;
 } // namespace gohan::core::limits

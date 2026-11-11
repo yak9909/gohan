@@ -1,11 +1,15 @@
 #include "game/pocket_items.hpp"
 #include "game/hook_batch.hpp"
 #include "game/item_names.hpp"
+#include "game/hidden_icons.hpp"
+#include "game/lyt/icon_cache.hpp"
 #include "game/memory.hpp"
 
 namespace gohan::game::items {
 namespace {
 bool pocketReady = false, hiddenReady = false;
+bool namesSettled = false;
+std::uint32_t iconGeneration = 0;
 HiddenMode mode = HiddenMode::Hide;
 generated::AcnlPlayerInventoryFinanceF010 *Player() {
     return reinterpret_cast<generated::AcnlPlayerInventoryFinanceF010 *(*)()>(generated::Save_GetCurrentPlayer_addr)();
@@ -49,8 +53,13 @@ bool WireHidden() {
 }
 Result SetHidden(HiddenMode value) {
     if (!hiddenReady || (value == HiddenMode::Custom && !NamesHookReady())) return Result::Unsupported;
+    const auto icons = SetHiddenIcons(value == HiddenMode::Custom);
+    if (icons != Result::Ok) return icons;
     const auto result = hidden.Set(value != HiddenMode::Hide);
-    if (result != Result::Ok) return result;
+    if (result != Result::Ok) {
+        SetHiddenIcons(mode == HiddenMode::Custom);
+        return result;
+    }
     const bool changed = mode != value;
     mode = value;
     SharedNames().SetCustom(value == HiddenMode::Custom);
@@ -58,13 +67,26 @@ Result SetHidden(HiddenMode value) {
     return Result::Ok;
 }
 HiddenMode GetHidden() { return mode; }
+void PollHidden() {
+    const bool loaded = PollHiddenIcons();
+    const bool namesNow = SharedNames().Settled();
+    const bool namesChanged = namesNow && !namesSettled;
+    namesSettled = namesNow;
+    const auto &cache = lyt::SharedIconCache();
+    const bool cacheChanged = iconGeneration != cache.Generation() && cache.Data();
+    iconGeneration = cache.Generation();
+    // 表・arc・描画の導入の順序によらず、使えるようになった次のフレームで反映する。
+    if (mode == HiddenMode::Custom && (loaded || namesChanged || cacheChanged)) RefreshPocket(access);
+}
 void ShutdownHidden() {
     PausedGame pause;
     const bool wasShown = mode != HiddenMode::Hide;
     SharedNames().SetCustom(false);
+    SetHiddenIcons(false);
     hidden.Shutdown();
     mode = HiddenMode::Hide;
     if (hiddenReady && wasShown) RefreshPocket(access);
+    ShutdownHiddenIcons();
     hiddenReady = false;
 }
 } // namespace gohan::game::items

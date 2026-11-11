@@ -96,6 +96,12 @@ def main() -> int:
         out = build_exe(sources, output, includes, defines)
         executions.append([str(out), *args])
 
+    hidden_exe = build_exe(['tests/host/test_hidden_icons.cpp', 'src/game/hidden_icon_archive.cpp',
+                           'src/game/hidden_icons.cpp', 'src/game/lyt/icon_cache.cpp'], 'test_hidden_icons')
+    executions.append([str(hidden_exe)])
+    hidden_arc = root / 'out/sdmc/luma/plugins/gohan/common/hidden_item_icons.arc'
+    if hidden_arc.is_file():
+        executions.append([str(hidden_exe), str(hidden_arc)])
     run(['tests/host/test_jobs_files.cpp', 'src/core/jobs.cpp', 'src/core/files.cpp', 'src/core/frame.cpp'], 'test_jobs_files')
     run(['tests/host/test_romfs.cpp', 'src/game/romfs.cpp', 'src/game/romfs_self.cpp'], 'test_romfs')
     item_sources = ['tests/host/test_p3_items.cpp', 'src/game/item_names_parse.cpp', 'src/game/pocket_items.cpp',
@@ -149,10 +155,10 @@ def main() -> int:
         'test_renderer', ('src', 'build/gen'))
     # ゲームの描画の層: 資源・Pane の木・ノード・導入と取り外し。ゲームの API は代役で受ける。
     lyt = ['src/game/lyt/engine.cpp', 'src/game/lyt/scene.cpp', 'src/game/lyt/nodes.cpp',
-           'src/game/lyt/recording_resources.cpp']
+           'src/game/lyt/recording_resources.cpp', 'src/game/lyt/icon_cache.cpp']
     run(['tests/host/test_lyt_renderer.cpp', 'src/game/lyt/renderer.cpp', 'src/game/lyt/verification.cpp', *lyt],
         'test_lyt_renderer', ('tests/host/lyt_fakes', 'tests/host', 'src'))
-    run(['tests/host/test_lyt_resources.cpp', 'src/game/lyt/recording_resources.cpp'],
+    run(['tests/host/test_lyt_resources.cpp', 'src/game/lyt/recording_resources.cpp', 'src/game/lyt/icon_cache.cpp'],
         'test_lyt_resources', ('tests/host', 'src'))
     run(['tests/host/test_lyt_engine.cpp', *lyt], 'test_lyt_engine', ('tests/host', 'src'))
     run(['tests/host/test_lyt_selection.cpp', *lyt], 'test_lyt_selection', ('tests/host', 'src'))

@@ -1,4 +1,5 @@
 #include "game/lyt/recording_resources.hpp"
+#include "game/lyt/icon_cache.hpp"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -44,6 +45,7 @@ bool RecordingResources::Acquire(const FontResource &font) {
         for (std::size_t i = 0; i < required; ++i)
             if (font.textures[i].gpuResident) total += (std::uint64_t(font.textures[i].bytes) + 127) / 128 * 128;
     }
+    total = (total + 127) / 128 * 128 + core::limits::RendererIconCacheBytes;
     if (total + core::limits::RendererGameAllocationSlack > core::limits::RendererResidentHeapLimit) {
         backgroundStatus_.result = BackgroundResult::BudgetExceeded;
         return false;
@@ -86,6 +88,7 @@ bool RecordingResources::Acquire(const FontResource &font) {
         return false;
     }
     memoryStatus_.fontBytes = static_cast<unsigned>(font.atlasBytes);
+    memoryStatus_.iconCacheBytes = core::limits::RendererIconCacheBytes;
     for (std::size_t i = 0; i < required; ++i) {
         if (!font.textures[i].gpuResident) continue;
         const auto bytes = static_cast<unsigned>(font.textures[i].bytes);
@@ -130,6 +133,11 @@ bool RecordingResources::Acquire(const FontResource &font) {
             return false;
         }
     }
+    if (created && !SharedIconCache().Bind(atlas_, bytes, api_.flush, api_.physical)) {
+        ReleaseIdle();
+        backgroundStatus_.result = BackgroundResult::AllocateFailed;
+        return false;
+    }
     return created;
 }
 
@@ -147,6 +155,7 @@ bool RecordingResources::ReleaseIdle() {
         }
     }
     if (atlas_) {
+        SharedIconCache().Unbind();
         api_.free(allocator_, atlas_);
         atlas_ = nullptr;
     }
@@ -154,6 +163,7 @@ bool RecordingResources::ReleaseIdle() {
     memoryStatus_.gameBytes = memoryStatus_.gameUpperBytes = 0;
     memoryStatus_.commandBytes = 0;
     memoryStatus_.fontBytes = memoryStatus_.uiBytes = memoryStatus_.windowBytes = memoryStatus_.selectionBytes = 0;
+    memoryStatus_.iconCacheBytes = 0;
     return true;
 }
 } // namespace gohan::game::lyt::detail

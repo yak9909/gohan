@@ -366,7 +366,7 @@ void Images(Engine &engine) {
     Fake::freeBytes = 32768 + 128;
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
     Fake::Reset();
-    constexpr unsigned totalBytes = 32768 + limits::RendererUiTextureBytes;
+    constexpr unsigned totalBytes = 32768 + limits::RendererUiTextureBytes + limits::RendererIconCacheBytes;
     Fake::freeBytes = totalBytes + limits::RendererGameAllocationSlack - 1;
     assert(engine.Install(font.resource) == InstallResult::ResourceFailed && Fake::allocations == 0);
     Fake::Reset();
@@ -376,7 +376,7 @@ void Images(Engine &engine) {
     Fake::freeBytes = totalBytes + limits::RendererGameAllocationSlack;
     Fake::largestBlock = totalBytes + 128;
     assert(engine.Install(font.resource) == InstallResult::Ready);
-    assert(Fake::blocks.at(engine.Resources().Atlas()) == 32768 + limits::RendererUiTextureBytes);
+    assert(Fake::blocks.at(engine.Resources().Atlas()) == totalBytes);
     const auto *data = static_cast<const unsigned char *>(engine.Resources().Atlas());
     assert(std::memcmp(data + TextureOffset(font.resource, 0), ui.data(), ui.size()) == 0);
     assert(std::memcmp(data + TextureOffset(font.resource, 2), dash.data(), dash.size()) == 0);
@@ -445,7 +445,7 @@ void BackgroundLifetime(Engine &engine) {
     image.scale = 1; image.color = 0xFFFFFFFFu;
     open.screens[0].count = open.screens[0].rectangles = 1;
     for (unsigned cycle = 0; cycle < 100; ++cycle) {
-        Fake::freeBytes = 119296 + (cycle % 2 ? 1 : 50000);
+        Fake::freeBytes = 152064 + (cycle % 2 ? 1 : 50000);
         open.revisions[0] = cycle * 2 + 1;
         assert(engine.Present(open));
         const auto panes = Children(engine.Nodes().Node(Screen::Top).root);
@@ -462,7 +462,7 @@ void BackgroundLifetime(Engine &engine) {
         }
         assert(engine.Resources().Atlas() == allocation && Fake::allocateCalls == 1 && Fake::frees == 0);
         const auto m = engine.Resources().MemoryStatus();
-        assert(m.gameBytes == 119296 && m.gameUpperBytes == 120320 && m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries));
+        assert(m.gameBytes == 152064 && m.gameUpperBytes == 153088 && m.commandBytes == 2 * (68 + limits::RendererRecordBytes + 28 * limits::RendererQueueEntries));
     }
     for (unsigned n = 1; n < Engine::DrainFrames; ++n) assert(!engine.Detach());
     assert(engine.Detach() && Fake::Balanced());

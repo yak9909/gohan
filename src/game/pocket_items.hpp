@@ -21,5 +21,6 @@ Result AddPocket(std::uint16_t id);
 bool WireHidden();
 void ShutdownHidden();
 Result SetHidden(HiddenMode mode);
+void PollHidden();
 HiddenMode GetHidden();
 } // namespace gohan::game::items
