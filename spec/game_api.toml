@@ -1,7 +1,7 @@
 build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
-vtables = ["BsMenuItem", "script_WordRes"]
+vtables = ["BsMenuItem", "script_WordRes", "InstSelect_8", "script_WordPtr"]
 functions = [
     "SsysMaLayoutNode_FindPicture", "nwlyt_TexMap_UpdateGpuRegs", "vc_LOADICON", "Item_IsEmpty", "Inventory_FindEmptySlot", "Inventory_GetSlot", "ItemName_ResolvePhrase", "script_WordRes_Ctor",
     "vc_A_GETONLINEPLAYERINDEX", "vc_PLAYERINSTANCE", "vc_WORLDCOORDS", "Actor_SetState", "Player_CopyStatePacketForEdit", "StatePacket_PackXZ", "PlayerState_FaintEnter", "Field_SetItemAtWorldXY", "Field_GetItemAtXY", "Field_GrowUpWiltBushSapling", "Field_GrowUpWiltSapling", "Field_GrowUpWiltSaplingToItem3", "Field_GrowUpWiltSaplingToItem4", "Save_GetCurrentPlayer", "vc_D_GARDEN", "PlayerSave_GetSlotIndex", "vc_ROOMDAT", "Villager_RunDailyUpdateOnce", "Room_UseExit",
@@ -26,6 +26,28 @@ functions = [
     "nwfont_TextBatch_Init", "nwlyt_TextBox_CalcDrawBufferBytes",
     # 帯の Picture の描画と、描画の状態に溜まった板のバッチの流し出し。後者の型は symbols に無い。
     "nwlyt_Picture_DrawToCommandList", "DrawCtx_FlushBatch",
+    # P4a-1: 下画面の出し入れ・レイアウトの組み立て・一覧・入力の差し込み。
+    "BsMenuTab_ConsumeCommand", "BsMenuTab_TabSelectUpdate", "BsMenuTab_MenuOutUpdate", "BsMenuMgr_ProcessMapCommand",
+    "BsHandCursor_Hide", "Room_GetCurrentId", "BsMenuTab_WaitUpdate", "BsMenuTab_MenuOutEnter",
+    "BsMenuTab_TabsInFinishUpdate", "BsMenuTab_ChangeState", "BsMenuBg_StartLeave",
+    "MenuFlow_IsCurrentKind", "MenuFlow_SignalKind7Complete", "MenuFlow_SignalKind13Complete",
+    "nwlyt_ArcResourceAccessor_RegisterFont", "nwlyt_ArcResourceAccessor_GetTexture", "nwlyt_ArcResourceAccessor_Attach",
+    "Font_GetNameString", "Font_GetLoadedFont",
+    "SsysMaLayoutNode_FindPane", "SsysMaLayoutNode_FindTextBox", "SsysMaLayoutNode_FindBounding", "SsysMaLayoutNode_FindGroup",
+    "nwlyt_Layout_Build", "script_WordFix38_Ctor", "PWorkList_BuildEntries", "GpuCache_QueueFlushRange", "nwfont_TextWriter_Dtor",
+    "ArcResAccReader_Ctor", "ArcResAccReader_LoadArcStep", "ArcResAccReader_Dtor", "ArcResAccReader_RegisterTextures",
+    "ssys_ma_lyt_Layout_Ctor", "ssys_ma_lyt_Layout_Dtor", "ssys_ma_lyt_Layout_Build", "ssys_ma_lyt_Layout_UnbindAllAnimations",
+    "UiAnim_Ctor", "UiAnim_Dtor", "UiAnim_Load", "UiAnim_Init", "UiAnim_Step", "UiAnim_IsFinished",
+    "Layout_BindAnim", "Layout_UnbindAnim", "nw_lyt_Layout_AnimatePanes",
+    "nwlyt_TextBox_SetString", "nwlyt_TextBox_AllocStringBuffer_0",
+    "InstSelect8_Ctor", "InstSelect_SetSelectVisual",
+    "ButtonActionControl_GetDecidedIndex",
+    "ButtonActionControl_IsDecided", "ButtonActionControl_ClearDecided",
+    "Heap_Alloc", "Game_PlaySound", "sead_ExpHeap_getFreeSize", "sead_ExpHeap_getMaxAllocatableSize",
+    "graphic_MemoryMgr_FreeByMemoryType",
+    "nwfont_TextWriter_Ctor",
+    "CommonScrollBar_UpdateDrag", "CommonScrollBar_AttachTo", "CommonScrollBar_SetPos",
+    "Touch_IsDragHoldReady", "GameInput_GetTouchPixelPosition", "Layout_TransformTouchPixelsToLocal", "vc_NPC_2_SETUP",
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
@@ -36,6 +58,10 @@ globals = [
     "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
     "vtbl_nw_lyt_Material", "vtbl_nw_lyt_DrawInfo", "vtbl_nw_font_ResFont",
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
+    "g_BsMenuTabCommand", "g_BsMenuMapCommand", "g_BsMenuSubscreenCommand", "g_BsMenuMgr", "g_MenuOpenState",
+    "g_BsMenuTabCloseSelectionFlag", "g_BsMenuBg", "g_MenuScreenListHead", "kCatalogListKindFrameTable",
+    "g_UiLayoutAllocator", "g_UiResourceAllocator", "g_UiResourceLoadAlignment", "g_GraphicMemoryMgr", "g_FontMgr",
+    "g_BsTimeBelWindow", "g_TouchState", "g_SeadControllerMgr",
 ]
 types = [
     "AcnlItemDragIconNodeF009", "AcnlPlayerInventoryFinanceF010",
@@ -52,6 +78,8 @@ types = [
     "SeadControllerBasePrefix", "SeadControllerPrefix", "SeadControllerWrapperPrefix",
     "SeadOffsetList", "AcnlPadReaderPrefix", "AcnlPadState",
     "AcnlUiPoint2", "AcnlUiPoint2I", "AcnlPointerFlags",
+    "UiAnim", "ArcResAccReader", "InstSelect8", "AcnlTouchState", "SeadControllerMgrPrefix",
+    "T022_GraphicMemoryMgrPrefix", "ScriptWordFix38", "AcnlMenuScreenNodeF006",
 ]
 
 # 描画パス中の待機後、追加の毎フレーム処理を呼ぶ位置。
