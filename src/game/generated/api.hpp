@@ -6,6 +6,7 @@
 
 namespace gohan::game::generated {
 
+struct AcnlMenuScreenNodeF006;
 struct AcnlEncryptedValueF010;
 struct ItemID;
 struct AcnlPlayerSave;
@@ -17,6 +18,7 @@ struct AcnlPlayerInventoryFinanceF010;
 struct AcnlUiPoint2;
 struct AcnlUiPoint2I;
 struct SeadControllerBasePrefix;
+struct AcnlTouchState;
 struct DropData;
 struct NwFontCharWidths;
 struct NwFontCmap;
@@ -57,8 +59,10 @@ struct NwLytTexCoordGen;
 struct NwLytTexSrt;
 struct NwLytTextBox;
 struct NwLytTextBoxVtable;
+struct ScriptWordFix38;
 struct SeadOffsetList;
 struct SeadControllerPrefix;
+struct SeadControllerMgrPrefix;
 struct SeadControllerWrapperPrefix;
 struct SeadCtrControllerVtable;
 struct SeadExpHeapBlock;
@@ -71,6 +75,29 @@ struct SsysMaLayoutNodeVtable;
 struct SsysMaLayoutNode;
 struct SsysMaLayoutList;
 struct SsysMaLayoutMgr;
+struct T022_GraphicMemoryMgrPrefix;
+struct UiAnim;
+struct ArcResAccReader;
+struct InstSelect8;
+
+enum AcnlCatalogSoundId_F015 : std::uint32_t
+{
+  ACNL_SE_SYS_BOOK_ICON_SELECTED_F015 = 0x1000413,
+  ACNL_SE_SYS_CTLG_TOP_BTN_SELECTED_F015 = 0x100046C,
+};
+static_assert(sizeof(AcnlCatalogSoundId_F015) == 4);
+
+#pragma pack(push, 2)
+struct AcnlMenuScreenNodeF006
+{
+  void *vptr;
+  AcnlMenuScreenNodeF006 *prev;
+  AcnlMenuScreenNodeF006 *next;
+  void *actor;
+  std::uint8_t menu_id;
+  std::uint8_t padding[3];
+};
+#pragma pack(pop)
 
 #pragma pack(push, 2)
 
@@ -238,6 +265,35 @@ enum AcnlPointerFlags : std::uint32_t
   AcnlPointerFlags_ClearPosition = 0x8,
 };
 static_assert(sizeof(AcnlPointerFlags) == 4);
+
+#pragma pack(push, 1)
+
+struct AcnlTouchState
+{
+  std::uint8_t held;
+  std::uint8_t changed;
+  std::int16_t raw_x;
+  std::int16_t raw_y;
+  std::int16_t start_x;
+  std::int16_t start_y;
+  std::int16_t position_x;
+  std::int16_t position_y;
+  std::uint8_t held_frames;
+  std::uint8_t released_frames;
+  std::int16_t previous_start_x;
+  std::int16_t previous_start_y;
+  std::int16_t previous_position_x;
+  std::int16_t previous_position_y;
+  std::uint8_t previous_held_frames;
+  std::uint8_t previous_released_frames;
+  std::uint8_t previous_held;
+  std::uint8_t previous_changed;
+  std::int16_t previous_raw_y;
+  std::uint8_t unk_1E[2];
+  float layout_x;
+  float layout_y;
+};
+#pragma pack(pop)
 
 typedef std::uint32_t u32;
 
@@ -814,6 +870,18 @@ struct NwLytTextBoxVtable
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+
+struct ScriptWordFix38
+{
+  void *vptr;
+  std::uint16_t *buffer;
+  unsigned int capacity;
+  std::uint8_t unk_C[12];
+  std::uint16_t text[38];
+};
+#pragma pack(pop)
+
 #pragma pack(push, 2)
 
 struct SeadOffsetList
@@ -835,6 +903,17 @@ struct SeadControllerPrefix
   void *manager;
   SeadOffsetList addons;
   SeadOffsetList wrappers;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+
+struct SeadControllerMgrPrefix
+{
+  std::uint8_t unk_0[208];
+  unsigned int controller_count;
+  std::uint8_t unk_D4[4];
+  SeadControllerPrefix **controllers;
 };
 #pragma pack(pop)
 
@@ -1027,6 +1106,67 @@ struct SsysMaLayoutMgr
 };
 #pragma pack(pop)
 
+struct T022_GraphicMemoryMgrPrefix
+{
+  void *vtable;
+  unsigned int reserved04;
+  void *defaultFcramHeap;
+  void *rootVramA;
+  void *rootVramB;
+  void *commandHeap;
+  void *vramAHeap;
+  void *vramBHeap;
+};
+
+#pragma pack(push, 4)
+
+struct UiAnim
+{
+  void *vptr;
+  float total_frames;
+  float cur_time;
+  float prev_time;
+  float rate;
+  std::uint8_t flags;
+  std::uint8_t unk_15[3];
+  NwLytAnimTransform *transform;
+  std::uint8_t bound;
+  std::uint8_t unk_1D[1];
+  std::uint16_t content_count;
+  void *content_work;
+  std::uint8_t unk_24[4];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 4)
+
+struct ArcResAccReader
+{
+  void *vptr;
+  void *resource_accessor;
+  void *arc_data;
+  void *accessor_vptr;
+  std::uint8_t unk_10[328];
+  void *loaded_arc;
+  std::uint8_t unk_15C[236];
+};
+#pragma pack(pop)
+
+#pragma pack(push, 4)
+
+struct InstSelect8
+{
+  void *vptr;
+  std::uint8_t unk_4[540];
+  void *row_layouts;
+  std::uint8_t unk_224[1948];
+  int row_count;
+  std::uint8_t unk_9C4[56];
+  void *row_nodes;
+  std::uint8_t unk_A00[2252];
+};
+#pragma pack(pop)
+
 using SsysMaLayoutNode_FindPicture_t = NwLytPicture * (*)(SsysMaLayoutNode *node, const char *name);
 inline constexpr std::uintptr_t SsysMaLayoutNode_FindPicture_addr = 0x00567E44;
 
@@ -1189,6 +1329,201 @@ inline constexpr std::uintptr_t nwlyt_Picture_DrawToCommandList_addr = 0x0073CB5
 // プロトタイプ未設定
 inline constexpr std::uintptr_t DrawCtx_FlushBatch_addr = 0x004B8360;
 
+using BsMenuTab_ConsumeCommand_t = void (*)(void *tabs);
+inline constexpr std::uintptr_t BsMenuTab_ConsumeCommand_addr = 0x006D3F04;
+
+using BsMenuTab_TabSelectUpdate_t = void (*)(void *tabs);
+inline constexpr std::uintptr_t BsMenuTab_TabSelectUpdate_addr = 0x006D474C;
+
+using BsMenuTab_MenuOutUpdate_t = void (*)(void *tabs);
+inline constexpr std::uintptr_t BsMenuTab_MenuOutUpdate_addr = 0x006D4E5C;
+
+using BsMenuMgr_ProcessMapCommand_t = void (*)(void *manager);
+inline constexpr std::uintptr_t BsMenuMgr_ProcessMapCommand_addr = 0x006D1428;
+
+using BsHandCursor_Hide_t = void (*)(void *cursor);
+inline constexpr std::uintptr_t BsHandCursor_Hide_addr = 0x001FA86C;
+
+using Room_GetCurrentId_t = int (*)();
+inline constexpr std::uintptr_t Room_GetCurrentId_addr = 0x002F75CC;
+
+using BsMenuTab_WaitUpdate_t = void (*)(void *tab);
+inline constexpr std::uintptr_t BsMenuTab_WaitUpdate_addr = 0x006D4444;
+
+using BsMenuTab_MenuOutEnter_t = void (*)(void *tab);
+inline constexpr std::uintptr_t BsMenuTab_MenuOutEnter_addr = 0x006D4EE8;
+
+using BsMenuTab_TabsInFinishUpdate_t = void (*)(void *tab);
+inline constexpr std::uintptr_t BsMenuTab_TabsInFinishUpdate_addr = 0x006D67F0;
+
+using BsMenuTab_ChangeState_t = void (*)(void *state_machine, unsigned int calc_function, int calc_adjustor);
+inline constexpr std::uintptr_t BsMenuTab_ChangeState_addr = 0x0081B41C;
+
+using BsMenuBg_StartLeave_t = void (*)(void *background, int next_kind);
+inline constexpr std::uintptr_t BsMenuBg_StartLeave_addr = 0x00693EE8;
+
+using MenuFlow_IsCurrentKind_t = bool (*)(unsigned int kind, bool require_running);
+inline constexpr std::uintptr_t MenuFlow_IsCurrentKind_addr = 0x00316E7C;
+
+using MenuFlow_SignalKind7Complete_t = bool (*)();
+inline constexpr std::uintptr_t MenuFlow_SignalKind7Complete_addr = 0x0052B678;
+
+using MenuFlow_SignalKind13Complete_t = bool (*)();
+inline constexpr std::uintptr_t MenuFlow_SignalKind13Complete_addr = 0x0052B644;
+
+using nwlyt_ArcResourceAccessor_RegisterFont_t = void * (*)(void *accessor, const char *name, NwFontResFont *font);
+inline constexpr std::uintptr_t nwlyt_ArcResourceAccessor_RegisterFont_addr = 0x004B3FD4;
+
+using nwlyt_ArcResourceAccessor_GetTexture_t = void (*)(void *texture_info_out, void *accessor, const char *name);
+inline constexpr std::uintptr_t nwlyt_ArcResourceAccessor_GetTexture_addr = 0x004B5844;
+
+using nwlyt_ArcResourceAccessor_Attach_t = bool (*)(void *accessor, void *arc_data, const char *root_name);
+inline constexpr std::uintptr_t nwlyt_ArcResourceAccessor_Attach_addr = 0x004B5900;
+
+using Font_GetNameString_t = const void * (*)(void *manager, int slot);
+inline constexpr std::uintptr_t Font_GetNameString_addr = 0x00747528;
+
+using Font_GetLoadedFont_t = NwFontResFont * (*)(void *manager, int slot);
+inline constexpr std::uintptr_t Font_GetLoadedFont_addr = 0x0052D6A8;
+
+using SsysMaLayoutNode_FindPane_t = NwLytPane * (*)(SsysMaLayoutNode *node, const char *name);
+inline constexpr std::uintptr_t SsysMaLayoutNode_FindPane_addr = 0x00567BAC;
+
+using SsysMaLayoutNode_FindTextBox_t = NwLytTextBox * (*)(SsysMaLayoutNode *node, const char *name);
+inline constexpr std::uintptr_t SsysMaLayoutNode_FindTextBox_addr = 0x00567EA0;
+
+using SsysMaLayoutNode_FindBounding_t = void * (*)(SsysMaLayoutNode *node, const char *name);
+inline constexpr std::uintptr_t SsysMaLayoutNode_FindBounding_addr = 0x00567EFC;
+
+using SsysMaLayoutNode_FindGroup_t = void * (*)(SsysMaLayoutNode *node, const char *name);
+inline constexpr std::uintptr_t SsysMaLayoutNode_FindGroup_addr = 0x004B4328;
+
+using nwlyt_Layout_Build_t = bool (*)(void *nw_layout, const void *clyt_data, void *resource_accessor);
+inline constexpr std::uintptr_t nwlyt_Layout_Build_addr = 0x004B9474;
+
+using script_WordFix38_Ctor_t = ScriptWordFix38 * (*)(ScriptWordFix38 *word);
+inline constexpr std::uintptr_t script_WordFix38_Ctor_addr = 0x0056CE48;
+
+using PWorkList_BuildEntries_t = bool (*)(void *list);
+inline constexpr std::uintptr_t PWorkList_BuildEntries_addr = 0x006EDEE0;
+
+using GpuCache_QueueFlushRange_t = void (*)(const void *address, unsigned int bytes);
+inline constexpr std::uintptr_t GpuCache_QueueFlushRange_addr = 0x0012D294;
+
+using nwfont_TextWriter_Dtor_t = void (*)(void *writer);
+inline constexpr std::uintptr_t nwfont_TextWriter_Dtor_addr = 0x004D5BCC;
+
+using ArcResAccReader_Ctor_t = ArcResAccReader * (*)(ArcResAccReader *reader);
+inline constexpr std::uintptr_t ArcResAccReader_Ctor_addr = 0x00120D54;
+
+using ArcResAccReader_LoadArcStep_t = bool (*)(ArcResAccReader *reader, const char *path);
+inline constexpr std::uintptr_t ArcResAccReader_LoadArcStep_addr = 0x00567244;
+
+using ArcResAccReader_Dtor_t = ArcResAccReader * (*)(ArcResAccReader *reader);
+inline constexpr std::uintptr_t ArcResAccReader_Dtor_addr = 0x00567310;
+
+using ArcResAccReader_RegisterTextures_t = bool (*)(ArcResAccReader *reader);
+inline constexpr std::uintptr_t ArcResAccReader_RegisterTextures_addr = 0x00568CFC;
+
+using ssys_ma_lyt_Layout_Ctor_t = SsysMaLayoutNode * (*)(SsysMaLayoutNode *layout);
+inline constexpr std::uintptr_t ssys_ma_lyt_Layout_Ctor_addr = 0x0012653C;
+
+using ssys_ma_lyt_Layout_Dtor_t = SsysMaLayoutNode * (*)(SsysMaLayoutNode *layout);
+inline constexpr std::uintptr_t ssys_ma_lyt_Layout_Dtor_addr = 0x005BEB4C;
+
+using ssys_ma_lyt_Layout_Build_t = bool (*)(SsysMaLayoutNode *layout, const char *name, void *resource_holder, unsigned int command_bytes);
+inline constexpr std::uintptr_t ssys_ma_lyt_Layout_Build_addr = 0x005685A4;
+
+using ssys_ma_lyt_Layout_UnbindAllAnimations_t = void (*)(SsysMaLayoutNode *layout);
+inline constexpr std::uintptr_t ssys_ma_lyt_Layout_UnbindAllAnimations_addr = 0x00133A5C;
+
+using UiAnim_Ctor_t = UiAnim * (*)(UiAnim *anim);
+inline constexpr std::uintptr_t UiAnim_Ctor_addr = 0x001261EC;
+
+using UiAnim_Dtor_t = UiAnim * (*)(UiAnim *anim);
+inline constexpr std::uintptr_t UiAnim_Dtor_addr = 0x00568CAC;
+
+using UiAnim_Load_t = bool (*)(UiAnim *anim, const char *name, ArcResAccReader *reader);
+inline constexpr std::uintptr_t UiAnim_Load_addr = 0x00568A04;
+
+using UiAnim_Init_t = int (*)(struct UiAnim *anim, void *res);
+inline constexpr std::uintptr_t UiAnim_Init_addr = 0x00568B94;
+
+using UiAnim_Step_t = int (*)(struct UiAnim *anim);
+inline constexpr std::uintptr_t UiAnim_Step_addr = 0x00568964;
+
+using UiAnim_IsFinished_t = bool (*)(const UiAnim *anim);
+inline constexpr std::uintptr_t UiAnim_IsFinished_addr = 0x0074F58C;
+
+using Layout_BindAnim_t = void (*)(SsysMaLayoutNode *layout, UiAnim *anim);
+inline constexpr std::uintptr_t Layout_BindAnim_addr = 0x004B8ECC;
+
+using Layout_UnbindAnim_t = void (*)(SsysMaLayoutNode *layout, UiAnim *anim);
+inline constexpr std::uintptr_t Layout_UnbindAnim_addr = 0x00568840;
+
+using nw_lyt_Layout_AnimatePanes_t = void (*)(void *layoutImpl, unsigned int flags);
+inline constexpr std::uintptr_t nw_lyt_Layout_AnimatePanes_addr = 0x004B9718;
+
+using nwlyt_TextBox_SetString_t = std::uint16_t (*)(NwLytTextBox *text_box, const std::uint16_t *text, unsigned int destination, unsigned int length);
+inline constexpr std::uintptr_t nwlyt_TextBox_SetString_addr = 0x004BACBC;
+
+using nwlyt_TextBox_AllocStringBuffer_0_t = void (*)(NwLytTextBox *text_box, unsigned int capacity, unsigned int flags);
+inline constexpr std::uintptr_t nwlyt_TextBox_AllocStringBuffer_0_addr = 0x0013B9A8;
+
+using InstSelect8_Ctor_t = InstSelect8 * (*)(InstSelect8 *list);
+inline constexpr std::uintptr_t InstSelect8_Ctor_addr = 0x007C6EB0;
+
+using InstSelect_SetSelectVisual_t = void (*)(void *list, int selected, int previous);
+inline constexpr std::uintptr_t InstSelect_SetSelectVisual_addr = 0x001AF858;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ButtonActionControl_GetDecidedIndex_addr = 0x0072294C;
+
+using ButtonActionControl_IsDecided_t = bool (*)(const void *control);
+inline constexpr std::uintptr_t ButtonActionControl_IsDecided_addr = 0x00722C34;
+
+using ButtonActionControl_ClearDecided_t = void (*)(void *control);
+inline constexpr std::uintptr_t ButtonActionControl_ClearDecided_addr = 0x002F72C4;
+
+using Heap_Alloc_t = void * (*)(unsigned int size, void *heap, int alignment);
+inline constexpr std::uintptr_t Heap_Alloc_addr = 0x002FD0CC;
+
+using Game_PlaySound_t = void (*)(AcnlCatalogSoundId_F015 soundId);
+inline constexpr std::uintptr_t Game_PlaySound_addr = 0x0058C7D4;
+
+using sead_ExpHeap_getFreeSize_t = unsigned int (*)(SeadExpHeapPrefix *heap);
+inline constexpr std::uintptr_t sead_ExpHeap_getFreeSize_addr = 0x0074D744;
+
+using sead_ExpHeap_getMaxAllocatableSize_t = unsigned int (*)(SeadExpHeapPrefix *heap, int alignment);
+inline constexpr std::uintptr_t sead_ExpHeap_getMaxAllocatableSize_addr = 0x0074D8B0;
+
+using graphic_MemoryMgr_FreeByMemoryType_t = void (*)(void *manager, unsigned int memory_type, unsigned int kind, unsigned int unused, void *pointer);
+inline constexpr std::uintptr_t graphic_MemoryMgr_FreeByMemoryType_addr = 0x00616510;
+
+using nwfont_TextWriter_Ctor_t = void * (*)(void *writer);
+inline constexpr std::uintptr_t nwfont_TextWriter_Ctor_addr = 0x007E8488;
+
+using CommonScrollBar_UpdateDrag_t = void (*)(void *scroll_bar);
+inline constexpr std::uintptr_t CommonScrollBar_UpdateDrag_addr = 0x00298664;
+
+using CommonScrollBar_AttachTo_t = void (*)(void *scroll_bar, NwLytPane *parent);
+inline constexpr std::uintptr_t CommonScrollBar_AttachTo_addr = 0x00298018;
+
+using CommonScrollBar_SetPos_t = void (*)(void *scroll_bar, int top);
+inline constexpr std::uintptr_t CommonScrollBar_SetPos_addr = 0x002987A8;
+
+using Touch_IsDragHoldReady_t = bool (*)(const void *touch);
+inline constexpr std::uintptr_t Touch_IsDragHoldReady_addr = 0x001B7A18;
+
+using GameInput_GetTouchPixelPosition_t = const AcnlUiPoint2 * (*)();
+inline constexpr std::uintptr_t GameInput_GetTouchPixelPosition_addr = 0x00520DEC;
+
+using Layout_TransformTouchPixelsToLocal_t = void (*)(void *layout, const AcnlUiPoint2 *pixels, AcnlUiPoint2 *local);
+inline constexpr std::uintptr_t Layout_TransformTouchPixelsToLocal_addr = 0x0074F3FC;
+
+using vc_NPC_2_SETUP_t = bool (*)(void *message_data, void *word, const char *label, unsigned int index);
+inline constexpr std::uintptr_t vc_NPC_2_SETUP_addr = 0x0075B8A8;
+
 using g_ActiveBsMenuItem_t = void *;
 inline constexpr std::uintptr_t g_ActiveBsMenuItem_addr = 0x009499EC;
 
@@ -1255,9 +1590,64 @@ inline constexpr std::uintptr_t g_DefaultWideTagProcessor_addr = 0x0097C0B4;
 using vtbl_sead_ExpHeap_t = SeadExpHeapVtable;
 inline constexpr std::uintptr_t vtbl_sead_ExpHeap_addr = 0x008FFEF8;
 
+using g_BsMenuTabCommand_t = std::uint8_t;
+inline constexpr std::uintptr_t g_BsMenuTabCommand_addr = 0x00949D24;
+
+using g_BsMenuMapCommand_t = std::uint8_t;
+inline constexpr std::uintptr_t g_BsMenuMapCommand_addr = 0x00949D25;
+
+using g_BsMenuSubscreenCommand_t = std::uint8_t;
+inline constexpr std::uintptr_t g_BsMenuSubscreenCommand_addr = 0x00949D29;
+
+using g_BsMenuMgr_t = void *;
+inline constexpr std::uintptr_t g_BsMenuMgr_addr = 0x00949D4C;
+
+using g_MenuOpenState_t = std::uint8_t;
+inline constexpr std::uintptr_t g_MenuOpenState_addr = 0x00949D1E;
+
+using g_BsMenuTabCloseSelectionFlag_t = std::uint8_t;
+inline constexpr std::uintptr_t g_BsMenuTabCloseSelectionFlag_addr = 0x00949D88;
+
+using g_BsMenuBg_t = void *;
+inline constexpr std::uintptr_t g_BsMenuBg_addr = 0x00949718;
+
+using g_MenuScreenListHead_t = AcnlMenuScreenNodeF006 *;
+inline constexpr std::uintptr_t g_MenuScreenListHead_addr = 0x00986500;
+
+using kCatalogListKindFrameTable_t = const float[11];
+inline constexpr std::uintptr_t kCatalogListKindFrameTable_addr = 0x00848B18;
+
+using g_UiLayoutAllocator_t = SsysMaAllocator *;
+inline constexpr std::uintptr_t g_UiLayoutAllocator_addr = 0x0096FC3C;
+
+using g_UiResourceAllocator_t = SsysMaAllocator *;
+inline constexpr std::uintptr_t g_UiResourceAllocator_addr = 0x0096FC40;
+
+using g_UiResourceLoadAlignment_t = int;
+inline constexpr std::uintptr_t g_UiResourceLoadAlignment_addr = 0x0096FC2C;
+
+using g_GraphicMemoryMgr_t = T022_GraphicMemoryMgrPrefix *;
+inline constexpr std::uintptr_t g_GraphicMemoryMgr_addr = 0x0096F304;
+
+using g_FontMgr_t = void *;
+inline constexpr std::uintptr_t g_FontMgr_addr = 0x0094C9C8;
+
+using g_BsTimeBelWindow_t = void *;
+inline constexpr std::uintptr_t g_BsTimeBelWindow_addr = 0x0094A720;
+
+using g_TouchState_t = AcnlTouchState;
+inline constexpr std::uintptr_t g_TouchState_addr = 0x00ACF6E0;
+
+using g_SeadControllerMgr_t = SeadControllerMgrPrefix *;
+inline constexpr std::uintptr_t g_SeadControllerMgr_addr = 0x0096F2EC;
+
 inline constexpr std::uintptr_t BsMenuItem_vtable = 0x008E5220;
 
 inline constexpr std::uintptr_t script_WordRes_vtable = 0x00904954;
+
+inline constexpr std::uintptr_t InstSelect_8_vtable = 0x008E54B4;
+
+inline constexpr std::uintptr_t script_WordPtr_vtable = 0x0090491C;
 
 inline constexpr std::uintptr_t FrameDispatch_addr = 0x001B721C;
 inline constexpr std::uint32_t FrameDispatch_len = 16;

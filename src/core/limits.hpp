@@ -9,7 +9,8 @@ inline constexpr std::size_t FrameSteps = 32;
 inline constexpr std::size_t RegisteredFrameSteps = 9;
 // CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、名前 1、アイコンと後始末 3。
 // 描画は自前ノードの仮想表で接続し、CTRPF のフックは増やさない。
-inline constexpr std::size_t GameHooks = 8;
+// P4a-1: スライダーの 0.5 倍（CommonScrollBar_UpdateDrag の Mitm）を 1 本足す。
+inline constexpr std::size_t GameHooks = 9;
 // 作業の Task は共通 I/O 1 本と、既存のメニュー保存 1 本。
 inline constexpr std::size_t WorkerTasks = 2;
 inline constexpr std::size_t Jobs = 16;

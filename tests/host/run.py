@@ -207,6 +207,8 @@ def main() -> int:
          'src/core/files.cpp', 'src/core/jobs.cpp', 'src/core/frame.cpp', 'src/core/utf.cpp', *engine,
          'build/host/gen-sample/menu_table.cpp'], 'test_p3_features', ('src', 'build/host/gen-sample'))
 
+    # P4a-1: 下画面の土台の純粋な部分（書き戻し・仮想表・bclyt 編集・Lease の段・入力注入・一覧）。
+    run(['tests/host/test_p4a1.cpp', 'src/game/lyt/bclyt_edit.cpp'], 'test_p4a1', ('src',), ('-DGOHAN_DEV=1',))
     # 次の起動に持ち越す物の保存の時機（CTRPF に依存しない判断と、写しの受け渡し）。
     run(['tests/host/test_menu_save.cpp', 'src/features/menu_screen/persist_policy.cpp',
          'src/features/menu_screen/persist_image.cpp'], 'test_menu_save', ('src',))
