@@ -64,16 +64,24 @@ bool Wire() {
     return wired;
 }
 bool Shutdown() {
-    const auto pending = desired.owners;
-    auto next = desired; next.stop = true; next.owners = next.chat = 0;
-    for (unsigned n = 0; !Publish(next); ++n) {
+    std::uint32_t pending = 0, returned = 0;
+    for (unsigned n = 0;; ++n) {
+        bool sent;
+        {
+            core::LockGuard lock(request_mutex);
+            pending |= desired.owners;
+            auto next = desired; next.stop = true; next.owners = next.chat = 0;
+            sent = Publish(next);
+            if (sent) returned = next.returned;
+        }
+        if (sent) break;
         if (n == 100) return false;
         game::BottomScreenWait(1);
     }
     if (!wired) {
         // Wire が失敗していればゲームの参照はまだ作れない。CPU 側の所有分だけ片付ける。
         lease.Acquire(pending);
-        lease.ResourcesReturned(desired.returned);
+        lease.ResourcesReturned(returned);
         lease.RequestStop();
         for (unsigned n = 0; n < 200; ++n) {
             lease.Step({});

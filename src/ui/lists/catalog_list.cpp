@@ -1,9 +1,10 @@
 #include "ui/lists/catalog_list.hpp"
+#include <algorithm>
 namespace gohan::ui::lists {
 bool CatalogList::Show(std::vector<Row> rows, std::string label, bool extras) {
     core::LockGuard lock(mutex_);
     if (stopping_ || rows.empty() || rows.size() > 512) return false;
-    model_.Set(std::move(rows)); label_ = std::move(label); extras_ = extras; wanted_ = true;
+    model_.Set(std::move(rows)); label_ = std::move(label); extras_ = extras; wanted_ = true; decision_ = -1;
     return true;
 }
 void CatalogList::Close() { core::LockGuard lock(mutex_); wanted_ = false; }
@@ -15,7 +16,7 @@ void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bo
     if (!mutex_.TryLock()) return;
     const bool changed = generation_ != model_.Generation();
     if (changed && !panel_.Drained()) panel_.Request(false);
-    if (wanted_ && panel_.Drained() && (changed || generation_ == 0)) {
+    if (wanted_ && panel_.Drained()) {
         std::vector<game::CatalogRow> rows;
         for (unsigned i = 0; i < model_.Size(); ++i) {
             const auto &r = model_.At(i); rows.push_back({r.text, r.prefix, r.extra, r.message});
@@ -26,11 +27,11 @@ void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bo
         }
     }
     if (!wanted_) panel_.Request(false);
-    touch_.Step(x, y, touching && wanted_ && !stopping_);
+    touch_.Step(x, y, touching && wanted_ && !changed && !stopping_);
     content_.Input(touch_);
-    if (panel_.Visible()) {
+    if (panel_.Visible() && wanted_ && !changed && !stopping_) {
         const int move = repeat_.Step(dirs, now, content_.VisibleRows());
-        if (move) content_.Select(content_.Selected() + move);
+        if (move) content_.Select(std::max(0, content_.Selected()) + move);
         if (confirm && !confirm_) decision_ = content_.Selected();
         const int picked = content_.TakeDecision(); if (picked >= 0) decision_ = picked;
     } else repeat_.Step(0, now, 6);

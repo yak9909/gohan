@@ -209,7 +209,8 @@ def main() -> int:
 
     run(['tests/host/test_native_panels.cpp', 'src/ui/bottom_screen_panel.cpp',
          'src/ui/lists/catalog_list.cpp', 'src/ui/game_label.cpp', 'src/game/lyt/arc_layout.cpp',
-         'src/game/catalog_layout.cpp', 'src/game/lyt/bclyt_edit.cpp'],
+         'src/game/catalog_layout.cpp', 'src/game/lyt/bclyt_edit.cpp',
+         'src/game/native_input_core.cpp', 'src/game/native_input.cpp'],
         'test_native_panels', ('src',))
     # P4a-1: 下画面の土台の純粋な部分（書き戻し・仮想表・bclyt 編集・Lease の段・入力注入・一覧）。
     run(['tests/host/test_p4a1.cpp', 'src/game/lyt/bclyt_edit.cpp',

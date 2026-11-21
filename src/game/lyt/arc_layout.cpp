@@ -134,7 +134,7 @@ NwLytPane *ArcLayout::Find(const char *name) {
 bool InOut::Load(ArcLayout &layout, Arc &arc, const char *in, const char *out, const char *group) {
     if (made_ || !layout.Ready() || !arc.Ready() || !in || !out) return false;
     layout_ = layout.Node();
-    group_ = group ? CALL(SsysMaLayoutNode_FindGroup)(layout_, group, 1) : nullptr;
+    group_ = group ? CALL(SsysMaLayoutNode_FindGroup)(layout_, group) : nullptr;
     if (group && !group_) { layout_ = nullptr; return false; }
     const char *names[] = {in, out};
     for (unsigned i = 0; i < 2; ++i) {

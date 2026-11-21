@@ -79,7 +79,13 @@ void Lists() {
     list.Step(Hidden(), 0, 501, false, 0, 0, true); assert(list.TakeDecision() == 12);
     list.Step(Hidden(), 0, 502, false, 0, 0, true); assert(list.TakeDecision() == -1);
     picked = 35; list.Step(Hidden(), 0, 503, false, 0, 0, false); assert(list.TakeDecision() == 35);
+    // ゲームが地図を自動復帰させても、再入場には同じ行の一括データを再設定する。
+    for (unsigned i = 0; i < 8; ++i) list.Step({}, 0, 510 + i, false, 0, 0, false);
+    for (unsigned i = 0; i < 3; ++i) list.Step(Hidden(), 0, 520 + i, false, 0, 0, false);
+    assert(catalog_rows.size() == 40 && catalog_rows[3].message == 4);
     list.Close();
+    list.Step(Hidden(), 0, 599, false, 0, 0, true);
+    assert(list.TakeDecision() == -1); // 閉じる途中のAを決定として出さない
     for (unsigned i = 0; i < 10; ++i) list.Step(Hidden(), 0, 600 + i, false, 0, 0, false);
     assert(list.Drained());
     assert(list.Show({{"new", 0, "", ""}}));

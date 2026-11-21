@@ -15,7 +15,8 @@ bool CleanLease() { return true; }
 void Step() {
     const auto state = bottom_screen_lease::Status();
     auto input = ui::input::Read();
-    if (CTRPluginFramework::GuiMenu::IsVisible()) input = {};
+    auto *menu = CTRPluginFramework::PluginMenu::GetRunningInstance();
+    if (menu && menu->IsOpen()) input = {};
     unsigned dirs = (input.buttons >> 4) & 15;
     catalog.Step(state, dirs, ui::input::NowMs(), input.touching, input.x, input.y,
                  (input.buttons & ui::input::button::A) != 0);

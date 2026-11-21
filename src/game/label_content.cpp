@@ -54,7 +54,7 @@ PanelBuild LabelContent::Build() {
         if (!CALL(UiAnim_Load)(&pose, "time_bel_win_in.bclan", arc_.Reader())) {
             CALL(UiAnim_Dtor)(&pose); return PanelBuild::Failed;
         }
-        void *group = CALL(SsysMaLayoutNode_FindGroup)(layout.Node(), "G_bell_00", 1);
+        void *group = CALL(SsysMaLayoutNode_FindGroup)(layout.Node(), "G_bell_00");
         CALL(vc_ACSYSTEM_DATA1)(layout.Node(), &pose, group, false);
         CALL(UiAnim_SetFrame)(&pose, std::max(0.0f, pose.total_frames - 1));
         layout.Node()->vptr->calculate(layout.Node());
