@@ -4,7 +4,7 @@
 namespace gohan::ui {
 struct LeaseStatus {
     LeaseStage stage = LeaseStage::Shown;
-    bool requested = false, hidden = false, restoring = false, restored = true, drained = true, stopping = false;
+    bool requested = false, hidden = false, restoring = false, restored = true, drained = true, stopping = false, cancelling = false;
 };
 // 要求・返却はプラグインのメインスレッド一つから呼ぶ。
 // Cleanup はゲームのフレームで停止・参照の取り外しを進め、全資源を返したら true。
@@ -19,11 +19,12 @@ class BottomScreenLease {
     LeaseCommand Step(const game::BottomScreenSnapshot &);
     void RequestStop();
     LeaseStatus Status() const;
+    std::uint32_t TakeCancelled() { const auto n = cancelled_; cancelled_ = 0; return n; }
     bool ResourcesPending() const { return pending_ != 0; }
   private:
     Cleanup cleanup_[32]{};
     LeaseMachine machine_;
-    std::uint32_t owners_ = 0, chat_ = 0, pending_ = 0;
+    std::uint32_t owners_ = 0, chat_ = 0, pending_ = 0, cancelled_ = 0;
     bool stopping_ = false;
 };
 // 共通の毎フレーム接続。複数の利用者は owner ビットを分ける。
@@ -31,6 +32,7 @@ class BottomScreenLease {
 namespace bottom_screen_lease {
 bool ConfigureCleanup(unsigned owner, BottomScreenLease::Cleanup);
 bool Acquire(std::uint32_t owners, bool over_chat = false);
+bool HasOwner(std::uint32_t owners);
 bool Release(std::uint32_t owners);
 bool ResourcesReturned(std::uint32_t owners);
 bool Wire();

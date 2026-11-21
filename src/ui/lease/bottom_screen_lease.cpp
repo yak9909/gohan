@@ -18,6 +18,7 @@ bool Publish(const Request &next) {
     desired = next; return true;
 }
 void FrameStep() {
+    core::LockGuard lock(request_mutex);
     Request request;
     if (requests.ReadIfNew(request, request_generation) == core::MailRead::Updated) {
         lease.Release(applied_owners & ~request.owners);
@@ -28,7 +29,11 @@ void FrameStep() {
         if (request.stop) lease.RequestStop();
         applied_owners = request.owners; applied_chat = request.chat;
     }
-    switch (lease.Step(game::ReadBottomScreen())) {
+    const auto command = lease.Step(game::ReadBottomScreen());
+    const auto cancelled = lease.TakeCancelled();
+    desired.owners &= ~cancelled; desired.chat &= ~cancelled;
+    applied_owners &= ~cancelled; applied_chat &= ~cancelled;
+    switch (command) {
     case LeaseCommand::HideMap: case LeaseCommand::HideOther: case LeaseCommand::HideTab:
         game::HideBottomScreen(); break;
     case LeaseCommand::CloseMenu: game::BeginBottomMenuClose(); break;
@@ -48,6 +53,10 @@ bool Acquire(std::uint32_t owners, bool over_chat) {
     auto next = desired; next.owners |= owners; next.returned &= ~owners;
     if (over_chat) next.chat |= owners; else next.chat &= ~owners;
     return Publish(next);
+}
+bool HasOwner(std::uint32_t owners) {
+    core::LockGuard lock(request_mutex);
+    return (desired.owners & owners) != 0;
 }
 bool Release(std::uint32_t owners) {
     core::LockGuard lock(request_mutex);
