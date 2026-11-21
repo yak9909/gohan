@@ -69,6 +69,18 @@ bool BclytEdit::Rename(int index, const char *name) {
     return true;
 }
 
+bool BclytEdit::SetByte(int index, std::size_t offset, std::uint8_t value) {
+    if (index < 0 || static_cast<std::size_t>(index) >= sections_.size()) return false;
+    auto &body = sections_[index].body;
+    if (offset >= body.size()) return false;
+    body[offset] = value; return true;
+}
+bool BclytEdit::GetFloat(int index, std::size_t offset, float &out) const {
+    if (index < 0 || static_cast<std::size_t>(index) >= sections_.size()) return false;
+    const auto &body = sections_[index].body;
+    if (offset > body.size() || body.size() - offset < sizeof(float)) return false;
+    std::memcpy(&out, body.data() + offset, sizeof(float)); return true;
+}
 bool BclytEdit::SetU32(int index, std::size_t offset, std::uint32_t v) {
     if (index < 0 || static_cast<std::size_t>(index) >= sections_.size()) return false;
     auto &b = sections_[index].body;

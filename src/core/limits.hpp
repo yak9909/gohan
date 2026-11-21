@@ -5,11 +5,11 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-// P3b 後: 既存 5 本、作業の完了、名前表、投入の通知、表示設定とアイコン読込の計 9 本。
-inline constexpr std::size_t RegisteredFrameSteps = 9;
+// P4a-1 後: 既存9本、Lease、Panel、開発版の決定通知で最大12本。
+inline constexpr std::size_t RegisteredFrameSteps = 12;
 // CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、名前 1、アイコンと後始末 3。
-// 描画は自前ノードの仮想表で接続し、CTRPF のフックは増やさない。
-inline constexpr std::size_t GameHooks = 8;
+// P4a-1 のカタログ用ドラッグ1本を加える。
+inline constexpr std::size_t GameHooks = 9;
 // 作業の Task は共通 I/O 1 本と、既存のメニュー保存 1 本。
 inline constexpr std::size_t WorkerTasks = 2;
 inline constexpr std::size_t Jobs = 16;
@@ -67,4 +67,10 @@ static_assert(RendererTextureBytes == 119296);
 static_assert(RendererTextureBytes + RendererIconCacheBytes + RendererGameAllocationSlack <= RendererResidentHeapLimit);
 static_assert(RendererSelectionSurfaces >= RendererSelectionIdlePresents + 2);
 inline constexpr unsigned RendererHeapSampleFrames = 30;
+// カタログは最大512行、文字と語は表示時に確保し、閉じたら返す。
+inline constexpr unsigned CatalogRows = 512;
+inline constexpr unsigned NativePanelRetireFrames = 3;
+inline constexpr unsigned NativePanelCommandBytes = 0x8000 + 0xB000 + 8 * 0x5510;
+inline constexpr unsigned NativePanelLayoutReserveBytes = 65536;
+inline constexpr unsigned NativePanelResourceReserveBytes = 65536;
 } // namespace gohan::core::limits

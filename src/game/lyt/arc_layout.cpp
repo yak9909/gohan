@@ -19,14 +19,16 @@ void *Accessor(ArcResAccReader &r) { return &r.accessor_vptr; }
 bool Arc::Register() {
     auto *manager = Global<g_FontMgr_t>(g_FontMgr_addr);
     if (!manager) return false;
-    auto *font = CALL(Font_GetLoadedFont)(manager, 0);
-    auto *name = static_cast<const std::uintptr_t *>(CALL(Font_GetNameString)(manager, 0));
-    if (!font || !name || !name[0]) return false;
-    // SafeString の終端を揃えてから、名前付きの非所有書体を登録する。
-    const auto *vt = reinterpret_cast<const std::uintptr_t *>(name[0]);
-    reinterpret_cast<void (*)(const void *)>(vt[2])(name);
-    if (!CALL(nwlyt_ArcResourceAccessor_RegisterFont)(Accessor(reader_), reinterpret_cast<const char *>(name[1]), font))
-        return false;
+    for (int kind : {0, 1, 3}) {
+        auto *font = CALL(Font_GetLoadedFont)(manager, kind);
+        if (!font) { if (!kind) return false; else continue; }
+        auto *name = static_cast<const std::uintptr_t *>(CALL(Font_GetNameString)(manager, kind));
+        if (!name || !name[0]) return false;
+        const auto *vt = reinterpret_cast<const std::uintptr_t *>(name[0]);
+        reinterpret_cast<void (*)(const void *)>(vt[2])(name);
+        if (!CALL(nwlyt_ArcResourceAccessor_RegisterFont)(Accessor(reader_), reinterpret_cast<const char *>(name[1]), font))
+            return false;
+    }
     return CALL(ArcResAccReader_RegisterTextures)(&reader_);
 }
 bool Arc::LoadStep(const char *path) {
@@ -129,9 +131,11 @@ void ArcLayout::Reset() {
 NwLytPane *ArcLayout::Find(const char *name) {
     return built_ && name ? CALL(SsysMaLayoutNode_FindPane)(&node_, name) : nullptr;
 }
-bool InOut::Load(ArcLayout &layout, Arc &arc, const char *in, const char *out) {
+bool InOut::Load(ArcLayout &layout, Arc &arc, const char *in, const char *out, const char *group) {
     if (made_ || !layout.Ready() || !arc.Ready() || !in || !out) return false;
     layout_ = layout.Node();
+    group_ = group ? CALL(SsysMaLayoutNode_FindGroup)(layout_, group) : nullptr;
+    if (group && !group_) { layout_ = nullptr; return false; }
     const char *names[] = {in, out};
     for (unsigned i = 0; i < 2; ++i) {
         CALL(UiAnim_Ctor)(&anim_[i]); ++made_;
@@ -149,10 +153,12 @@ void InOut::Show(bool shown) {
         const float total = from.total_frames - 1;
         const float progress = total > 0 ? std::clamp(from.cur_time / total, 0.0f, 1.0f) : 1;
         start = (1 - progress) * std::max(anim_[next].total_frames - 1, 0.0f);
-        CALL(Layout_UnbindAnim)(layout_, &from);
+        if (group_) CALL(vc_DATA3)(layout_, &from, group_, false);
+        else CALL(Layout_UnbindAnim)(layout_, &from);
     }
     active_ = next;
-    CALL(Layout_BindAnim)(layout_, &anim_[next]);
+    if (group_) CALL(vc_ACSYSTEM_DATA1)(layout_, &anim_[next], group_, false);
+    else CALL(Layout_BindAnim)(layout_, &anim_[next]);
     CALL(UiAnim_SetFrame)(&anim_[next], start);
 }
 bool InOut::Step() {
@@ -161,9 +167,12 @@ bool InOut::Step() {
 }
 bool InOut::Done() const { return active_ < 0 || CALL(UiAnim_IsFinished)(&anim_[active_]); }
 void InOut::Reset() {
-    if (active_ >= 0) CALL(Layout_UnbindAnim)(layout_, &anim_[active_]);
+    if (active_ >= 0) {
+        if (group_) CALL(vc_DATA3)(layout_, &anim_[active_], group_, false);
+        else CALL(Layout_UnbindAnim)(layout_, &anim_[active_]);
+    }
     while (made_) CALL(UiAnim_Dtor)(&anim_[--made_]);
-    layout_ = nullptr; active_ = -1;
+    layout_ = nullptr; group_ = nullptr; active_ = -1;
 }
 bool SetPosition(NwLytPane *p, float x, float y, PaneLog *log) {
     return p && Space(log, 3) && Put(&p->translate[0], x, log) && Put(&p->translate[1], y, log) && Dirty(p, log);

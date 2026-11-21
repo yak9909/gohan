@@ -19,12 +19,39 @@
 #include "features/shizue_skip/shizue_skip.hpp"
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
+#include "ui/native_panels.hpp"
+#include "core/frame.hpp"
 #include <CTRPluginFramework.hpp>
 
 namespace {
 gohan::core::FeatureRegistry features;
 
 #ifdef GOHAN_DEV
+void PollCatalogDecision() {
+    const int n = gohan::ui::native_panels::Catalog().TakeDecision();
+    if (n >= 0) CTRPluginFramework::OSD::Notify("選んだ行: " + std::to_string(n));
+}
+void ToggleCatalog(CTRPluginFramework::MenuEntry *) {
+    static bool shown = false;
+    if (shown) gohan::ui::native_panels::Catalog().Close();
+    else {
+        std::vector<gohan::ui::lists::Row> rows;
+        for (unsigned i = 0; i < 40; ++i)
+            rows.push_back({"試しの行 " + std::to_string(i), 0, std::to_string(i), " 番"});
+        if (!gohan::ui::native_panels::Catalog().Show(std::move(rows))) return;
+    }
+    shown = !shown;
+}
+void ToggleLabels(CTRPluginFramework::MenuEntry *) {
+    static bool shown = false;
+    std::vector<gohan::ui::LabelLine> lines;
+    if (!shown) lines = {{"上画面の箱", 0}, {"二段目の試し", 1}};
+    if (gohan::ui::native_panels::Labels().Declare(0, std::move(lines))) shown = !shown;
+}
+void ToggleLease(CTRPluginFramework::MenuEntry *) {
+    static bool shown = false;
+    if (gohan::ui::native_panels::LeaseOnly(!shown)) shown = !shown;
+}
 void ToggleRenderer(CTRPluginFramework::MenuEntry *) {
     namespace renderer = gohan::ui::renderer;
     static bool requested = false;
@@ -80,6 +107,7 @@ int main() {
     features.Add(gohan::game::InputControllerFeature());
     features.Add(gohan::game::memory::Feature());
     features.Add(gohan::ui::renderer::RendererFeature());
+    features.Add(gohan::ui::native_panels::Feature());
     features.Add(gohan::game::items::NamesFeature());
     features.Add(gohan::features::pocket_items::Feature());
     features.Add(gohan::features::hidden_items::Feature());
@@ -107,6 +135,13 @@ int main() {
 #ifdef GOHAN_DEV
     menu += new MenuEntry("状態を txt に書き出す", nullptr, gohan::features::status::Export,
                           "表示と同じ状態を設定ファイルと同じ場所に保存し、パスを表示します。");
+    menu += new MenuEntry("開発: 一覧の開閉", nullptr, ToggleCatalog,
+                          "40行・追加テキスト・半速スライダーを試します。選んだ番号を通知します。");
+    menu += new MenuEntry("開発: 箱の開閉", nullptr, ToggleLabels,
+                          "上画面左上に二段の箱を出します。");
+    menu += new MenuEntry("開発: 下画面の貸し出し", nullptr, ToggleLease,
+                          "地図とタブの出し入れだけを試します。");
+    gohan::core::frame::Global().Add(PollCatalogDecision, 130);
     menu += new MenuEntry("開発: 入力の遮断 入・切", nullptr, ToggleInput,
                           "入力のフックを取り外し、再び導入します。結果は状態表示で確認できます。");
     menu += new MenuEntry("開発: 自前描画の入・切", nullptr, ToggleRenderer,
@@ -117,6 +152,9 @@ int main() {
     features.WireAll();
     menu.Run();
     features.ShutdownAll();
+#ifdef GOHAN_DEV
+    gohan::core::frame::Global().Remove(PollCatalogDecision);
+#endif
     return 0;
 }
 } // namespace CTRPluginFramework
