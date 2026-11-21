@@ -12,7 +12,7 @@ void CatalogList::Stop() { core::LockGuard lock(mutex_); wanted_ = false; stoppi
 bool CatalogList::Drained() { core::LockGuard lock(mutex_); return panel_.Drained(); }
 bool CatalogList::Cleanup() { Close(); return Drained(); }
 int CatalogList::TakeDecision() { core::LockGuard lock(mutex_); const int v = decision_; decision_ = -1; return v; }
-void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bool touching, int x, int y, bool confirm) {
+void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bool touching, int x, int y, bool confirm, bool input_enabled) {
     if (!mutex_.TryLock()) return;
     const bool changed = generation_ != model_.Generation();
     if (changed && !panel_.Drained()) panel_.Request(false);
@@ -27,9 +27,10 @@ void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bo
         }
     }
     if (!wanted_) panel_.Request(false);
-    touch_.Step(x, y, touching && wanted_ && !changed && !stopping_);
+    if (!input_enabled) { touch_ = {}; repeat_ = {}; }
+    touch_.Step(x, y, input_enabled && touching && wanted_ && !changed && !stopping_);
     content_.Input(touch_);
-    if (panel_.Visible() && wanted_ && !changed && !stopping_) {
+    if (input_enabled && panel_.Visible() && wanted_ && !changed && !stopping_) {
         const int move = repeat_.Step(dirs, now, content_.VisibleRows());
         if (move) content_.Select(std::max(0, content_.Selected()) + move);
         if (confirm && !confirm_) decision_ = content_.Selected();
@@ -37,6 +38,7 @@ void CatalogList::Step(const LeaseStatus &lease, unsigned dirs, unsigned now, bo
     } else repeat_.Step(0, now, 6);
     confirm_ = confirm;
     panel_.Step(lease);
+    if (!input_enabled) content_.TakeDecision();
     if (!wanted_ && panel_.Drained()) { model_.Close(); generation_ = 0; label_.clear(); }
     mutex_.Unlock();
 }

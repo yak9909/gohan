@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 using namespace gohan::menu;
 
@@ -16,6 +17,13 @@ bool Is(const char *a, const char *b) { return std::strcmp(a, b) == 0; }
 int main() {
     sample::State &s = sample::Get();
     Engine e(kMenuItems, kMenuItemCount);
+    // 製品版では開発フォルダと各項目が見えず、開発版の表示指定でだけ現れる。
+    for (const auto id : {MenuId::Dev, MenuId::DevCatalog, MenuId::DevLabels, MenuId::DevLease})
+        assert(e.Hidden(Idx(id)));
+    e.SetDevVisible(true);
+    for (const auto id : {MenuId::Dev, MenuId::DevCatalog, MenuId::DevLabels, MenuId::DevLease})
+        assert(!e.Hidden(Idx(id)));
+    e.SetDevVisible(false);
     // spec と結び付けの全部が合っている（合わない物はコンパイルで止まる。ここは重複・範囲の確認）。
     assert(e.BindAll(sample::kBindings, sample::kBindingCount));
     u32 now = 1000;

@@ -408,6 +408,38 @@ control = "toggle"
 behavior = "state"
 hotkey = "B+Up"
 
+# 実機で部品を試す項目。処理も GOHAN_DEV の中だけで結ぶ。
+[[item]]
+id = "dev"
+label = "開発"
+desc = "表示の部品を実機で試します。開発版だけに出ます。"
+control = "folder"
+dev = true
+
+[[item.item]]
+id = "dev.catalog"
+label = "一覧の開閉"
+desc = "40行・追加テキスト・半速スライダーを試します。選んだ番号を通知します。"
+control = "action"
+behavior = "trigger"
+dev = true
+
+[[item.item]]
+id = "dev.labels"
+label = "箱の開閉"
+desc = "上画面左上に二段の箱を出します。"
+control = "action"
+behavior = "trigger"
+dev = true
+
+[[item.item]]
+id = "dev.lease"
+label = "下画面の貸し出し"
+desc = "地図とタブの出し入れだけを試します。"
+control = "action"
+behavior = "trigger"
+dev = true
+
 # 設定画面（START で開く）。一覧の根とは別の列に生成する。構成は docs/design/menu-item-actions.md の 5 節。
 [[settings]]
 id      = "settings"

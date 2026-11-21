@@ -391,7 +391,7 @@ RendererMemory ReadRendererMemory() {
 }
 InstallResult InstallRenderer(const FontResource &font, BackgroundAllocation *background) {
     if (background) *background = {BackgroundResult::InsufficientSpace, 401184, 399000, true};
-    assert(font.atlasBytes == 32768 && font.glyphs == 703);
+    assert(font.atlasBytes == 32768 && font.glyphs == 706);
     ++stub::installs;
     stub::installed = stub::installResult == InstallResult::Ready;
     return stub::installResult;

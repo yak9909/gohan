@@ -5,6 +5,7 @@
 #include "features/menu_screen/menu_screen.hpp"
 #include "game/lyt/renderer.hpp"
 #include "ui/renderer/renderer.hpp"
+#include "ui/native_panel_input.hpp"
 #include <CTRPluginFramework.hpp>
 #include <cassert>
 #include <cstdio>
@@ -112,6 +113,7 @@ int main() {
     assert(top.count > 0 && lyt::Last().screens[1].count == 0);
     assert(top.commands[0].kind == lyt::Kind::Image && top.commands[0].bounds.x == 4);
     assert(TopHasText("GOHAN") && TopHasText("見本"));
+    assert(gohan::ui::native_panels::PanelInput().Blocked());
     Press(CTRPluginFramework::Key::A); Frames(15);
     assert(TopHasText("見本のフラグ") && TopHasText("OFF"));
     Fake::touching = true; Fake::touchX = 40; Fake::touchY = 70; Frames(3);
@@ -143,6 +145,7 @@ int main() {
     Frames(15); Blocked(true);
     Press(CTRPluginFramework::Key::A); // はいで適用して閉じる。
     Blocked(false); // 退場の描画中も要求は外れる。
+    assert(!gohan::ui::native_panels::PanelInput().Blocked());
     Frames(40);
     assert(lyt::Last().screens[0].count == 0 && lyt::Last().screens[1].count == 0);
     const int presents_after_close = lyt::Presents();

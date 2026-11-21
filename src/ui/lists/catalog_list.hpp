@@ -13,7 +13,7 @@ class CatalogList {
     bool Drained();
     bool Cleanup();
     int TakeDecision();
-    void Step(const LeaseStatus &, unsigned directions, unsigned now, bool touching, int x, int y, bool confirm);
+    void Step(const LeaseStatus &, unsigned directions, unsigned now, bool touching, int x, int y, bool confirm, bool input_enabled = true);
   private:
     core::SpinMutex mutex_;
     ListModel model_;
