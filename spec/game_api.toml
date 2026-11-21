@@ -41,6 +41,17 @@ functions = [
     "UiAnim_Ctor", "UiAnim_Dtor", "UiAnim_Load", "UiAnim_Init", "UiAnim_Step", "UiAnim_IsFinished",
     "Layout_BindAnim", "Layout_UnbindAnim", "nw_lyt_Layout_AnimatePanes",
     "nwlyt_TextBox_SetString", "nwlyt_TextBox_AllocStringBuffer_0",
+    "SelectBase_SetupStep",
+    "SelectBase_StartEnter",
+    "SelectBase_StartLeave",
+    "SelectBase_WaitCalc",
+    "SelectBase_Update",
+    "SelectBase_Draw",
+    "SelectBase_Finalize",
+    "vc_ACSYSTEM_DATA1",
+    "vc_DATA3",
+    "nwlyt_TextBox_ConfigureTextWriter",
+    "CommonScrollBar_ApplyDragPoint",
     "InstSelect8_Ctor", "InstSelect_SetSelectVisual",
     "ButtonActionControl_GetDecidedIndex",
     "ButtonActionControl_IsDecided", "ButtonActionControl_ClearDecided",
@@ -62,7 +73,7 @@ globals = [
     "vc_MENU_FLAGS", "g_BsMenuTabCommand", "g_BsMenuMapCommand", "g_BsMenuSubscreenCommand", "g_BsMenuMgr", "g_MenuOpenState",
     "g_BsMenuTabCloseSelectionFlag", "g_BsMenuBg", "g_MenuScreenListHead", "kCatalogListKindFrameTable",
     "g_UiLayoutAllocator", "g_UiResourceAllocator", "g_UiResourceLoadAlignment", "g_GraphicMemoryMgr", "g_FontMgr",
-    "g_BsTimeBelWindow", "g_TouchState", "g_SeadControllerMgr",
+    "vc_DATAPOINTER", "g_BsTimeBelWindow", "g_TouchState", "g_SeadControllerMgr",
 ]
 types = [
     "AcnlItemDragIconNodeF009", "AcnlPlayerInventoryFinanceF010",
@@ -79,7 +90,7 @@ types = [
     "SeadControllerBasePrefix", "SeadControllerPrefix", "SeadControllerWrapperPrefix",
     "SeadOffsetList", "AcnlPadReaderPrefix", "AcnlPadState",
     "AcnlUiPoint2", "AcnlUiPoint2I", "AcnlPointerFlags",
-    "MenuFlags", "UiAnim", "ArcResAccReader", "InstSelect8", "AcnlTouchState", "SeadControllerMgrPrefix",
+    "CommonScrollBar", "NwFontTextWriter", "MenuFlags", "UiAnim", "ArcResAccReader", "InstSelect8", "AcnlTouchState", "SeadControllerMgrPrefix",
     "T022_GraphicMemoryMgrPrefix", "ScriptWordFix38", "AcnlMenuScreenNodeF006",
 ]
 
@@ -679,3 +690,76 @@ name = "HiddenIconUpdate"
 function = "nwlyt_TexMap_UpdateGpuRegs"
 offset = 0
 length = 4
+
+# 所有する一覧のドラッグだけを半速にする。
+[[hooks]]
+name = "CatalogScrollDrag"
+function = "CommonScrollBar_UpdateDrag"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall0"
+function = "SelectBase_SetupStep"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall1"
+function = "SelectBase_StartEnter"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall2"
+function = "SelectBase_StartLeave"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall3"
+function = "SelectBase_WaitCalc"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall4"
+function = "SelectBase_Update"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall5"
+function = "SelectBase_Draw"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall6"
+function = "SelectBase_Finalize"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall7"
+function = "vc_ACSYSTEM_DATA1"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall8"
+function = "vc_DATA3"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall9"
+function = "nwlyt_TextBox_ConfigureTextWriter"
+offset = 0
+length = 16
+
+[[checks]]
+name = "PanelCall10"
+function = "CommonScrollBar_ApplyDragPoint"
+offset = 0
+length = 16

@@ -56,7 +56,7 @@ class InOut {
     InOut(const InOut &) = delete;
     InOut &operator=(const InOut &) = delete;
     ~InOut() { Reset(); }
-    bool Load(ArcLayout &, Arc &, const char *in, const char *out);
+    bool Load(ArcLayout &, Arc &, const char *in, const char *out, const char *group = nullptr);
     void Show(bool shown);
     bool Step();
     bool Done() const;
@@ -64,6 +64,7 @@ class InOut {
   private:
     generated::UiAnim anim_[2]{};
     generated::SsysMaLayoutNode *layout_ = nullptr;
+    void *group_ = nullptr;
     unsigned made_ = 0;
     int active_ = -1;
 };

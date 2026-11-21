@@ -21,6 +21,8 @@ class BclytEdit {
     int Duplicate(int index, const char *new_name);
     bool Rename(int index, const char *name);
     // 節本体（印・大きさを除く）の offset に値を書く。
+    bool SetByte(int index, std::size_t offset, std::uint8_t value);
+    bool GetFloat(int index, std::size_t offset, float &out) const;
     bool SetU32(int index, std::size_t offset, std::uint32_t v);
     bool SetFloat(int index, std::size_t offset, float v);
     // pan1 の枠: 位置(x,y)と大きさ(w,h)。本体の +28/+32 が位置、+60/+64 が大きさ。
