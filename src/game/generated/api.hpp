@@ -314,6 +314,17 @@ struct DropData
 };
 #pragma pack(pop)
 
+enum MenuFlags : std::uint32_t
+{
+  MenuFlags_MapEnterStarted = 0x1,
+  MenuFlags_MapEnterDone = 0x2,
+  MenuFlags_MapOutDone = 0x4,
+  MenuFlags_EnterStarted = 0x8,
+  MenuFlags_EnterDone = 0x10,
+  MenuFlags_CloseRequested = 0x20,
+};
+static_assert(sizeof(MenuFlags) == 4);
+
 #pragma pack(push, 1)
 
 struct NwFontCharWidths
@@ -1437,6 +1448,18 @@ inline constexpr std::uintptr_t ssys_ma_lyt_Layout_Build_addr = 0x005685A4;
 using ssys_ma_lyt_Layout_UnbindAllAnimations_t = void (*)(SsysMaLayoutNode *layout);
 inline constexpr std::uintptr_t ssys_ma_lyt_Layout_UnbindAllAnimations_addr = 0x00133A5C;
 
+using UiAnim_SetFrame_t = void (*)(UiAnim *anim, float frame);
+inline constexpr std::uintptr_t UiAnim_SetFrame_addr = 0x00568C00;
+
+using Pane_GetAnchorOffset_t = AcnlUiPoint2 (*)(const NwLytPane *pane);
+inline constexpr std::uintptr_t Pane_GetAnchorOffset_addr = 0x0073B5C4;
+
+using nwfont_TextWriter_CalcStringWidth_t = float (*)(const void *writer, const std::uint16_t *text, int length);
+inline constexpr std::uintptr_t nwfont_TextWriter_CalcStringWidth_addr = 0x008268E0;
+
+using nwfont_CharWriter_RecomputeScale_t = void (*)(void *writer, float width, float height);
+inline constexpr std::uintptr_t nwfont_CharWriter_RecomputeScale_addr = 0x004D51B0;
+
 using UiAnim_Ctor_t = UiAnim * (*)(UiAnim *anim);
 inline constexpr std::uintptr_t UiAnim_Ctor_addr = 0x001261EC;
 
@@ -1476,7 +1499,7 @@ inline constexpr std::uintptr_t InstSelect8_Ctor_addr = 0x007C6EB0;
 using InstSelect_SetSelectVisual_t = void (*)(void *list, int selected, int previous);
 inline constexpr std::uintptr_t InstSelect_SetSelectVisual_addr = 0x001AF858;
 
-// プロトタイプ未設定
+using ButtonActionControl_GetDecidedIndex_t = int (*)(void *self);
 inline constexpr std::uintptr_t ButtonActionControl_GetDecidedIndex_addr = 0x0072294C;
 
 using ButtonActionControl_IsDecided_t = bool (*)(const void *control);
@@ -1589,6 +1612,9 @@ inline constexpr std::uintptr_t g_DefaultWideTagProcessor_addr = 0x0097C0B4;
 
 using vtbl_sead_ExpHeap_t = SeadExpHeapVtable;
 inline constexpr std::uintptr_t vtbl_sead_ExpHeap_addr = 0x008FFEF8;
+
+using vc_MENU_FLAGS_t = MenuFlags;
+inline constexpr std::uintptr_t vc_MENU_FLAGS_addr = 0x00949D68;
 
 using g_BsMenuTabCommand_t = std::uint8_t;
 inline constexpr std::uintptr_t g_BsMenuTabCommand_addr = 0x00949D24;

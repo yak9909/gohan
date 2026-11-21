@@ -1,6 +1,6 @@
 #pragma once
 // 1 回の呼び出しの間だけゲームの入力欄を書き、終わったら戻す。
-#include "game/write_log.hpp"
+#include "game/native_input.hpp"
 #include <cstddef>
 #include <cstdint>
 
@@ -15,14 +15,6 @@ inline TouchPoint MakeTouch(int x, int y, bool down) {
     t.down = true;
     return t;
 }
-class NativeInputInjection {
-  public:
-    static constexpr std::size_t Capacity = 16;
-    // 書く欄（タッチの構造体・コントローラー 6 欄・メニューマネージャーのキー trig/repeat）を足す。
-    bool Put(std::uintptr_t *address, std::uintptr_t value) { return log_.Write(address, value); }
-    void End() { log_.Restore(); }
-    ~NativeInputInjection() { End(); }
-  private:
-    game::WriteLog<Capacity> log_;
-};
+using NativeInputInjection = game::NativeInputInjection;
+using NativeTouch = game::NativeTouch;
 } // namespace gohan::ui

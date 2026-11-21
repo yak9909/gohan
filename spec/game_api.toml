@@ -37,6 +37,7 @@ functions = [
     "nwlyt_Layout_Build", "script_WordFix38_Ctor", "PWorkList_BuildEntries", "GpuCache_QueueFlushRange", "nwfont_TextWriter_Dtor",
     "ArcResAccReader_Ctor", "ArcResAccReader_LoadArcStep", "ArcResAccReader_Dtor", "ArcResAccReader_RegisterTextures",
     "ssys_ma_lyt_Layout_Ctor", "ssys_ma_lyt_Layout_Dtor", "ssys_ma_lyt_Layout_Build", "ssys_ma_lyt_Layout_UnbindAllAnimations",
+    "UiAnim_SetFrame", "Pane_GetAnchorOffset", "nwfont_TextWriter_CalcStringWidth", "nwfont_CharWriter_RecomputeScale",
     "UiAnim_Ctor", "UiAnim_Dtor", "UiAnim_Load", "UiAnim_Init", "UiAnim_Step", "UiAnim_IsFinished",
     "Layout_BindAnim", "Layout_UnbindAnim", "nw_lyt_Layout_AnimatePanes",
     "nwlyt_TextBox_SetString", "nwlyt_TextBox_AllocStringBuffer_0",
@@ -58,7 +59,7 @@ globals = [
     "vtbl_ssys_ma_lyt_Layout", "vtbl_nw_lyt_Pane", "vtbl_nw_lyt_Picture", "vtbl_nw_lyt_TextBox",
     "vtbl_nw_lyt_Material", "vtbl_nw_lyt_DrawInfo", "vtbl_nw_font_ResFont",
     "vtbl_nw_font_TagProcessorBase_wchar_t", "g_DefaultWideTagProcessor", "vtbl_sead_ExpHeap",
-    "g_BsMenuTabCommand", "g_BsMenuMapCommand", "g_BsMenuSubscreenCommand", "g_BsMenuMgr", "g_MenuOpenState",
+    "vc_MENU_FLAGS", "g_BsMenuTabCommand", "g_BsMenuMapCommand", "g_BsMenuSubscreenCommand", "g_BsMenuMgr", "g_MenuOpenState",
     "g_BsMenuTabCloseSelectionFlag", "g_BsMenuBg", "g_MenuScreenListHead", "kCatalogListKindFrameTable",
     "g_UiLayoutAllocator", "g_UiResourceAllocator", "g_UiResourceLoadAlignment", "g_GraphicMemoryMgr", "g_FontMgr",
     "g_BsTimeBelWindow", "g_TouchState", "g_SeadControllerMgr",
@@ -78,7 +79,7 @@ types = [
     "SeadControllerBasePrefix", "SeadControllerPrefix", "SeadControllerWrapperPrefix",
     "SeadOffsetList", "AcnlPadReaderPrefix", "AcnlPadState",
     "AcnlUiPoint2", "AcnlUiPoint2I", "AcnlPointerFlags",
-    "UiAnim", "ArcResAccReader", "InstSelect8", "AcnlTouchState", "SeadControllerMgrPrefix",
+    "MenuFlags", "UiAnim", "ArcResAccReader", "InstSelect8", "AcnlTouchState", "SeadControllerMgrPrefix",
     "T022_GraphicMemoryMgrPrefix", "ScriptWordFix38", "AcnlMenuScreenNodeF006",
 ]
 
