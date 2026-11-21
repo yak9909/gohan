@@ -426,6 +426,8 @@ void TestFaint() {
     auto h = Make();
     Engine &e = h->engine;
     const u16 faint = Idx(MenuId::Faint);
+    assert(e.Def(faint).hotkey == 0 && e.Def(faint).confirm == Confirm::Hotkey);
+    assert(e.State(faint).hotkey == 0 && e.State(faint).applied_hotkey == 0);
     e.Open(h->now);
     Goto(*h, MenuId::Faint);
     assert(e.View(faint).button && Is(e.View(faint).value, "実行"));
@@ -446,7 +448,18 @@ void TestFaint() {
     h->Frame(900);
     assert(Is(e.View(faint).value, "実行"));
     assert(e.RequestClose(h->now));
-    // ホットキーでは確認ダイアログを出し、承諾後に 1 回実行する。ON／アームは要らない。
+    // 未割り当てのキーでは何も起きない。
+    h->Push(key::R | key::B);
+    assert(e.Dialog() == DialogKind::None && g.faint_runs == 1);
+    h->Release();
+    // メニューの割り当て UI で後からキーを付け、適用する。設定だけでは実行しない。
+    e.Open(h->now);
+    assert(e.RunAction(faint, ActionKind::SetHotkey, h->now) && e.Ui().kind == UiKind::Key);
+    e.SubmitUi(key::R | key::B, h->now);
+    assert(e.State(faint).hotkey == (key::R | key::B));
+    assert(e.Commit(faint, h->now) && g.faint_runs == 1);
+    assert(e.RequestClose(h->now));
+    // 後付けのホットキーでも確認を出し、承諾後だけ1回実行する。ON／アームは要らない。
     h->Push(key::R | key::B);
     assert(e.Dialog() == DialogKind::Action && g.faint_runs == 1);
     e.Confirm(false, h->now);
