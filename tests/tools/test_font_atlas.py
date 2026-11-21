@@ -62,17 +62,17 @@ def test_tile_boundaries_and_layout():
 
 def test_adopted_fonts_are_reproducible(tmp_path):
     atlas, widths, main, numeric = font.build(ROOT)
-    assert (len(atlas), len(widths), len(main), len(numeric)) == (32768, 2109, 674, 28)
+    assert (len(atlas), len(widths), len(main), len(numeric)) == (32768, 2118, 677, 28)
     # CA2 の 23 字の上書きと追加の字を含む、採用した出力。
     # A4 を元の LA4 へ戻した全65,536画素のハッシュを比較する。
     expanded = bytes(((atlas[i // 2] >> ((i & 1) * 4)) & 15) * 17 for i in range(65536))
     assert set(expanded) == {0, 255}
     payloads = [expanded, bytes(widths), b''.join(struct.pack('<HH', *p) for p in main),
                 b''.join(struct.pack('<HH', *p) for p in numeric)]
-    expected = ['351971e45bcec98e931db89d8f0506d5f1209ef5104a5a158c921fe29945ed3b',
-                '29b08546080d19e2e0c0e647fd748fd3f904def058338ab1c41425fd6d0ac4a8',
-                'd6fe2bc0559ada7d7add5461f2cade3b9bf69ea411b888870529a9b17e68b65a',
-                'bb968ac4507c5e7a7ee99de5d8863e0d36db0d5c4c49daf401abee9b7d77a7c2']
+    expected = ['952ce41e5828f7cdba48b977b9487c7d248c1f56910b8f01c68f9ce1c06943ab',
+                '544c2d4dca83b55dd3bf3f0297dfcf5f7f3ffd339906acb3c3e7581ad0121724',
+                'e311b7334be8058f4e5dd939ca315a583791d5fe488f3467c29e71ff02c13b31',
+                '28b02ec8c6ff8d00364cc3c535c7001b21cd4b3b6687b0987b98dc12f3dc591e']
     assert [hashlib.sha256(data).hexdigest() for data in payloads] == expected
     a, b = tmp_path / 'first.hpp', tmp_path / 'second.hpp'
     font.generate(ROOT, a)
@@ -92,6 +92,6 @@ def test_ca2_overrides_are_in_the_atlas():
         x0, y0 = glyph % 32 * 8 + 1, glyph // 32 * 9 + 1
         assert [[((atlas[font.pixel_offset(x0 + x, y0 + y) // 2] >> ((font.pixel_offset(x0 + x, y0 + y) & 1) * 4)) & 15) * 17 for x in range(7)]
                 for y in range(8)] == expected
-    assert all(ord(c) in mapping for c in '±棒発省')
+    assert all(ord(c) in mapping for c in '±棒発省二段貸')
     slash = dict(numeric)[ord('/')]
     assert widths[slash * 3 + 2] == 5

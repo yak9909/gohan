@@ -1,4 +1,6 @@
 #include "features/menu_screen/menu_screen.hpp"
+#include "features/menu_screen/dev_panels.hpp"
+#include "ui/native_panel_input.hpp"
 #include "core/frame.hpp"
 #include "core/input_block.hpp"
 #include "core/mailbox.hpp"
@@ -162,8 +164,15 @@ void FrameStep() {
     const std::uint32_t now = input::NowMs();
     // CTRPF のメニューを閉じた操作（SELECT など）は、再開した時にまだ押されている。
     // それを新しい押下として扱わないよう、再開の時点で押されているボタンは離すまで使わない。
-    if (game::InputTakeCtrpfResumed()) shell.IgnoreHeld(pad.buttons);
+    const bool ctrpf_resumed = game::InputTakeCtrpfResumed();
+    if (ctrpf_resumed) shell.IgnoreHeld(pad.buttons);
+    const bool menu_was_active = engine.Visible() || shell.Modal();
     shell.Step(now, in, toggle);
+    // 閉じるフレームもメニューに譲る。押されたままの入力は一覧側で離すまで使わない。
+    ui::native_panels::PanelInput().Block(ctrpf_resumed || menu_was_active || engine.Visible() || shell.Modal());
+#ifdef GOHAN_DEV
+    dev_panels::PollCatalogDecision();
+#endif
     const bool demand_active = shell.InputDemand().block != 0;
     if (demand_active && !demanding && !game::InputControllerReady()) {
         const menu::Notice notice{"入力の遮断", "遮断が無効です。\n操作がゲームにも反映されます。", true};
@@ -223,6 +232,8 @@ bool Wire() {
     engine.SetReservedHotkeys(menu::key::Select);
 #ifdef GOHAN_DEV
     engine.SetDevVisible(true);
+    const auto bindings = dev_panels::Bindings();
+    if (!engine.BindAll(bindings.data(), bindings.size())) return false;
 #endif
     engine.BindSettings({static_cast<menu::u16>(menu::kSettingsRoot),
                          static_cast<menu::u16>(menu::MenuId::SettingsKeepErase),
@@ -249,6 +260,7 @@ bool Wire() {
 void Shutdown() {
     menu::SetSettingsEngine(nullptr);
     running.Set(false);
+    ui::native_panels::PanelInput().Block(false);
     if (demand_mutex.TryLock()) {
         // 停止中のスレッドが表を保持していても待たない。返却できなければ枠を保持する。
         // 全体の終了では入力フックは既に停止済み。終了後に新たな Set はしない。

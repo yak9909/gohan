@@ -1,4 +1,5 @@
 #include "ui/native_panels.hpp"
+#include "ui/native_panel_input.hpp"
 #include "ui/input/buttons.hpp"
 #include "core/frame.hpp"
 #include "core/input_block.hpp"
@@ -16,10 +17,11 @@ void Step() {
     const auto state = bottom_screen_lease::Status();
     auto input = ui::input::Read();
     auto *menu = CTRPluginFramework::PluginMenu::GetRunningInstance();
-    if (menu && menu->IsOpen()) input = {};
+    const bool blocked = PanelInput().Blocked() || (menu && menu->IsOpen());
+    input = PanelInput().Filter(input, blocked);
     unsigned dirs = (input.buttons >> 4) & 15;
     catalog.Step(state, dirs, ui::input::NowMs(), input.touching, input.x, input.y,
-                 (input.buttons & ui::input::button::A) != 0);
+                 (input.buttons & ui::input::button::A) != 0, !blocked);
     labels.Step(state);
     core::input_block::Global().Set(input_owner, {catalog.Drained() ? 0u : core::input_block::group::Everything, 0});
 }

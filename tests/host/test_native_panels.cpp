@@ -1,5 +1,6 @@
 // Panel の排出順と、一覧・箱の公開 API を代役の描画先で検査する。
 #include "ui/bottom_screen_panel.hpp"
+#include "ui/native_panel_input.hpp"
 #include "ui/lists/catalog_list.hpp"
 #include "ui/game_label.hpp"
 #include "game/panel_math.hpp"
@@ -79,6 +80,12 @@ void Lists() {
     list.Step(Hidden(), 0, 501, false, 0, 0, true); assert(list.TakeDecision() == 12);
     list.Step(Hidden(), 0, 502, false, 0, 0, true); assert(list.TakeDecision() == -1);
     picked = 35; list.Step(Hidden(), 0, 503, false, 0, 0, false); assert(list.TakeDecision() == 35);
+    // メニュー中は方向・A・タッチの決定を処理しない。
+    picked = 8;
+    list.Step(Hidden(), ui::lists::DpadRepeat::Right, 504, true, 20, 30, true, false);
+    assert(selected == 12 && list.TakeDecision() == -1);
+    list.Step(Hidden(), 0, 505, false, 0, 0, false);
+    assert(list.TakeDecision() == -1);
     // ゲームが地図を自動復帰させても、再入場には同じ行の一括データを再設定する。
     for (unsigned i = 0; i < 8; ++i) list.Step({}, 0, 510 + i, false, 0, 0, false);
     for (unsigned i = 0; i < 3; ++i) list.Step(Hidden(), 0, 520 + i, false, 0, 0, false);
@@ -177,6 +184,24 @@ void LabelContent::Detach() {}
 void LabelContent::Reset() { label_lines.clear(); }
 }
 int main() {
+    // メニューの間は一覧へ渡さず、閉じた後も各ボタン・タッチを離すまで使わない。
+    ui::native_panels::InputGate gate;
+    ui::input::Snapshot pad{ui::input::button::A | ui::input::button::Down, true, 20, 30};
+    gate.Block(true);
+    assert(gate.Filter(pad).buttons == 0 && !gate.Filter(pad).touching);
+    gate.Block(false);
+    assert(gate.Filter(pad).buttons == 0 && !gate.Filter(pad).touching);
+    pad.buttons = ui::input::button::Down;
+    assert(gate.Filter(pad).buttons == 0);
+    pad.buttons |= ui::input::button::A;
+    assert(gate.Filter(pad).buttons == ui::input::button::A);
+    pad = {};
+    gate.Filter(pad);
+    pad = {ui::input::button::Down, true, 20, 30};
+    assert(gate.Filter(pad).buttons == ui::input::button::Down && gate.Filter(pad).touching);
+    assert(gate.Filter(pad, true).buttons == 0);
+    assert(!gate.Filter(pad).touching);
+
     Panel(); Lists(); Labels(); Layout();
     int owned, foreign;
     assert(game::OwnedDrag(&owned, &owned, 1, 0, 2));
