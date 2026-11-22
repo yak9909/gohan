@@ -216,6 +216,9 @@ def main() -> int:
     run(['tests/host/test_p4a1.cpp', 'src/game/lyt/bclyt_edit.cpp',
          'src/game/native_input_core.cpp', 'src/game/native_input.cpp', 'src/game/lyt/arc_layout.cpp',
          'src/ui/lease/bottom_screen_lease_core.cpp', 'src/game/bottom_screen_state.cpp'], 'test_p4a1', ('src',), ('-DGOHAN_DEV=1',))
+    run(['tests/host/test_bottom_screen_lease.cpp', 'src/ui/lease/bottom_screen_lease.cpp',
+         'src/ui/lease/bottom_screen_lease_core.cpp', 'src/core/frame.cpp'],
+        'test_bottom_screen_lease')
     # 次の起動に持ち越す物の保存の時機（CTRPF に依存しない判断と、写しの受け渡し）。
     run(['tests/host/test_menu_save.cpp', 'src/features/menu_screen/persist_policy.cpp',
          'src/features/menu_screen/persist_image.cpp'], 'test_menu_save', ('src',))

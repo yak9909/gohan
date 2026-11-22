@@ -27,7 +27,7 @@ class BottomScreenLease {
     bool stopping_ = false;
 };
 // 共通の毎フレーム接続。複数の利用者は owner ビットを分ける。
-// 参照の排出が期限に間に合わなければ false。戻りきりは待たない。
+// 資源の返却とフィールドの復帰を待つ。期限内に戻らなければ false。
 namespace bottom_screen_lease {
 bool ConfigureCleanup(unsigned owner, BottomScreenLease::Cleanup);
 bool Acquire(std::uint32_t owners, bool over_chat = false);
