@@ -116,10 +116,15 @@ int main() {
     assert(idles == 1 && engine.Dialog() == menu::DialogKind::None);
     frame(2432, 0); frame(2448, menu::key::L | menu::key::Down); assert(idles == 2);
     engine.Open(now);
-    // プレイヤーのフォルダへ入り、その場の実行を選ぶ。
+    // 気絶はメニューで予約し、適用した時だけ1回実行する。
     assert(engine.Select(id(MenuId::Player))); engine.Press(menu::key::A, now);
-    assert(engine.Select(id(MenuId::PlayerFaint))); engine.Press(menu::key::A, now);
-    assert(faints == 1 && engine.Dialog() == menu::DialogKind::None);
+    const auto faint = id(MenuId::PlayerFaint);
+    assert(engine.Select(faint)); engine.Press(menu::key::A, now);
+    assert(faints == 0 && engine.Dirty(faint) && engine.State(faint).value == 1);
+    assert(engine.Dialog() == menu::DialogKind::None);
+    engine.Press(menu::key::X, now);
+    assert(faints == 1 && !engine.Dirty(faint) && engine.State(faint).value == 0);
+    assert(engine.Dialog() == menu::DialogKind::None);
     assert(engine.Select(id(MenuId::PlayerIdle))); engine.Press(menu::key::A, now); assert(idles == 3);
     apply(MenuId::TownKeep, 1); apply(MenuId::GameShizue, 1); assert(keep && skip);
     fire = true; core::frame::Dispatch(); assert(!fire);

@@ -359,8 +359,6 @@ def parse_item(entry: dict, depth: int, where: str) -> Item:
         item.input = input_kind or 'none'
         if item.menu == 'on_apply' and item.input != 'none':
             raise SpecError(f'{where}: 適用で実行（on_apply）の項目は入力を受け取れません')
-        if item.confirm == 'hotkey' and not hotkey:
-            raise SpecError(f'{where}: confirm = "hotkey" にはホットキー（hotkey）が要ります')
     return item
 
 

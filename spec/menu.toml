@@ -240,6 +240,8 @@ label = "気絶"
 desc = "気絶します。身動きが取れなくなった時用です。"
 control = "action"
 behavior = "trigger"
+menu = "on_apply"
+confirm = "hotkey"
 
 [[item.item]]
 id = "player.flower"

@@ -1,4 +1,5 @@
 #include "game/catalog_content.hpp"
+#include "game/catalog_content_selection.hpp"
 #include "game/hook_batch.hpp"
 #include "game/heap.hpp"
 #include "game/panel_math.hpp"
@@ -239,11 +240,16 @@ int CatalogContent::VisibleRows() const {
 }
 void CatalogContent::Select(int index) {
     if (!setup_ || rows_.empty()) return;
-    index = std::clamp(index, 0, int(rows_.size()) - 1);
-    int top = list_->scroll_bar.top_row;
-    if (index < top) top = index; else if (index >= top + VisibleRows()) top = index - VisibleRows() + 1;
-    CALL(CommonScrollBar_SetPos)(&list_->scroll_bar, top);
-    SetSelect(list_, index, list_->selected_index);
+    SelectCatalogRow(int(rows_.size()), list_->selected_index, index, [this](int next, int before) {
+        int top = list_->scroll_bar.top_row;
+        if (next < top) top = next; else if (next >= top + VisibleRows()) top = next - VisibleRows() + 1;
+        CALL(CommonScrollBar_SetPos)(&list_->scroll_bar, top);
+        SetSelect(list_, next, before);
+    }, [] {
+        // 一覧の行フォーカス音。生成された列挙には値がないため、ここで型を合わせる。
+        constexpr auto list_active = static_cast<AcnlCatalogSoundId_F015>(0x010003B0);
+        CALL(Game_PlaySound)(list_active);
+    });
 }
 int CatalogContent::TakeDecision() { const int value = decision_; decision_ = -1; return value; }
 #undef CALL
