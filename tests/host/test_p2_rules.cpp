@@ -16,6 +16,18 @@ namespace {
 using namespace gohan;
 unsigned room = 0x63, exit_calls = 0, prepare_calls = 0, resolves = 0;
 bool valid = true, prepared = false, after_valid = true;
+std::uintptr_t save_address = 0x08001000, garden_address = 0x08002000, manager_address = 0x00ABB948;
+int slot_index = 2;
+bool can_read = true;
+void *SavePointer() { return reinterpret_cast<void *>(save_address); }
+void *GardenPointer() { return reinterpret_cast<void *>(garden_address); }
+void *ManagerPointer() { return reinterpret_cast<void *>(manager_address); }
+int SlotIndex(void *array, void *save) {
+    assert(reinterpret_cast<std::uintptr_t>(array) == garden_address + 0xA0);
+    assert(reinterpret_cast<std::uintptr_t>(save) == save_address);
+    return slot_index;
+}
+bool CanRead(std::uintptr_t, std::size_t length) { assert(length == 4); return can_read; }
 unsigned Room() { return room; }
 bool Resolve(game::shizue_skip::Exit &exit) { ++resolves; exit = {reinterpret_cast<void *>(128), 2}; return valid && (!prepared || after_valid); }
 bool Prepared() { return prepared; }
@@ -99,6 +111,18 @@ int main() {
     }
     assert(game::keep_items::NextGrowth(0xABCD0020) == 0xABCD0021 && game::keep_items::NextGrowth(0xABCDFFFF) == 0xABCD0000);
 
+    const game::shizue_skip::ExitAccess pointers{SavePointer, GardenPointer, SlotIndex, ManagerPointer, CanRead};
+    game::shizue_skip::Exit resolved;
+    // 部屋管理の固定領域をヒープ判定で拒まないことを、実際の解決処理で検査する。
+    assert(!game::memory::IsHeapPointer(manager_address));
+    assert(game::shizue_skip::ResolveExit(pointers, resolved));
+    assert(reinterpret_cast<std::uintptr_t>(resolved.manager) == manager_address && resolved.slot == 2);
+    manager_address = 0; assert(!game::shizue_skip::ResolveExit(pointers, resolved)); manager_address = 0x00ABB948;
+    save_address = 0; assert(!game::shizue_skip::ResolveExit(pointers, resolved)); save_address = 0x08001000;
+    garden_address = 0; assert(!game::shizue_skip::ResolveExit(pointers, resolved)); garden_address = 0x08002000;
+    can_read = false; assert(!game::shizue_skip::ResolveExit(pointers, resolved)); can_read = true;
+    slot_index = -1; assert(!game::shizue_skip::ResolveExit(pointers, resolved));
+    slot_index = 4; assert(!game::shizue_skip::ResolveExit(pointers, resolved)); slot_index = 2;
     game::shizue_skip::Sequence sequence({Room, Resolve, Prepared, Prepare, Exit});
     room = 0; for (int i = 0; i < 40; ++i) assert(!sequence.Step(true)); assert(resolves == 0);
     room = 0x63; for (int i = 0; i < 40; ++i) assert(!sequence.Step(false)); assert(resolves == 0);
@@ -123,6 +147,21 @@ int main() {
     after_valid = true;
     for (int i = 0; i < 29; ++i) assert(!refresh.Step(true));
     assert(refresh.Step(true) && exit_calls == 3 && prepare_calls == 2);
+
+    // 固定領域を返す実際の解決手順を通して、30 フレーム後に一度だけ出口へ進む。
+    auto resolve_fixed = +[](game::shizue_skip::Exit &exit) {
+        return game::shizue_skip::ResolveExit({SavePointer, GardenPointer, SlotIndex, ManagerPointer, CanRead}, exit);
+    };
+    static unsigned fixed_exits = 0;
+    auto use_fixed = +[](const game::shizue_skip::Exit &exit) {
+        assert(reinterpret_cast<std::uintptr_t>(exit.manager) == 0x00ABB948 && exit.slot == 2);
+        ++fixed_exits;
+    };
+    game::shizue_skip::Sequence fixed({Room, resolve_fixed, Prepared, Prepare, use_fixed});
+    for (int i = 0; i < 29; ++i) assert(!fixed.Step(true));
+    assert(fixed.Step(true) && fixed_exits == 1);
+    for (int i = 0; i < 40; ++i) assert(!fixed.Step(true));
+    assert(fixed_exits == 1);
 
     const game::player_actions::Access access{Network, Actor, Packet, Readable, Pack, SetState};
     for (unsigned i = 0; i < source.size(); ++i) source[i] = i;

@@ -10,7 +10,7 @@ namespace gohan::features::shizue_skip {
 namespace {
 bool notify = false;
 void Step() {
-    if (game::shizue_skip::Step()) notify = true;
+    if (game::shizue_skip::TakeNotice()) notify = true;
     if (notify && menu::PostNotice({"しずえスキップ", "村へ移動しました", false})) notify = false;
 }
 bool Wire() {

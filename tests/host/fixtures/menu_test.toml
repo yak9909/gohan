@@ -41,7 +41,6 @@ control  = "action"
 behavior = "trigger"
 menu     = "on_apply"
 confirm  = "hotkey"
-hotkey   = "R+B"
 
 [[item]]
 id       = "pocket"

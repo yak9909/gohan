@@ -5,6 +5,7 @@
 #include "ui/game_label.hpp"
 #include "game/panel_math.hpp"
 #include "game/catalog_layout.hpp"
+#include "game/catalog_content_selection.hpp"
 #include "game/lyt/bclyt_edit.hpp"
 #include <cstring>
 #include <cmath>
@@ -71,6 +72,22 @@ std::vector<game::LabelLine> label_lines;
 int selected = 0, picked = -1, extra_calls = 0, label_draws = 0;
 bool catalog_shown = false, label_shown = false;
 void Lists() {
+    // 実際の選択判定を使い、ゲームの選択更新・音だけを代役にする。
+    int current = 0, selections = 0, sounds = 0;
+    auto move = [&](int count, int requested) {
+        game::SelectCatalogRow(count, current, requested, [&](int next, int before) {
+            assert(before == current); current = next; ++selections;
+        }, [&] { assert(selections == sounds + 1); ++sounds; });
+        assert(selections == sounds);
+    };
+    move(40, 0); move(40, -1); assert(sounds == 0);
+    move(40, 1); assert(current == 1 && sounds == 1);
+    move(40, 1); assert(sounds == 1); // 同じ行・反復待ち
+    move(40, 7); assert(current == 7 && sounds == 2); // ページ移動も1回
+    move(40, 100); assert(current == 39 && sounds == 3);
+    move(40, 40); move(40, 100); assert(sounds == 3); // 下端
+    move(40, -6); assert(current == 0 && sounds == 4);
+    move(40, -1); move(1, 1); move(1, -1); move(0, 1); assert(sounds == 4);
     held = returned = 0;
     ui::lists::CatalogList list;
     std::vector<ui::lists::Row> rows;

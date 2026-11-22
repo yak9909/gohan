@@ -133,6 +133,13 @@ def test_main_exit_codes(tmp_path, capsys):
     assert 'bogus' in capsys.readouterr().err
 
 
+def test_hotkey_confirmation_without_default_hotkey(tmp_path):
+    parsed, = load(tmp_path, item(['menu = "on_apply"', 'confirm = "hotkey"'], 'action', 'trigger'))
+    assert not parsed.hotkey
+    assert parsed.menu == 'on_apply' and parsed.confirm == 'hotkey'
+    assert '.confirm = Confirm::Hotkey' in menu.render_table([parsed])
+
+
 def test_repository_docs_match_spec():
     assert menu.check(ROOT / 'spec/menu.toml', ROOT / 'docs/menu.md')
 
@@ -183,7 +190,6 @@ def item(extra, control='toggle', behavior='state'):
     (item(['menu = "later"'], 'action', 'trigger'), 'menu'),
     (item(['confirm = "hotkey"', 'hotkey = "A"']), 'confirm'),
     (item(['input = "hex"']), 'input'),
-    (item(['confirm = "hotkey"'], 'action', 'trigger'), 'ホットキー'),
     (item(['menu = "on_apply"', 'input = "hex"'], 'action', 'trigger'), '入力を受け取れません'),
     (item(['persist = true'], 'action', 'mode'), 'persist'),
     (item(['hotkey = "L+Foo"']), '未知のボタン'),
