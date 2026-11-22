@@ -3,6 +3,7 @@
 #include "menu_ids.hpp"
 #include "ui/native_panels.hpp"
 #include "menu/notice.hpp"
+#include <cstdio>
 
 namespace gohan::features::menu_screen::dev_panels {
 namespace {
@@ -35,7 +36,10 @@ const menu::Bound bindings[] = {
 } // namespace
 void PollCatalogDecision() {
     const int n = ui::native_panels::Catalog().TakeDecision();
-    if (n >= 0) menu::PostNotice({"一覧", "選んだ行: " + std::to_string(n), false});
+    if (n < 0) return;
+    menu::Notice notice{"一覧", {}, false};
+    std::snprintf(notice.message, sizeof(notice.message), "選んだ行: %d", n);
+    menu::PostNotice(notice);
 }
 
 std::span<const menu::Bound> Bindings() { return bindings; }
