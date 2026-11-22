@@ -57,7 +57,7 @@ bool Wire() { return true; }
 void Shutdown() { skip = false; }
 Result Set(bool on) { skip = on; return Result::Ok; }
 bool IsActive() { return skip; }
-bool Step() { if (!skip || !fire) return false; fire = false; return true; }
+bool TakeNotice() { if (!skip || !fire) return false; fire = false; return true; }
 }
 }
 namespace gohan::ui::input { std::uint32_t NowMs() { return now; } }
