@@ -1,6 +1,7 @@
 #include "ui/bottom_screen_panel.hpp"
 namespace gohan::ui {
 void BottomScreenPanel::Step(const LeaseStatus &status) {
+    if (status.cancelling) wanted_ = false;
     if (stage_ == Stage::Empty) {
         if (held_) {
             if (!releasing_) releasing_ = lease_.release(owner_);

@@ -21,6 +21,7 @@ LeaseCommand BottomScreenLease::Step(const game::BottomScreenSnapshot &s) {
     }
     LeaseProbe p;
     p.room = s.room; p.owners = owners_ & ~chat_;
+    p.chat_over = s.chat_over; p.available = s.available;
     p.tab_settled = s.available && s.tab_settled;
     p.commands_consumed = s.commands_consumed;
     p.map_present = s.map_present; p.other_present = s.other_present;
@@ -30,10 +31,15 @@ LeaseCommand BottomScreenLease::Step(const game::BottomScreenSnapshot &s) {
     // 部屋メニューが地図の代わりになる部屋もある。共有する入場完了通知で確認する。
     p.restore_done = p.tab_settled && p.commands_consumed && s.tabs_present && s.map_enter_done;
     p.resources_returned = !pending_;
-    return machine_.Step(p);
+    const bool requested = machine_.Requested();
+    const auto command = machine_.Step(p);
+    if ((requested && !machine_.Requested() && command != LeaseCommand::FinishMenuClose) || machine_.Recovering()) {
+        cancelled_ |= owners_; owners_ = chat_ = 0;
+    }
+    return command;
 }
 LeaseStatus BottomScreenLease::Status() const {
     return {machine_.Stage(), machine_.Requested(), machine_.Hidden(), machine_.Restoring(),
-            machine_.Restored(), !pending_ && machine_.Drained(), stopping_};
+            machine_.Restored(), !pending_ && machine_.Drained(), stopping_, machine_.Recovering()};
 }
 } // namespace gohan::ui
