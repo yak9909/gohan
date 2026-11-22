@@ -23,7 +23,6 @@ BottomScreenSnapshot ReadBottomScreen() {
     auto *mgr = Manager(); auto *tab = Tab(mgr);
     s.manager = mgr != nullptr; s.tab = tab != nullptr;
     if (mgr && tab) {
-        s.chat_window = At<void *>(mgr, 492) != nullptr;
         s.map = At<void *>(mgr, 484); s.other = At<void *>(mgr, 488);
         s.shown = At<std::uint16_t>(tab, 6578); s.moving = At<std::uint16_t>(tab, 6580);
         s.calc = At<std::uint32_t>(tab, 32); s.calc_adjustor = At<std::uint32_t>(tab, 36);

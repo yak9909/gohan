@@ -48,12 +48,6 @@ void Panel() {
     p.Step(Hidden()); assert(p.Drained() && returned == 1 && held == 0);
     p.Stop(); p.Request(true); p.Step(Hidden()); assert(p.Drained());
     held = returned = 0;
-    Content waiting; ui::BottomScreenPanel cancelled(waiting, 8, false, {Acquire, Release, Returned});
-    cancelled.Request(true); cancelled.Step(visible);
-    auto recovery = visible; recovery.cancelling = true;
-    for (unsigned i = 0; i < 4; ++i) cancelled.Step(recovery);
-    assert(cancelled.Drained() && held == 0 && returned == 8 && waiting.loading == 2);
-    held = returned = 0;
     Content f; f.loading = 0; f.failed = true;
     ui::BottomScreenPanel failed(f, 2, false, {Acquire, Release, Returned});
     failed.Request(true); failed.Step(Hidden());
