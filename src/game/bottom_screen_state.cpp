@@ -5,8 +5,6 @@ BottomScreenSnapshot DecodeBottomScreen(const BottomScreenImage &s) {
     using namespace generated;
     BottomScreenSnapshot p;
     p.room = s.room;
-    // チャット窓の開始・表示・終了中は退場を始めない。
-    p.chat_over = s.chat_window || (s.calc == 0x006D5510 && !s.calc_adjustor);
     p.menu_open = s.menu_state != 1 || (s.flags & MenuFlags_EnterStarted);
     p.menu_entered = (s.flags & (MenuFlags_EnterStarted | MenuFlags_EnterDone)) ==
         (MenuFlags_EnterStarted | MenuFlags_EnterDone);

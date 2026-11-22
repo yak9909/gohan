@@ -2,29 +2,34 @@
 #ifdef GOHAN_DEV
 #include "menu_ids.hpp"
 #include "ui/native_panels.hpp"
-#include "menu/notice.hpp"
-#include <cstdio>
+#include <CTRPluginFramework.hpp>
 
 namespace gohan::features::menu_screen::dev_panels {
 namespace {
 menu::Result ToggleCatalog() {
-    if (!ui::native_panels::Catalog().Drained()) ui::native_panels::Catalog().Close();
+    static bool shown = false;
+    if (shown) ui::native_panels::Catalog().Close();
     else {
         std::vector<ui::lists::Row> rows;
         for (unsigned i = 0; i < 40; ++i)
             rows.push_back({"試しの行 " + std::to_string(i), 0, std::to_string(i), " 番"});
         if (!ui::native_panels::Catalog().Show(std::move(rows))) return menu::Result::Busy;
     }
+    shown = !shown;
     return menu::Result::Ok;
 }
 menu::Result ToggleLabels() {
+    static bool shown = false;
     std::vector<ui::LabelLine> lines;
-    if (ui::native_panels::Labels().Drained()) lines = {{"上画面の箱", 0}, {"二段目の試し", 1}};
+    if (!shown) lines = {{"上画面の箱", 0}, {"二段目の試し", 1}};
     if (!ui::native_panels::Labels().Declare(0, std::move(lines))) return menu::Result::Busy;
+    shown = !shown;
     return menu::Result::Ok;
 }
 menu::Result ToggleLease() {
-    if (!ui::native_panels::LeaseOnly(!ui::bottom_screen_lease::HasOwner(4))) return menu::Result::Busy;
+    static bool shown = false;
+    if (!ui::native_panels::LeaseOnly(!shown)) return menu::Result::Busy;
+    shown = !shown;
     return menu::Result::Ok;
 }
 
@@ -36,10 +41,7 @@ const menu::Bound bindings[] = {
 } // namespace
 void PollCatalogDecision() {
     const int n = ui::native_panels::Catalog().TakeDecision();
-    if (n < 0) return;
-    menu::Notice notice{"一覧", {}, false};
-    std::snprintf(notice.message, sizeof(notice.message), "選んだ行: %d", n);
-    menu::PostNotice(notice);
+    if (n >= 0) CTRPluginFramework::OSD::Notify("選んだ行: " + std::to_string(n));
 }
 
 std::span<const menu::Bound> Bindings() { return bindings; }
