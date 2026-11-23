@@ -42,6 +42,8 @@ void HideBottomScreen() {
         At<void *>(mgr, 484) != nullptr, At<void *>(mgr, 488) != nullptr});
 }
 void RestoreBottomScreen() { Global<g_BsMenuTabCommand_t>(g_BsMenuTabCommand_addr) = 2; }
+// 地図・タブの再入場を挟まず貸し出すため、従来のメニュー終了手順を維持する。
+// 単一タブ退場の更新だけを呼ばず、メニュー消滅後は Finish から全タブ退場へ進む。
 void BeginBottomMenuClose() {
     auto *mgr = Manager(); auto *tab = Tab(mgr);
     if (!tab) return;

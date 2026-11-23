@@ -23,11 +23,13 @@ LeaseCommand BottomScreenLease::Step(const game::BottomScreenSnapshot &s) {
     p.room = s.room; p.owners = owners_ & ~chat_;
     p.tab_settled = s.available && s.tab_settled;
     p.commands_consumed = s.commands_consumed;
+    p.tab_command_consumed = s.available && s.tab_command_consumed;
     p.map_present = s.map_present; p.other_present = s.other_present;
     p.menu_open = s.menu_open; p.menu_entered = s.menu_entered; p.menu_gone = s.menu_gone;
-    p.hide_done = p.tab_settled && p.commands_consumed && !s.tabs_present && !s.map_present && !s.other_present;
-    p.game_restored = s.tabs_present || s.map_present || s.other_present;
-    // 部屋メニューが地図の代わりになる部屋もある。共有する入場完了通知で確認する。
+    // 部屋側の参照は退場・再表示の判定に含めない。
+    p.hide_done = p.tab_settled && p.commands_consumed && !s.tabs_present && !s.map_present;
+    p.game_restored = s.tabs_present || s.map_present;
+    // 復帰はタブ選択・入場完了通知・タブの表示を待つ。部屋ごとの条件は追加しない。
     p.restore_done = p.tab_settled && p.commands_consumed && s.tabs_present && s.map_enter_done;
     p.resources_returned = !pending_;
     return machine_.Step(p);

@@ -97,7 +97,8 @@ static void TestBclyt() {
 }
 
 static ui::LeaseProbe Idle() {
-    ui::LeaseProbe p; p.room = 1; p.owners = 1; p.tab_settled = true; p.commands_consumed = true;
+    ui::LeaseProbe p; p.room = 1; p.owners = 1; p.tab_settled = true;
+    p.commands_consumed = p.tab_command_consumed = true;
     p.map_present = true; p.resources_returned = true; return p;
 }
 
@@ -113,45 +114,76 @@ static void TestLease() {
     p.game_restored = false; p.hide_done = true; m.Step(p);
     assert(m.Hidden());
     p.owners = 0; p.resources_returned = false;
-    m.Step(p); m.Step(p); assert(m.Stage() == LeaseStage::Hidden);
+    m.Step(p); assert(m.Stage() == LeaseStage::Hidden);
     p.resources_returned = true;
     p.commands_consumed = false; assert(m.Step(p) == LeaseCommand::None);
     p.commands_consumed = true;
-    assert(m.Step(p) == LeaseCommand::Restore && m.Restoring());
-    p.restore_done = true; m.Step(p); assert(!m.Restored());
-    m.Step(p); assert(m.Restored() && !m.Restoring());
+    assert(m.Step(p) == LeaseCommand::Restore && m.Restoring() && !m.Drained());
+    // 復帰中の最後の要求を保持し、復帰が済むまで命令を重ねない。
+    p.owners = 1; assert(m.Step(p) == LeaseCommand::None && !m.Drained());
+    p.restore_done = true; m.Step(p); assert(m.Restored() && !m.Restoring());
+    assert(m.Step(p) == LeaseCommand::HideMap);
 
-    ui::LeaseMachine again; p = Idle(); again.Step(p);
+    ui::LeaseMachine again; p = Idle();
     assert(again.Step(p) == LeaseCommand::HideMap);
     p.hide_done = true; again.Step(p); again.Step(p);
     p.game_restored = true;
     assert(again.Step(p) == LeaseCommand::None && again.Stage() == LeaseStage::Shown);
     p.game_restored = false;
-    assert(again.Step(p) == LeaseCommand::None);
     assert(again.Step(p) == LeaseCommand::HideMap);
     p.room = 2;
     assert(again.Step(p) == LeaseCommand::None && again.Stage() == LeaseStage::Shown);
 
     ui::LeaseMachine menu; p = Idle(); p.menu_open = true;
-    menu.Step(p); assert(menu.Step(p) == LeaseCommand::None);
-    p.menu_entered = true; assert(menu.Step(p) == LeaseCommand::CloseMenu);
+    assert(menu.Step(p) == LeaseCommand::None);
+    p.menu_entered = true; p.tab_command_consumed = false;
+    assert(menu.Step(p) == LeaseCommand::None);
+    // メニュー終了の入口はタブ命令だけを見る。地図や部屋の消費待ちは追加しない。
+    p.tab_command_consumed = true; p.commands_consumed = false;
+    assert(menu.Step(p) == LeaseCommand::CloseMenu);
     p.owners = 0; menu.Shutdown();
     assert(menu.Step(p) == LeaseCommand::None && !menu.Drained());
     p.menu_gone = true; p.menu_open = false;
     assert(menu.Step(p) == LeaseCommand::FinishMenuClose && menu.Drained());
 
-    ui::LeaseMachine stop; p = Idle(); stop.Step(p); stop.Step(p);
-    assert(stop.Shutdown() == LeaseCommand::None);
-    p.owners = 0; p.resources_returned = false;
+    // Shown では部屋変更自体による段・印のリセットを行わない。
+    ui::LeaseMachine shown; p = Idle(); p.owners = 0;
+    assert(shown.Step(p) == LeaseCommand::None);
+    ++p.room;
+    assert(shown.Step(p) == LeaseCommand::None && shown.Stage() == LeaseStage::Shown);
+    assert(shown.Restored() && shown.Drained() && !shown.Requested() && !shown.Hidden() && !shown.Restoring());
+    // 部屋変更が通常の Shown の処理を一フレーム止めることもない。
+    ++p.room; p.owners = 1;
+    assert(shown.Step(p) == LeaseCommand::HideMap);
+
+    for (bool gone_on_change : {false, true}) {
+        ui::LeaseMachine closing; p = Idle(); p.menu_open = p.menu_entered = true;
+        assert(closing.Step(p) == LeaseCommand::CloseMenu);
+        ++p.room; p.menu_gone = gone_on_change;
+        assert(closing.Step(p) == (gone_on_change ? LeaseCommand::FinishMenuClose : LeaseCommand::None));
+        assert(closing.Stage() == LeaseStage::Shown && closing.Requested() && !closing.Restored());
+        if (!gone_on_change) {
+            assert(!closing.Drained());
+            // 閉じ始めた後に所有者が消えても、部屋変更で後始末を捨てない。
+            p.owners = 0; p.menu_gone = true;
+            assert(closing.Step(p) == LeaseCommand::FinishMenuClose);
+        }
+        p.owners = 0; p.menu_open = false;
+        assert(closing.Step(p) == LeaseCommand::None && closing.Drained());
+        assert(closing.Step(p) == LeaseCommand::None); // 後始末は一度だけ
+    }
+
+    ui::LeaseMachine stop; p = Idle(); stop.Step(p);
+    stop.Shutdown(); p.owners = 0; p.resources_returned = false;
     stop.Step(p); assert(!stop.Drained());
-    p.hide_done = true; stop.Step(p); stop.Step(p); stop.Step(p);
-    assert(stop.Hidden());
+    p.hide_done = true; stop.Step(p); assert(stop.Hidden());
     p.resources_returned = true;
-    assert(stop.Step(p) == LeaseCommand::Restore && stop.Drained());
-    assert(stop.Step(p) == LeaseCommand::None); // 命令は1回。復帰完了は待たない。
+    assert(stop.Step(p) == LeaseCommand::Restore && !stop.Drained());
+    assert(stop.Step(p) == LeaseCommand::None && !stop.Drained());
+    p.restore_done = true; stop.Step(p); assert(stop.Drained());
 
     ui::LeaseMachine chat; p = Idle(); p.chat_over = true;
-    chat.Step(p); assert(chat.Step(p) == LeaseCommand::None);
+    assert(chat.Step(p) == LeaseCommand::None && chat.Drained());
 }
 
 static void TestInput() {
@@ -248,52 +280,92 @@ static void TestLeaseBytes() {
     image.flags = MenuFlags_MapEnterDone;
     auto decoded = game::DecodeBottomScreen(image);
     assert(decoded.available && decoded.tab_settled && decoded.commands_consumed && !decoded.menu_open);
-    image.menu_state = 0; assert(game::DecodeBottomScreen(image).menu_open); // 0 はアイドルではない
+    image.menu_state = 0; assert(game::DecodeBottomScreen(image).menu_open);
     image.menu_state = 1; image.flags = MenuFlags_EnterStarted;
     assert(game::DecodeBottomScreen(image).menu_open && !game::DecodeBottomScreen(image).menu_entered);
     image.flags |= MenuFlags_EnterDone;
     assert(game::DecodeBottomScreen(image).menu_entered);
-    image.flags = MenuFlags_MapEnterDone;
+    // 開始通知を持たない画面の扱いも従来の MenuOpen に揃える。
+    image.flags = 0; image.screen_list_empty = false;
+    assert(!game::DecodeBottomScreen(image).menu_open && !game::DecodeBottomScreen(image).menu_gone);
+    image.screen_list_empty = true; image.flags = MenuFlags_MapEnterDone;
     image.other_command = 0;
     ui::BottomScreenLease lease; lease.Acquire(1);
-    lease.Step(game::DecodeBottomScreen(image));
-    assert(lease.Step(game::DecodeBottomScreen(image)) == LeaseCommand::None);
-    image.other_command = 2;
     assert(lease.Step(game::DecodeBottomScreen(image)) == LeaseCommand::HideMap);
     game::HideBottomScreen({&image.tab_command, &image.map_command, &image.other_command, image.map, image.other});
     assert(image.tab_command == 7 && image.map_command == 0 && image.other_command == 0);
     assert(!game::DecodeBottomScreen(image).commands_consumed);
-    // 命令が消費されても、出入り中のタブがあればまだ隠れきっていない。
-    image.tab_command = 11; image.map_command = image.other_command = 2;
-    image.shown = 0; image.map = image.other = false; image.moving = 1;
+    // タブと地図は11/2へ。部屋は受付待ちの0・参照ありのままでも追加で待たない。
+    image.tab_command = 11; image.map_command = 2;
+    image.shown = 0; image.map = false; image.moving = 1;
     lease.Step(game::DecodeBottomScreen(image)); lease.Step(game::DecodeBottomScreen(image));
     assert(!lease.Status().hidden);
     image.moving = 0; lease.Step(game::DecodeBottomScreen(image));
     assert(lease.Status().hidden);
     lease.Release(1); lease.ResourcesReturned(1);
-    lease.Step(game::DecodeBottomScreen(image));
     assert(lease.Step(game::DecodeBottomScreen(image)) == LeaseCommand::Restore);
+    // 状態18: 地図/部屋命令1、0x01待ち（タブ選択以外のcalcは代役0）。
+    image.tab_command = 2; image.map_command = image.other_command = 1; image.calc = 0;
+    image.flags = MenuFlags_MapOutDone;
+    lease.Step(game::DecodeBottomScreen(image)); assert(!lease.Status().drained);
+    image.tab_command = 11; image.map_command = image.other_command = 2;
+    lease.Step(game::DecodeBottomScreen(image)); assert(!lease.Status().restored);
+    // 地図が入場開始を通知してから、状態7でアニメと0x02を待つ。
+    image.map = true; image.flags = MenuFlags_MapEnterStarted;
+    image.calc = BsMenuTab_TabsInFinishUpdate_addr; image.moving = 1; image.shown = 1;
+    lease.Step(game::DecodeBottomScreen(image)); assert(!lease.Status().restored);
+    image.flags = MenuFlags_MapEnterDone;
+    lease.Step(game::DecodeBottomScreen(image)); assert(!lease.Status().restored);
+    image.moving = 0; image.calc = BsMenuTab_TabSelectUpdate_addr;
+    lease.Step(game::DecodeBottomScreen(image)); assert(lease.Status().restored && lease.Status().drained);
+
+    // ゲームが地図を戻したら、二重の復帰命令を出さない。
+    ui::BottomScreenLease automatic; automatic.Acquire(1);
+    assert(automatic.Step(game::DecodeBottomScreen(image)) == LeaseCommand::HideMap);
+    image.map = false; image.shown = 0;
+    automatic.Step(game::DecodeBottomScreen(image)); automatic.Step(game::DecodeBottomScreen(image));
+    automatic.Release(1); automatic.ResourcesReturned(1);
+    image.map = true;
+    assert(automatic.Step(game::DecodeBottomScreen(image)) == LeaseCommand::None);
+    assert(automatic.Status().stage == LeaseStage::Shown);
+
+    // 部屋変更は各遷移段でゲームへ制御を返し、命令を追加しない。
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        ui::BottomScreenLease moved; image.map = true; image.shown = 1;
+        moved.Acquire(1); moved.Step(game::DecodeBottomScreen(image));
+        if (phase) {
+            image.map = false; image.shown = 0;
+            moved.Step(game::DecodeBottomScreen(image)); moved.Step(game::DecodeBottomScreen(image));
+        }
+        if (phase == 2) {
+            moved.Release(1); moved.ResourcesReturned(1);
+            assert(moved.Step(game::DecodeBottomScreen(image)) == LeaseCommand::Restore);
+        }
+        ++image.room;
+        assert(moved.Step(game::DecodeBottomScreen(image)) == LeaseCommand::None);
+        assert(moved.Status().stage == LeaseStage::Shown && !moved.Status().hidden);
+    }
 }
 static void TestLeaseOwners() {
     ui::BottomScreenLease lease;
     game::BottomScreenSnapshot s;
-    s.available = s.tab_settled = s.commands_consumed = s.tabs_present = s.map_present = s.map_enter_done = true;
+    s.available = s.tab_settled = s.commands_consumed = s.tab_command_consumed = true;
+    s.tabs_present = s.map_present = s.map_enter_done = true;
     lease.Acquire(1); lease.Acquire(2, true);
-    assert(lease.Step(s) == LeaseCommand::None);
-    s.commands_consumed = false; assert(lease.Step(s) == LeaseCommand::None);
-    s.commands_consumed = true;
     assert(lease.Step(s) == LeaseCommand::HideMap);
     s.tabs_present = s.map_present = false;
     lease.Step(s); lease.Step(s); assert(lease.Status().hidden);
     lease.Release(1); lease.ResourcesReturned(1);
-    lease.Step(s); assert(lease.Step(s) == LeaseCommand::None); // チャット側の資源も待つ
+    assert(lease.Step(s) == LeaseCommand::None); // チャット側の資源も待つ
     lease.Release(2); lease.ResourcesReturned(2);
     assert(lease.Step(s) == LeaseCommand::Restore);
     s.tabs_present = s.map_present = true; lease.Step(s); lease.Step(s);
     assert(lease.Status().restored);
     ui::BottomScreenLease chat;
-    chat.Acquire(4, true); chat.Step(s);
-    assert(chat.Step(s) == LeaseCommand::None);
+    // メニュー（チャット）が開いていても、重ねる持ち主は退場・終了を命じない。
+    s.menu_open = s.menu_entered = true;
+    chat.Acquire(4, true);
+    assert(chat.Step(s) == LeaseCommand::None && chat.Status().restored);
     chat.RequestStop(); chat.ResourcesReturned(4); chat.Step(s);
     assert(chat.Status().drained);
 }

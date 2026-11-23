@@ -14,7 +14,9 @@ BottomScreenSnapshot DecodeBottomScreen(const BottomScreenImage &s) {
     p.available = true;
     p.map_present = s.map; p.other_present = s.other; p.tabs_present = s.shown != 0;
     p.tab_settled = s.calc == BsMenuTab_TabSelectUpdate_addr && !s.calc_adjustor && !s.moving;
-    p.commands_consumed = s.tab_command == 11 && s.map_command == 2 && s.other_command == 2;
+    // 部屋命令は読み込み・フェーダーの条件で保留される。フィールドの待機はタブと地図で確認する。
+    p.tab_command_consumed = s.tab_command == 11;
+    p.commands_consumed = p.tab_command_consumed && s.map_command == 2;
     return p;
 }
 void HideBottomScreen(const BottomScreenCommands &c) {

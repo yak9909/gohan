@@ -92,13 +92,14 @@ bool Shutdown() {
     }
     LeaseStatus state;
     std::uint32_t generation = 0;
-    for (unsigned waited = 0; waited <= 2000; waited += 10) {
+    // 旧来の終了待ちと同じ約90フレーム。復帰途中なら接続を残す。
+    for (unsigned waited = 0; waited <= 90; ++waited) {
         if (published.ReadIfNew(state, generation) == core::MailRead::Updated && state.drained &&
             state.stopping) {
             // 要求を読んだフレームからのみ排出完了を通知する。
             core::frame::Global().Remove(FrameStep); wired = false; return true;
         }
-        game::BottomScreenWait(10);
+        if (waited != 90) game::BottomScreenWait(17);
     }
     return false;
 }

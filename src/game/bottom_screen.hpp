@@ -4,6 +4,7 @@ namespace gohan::game {
 struct BottomScreenSnapshot {
     std::uint32_t room = 0;
     bool available = false, tab_settled = false, commands_consumed = false;
+    bool tab_command_consumed = false;
     bool map_present = false, other_present = false, tabs_present = false;
     bool menu_open = false, menu_entered = false, menu_gone = false, map_enter_done = false;
 };

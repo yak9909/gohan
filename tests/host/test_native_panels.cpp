@@ -115,6 +115,18 @@ void Lists() {
     assert(list.Show({{"new", 0, "", ""}}));
     for (unsigned i = 0; i < 3; ++i) list.Step(Hidden(), 0, 700 + i, false, 0, 0, false);
     assert(catalog_rows.size() == 1 && catalog_rows[0].text == "new");
+    // 開閉・差し替えを各段で繰り返しても、最後に指定した一覧へ収束する。
+    for (unsigned i = 0; i < 12; ++i) {
+        list.Close();
+        list.Step(Hidden(), 0, 710 + i * 2, false, 0, 0, false);
+        assert(list.Show({{"last", 0, "", ""}}));
+        list.Step(Hidden(), 0, 711 + i * 2, false, 0, 0, false);
+    }
+    for (unsigned i = 0; i < 20; ++i) list.Step(Hidden(), 0, 750 + i, false, 0, 0, false);
+    assert(!list.Drained() && catalog_shown && catalog_rows.size() == 1 && catalog_rows[0].text == "last");
+    list.Close();
+    for (unsigned i = 0; i < 20; ++i) list.Step(Hidden(), 0, 770 + i, false, 0, 0, false);
+    assert(list.Drained());
     list.Stop();
     for (unsigned i = 0; i < 10; ++i) list.Step(Hidden(), 0, 800 + i, false, 0, 0, false);
     assert(list.Drained() && !list.Show({{"after stop", 0, "", ""}}));

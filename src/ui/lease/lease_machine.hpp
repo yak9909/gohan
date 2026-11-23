@@ -6,6 +6,7 @@ enum class LeaseCommand : std::uint8_t { None, HideMap, HideOther, HideTab, Clos
 struct LeaseProbe {
     std::uint32_t room = 0, owners = 0;
     bool chat_over = false, tab_settled = false, commands_consumed = false;
+    bool tab_command_consumed = false;
     bool map_present = false, other_present = false;
     bool menu_open = false, menu_entered = false, menu_gone = false;
     bool hide_done = false, restore_done = false, game_restored = false;
@@ -18,8 +19,9 @@ class LeaseMachine {
         if (!room_seen_ || p.room != room_) {
             const bool changed = room_seen_;
             room_ = p.room; room_seen_ = true;
-            if (changed) {
-                Enter(LeaseStage::Shown); closing_ = requested_ = hidden_ = restoring_ = false;
+            // Shown のメニュー終了処理は部屋が変わっても最後まで続ける。
+            if (changed && stage_ != LeaseStage::Shown) {
+                Enter(LeaseStage::Shown); requested_ = hidden_ = restoring_ = false;
                 restored_ = true; return LeaseCommand::None;
             }
         }
@@ -34,9 +36,9 @@ class LeaseMachine {
                 if (!want) { requested_ = false; restored_ = true; }
                 return LeaseCommand::FinishMenuClose;
             }
-            if (!want || frames_ < MinFrames) return LeaseCommand::None;
+            if (!want) return LeaseCommand::None;
             if (p.menu_open) {
-                if (!p.menu_entered || !p.commands_consumed) return LeaseCommand::None;
+                if (!p.menu_entered || !p.tab_command_consumed) return LeaseCommand::None;
                 closing_ = true; requested_ = true; restored_ = false;
                 return LeaseCommand::CloseMenu;
             }
@@ -53,7 +55,7 @@ class LeaseMachine {
                 hidden_ = requested_ = false; restored_ = true;
                 Enter(LeaseStage::Shown); return LeaseCommand::None;
             }
-            if (frames_ >= MinFrames && !want && p.resources_returned && p.tab_settled && p.commands_consumed) {
+            if (!want && p.resources_returned && p.tab_settled && p.commands_consumed) {
                 hidden_ = requested_ = false; restoring_ = true;
                 Enter(LeaseStage::Restoring); return LeaseCommand::Restore;
             }
@@ -68,7 +70,7 @@ class LeaseMachine {
     }
     // 排出中も Step を続ける。退場と資源返却が済む前には出し直さない。
     LeaseCommand Shutdown() { stopping_ = true; return LeaseCommand::None; }
-    bool Drained() const { return !closing_ && (stage_ == LeaseStage::Shown || stage_ == LeaseStage::Restoring); }
+    bool Drained() const { return !closing_ && stage_ == LeaseStage::Shown; }
     LeaseStage Stage() const { return stage_; }
     bool Requested() const { return requested_; }
     bool Hidden() const { return hidden_; }
