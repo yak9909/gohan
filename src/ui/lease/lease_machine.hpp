@@ -19,8 +19,9 @@ class LeaseMachine {
         if (!room_seen_ || p.room != room_) {
             const bool changed = room_seen_;
             room_ = p.room; room_seen_ = true;
-            if (changed) {
-                Enter(LeaseStage::Shown); closing_ = requested_ = hidden_ = restoring_ = false;
+            // Shown のメニュー終了処理は部屋が変わっても最後まで続ける。
+            if (changed && stage_ != LeaseStage::Shown) {
+                Enter(LeaseStage::Shown); requested_ = hidden_ = restoring_ = false;
                 restored_ = true; return LeaseCommand::None;
             }
         }

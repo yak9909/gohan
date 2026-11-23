@@ -146,6 +146,33 @@ static void TestLease() {
     p.menu_gone = true; p.menu_open = false;
     assert(menu.Step(p) == LeaseCommand::FinishMenuClose && menu.Drained());
 
+    // Shown では部屋変更自体による段・印のリセットを行わない。
+    ui::LeaseMachine shown; p = Idle(); p.owners = 0;
+    assert(shown.Step(p) == LeaseCommand::None);
+    ++p.room;
+    assert(shown.Step(p) == LeaseCommand::None && shown.Stage() == LeaseStage::Shown);
+    assert(shown.Restored() && shown.Drained() && !shown.Requested() && !shown.Hidden() && !shown.Restoring());
+    // 部屋変更が通常の Shown の処理を一フレーム止めることもない。
+    ++p.room; p.owners = 1;
+    assert(shown.Step(p) == LeaseCommand::HideMap);
+
+    for (bool gone_on_change : {false, true}) {
+        ui::LeaseMachine closing; p = Idle(); p.menu_open = p.menu_entered = true;
+        assert(closing.Step(p) == LeaseCommand::CloseMenu);
+        ++p.room; p.menu_gone = gone_on_change;
+        assert(closing.Step(p) == (gone_on_change ? LeaseCommand::FinishMenuClose : LeaseCommand::None));
+        assert(closing.Stage() == LeaseStage::Shown && closing.Requested() && !closing.Restored());
+        if (!gone_on_change) {
+            assert(!closing.Drained());
+            // 閉じ始めた後に所有者が消えても、部屋変更で後始末を捨てない。
+            p.owners = 0; p.menu_gone = true;
+            assert(closing.Step(p) == LeaseCommand::FinishMenuClose);
+        }
+        p.owners = 0; p.menu_open = false;
+        assert(closing.Step(p) == LeaseCommand::None && closing.Drained());
+        assert(closing.Step(p) == LeaseCommand::None); // 後始末は一度だけ
+    }
+
     ui::LeaseMachine stop; p = Idle(); stop.Step(p);
     stop.Shutdown(); p.owners = 0; p.resources_returned = false;
     stop.Step(p); assert(!stop.Drained());
