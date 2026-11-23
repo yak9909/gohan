@@ -45,4 +45,6 @@ Callback Original0();
 Callback Original1();
 bool Wire();
 void Unwire();
+void Suspend();
+void Resume();
 } // namespace gohan::game::draw

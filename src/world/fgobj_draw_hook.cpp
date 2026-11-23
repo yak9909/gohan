@@ -44,10 +44,12 @@ bool Register() {
 }
 bool Wire() { wired = game::draw::Wire(); return wired; }
 void Shutdown() {
+    game::draw::Suspend();
     entries = {};
     // このサービスのラッパーは静的寿命。他者が保持していても呼び出し先を失わない。
     Step();
     game::draw::Unwire(); wired = false;
+    game::draw::Resume();
 }
 }
 bool FgobjDrawHook::Available() { return wired && game::draw::CurrentSlots().owner; }

@@ -19,6 +19,8 @@ struct View {
     bool lut_valid = false;
 };
 Plan Prepare(Tev &, std::span<const std::uint32_t, 55> palette);
+// 検査済みの材質から TEV を写し、LUT の相対参照を写しの置き場へ合わせる。
+bool CopyTev(const View &, Tev &copy);
 void ScaleAlpha(Tev &, bool tint);
 std::uint32_t Constant(Colour, bool premultiplied, bool scale_alpha = false);
 class Patch {

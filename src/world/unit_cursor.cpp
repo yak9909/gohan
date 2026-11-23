@@ -41,7 +41,7 @@ static_assert(sizeof(Wanted) + sizeof(UnitCursor::Ownership) + sizeof(UnitCursor
 void Step();
 bool Register() {
     if (registered) return true;
-    const auto change = core::frame::Global().Add(Step, order::Draw - 1);
+    const auto change = core::frame::Global().Add(Step, order::Resources);
     registered = change.result == core::frame::Result::Queued || change.result == core::frame::Result::Unchanged;
     return registered;
 }

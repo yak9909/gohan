@@ -47,6 +47,16 @@ Plan Prepare(Tev &b, std::span<const std::uint32_t, 55> palette) {
     s[4] = (alpha[4] & 0xFFFF0000u) | 4; s[6] = 0;
     return plan;
 }
+bool CopyTev(const View &source, Tev &copy) {
+    if (!source.tev || !source.lut_valid) return false;
+    copy = *source.tev;
+    if (copy[10]) {
+        const auto from = reinterpret_cast<std::uintptr_t>(source.tev) + 40;
+        const auto to = reinterpret_cast<std::uintptr_t>(&copy) + 40;
+        copy[10] = static_cast<std::uint32_t>(from + copy[10] - to);
+    }
+    return true;
+}
 void ScaleAlpha(Tev &b, bool tint) {
     auto *s = Stage(b, 5);
     s[0] = 5; s[1] = tint ? 0x00EF0EEFu : 0x00EF000Fu;
@@ -76,13 +86,13 @@ bool Patch::Push(View v, Colour c) {
         std::copy_n(Stage(block, n), 7, s.begin());
         log->Write(reinterpret_cast<std::array<std::uint32_t, 7> *>(Stage(*v.tev, n)), s);
     }
-    log->Write(v.tev_key, 0u);
-    log->Write(v.palette + 54, Constant(c, blended || plan == Plan::Replace, blended));
+    log->Write<std::uint32_t>(v.tev_key, 0u);
+    log->Write<std::uint32_t>(v.palette + 54, Constant(c, blended || plan == Plan::Replace, blended));
     if (!blended && v.blend && v.fb_read && v.blend_colour && v.frag_key) {
-        log->Write(v.fb_read, 0u);
-        log->Write(v.blend, (12u << 16) | (13u << 20) | (1u << 24) | (13u << 28));
-        log->Write(v.blend_colour, static_cast<std::uint32_t>(c.alpha) << 24);
-        log->Write(v.frag_key, 0u);
+        log->Write<std::uint32_t>(v.fb_read, 0u);
+        log->Write<std::uint32_t>(v.blend, (12u << 16) | (13u << 20) | (1u << 24) | (13u << 28));
+        log->Write<std::uint32_t>(v.blend_colour, static_cast<std::uint32_t>(c.alpha) << 24);
+        log->Write<std::uint32_t>(v.frag_key, 0u);
     }
     log_ = std::move(log);
     return true;

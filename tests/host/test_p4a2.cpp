@@ -130,6 +130,16 @@ void Tint() {
     v.lut_valid = false;
     assert(!tint.Push(v, {})); assert(tev == old_tev && material == old_material);
     v.lut_valid = true;
+    {
+        tev[10] = 128;
+        Tev copy{};
+        assert(CopyTev(v, copy));
+        assert(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&copy) + 40 + copy[10]) ==
+            static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&tev) + 40 + tev[10]));
+        tev[10] = 0;
+        assert(CopyTev(v, copy) && copy[10] == 0);
+        v.lut_valid = false; assert(!CopyTev(v, copy)); v.lut_valid = true;
+    }
     // 最終段が使用済みなら空き段を詰め、各位置のヘッダは保つ。
     auto compact = tev; compact[50] = 1; compact[57] = 0;
     const auto plan = Prepare(compact, std::span<const std::uint32_t, 55>(v.palette, 55));
@@ -142,6 +152,27 @@ void Tint() {
     auto replace = tev;
     assert(Prepare(replace, std::span<const std::uint32_t, 55>(v.palette, 55)) == Plan::Replace);
     assert((replace[50] & 65535) == 8);
+}
+void MatrixCache() {
+    std::map<std::uintptr_t, std::uint32_t> words{{0x1008, 0x2000}, {0x201C, 99}};
+    unsigned writes = 0, reads = 0;
+    auto read = [&](std::uintptr_t a) { ++reads; assert(a == 0x1008); return words.at(a); };
+    auto readable = [](std::uintptr_t a, std::size_t n) {
+        return (a == 0x1000 && n == 12) || (a == 0x2000 && n == 32);
+    };
+    auto write = [&](std::uintptr_t a, std::uint32_t v) { assert(a == 0x201C && v == 0); words.at(a) = v; ++writes; };
+    for (unsigned i = 0; i < 9; ++i) {
+        words[0x201C] = 99;
+        game::instance::ResetCache(0x1000, read, readable, write);
+        assert(words[0x201C] == 0);
+    }
+    assert(writes == 9);
+    words[0x1008] = 0x3F800000;
+    game::instance::ResetCache(0x1000, read, readable, write);
+    assert(writes == 9);
+    const auto before = reads;
+    game::instance::ResetCache(0, read, readable, write);
+    assert(reads == before && writes == 9);
 }
 struct Drawer : game::instance::Backend {
     unsigned prepared = 0, resets = 0, meshes = 0;
@@ -157,7 +188,7 @@ void DrawInstances() {
     assert(draw.Draw(1, {}) == 0 && b.resets == 5);
 }
 std::uintptr_t first = 10, second = 20;
-int node, scene;
+int node, scene_token;
 bool available = true;
 std::vector<int> calls;
 void OriginalFirst(std::uintptr_t, std::uintptr_t) { calls.push_back(2); }
@@ -166,7 +197,7 @@ void Client(std::uintptr_t, void *data) { calls.push_back(*static_cast<int *>(da
 void Hook() {
     using P = game::draw::Pair;
     P p;
-    game::draw::Slots slots{&first, &second, &node, &scene};
+    game::draw::Slots slots{&first, &second, &node, &scene_token};
     first = 10; second = 99;
     assert(!p.Install(slots, 10, 20, 30, 40) && first == 10 && second == 99);
     second = 20; assert(p.Install(slots, 10, 20, 30, 40));
@@ -237,13 +268,15 @@ void Ownership() {
 }
 }
 namespace gohan::game::draw {
-Slots CurrentSlots() { return available ? Slots{&first, &second, &node, &scene} : Slots{}; }
+Slots CurrentSlots() { return available ? Slots{&first, &second, &node, &scene_token} : Slots{}; }
 Callback Original0() { return OriginalFirst; }
 Callback Original1() { return OriginalSecond; }
 bool Wire() { return true; }
 void Unwire() {}
+void Suspend() {}
+void Resume() {}
 }
 int main() {
-    Resources(); Tint(); DrawInstances(); Hook(); ReadMemory(); Ownership();
+    Resources(); Tint(); MatrixCache(); DrawInstances(); Hook(); ReadMemory(); Ownership();
     std::cout << "P4a-2: OK\n";
 }

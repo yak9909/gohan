@@ -88,7 +88,7 @@ int Native::Load(std::size_t file) {
 }
 bool Native::Setup(std::size_t file) {
     auto &s = *state_; auto &r = s.resources[file];
-    if (!Read(r.holder[2], 4) || std::memcmp(reinterpret_cast<void *>(r.holder[2]), "CGFX", 4)) return false;
+    if (!Read(r.holder[2], 4) || !IsCgfx(reinterpret_cast<void *>(r.holder[2]), 4)) return false;
     auto setup = Call<int(void *, void *, A, int)>(G3dResHolder_Setup_addr);
     setup(r.holder.data(), s.resource_allocator.data(), 0, 1);
     for (auto link : s.links) if (std::max(link.first, link.second) == file)
@@ -101,7 +101,7 @@ bool Native::Find(const Plan &plan) {
         s.resources[plan.model_file].holder.data() + 1, plan.model.c_str()));
     if (!Heap(s.model)) return false;
     const U type = Word(s.model);
-    return type == 0x40000092u || (plan.kind == ModelKind::ModelOrSkeletal && type == 0x40000012u);
+    return AcceptsModel(plan.kind, type);
 }
 bool Native::Build() {
     auto &s = *state_;
@@ -112,7 +112,8 @@ bool Native::Build() {
         s.holder.data(), reinterpret_cast<void *>(s.model), s.instance_allocator.data(), s.instance_allocator.data(), 0x834, 1, 3);
     const A node = s.holder[1];
     if (!Heap(node) || !Read(node, 0x1F0)) return false;
-    s.instance_safe = Word(node + 0x170) != Word(node + 0x174);
+    s.instance_safe = Word(node + 0x170) != Word(node + 0x174) &&
+        (memory::IsClass(node, "N2nw3gfx13SkeletalModelE") || memory::IsClass(node, "N2nw3gfx5ModelE"));
     if (result != 1 || !s.instance_safe || !Heap(Word(node + 0x1EC))) return false;
     if (s.cursor_animations) {
         const A res = s.resources[s.model_file].holder[2];
@@ -130,7 +131,7 @@ bool Native::Build() {
             Call<void(void *, float)>(Anim_SetFrame_addr)(a.words.data(), 0.0f);
         }
     }
-    if (Contiguous(s.instance_allocator[1]) < 1536) return false;
+    if (Contiguous(s.instance_allocator[1]) < 2048) return false;
     Call<void(void *, void *)>(g3d_FuncNode_Create_addr)(s.drawer.data(), s.instance_allocator.data());
     if (!Heap(s.drawer[1])) return false;
     Call<void(void *, draw::Callback, draw::Callback, A)>(g3d_FuncNode_SetCallbacks_addr)(
@@ -140,14 +141,18 @@ bool Native::Build() {
 void Native::Destroy() {
     if (!state_) return;
     auto &s = *state_;
-    if (s.drawer[1]) Call<void(void *)>(SceneNodeHolder_Destroy_addr)(s.drawer.data());
-    if (s.instance_safe && s.holder[1]) Call<void(void *)>(ModelInstance_Destroy_addr)(s.holder.data());
-    if (s.normal.built) Call<void(void *)>(g3d_MaterialAnim_ReleaseBuilt_addr)(s.normal.words.data());
-    if (s.rotate.built) Call<void(void *)>(g3d_MaterialAnim_ReleaseBuilt_addr)(s.rotate.words.data());
-    if (s.constructed) for (auto i = s.resources.size(); i-- > 0;)
-        Call<void(void *)>(G3dResHolder_Dtor_addr)(s.resources[i].holder.data());
-    if (s.instance_allocator[1]) Call<void(void *)>(HeapAllocator_DestroyHeap_addr)(s.instance_allocator.data());
-    if (s.resource_allocator[1]) Call<void(void *)>(HeapAllocator_DestroyHeap_addr)(s.resource_allocator.data());
+    ReleaseInOrder([&] {
+        if (s.drawer[1]) Call<void(void *)>(SceneNodeHolder_Destroy_addr)(s.drawer.data());
+        if (s.instance_safe && s.holder[1]) Call<void(void *)>(ModelInstance_Destroy_addr)(s.holder.data());
+        if (s.normal.built) Call<void(void *)>(g3d_MaterialAnim_ReleaseBuilt_addr)(s.normal.words.data());
+        if (s.rotate.built) Call<void(void *)>(g3d_MaterialAnim_ReleaseBuilt_addr)(s.rotate.words.data());
+    }, [&] {
+        if (s.constructed) for (auto i = s.resources.size(); i-- > 0;)
+            Call<void(void *)>(G3dResHolder_Dtor_addr)(s.resources[i].holder.data());
+    }, [&] {
+        if (s.instance_allocator[1]) Call<void(void *)>(HeapAllocator_DestroyHeap_addr)(s.instance_allocator.data());
+        if (s.resource_allocator[1]) Call<void(void *)>(HeapAllocator_DestroyHeap_addr)(s.resource_allocator.data());
+    });
     delete state_; state_ = nullptr;
 }
 void Native::Wait() { svcSleepThread(33333334); }
@@ -170,8 +175,7 @@ bool Native::Prepare(A ctx, const instance::Matrix &matrix) {
     return true;
 }
 void Native::ResetMatrixCache(A ctx) {
-    const A inner = Word(ctx + 8);
-    if (Heap(inner)) Put(inner + 28, 0);
+    instance::ResetCache(ctx, Word, Read, Put);
 }
 void Native::Meshes(A ctx) {
     const A node = state_->holder[1], res = Word(node + 8);
@@ -209,11 +213,17 @@ bool Native::PositionMatrix(const std::array<float, 3> &position, instance::Matr
     return true;
 }
 bool Native::PlayerPosition(std::array<float, 3> &p) {
+    const bool was_paused = CTRPluginFramework::Process::IsPaused();
+    if (!was_paused) Pause();
+    const bool result = [&] {
     const U index = Call<U()>(vc_A_GETONLINEPLAYERINDEX_addr)();
     if (index >= 4) return false;
     const A actor = Word(g_PlayerActorSlots_addr + 4 * index);
     if (!Heap(actor) || !Read(actor + 20, 12)) return false;
     std::memcpy(p.data(), reinterpret_cast<void *>(actor + 20), 12); return true;
+    }();
+    if (!was_paused) Resume();
+    return result;
 }
 } // namespace scene
 
@@ -257,5 +267,7 @@ bool Wire() {
     return true;
 }
 void Unwire() { code_ownership::Release(&owner); }
+void Suspend() { scene::Native::Pause(); }
+void Resume() { scene::Native::Resume(); }
 }
 } // namespace gohan::game

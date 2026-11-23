@@ -20,6 +20,9 @@
 #include "game/input_hook.hpp"
 #include "ui/renderer/renderer.hpp"
 #include "ui/native_panels.hpp"
+#include "world/fgobj_draw_hook.hpp"
+#include "world/unit_cursor.hpp"
+#include "features/world_dev/world_dev.hpp"
 #include <CTRPluginFramework.hpp>
 
 namespace {
@@ -82,6 +85,8 @@ int main() {
     features.Add(gohan::game::memory::Feature());
     features.Add(gohan::ui::renderer::RendererFeature());
     features.Add(gohan::ui::native_panels::Feature());
+    features.Add(gohan::world::FgobjDrawHook::Feature());
+    features.Add(gohan::world::UnitCursor::Feature());
     features.Add(gohan::game::items::NamesFeature());
     features.Add(gohan::features::pocket_items::Feature());
     features.Add(gohan::features::hidden_items::Feature());
@@ -115,6 +120,14 @@ int main() {
                           "下画面の枠と gohan を要求します。導入結果は状態表示で確認できます。");
     menu += new MenuEntry("開発: gohan のメニューの開閉", nullptr, ToggleGohanMenu,
                           "上画面の gohan のメニューを開閉します。Select 単独でも開閉できます。");
+#endif
+#ifdef GOHAN_DEV
+    menu += new MenuEntry("開発: 3Dカーソル 入・切", nullptr, gohan::features::world_dev::Toggle,
+                          "足元に3×3のカーソルを表示します。");
+    menu += new MenuEntry("開発: 3Dカーソルの色", nullptr, gohan::features::world_dev::Colour,
+                          "青・赤・白を切り替えます。");
+    menu += new MenuEntry("開発: 3Dの状態", nullptr, gohan::features::world_dev::Status,
+                          "段階、読み込み回数、親ヒープの確保量を表示します。");
 #endif
     features.WireAll();
     menu.Run();
