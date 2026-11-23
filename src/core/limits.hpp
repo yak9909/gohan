@@ -5,11 +5,19 @@
 namespace gohan::core::limits {
 inline constexpr std::size_t Features = 32;
 inline constexpr std::size_t FrameSteps = 32;
-// P4a-1 後: 既存9本、Lease、Panel、開発版の決定通知で最大12本。
-inline constexpr std::size_t RegisteredFrameSteps = 12;
+// P4a-2 後: 既存12本、カーソル、村の物体の描画登録の見直しで最大14本。
+inline constexpr std::size_t RegisteredFrameSteps = 14;
 // CTRPF のフック: フレーム 1、入力 2、アイテム保護 1、名前 1、アイコンと後始末 3。
 // P4a-1 のカタログ用ドラッグ1本を加える。
 inline constexpr std::size_t GameHooks = 9;
+// 村の物体の描画ノードのコールバック2欄。CTRPF のコードフックとは別枠。
+inline constexpr std::size_t WorldCallbackSlots = 2;
+inline constexpr std::size_t WorldResidentBytes = 256;
+inline constexpr std::size_t WorldResourceBytes = 32768;
+inline constexpr std::size_t WorldInstanceBytes = 32768;
+inline constexpr std::size_t WorldParentReserveBytes = 49152;
+inline constexpr std::size_t WorldPositions = 256;
+inline constexpr unsigned WorldShutdownPolls = 120;
 // 作業の Task は共通 I/O 1 本と、既存のメニュー保存 1 本。
 inline constexpr std::size_t WorkerTasks = 2;
 inline constexpr std::size_t Jobs = 16;

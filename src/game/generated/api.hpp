@@ -19,6 +19,7 @@ struct AcnlUiPoint2;
 struct AcnlUiPoint2I;
 struct SeadControllerBasePrefix;
 struct AcnlTouchState;
+struct CameraViewPrefix;
 struct DropData;
 struct NwFontCharWidths;
 struct NwFontCmap;
@@ -298,6 +299,17 @@ struct AcnlTouchState
 #pragma pack(pop)
 
 typedef std::uint32_t u32;
+
+#pragma pack(push, 1)
+
+struct CameraViewPrefix
+{
+  std::uint8_t unk_0[164];
+  float view_pass1024[3][4];
+  std::uint8_t unk_D4[112];
+  float view_other_pass[3][4];
+};
+#pragma pack(pop)
 
 typedef std::uint8_t u8;
 
@@ -1250,6 +1262,96 @@ struct InstSelect8
 };
 #pragma pack(pop)
 
+// プロトタイプ未設定
+inline constexpr std::uintptr_t HeapAllocator_Ctor_addr = 0x005667E8;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Heap_CreateNamed_0_addr = 0x0031785C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t HeapAllocator_DestroyHeap_addr = 0x002F73F4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t G3dResHolder_Ctor_addr = 0x004ED860;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t G3dResHolder_RequestLoad_addr = 0x00317920;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t G3dResHolder_Setup_addr = 0x00317958;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t G3dResHolder_Dtor_addr = 0x00317CFC;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t G3dResource_FindModelByName_addr = 0x004A5F20;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_SkeletalModel_Ctor_addr = 0x004ED008;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ModelInstance_Create_addr = 0x004F048C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ModelInstance_Destroy_addr = 0x004F053C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_MaterialAnim_Ctor_addr = 0x004EBE4C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_MaterialAnim_BuildFromRes_addr = 0x004EBC14;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_MaterialAnim_ReleaseBuilt_addr = 0x004EBDF8;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ModelInstance_BindAnimSlot_addr = 0x004F0300;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t ModelInstance_EvaluateAndApplyAnims_addr = 0x004F0560;
+
+using Anim_SetRate_t = void (*)(void *anim, float rate);
+inline constexpr std::uintptr_t Anim_SetRate_addr = 0x004EDC74;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Anim_SetFrame_addr = 0x004EDC98;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_FuncNode_Create_addr = 0x004EFFB4;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t g3d_FuncNode_SetCallbacks_addr = 0x004EFF58;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t SceneNodeHolder_Destroy_addr = 0x004ED668;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t TransformNodeHolder_SetMatrix3x4_addr = 0x004ED794;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t TransformNodeHolder_UpdateWorldAndSkeleton_addr = 0x004ECFEC;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t fgobj_Object_SetModelView_addr = 0x0058F984;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t gfx_DrawMesh_addr = 0x0048D26C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Field_GetGroundHeightAtWorld_addr = 0x006C69C0;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t FieldPosition_ToRenderSpace_addr = 0x0052CDD8;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t Matrix3x4_AppendRotationX16_addr = 0x0056689C;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t fgobj_DrawCallbackLayer0_addr = 0x0059A900;
+
+// プロトタイプ未設定
+inline constexpr std::uintptr_t fgobj_DrawCallbackLayer1_addr = 0x0059BFEC;
+
 using SsysMaLayoutNode_FindPicture_t = NwLytPicture * (*)(SsysMaLayoutNode *node, const char *name);
 inline constexpr std::uintptr_t SsysMaLayoutNode_FindPicture_addr = 0x00567E44;
 
@@ -1652,6 +1754,27 @@ inline constexpr std::uintptr_t Layout_TransformTouchPixelsToLocal_addr = 0x0074
 using vc_NPC_2_SETUP_t = bool (*)(void *message_data, void *word, const char *label, unsigned int index);
 inline constexpr std::uintptr_t vc_NPC_2_SETUP_addr = 0x0075B8A8;
 
+using g_ParentHeap_t = void **;
+inline constexpr std::uintptr_t g_ParentHeap_addr = 0x0094CC48;
+
+using g_FgobjProc_t = void *;
+inline constexpr std::uintptr_t g_FgobjProc_addr = 0x00948E70;
+
+using g_FgobjRenderCamera_t = CameraViewPrefix;
+inline constexpr std::uintptr_t g_FgobjRenderCamera_addr = 0x00ABD380;
+
+using g_GpuCmdPtr_t = unsigned int *;
+inline constexpr std::uintptr_t g_GpuCmdPtr_addr = 0x0096EA94;
+
+using g_GpuCmdEnd_t = unsigned int *;
+inline constexpr std::uintptr_t g_GpuCmdEnd_addr = 0x0096EA98;
+
+using g_RoomFlagTable_t = unsigned int[165];
+inline constexpr std::uintptr_t g_RoomFlagTable_addr = 0x00883328;
+
+using g_PlayerActorSlots_t = void *[4];
+inline constexpr std::uintptr_t g_PlayerActorSlots_addr = 0x00AA7994;
+
 using g_ActiveBsMenuItem_t = void *;
 inline constexpr std::uintptr_t g_ActiveBsMenuItem_addr = 0x009499EC;
 
@@ -1774,6 +1897,10 @@ inline constexpr std::uintptr_t g_TouchState_addr = 0x00ACF6E0;
 
 using g_SeadControllerMgr_t = SeadControllerMgrPrefix *;
 inline constexpr std::uintptr_t g_SeadControllerMgr_addr = 0x0096F2EC;
+
+inline constexpr std::uintptr_t g3d_FuncNode_vtable = 0x008FCF10;
+
+inline constexpr std::uintptr_t sead_SafeStringBase_char_vtable = 0x008FEC00;
 
 inline constexpr std::uintptr_t BsMenuItem_vtable = 0x008E5220;
 
