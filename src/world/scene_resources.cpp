@@ -18,6 +18,8 @@ bool SceneResources::Start(game::scene::Plan plan, Shortage shortage) {
     if (plan.files.empty() || plan.model.empty() || plan.model_file >= plan.files.size() ||
         !plan.instance_bytes || total > std::numeric_limits<std::uint32_t>::max()) return false;
     for (const auto &f : plan.files) if (f.path.empty()) return false;
+    for (const auto &link : plan.links)
+        if (link.first >= plan.files.size() || link.second >= plan.files.size()) return false;
     plan_ = std::move(plan); shortage_ = shortage;
     resource_bytes_ = static_cast<std::uint32_t>(bytes);
     file_ = 0; polls_ = 0; cancelled_ = false; error_ = Error::None;

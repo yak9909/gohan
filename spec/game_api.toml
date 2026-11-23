@@ -1,8 +1,9 @@
 build = "acnl_jpn_v15"
 output = "src/game/generated/api.hpp"
 namespace = "gohan::game::generated"
-vtables = ["BsMenuItem", "script_WordRes", "InstSelect_8", "script_WordPtr"]
+vtables = ["g3d_FuncNode", "sead_SafeStringBase_char", "BsMenuItem", "script_WordRes", "InstSelect_8", "script_WordPtr"]
 functions = [
+    "HeapAllocator_Ctor", "Heap_CreateNamed_0", "HeapAllocator_DestroyHeap", "G3dResHolder_Ctor", "G3dResHolder_RequestLoad", "G3dResHolder_Setup", "G3dResHolder_Dtor", "G3dResource_FindModelByName", "g3d_SkeletalModel_Ctor", "ModelInstance_Create", "ModelInstance_Destroy", "g3d_MaterialAnim_Ctor", "g3d_MaterialAnim_BuildFromRes", "g3d_MaterialAnim_ReleaseBuilt", "ModelInstance_BindAnimSlot", "ModelInstance_EvaluateAndApplyAnims", "Anim_SetRate", "Anim_SetFrame", "g3d_FuncNode_Create", "g3d_FuncNode_SetCallbacks", "SceneNodeHolder_Destroy", "TransformNodeHolder_SetMatrix3x4", "TransformNodeHolder_UpdateWorldAndSkeleton", "fgobj_Object_SetModelView", "gfx_DrawMesh", "Field_GetGroundHeightAtWorld", "FieldPosition_ToRenderSpace", "Matrix3x4_AppendRotationX16", "fgobj_DrawCallbackLayer0", "fgobj_DrawCallbackLayer1",
     "SsysMaLayoutNode_FindPicture", "nwlyt_TexMap_UpdateGpuRegs", "vc_LOADICON", "Item_IsEmpty", "Inventory_FindEmptySlot", "Inventory_GetSlot", "ItemName_ResolvePhrase", "script_WordRes_Ctor",
     "vc_A_GETONLINEPLAYERINDEX", "vc_PLAYERINSTANCE", "vc_WORLDCOORDS", "Actor_SetState", "Player_CopyStatePacketForEdit", "StatePacket_PackXZ", "PlayerState_FaintEnter", "Field_SetItemAtWorldXY", "Field_GetItemAtXY", "Field_GrowUpWiltBushSapling", "Field_GrowUpWiltSapling", "Field_GrowUpWiltSaplingToItem3", "Field_GrowUpWiltSaplingToItem4", "Save_GetCurrentPlayer", "vc_D_GARDEN", "PlayerSave_GetSlotIndex", "vc_ROOMDAT", "Villager_RunDailyUpdateOnce", "Room_UseExit",
     "Effect_DigDirt",
@@ -63,6 +64,7 @@ functions = [
 ]
 # 自前の Layout ノード・Pane 木・フォントの仮想表と、導入前に確かめる大域変数。
 globals = [
+    "g_ParentHeap", "g_FgobjProc", "g_FgobjRenderCamera", "g_GpuCmdPtr", "g_GpuCmdEnd", "g_RoomFlagTable", "g_PlayerActorSlots",
     "g_ActiveBsMenuItem",
     "vc_MAPBOOL", "g_NetGameMgrPtr", "g_CurrentRoomId", "g_VillagerDailyUpdateGuard",
     "g_TextPagePadding", "g_TreeHitCounts", "g_DropDataTable", "g_GardenSaveBasePtr",
